@@ -5761,5 +5761,27 @@ window.copyTasksDependencies=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksEstimateVsActual=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const out=[];
+  let totalEst=0,totalAct=0;
+  rows.forEach(r=>{
+    const est=parseFloat(r.dataset.estimateHours||r.dataset.estimate||'0');
+    const act=parseFloat(r.dataset.actualHours||r.dataset.timeSpent||'0');
+    if(est<=0&&act<=0) return;
+    totalEst+=est;totalAct+=act;
+    const delta=act-est;
+    const ratio=est?(act/est).toFixed(2):'?';
+    out.push((r.dataset.id||'')+'\t'+(r.dataset.title||'')+'\t'+est+'\t'+act+'\t'+delta.toFixed(1)+'\t'+ratio);
+  });
+  out.sort((a,b)=>parseFloat(b.split('\t')[4])-parseFloat(a.split('\t')[4]));
+  const txt='id\ttitle\test\tact\tdelta\tratio (totalEst='+totalEst.toFixed(1)+'h actual='+totalAct.toFixed(1)+'h)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(totalAct>totalEst*1.2?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='eva '+totalAct.toFixed(0)+'/'+totalEst.toFixed(0)+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

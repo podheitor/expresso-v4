@@ -4818,5 +4818,19 @@ window.copyUsersStorageTop=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersLicenseDistribution=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const counts={};
+  rows.forEach(r=>{const l=r.dataset.license||r.dataset.plan||r.dataset.tier||'(none)';counts[l]=(counts[l]||0)+1;});
+  const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  const out=sorted.map(([k,v])=>k+'\t'+v+'\t'+(v/rows.length*100).toFixed(1)+'%').join('\n');
+  const txt='license\tcount\tpct ('+sorted.length+' tiers, '+rows.length+' users)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lic '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6039,5 +6039,21 @@ window.copyChatCodeBlocks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatEditedMessages=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const out=[];
+  msgs.forEach(m=>{
+    const edited=m.dataset.edited==='1'||m.dataset.editedAt||m.querySelector('.edited,.edit-indicator');
+    if(edited) out.push((m.dataset.timestamp||'')+'\t'+(m.dataset.author||'')+'\t'+(m.dataset.editedAt||'?')+'\t'+((m.textContent||'').trim().replace(/\s+/g,' ').slice(0,100)));
+  });
+  out.sort();
+  const txt='originalTs\tauthor\teditedAt\tpreview ('+out.length+' edited msgs)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='edit '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

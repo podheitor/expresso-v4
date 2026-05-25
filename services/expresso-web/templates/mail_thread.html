@@ -4765,5 +4765,22 @@ window.copyThreadSentimentCues=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadDomainsContacted=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const domains={};
+  msgs.forEach(m=>{
+    const emails=((m.dataset.from||'')+','+(m.dataset.to||'')+','+(m.dataset.cc||'')).match(/[\w.+-]+@([\w.-]+)/g)||[];
+    emails.forEach(e=>{const d=e.split('@')[1].toLowerCase();domains[d]=(domains[d]||0)+1;});
+  });
+  const sorted=Object.entries(domains).sort((a,b)=>b[1]-a[1]);
+  const out=sorted.map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='domain\toccurrences ('+sorted.length+' domains across '+msgs.length+' msgs)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dom '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

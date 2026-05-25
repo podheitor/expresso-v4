@@ -5020,5 +5020,28 @@ window.copyWeekRecurringSeries=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFreeSlots=function(){
+  const dayStart=9,dayEnd=18;
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({s:new Date(e.dataset.start),en:new Date(e.dataset.end||e.dataset.start)})).filter(x=>!isNaN(x.s)&&!isNaN(x.en)).sort((a,b)=>a.s-b.s);
+  const byDay={};
+  evs.forEach(e=>{const k=e.s.toISOString().slice(0,10);byDay[k]=byDay[k]||[];byDay[k].push(e);});
+  const out=[];
+  Object.entries(byDay).sort().forEach(([day,list])=>{
+    let cursor=new Date(day+'T'+dayStart.toString().padStart(2,'0')+':00:00');
+    const dayEndDt=new Date(day+'T'+dayEnd.toString().padStart(2,'0')+':00:00');
+    list.forEach(e=>{
+      if(e.s>cursor){const m=(e.s-cursor)/60000;if(m>=30) out.push(day+'\t'+cursor.toTimeString().slice(0,5)+'-'+e.s.toTimeString().slice(0,5)+'\t'+m.toFixed(0)+'m');}
+      if(e.en>cursor) cursor=new Date(e.en);
+    });
+    if(dayEndDt>cursor){const m=(dayEndDt-cursor)/60000;if(m>=30) out.push(day+'\t'+cursor.toTimeString().slice(0,5)+'-'+dayEndDt.toTimeString().slice(0,5)+'\t'+m.toFixed(0)+'m');}
+  });
+  const txt='day\tslot\tdur ('+out.length+' free slots ≥30m, '+dayStart+':00-'+dayEnd+':00)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='free '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

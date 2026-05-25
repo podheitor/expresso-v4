@@ -4502,5 +4502,24 @@ window.copyMeetMediaConstraints=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetParticipantRoles=function(){
+  const ps=document.querySelectorAll('[data-participant]');
+  const counts={};
+  const list=[];
+  ps.forEach(p=>{
+    const role=(p.dataset.role||(p.dataset.host==='1'?'host':p.dataset.moderator==='1'?'moderator':p.dataset.presenter==='1'?'presenter':'attendee')).toLowerCase();
+    counts[role]=(counts[role]||0)+1;
+    list.push((p.dataset.name||'')+'\t'+role);
+  });
+  list.sort();
+  const summary=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'='+v).join(', ');
+  const txt='SUMMARY: '+summary+'\n\nname\trole\n'+list.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rol '+Object.keys(counts).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

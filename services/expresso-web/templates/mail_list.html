@@ -5362,5 +5362,22 @@ window.copyMailListEmptySubjects=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListAutoReplies=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const re=/^(re:\s*)*(out of office|automatic reply|auto-?reply|resposta automática|ausência|delivery status|undeliver|mailer-daemon|postmaster)/i;
+  const out=[];
+  rows.forEach(r=>{
+    const s=(r.dataset.subject||'').trim();
+    const f=(r.dataset.from||'').toLowerCase();
+    if(re.test(s)||/mailer-daemon|postmaster|no-?reply/.test(f)) out.push((r.dataset.id||'')+'\t'+f+'\t'+s);
+  });
+  const txt='id\tfrom\tsubject ('+out.length+' auto/system msgs)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='auto '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

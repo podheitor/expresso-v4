@@ -4986,5 +4986,24 @@ window.copyDayTravelTimeGaps=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayMeetingDescriptions=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const out=[];
+  evs.forEach(e=>{
+    const desc=(e.dataset.description||e.querySelector('.description,.event-description,.notes')?.textContent||'').trim();
+    if(desc){
+      const len=desc.length;
+      const hasLink=/\bhttps?:\/\//.test(desc);
+      out.push((e.dataset.start||'').slice(11,16)+'\t'+(e.dataset.title||'')+'\t'+len+'\t'+(hasLink?'L':'-')+'\t'+desc.replace(/\s+/g,' ').slice(0,120));
+    }
+  });
+  const txt='time\ttitle\tdescLen\tlink\tpreview ('+out.length+' with description)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='desc '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

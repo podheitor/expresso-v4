@@ -4828,5 +4828,23 @@ window.copyAuditConfigChanges=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditApiKeyEvents=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const re=/(api[\s_-]?key|token|oauth|client[\s_-]?secret|access[\s_-]?token)/i;
+  const out=[];
+  rows.forEach(r=>{
+    const a=r.dataset.action||r.dataset.event||'';
+    const tgt=r.dataset.target||r.dataset.resource||'';
+    if(re.test(a)||re.test(tgt)) out.push((r.dataset.timestamp||'')+'\t'+(r.dataset.actor||'')+'\t'+a+'\t'+tgt);
+  });
+  out.sort();
+  const txt='ts\tactor\taction\ttarget ('+out.length+' api/token events)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='api '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

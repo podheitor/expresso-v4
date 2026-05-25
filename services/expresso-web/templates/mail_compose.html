@@ -4519,5 +4519,21 @@ window.composeAllCapsCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeDraftStats=function(){
+  const subj=((document.querySelector('input[name=subject]')||{}).value||'').toString();
+  const body=((document.querySelector('textarea[name=body]')||{}).value||(document.querySelector('[contenteditable=true]')||{}).innerText||'').toString();
+  const lines=body.split(/\r?\n/);
+  const words=(body.match(/\S+/g)||[]).length;
+  const chars=body.length;
+  const sentences=(body.match(/[.!?]+\s/g)||[]).length+1;
+  const para=lines.filter((l,i,a)=>l.trim()&&(i===0||!a[i-1].trim())).length;
+  const txt='subject='+subj+'\nsubjLen='+subj.length+'\nchars='+chars+'\nwords='+words+'\nlines='+lines.length+'\nparagraphs='+para+'\nsentences='+sentences+'\navgWordsPerSentence='+(words/Math.max(1,sentences)).toFixed(1);
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='stat '+words+'w';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
