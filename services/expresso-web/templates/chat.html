@@ -6021,5 +6021,23 @@ window.copyChatPinnedMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatCodeBlocks=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const out=[];
+  msgs.forEach(m=>{
+    const blocks=m.querySelectorAll('pre,code,pre code');
+    blocks.forEach(b=>{
+      const txt=(b.textContent||'').replace(/\s+/g,' ').slice(0,80);
+      out.push((m.dataset.author||'')+'\t'+(b.className||'')+'\t'+txt);
+    });
+  });
+  const txt='author\tlang\tpreview ('+out.length+' code blocks)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='code '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4811,5 +4811,22 @@ window.copyAuditPrivilegeEscalations=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditConfigChanges=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const re=/(config|setting|policy|flag|toggle|param)/i;
+  const out=[];
+  rows.forEach(r=>{
+    const a=r.dataset.action||r.dataset.event||'';
+    if(re.test(a)) out.push((r.dataset.timestamp||'')+'\t'+(r.dataset.actor||'')+'\t'+a+'\t'+(r.dataset.target||r.dataset.resource||'')+'\t'+(r.dataset.oldValue||'')+'→'+(r.dataset.newValue||''));
+  });
+  out.sort();
+  const txt='ts\tactor\taction\ttarget\tdelta ('+out.length+' config changes)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cfg '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

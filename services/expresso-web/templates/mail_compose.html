@@ -4504,5 +4504,20 @@ window.composeWordFrequency=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAllCapsCheck=function(){
+  const subj=((document.querySelector('input[name=subject]')||{}).value||'').toString();
+  const body=((document.querySelector('textarea[name=body]')||{}).value||(document.querySelector('[contenteditable=true]')||{}).innerText||'').toString();
+  const isAllCaps=s=>{const letters=s.replace(/[^a-zà-úA-ZÀ-Ú]/g,'');return letters.length>=5&&letters===letters.toUpperCase();};
+  const subjAllCaps=isAllCaps(subj);
+  const capsWords=(body.match(/\b[A-ZÀ-Ú]{4,}\b/g)||[]);
+  const warn=subjAllCaps||capsWords.length>=3;
+  const txt='subjectAllCaps='+subjAllCaps+'\nsubject='+subj+'\nbodyCapsWords='+capsWords.length+'\nexamples='+capsWords.slice(0,10).join(',');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(warn?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='caps '+capsWords.length+(subjAllCaps?'+s':'');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

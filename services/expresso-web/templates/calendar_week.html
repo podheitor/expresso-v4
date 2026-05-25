@@ -5001,5 +5001,24 @@ window.copyWeekFocusTimeBlocks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekRecurringSeries=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const series={};
+  evs.forEach(e=>{
+    const rid=e.dataset.recurrenceId||e.dataset.seriesId;
+    if(!rid) return;
+    series[rid]=series[rid]||{title:e.dataset.title||'',count:0,first:e.dataset.start};
+    series[rid].count++;
+  });
+  const sorted=Object.entries(series).sort((a,b)=>b[1].count-a[1].count);
+  const out=sorted.map(([id,s])=>id+'\t'+s.title+'\t'+s.count+'\t'+s.first).join('\n');
+  const txt='seriesId\ttitle\toccurrences\tfirstThisWeek ('+sorted.length+' series)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rcr '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

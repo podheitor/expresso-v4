@@ -5360,5 +5360,22 @@ window.copyContactsByGroup=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsAvatarMissing=function(){
+  const rows=document.querySelectorAll('[data-contact]');
+  const out=[];
+  rows.forEach(r=>{
+    const img=r.querySelector('img.avatar,img[data-avatar],.avatar img');
+    const has=img&&(img.src||img.getAttribute('data-src'))&&!/default|placeholder|blank/i.test(img.src||'');
+    if(!has) out.push((r.dataset.name||r.dataset.email||'')+'\t'+(r.dataset.email||'')+'\t'+(r.dataset.id||''));
+  });
+  out.sort();
+  const txt='name\temail\tid ('+out.length+' missing avatars of '+rows.length+')\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nopic '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

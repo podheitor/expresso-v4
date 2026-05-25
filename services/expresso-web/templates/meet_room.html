@@ -4485,5 +4485,22 @@ window.copyMeetHandRaised=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetMediaConstraints=function(){
+  const info={
+    cameraOn:document.querySelector('[data-camera=on],.camera-on')?1:0,
+    micOn:document.querySelector('[data-mic=on],.mic-on,.unmuted')?1:0,
+    screenShare:document.querySelector('[data-screenshare=on],.screensharing')?1:0,
+    resolution:(document.querySelector('[data-resolution]')||{}).dataset?.resolution||'?',
+    fps:(document.querySelector('[data-fps]')||{}).dataset?.fps||'?',
+    codec:(document.querySelector('[data-codec]')||{}).dataset?.codec||'?'
+  };
+  const txt=Object.entries(info).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='media '+(info.cameraOn?'C':'')+(info.micOn?'M':'')+(info.screenShare?'S':'');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

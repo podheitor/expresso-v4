@@ -4969,5 +4969,22 @@ window.copyDayMeetingsByCategory=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayTravelTimeGaps=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({s:new Date(e.dataset.start),en:new Date(e.dataset.end||e.dataset.start),loc:e.dataset.location||'',title:e.dataset.title||''})).filter(x=>!isNaN(x.s)&&!isNaN(x.en)).sort((a,b)=>a.s-b.s);
+  const out=[];
+  for(let i=1;i<evs.length;i++){
+    const prev=evs[i-1],cur=evs[i];
+    if(!prev.loc||!cur.loc||prev.loc===cur.loc) continue;
+    const gap=(cur.s-prev.en)/60000;
+    if(gap<30) out.push(prev.en.toTimeString().slice(0,5)+'→'+cur.s.toTimeString().slice(0,5)+'\t'+gap.toFixed(0)+'m\t'+prev.loc+' → '+cur.loc);
+  }
+  const txt='gap\tmin\troute ('+out.length+' tight transitions)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='trv '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

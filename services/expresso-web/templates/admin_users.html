@@ -4804,5 +4804,19 @@ window.copyUsersLastLoginBuckets=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersStorageTop=function(){
+  const rows=[...document.querySelectorAll('[data-user-row]')].map(r=>({u:r.dataset.username||r.dataset.email||'',used:parseFloat(r.dataset.storageUsed||r.dataset.usedBytes||'0'),quota:parseFloat(r.dataset.quota||r.dataset.quotaBytes||'0')})).filter(x=>x.used>0);
+  rows.sort((a,b)=>b.used-a.used);
+  const top=rows.slice(0,20);
+  const fmt=b=>b>=1e9?(b/1e9).toFixed(2)+'GB':b>=1e6?(b/1e6).toFixed(1)+'MB':(b/1e3).toFixed(1)+'KB';
+  const out=top.map(r=>r.u+'\t'+fmt(r.used)+'\t'+fmt(r.quota)+'\t'+(r.quota?((r.used/r.quota*100).toFixed(1)+'%'):'?'));
+  const txt='user\tused\tquota\tpct (top 20 of '+rows.length+')\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5463,5 +5463,21 @@ window.copyDriveStarredItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTrashedItems=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const out=[];
+  items.forEach(it=>{
+    const trashed=it.dataset.trashed==='1'||it.dataset.deleted==='1'||it.classList.contains('trashed')||(it.dataset.status||'').toLowerCase()==='trashed';
+    if(trashed) out.push((it.dataset.name||'')+'\t'+(it.dataset.size||'')+'\t'+(it.dataset.trashedAt||it.dataset.deletedAt||''));
+  });
+  out.sort();
+  const txt='name\tsize\ttrashedAt ('+out.length+' in trash)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='trash '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

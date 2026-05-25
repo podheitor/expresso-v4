@@ -5745,5 +5745,21 @@ window.copyTasksRecentlyCompleted=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDependencies=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const deps=(r.dataset.dependsOn||r.dataset.blockedBy||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+    if(deps.length) out.push((r.dataset.id||'')+'\t'+(r.dataset.title||'')+'\t'+deps.length+'\t'+deps.join('|'));
+  });
+  out.sort();
+  const txt='id\ttitle\tdepCount\tdeps ('+out.length+' tasks with deps)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dep '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

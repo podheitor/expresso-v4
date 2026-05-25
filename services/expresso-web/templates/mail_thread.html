@@ -4743,5 +4743,27 @@ window.copyThreadAuthorTurns=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadSentimentCues=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const cues={'!':0,'?':0,'urgent':0,'asap':0,'thanks':0,'sorry':0,'please':0};
+  msgs.forEach(m=>{
+    const txt=((m.textContent||'')).toLowerCase();
+    cues['!']+=(txt.match(/!/g)||[]).length;
+    cues['?']+=(txt.match(/\?/g)||[]).length;
+    if(/\burgent/.test(txt)) cues.urgent++;
+    if(/\basap\b/.test(txt)) cues.asap++;
+    if(/\b(thanks|thank you|obrigad)/.test(txt)) cues.thanks++;
+    if(/\b(sorry|desculp|apolog)/.test(txt)) cues.sorry++;
+    if(/\b(please|por favor|favor)/.test(txt)) cues.please++;
+  });
+  const out=Object.entries(cues).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='cue\tcount ('+msgs.length+' msgs)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(cues.urgent||cues.asap?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cue !'+cues['!']+' ?'+cues['?'];
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
