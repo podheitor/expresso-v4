@@ -5135,5 +5135,16 @@ window.copyHomeServiceWorkers=function(){
     setTimeout(()=>t.remove(),1500);
   }).catch(()=>{});
 };
+window.copyHomeNotificationsPermission=function(){
+  const p=(window.Notification&&Notification.permission)||'unsupported';
+  const max=window.Notification&&Notification.maxActions||0;
+  const out='Notification.permission: '+p+'\nmaxActions: '+max+'\nuserVisibleOnly: '+(window.PushManager?'supported':'no');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(p==='granted'?'#0a0':p==='denied'?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='not '+p;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

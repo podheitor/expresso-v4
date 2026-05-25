@@ -5634,5 +5634,17 @@ window.copyDayReminderTimes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayUrgentEvents=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const lines=[];
+  evs.forEach(e=>{const p=(e.getAttribute('data-priority')||'').toLowerCase();const t=(e.getAttribute('data-title')||'').toLowerCase();if(p==='high'||p==='urgent'||p==='1'||t.includes('urgent')||t.includes('asap')){lines.push((e.getAttribute('data-start')||'')+' '+(e.getAttribute('data-title')||'').trim());}});
+  const out='urgent events today ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='urg '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

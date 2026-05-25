@@ -5414,5 +5414,18 @@ window.copyThreadAttachmentCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadParticipantsList=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const set=new Set();
+  msgs.forEach(m=>{(m.getAttribute('data-from')||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean).forEach(x=>set.add(x));(m.getAttribute('data-to')||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean).forEach(x=>set.add(x));(m.getAttribute('data-cc')||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean).forEach(x=>set.add(x));});
+  const list=Array.from(set).sort();
+  const out='thread participants ('+list.length+'):\n'+list.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ptp '+list.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

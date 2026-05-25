@@ -6102,5 +6102,18 @@ window.copyDriveCommentsCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveFolderTree=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const m={};
+  items.forEach(it=>{const ty=(it.getAttribute('data-type')||'').toLowerCase();const path=(it.getAttribute('data-path')||it.getAttribute('data-folder')||'').trim();if(ty==='folder'||ty==='dir'){m[path||'/']=(m[path||'/']||0)+1;}});
+  const tree=Object.keys(m).sort();
+  const out='folder tree ('+tree.length+'):\n'+tree.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dir '+tree.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

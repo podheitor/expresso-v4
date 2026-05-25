@@ -5112,5 +5112,18 @@ window.composeUrlList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composePhoneNumberDetect=function(){
+  const ta=document.querySelector('textarea[name="body"]')||document.querySelector('#body')||document.querySelector('textarea');
+  const body=ta?(ta.value||''):'';
+  const phones=body.match(/\+?\d[\d\s().-]{7,}\d/g)||[];
+  const filt=phones.filter(p=>p.replace(/\D/g,'').length>=8);
+  const out='phone numbers detected ('+filt.length+'):\n'+filt.join('\n');
+  const tx=document.createElement('textarea');tx.value=out;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tel '+filt.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

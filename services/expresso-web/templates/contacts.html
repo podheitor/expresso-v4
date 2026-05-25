@@ -6016,5 +6016,18 @@ window.copyContactsCustomFieldsKeys=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsHasPhoto=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  let with_=0,without=0;
+  cs.forEach(c=>{const ph=c.getAttribute('data-photo')||c.getAttribute('data-avatar')||(c.querySelector('img[data-contact-photo], .contact-avatar img')?'yes':'');if(ph&&ph!=='false'&&ph!=='none'&&ph!=='0'){with_++;}else{without++;}});
+  const tot=with_+without;
+  const out='with photo: '+with_+'/'+tot+' ('+(tot?Math.round(with_*100/tot):0)+'%)\nwithout photo: '+without;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pho '+with_+'/'+tot;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
