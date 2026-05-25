@@ -3470,5 +3470,18 @@ window.composeStripHtmlTags=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeInsertTable=function(){
+  const ta=document.querySelector('textarea[name=body],textarea#body');
+  if(!ta)return;
+  const tpl='\n| Col1 | Col2 | Col3 |\n|------|------|------|\n|  a   |  b   |  c   |\n';
+  const pos=ta.selectionStart||ta.value.length;
+  ta.value=ta.value.slice(0,pos)+tpl+ta.value.slice(pos);
+  ta.focus();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='table';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -3644,5 +3644,20 @@ window.copyAuditFilterByActor=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditDeleteActions=function(){
+  const out=[];
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    const a=(r.getAttribute('data-action')||'').toLowerCase();
+    if(a.includes('delete')||a.includes('remove')||a.includes('destroy')){
+      out.push((r.getAttribute('data-ts')||'')+'\t'+(r.getAttribute('data-actor')||'')+'\t'+(r.getAttribute('data-action')||'')+'\t'+(r.getAttribute('data-target')||''));
+    }
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='del '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

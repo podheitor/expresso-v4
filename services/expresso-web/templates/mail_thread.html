@@ -3599,5 +3599,21 @@ window.copyThreadDateSpan=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadInternalVsExternal=function(){
+  let int=0,ext=0;
+  const myDom='{{ me.email }}'.split('@')[1]||'';
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const from=(m.getAttribute('data-from')||'').toLowerCase();
+    const dom=from.split('@')[1]||'';
+    if(dom===myDom)int++;else ext++;
+  });
+  const out='internal '+int+', external '+ext;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='i'+int+'/e'+ext;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

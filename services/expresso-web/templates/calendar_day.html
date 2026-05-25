@@ -3787,5 +3787,21 @@ window.copyDayConflictPairs=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayMeetingMinutes=function(){
+  let mins=0;
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    const en=Date.parse(e.getAttribute('data-end')||'');
+    const isMtg=(e.getAttribute('data-attendees')||'').length>0||/meet|reuni/i.test(e.getAttribute('data-title')||'');
+    if(!isNaN(s)&&!isNaN(en)&&isMtg)mins+=(en-s)/60000;
+  });
+  const out='meetings '+Math.round(mins)+'min ('+Math.round(mins/60*10)/10+'h)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mtg '+Math.round(mins)+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
