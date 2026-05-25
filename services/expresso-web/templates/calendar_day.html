@@ -5114,5 +5114,26 @@ window.copyDayDeclinedEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayRoomConflicts=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  const byRoom={};
+  evs.forEach(e=>{
+    const r=e.getAttribute('data-room')||e.getAttribute('data-location')||'';
+    if(!r.trim())return;
+    (byRoom[r]=byRoom[r]||[]).push({s:e.getAttribute('data-start')||'',e:e.getAttribute('data-end')||''});
+  });
+  const conflicts=[];
+  Object.entries(byRoom).forEach(([room,list])=>{
+    list.sort((a,b)=>a.s.localeCompare(b.s));
+    for(let i=1;i<list.length;i++)if(list[i].s<list[i-1].e)conflicts.push(room+'\t'+list[i-1].s+'-'+list[i-1].e+' vs '+list[i].s+'-'+list[i].e);
+  });
+  const out='conflicts='+conflicts.length+'\n'+conflicts.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(conflicts.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='room '+conflicts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

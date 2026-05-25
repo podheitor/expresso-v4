@@ -4703,5 +4703,18 @@ window.copyGalAlphabetBuckets=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalRecentlyAdded=function(){
+  const rows=Array.from(document.querySelectorAll('[data-gal-row]'));
+  const recent=rows.map(r=>({n:r.getAttribute('data-name')||r.textContent.trim().split('\n')[0],c:Date.parse(r.getAttribute('data-created')||'')}))
+    .filter(o=>!isNaN(o.c))
+    .sort((a,b)=>b.c-a.c).slice(0,20);
+  const out='name\tcreated\n'+recent.map(o=>o.n+'\t'+new Date(o.c).toISOString().substring(0,10)).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='new '+recent.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

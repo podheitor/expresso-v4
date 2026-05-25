@@ -4696,5 +4696,18 @@ window.copyHomeStorageQuota=function(){
     setTimeout(()=>t.remove(),1500);
   }).catch(()=>{});
 };
+window.copyHomeMetaCharset=function(){
+  const meta=document.querySelector('meta[charset]');
+  const ct=document.querySelector('meta[http-equiv="Content-Type"]');
+  const lang=document.documentElement.lang||'(unset)';
+  const dir=document.documentElement.dir||'ltr';
+  const out='charset='+(meta?meta.getAttribute('charset'):'(missing)')+'\ncontent_type='+(ct?ct.getAttribute('content'):'(missing)')+'\nhtml_lang='+lang+'\nhtml_dir='+dir;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cs '+lang;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5482,5 +5482,24 @@ window.copyMailListMailingLists=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListSpamScores=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const buckets={low:0,med:0,high:0,unknown:0};
+  const high=[];
+  rows.forEach(r=>{
+    const s=parseFloat(r.getAttribute('data-spam-score')||r.getAttribute('data-spamScore')||'NaN');
+    if(isNaN(s))buckets.unknown++;
+    else if(s<3)buckets.low++;
+    else if(s<6)buckets.med++;
+    else{buckets.high++;high.push((r.getAttribute('data-from')||'?')+'\t'+s.toFixed(2));}
+  });
+  const out='low='+buckets.low+'\nmed='+buckets.med+'\nhigh='+buckets.high+'\nunknown='+buckets.unknown+'\n\nhigh:\nfrom\tscore\n'+high.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(buckets.high?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='spam '+buckets.high;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4623,5 +4623,20 @@ window.copyMeetActiveSpeaker=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetNetworkQuality=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const buckets={excellent:0,good:0,fair:0,poor:0,unknown:0};
+  parts.forEach(p=>{
+    const q=(p.getAttribute('data-network')||p.getAttribute('data-connection-quality')||'unknown').toLowerCase();
+    if(buckets[q]!==undefined)buckets[q]++;else buckets.unknown++;
+  });
+  const out='quality\tcount\n'+Object.entries(buckets).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(buckets.poor?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nq '+buckets.poor+'P';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

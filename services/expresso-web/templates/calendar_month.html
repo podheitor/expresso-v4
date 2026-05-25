@@ -5187,5 +5187,29 @@ window.copyMonthEventColorCodes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEventDurationHistogram=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const buckets={'<15m':0,'15-30m':0,'30-60m':0,'1-2h':0,'2-4h':0,'>4h':0,'allday':0};
+  evs.forEach(e=>{
+    if(e.hasAttribute('data-all-day')){buckets.allday++;return;}
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    const en=Date.parse(e.getAttribute('data-end')||'');
+    if(isNaN(s)||isNaN(en))return;
+    const m=(en-s)/60000;
+    if(m<15)buckets['<15m']++;
+    else if(m<30)buckets['15-30m']++;
+    else if(m<60)buckets['30-60m']++;
+    else if(m<120)buckets['1-2h']++;
+    else if(m<240)buckets['2-4h']++;
+    else buckets['>4h']++;
+  });
+  const out='bucket\tcount\n'+Object.entries(buckets).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dur '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

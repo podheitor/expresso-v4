@@ -4651,5 +4651,17 @@ window.composeAttachmentSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSubjectLengthCheck=function(){
+  const subj=(document.getElementById('compose-subject')||document.querySelector('[name="subject"]')||{value:''}).value;
+  const len=subj.length;
+  const status=len===0?'empty':(len<10?'short':(len<60?'ok':(len<100?'long':'very_long')));
+  const out='subject="'+subj+'"\nlength='+len+'\nstatus='+status+'\nrecommended=10-60';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(status==='ok'?'#0a0':(status==='empty'||status==='very_long'?'#c00':'#c60'))+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='subj '+len;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

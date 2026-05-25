@@ -4950,5 +4950,24 @@ window.copyUsersSuspendedReasons=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersForwardingRules=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const fwd=[];
+  rows.forEach(r=>{
+    const f=r.getAttribute('data-forwardTo')||r.getAttribute('data-forward-to')||'';
+    if(f.trim()){fwd.push((r.getAttribute('data-email')||'?')+'\t→\t'+f);}
+  });
+  const ext=fwd.filter(l=>{
+    const d=l.split('\t→\t')[1]||'';
+    return d&&!d.endsWith('@expresso.local');
+  });
+  const out='total_forwarding='+fwd.length+'\nto_external='+ext.length+'\n\nfrom\t→\tto\n'+fwd.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(ext.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fwd '+fwd.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

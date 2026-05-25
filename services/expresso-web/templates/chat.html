@@ -6166,5 +6166,23 @@ window.copyChatQuestionMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMessagesPerMinute=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-id][data-ts]'));
+  if(msgs.length<2){
+    const out='need>=2 messages';
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    return;
+  }
+  const ts=msgs.map(m=>new Date(m.getAttribute('data-ts')).getTime()).filter(n=>!isNaN(n)).sort((a,b)=>a-b);
+  const span=(ts[ts.length-1]-ts[0])/60000;
+  const rate=span>0?(msgs.length/span).toFixed(2):'inf';
+  const out='messages='+msgs.length+'\nspan_min='+span.toFixed(1)+'\nmsg_per_min='+rate;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mpm '+rate;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
