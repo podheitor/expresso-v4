@@ -6034,5 +6034,20 @@ window.copyMailListSubjectEmojiUse=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListInternalDomainRatio=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const myDom=(document.body.getAttribute('data-tenant-domain')||location.hostname).toLowerCase();
+  let internal=0,external=0;
+  rows.forEach(r=>{const f=(r.getAttribute('data-from')||'').toLowerCase();const at=f.indexOf('@');if(at>=0){const d=f.slice(at+1);if(d===myDom||d.endsWith('.'+myDom))internal++;else external++;}});
+  const tot=internal+external;
+  const pct=tot?Math.round(internal/tot*100):0;
+  const out='internal: '+internal+'\nexternal: '+external+'\ntotal classified: '+tot+'\ninternal pct: '+pct+'%\ntenant domain: '+myDom;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dom '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

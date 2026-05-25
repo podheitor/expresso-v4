@@ -5171,5 +5171,19 @@ window.composeMailtoLink=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAttachmentsTotalSize=function(){
+  const atts=document.querySelectorAll('[data-attachment]');
+  let total=0;
+  const lines=[];
+  atts.forEach(a=>{const s=parseInt(a.getAttribute('data-size')||'0',10);total+=s;lines.push((a.getAttribute('data-name')||'')+'\t'+s+' bytes');});
+  const mb=(total/1048576).toFixed(2);
+  const out='attachments ('+atts.length+', total '+mb+' MB):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(total>20*1048576?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='att '+mb+'M';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
