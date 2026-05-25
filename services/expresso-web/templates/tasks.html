@@ -3292,5 +3292,23 @@ window.copyTasksAgeStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksRecurring=function(){
+  const items=document.querySelectorAll('[data-task-item]');
+  const out=[];
+  items.forEach(i=>{
+    if(i.dataset.recurring==='1'||i.dataset.rrule||i.classList.contains('recurring'))out.push((i.dataset.rrule||'?')+'\t'+(i.dataset.title||''));
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rep '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
