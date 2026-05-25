@@ -5610,5 +5610,19 @@ window.composeBodyAsBase64=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeUniqueWords=function(){
+  const body=document.querySelector('[name="body"]');
+  const txt=body?body.value:'';
+  const set={};
+  (txt.toLowerCase().match(/\b[a-z0-9']+\b/g)||[]).forEach(w=>{set[w]=true;});
+  const total=Object.keys(set).length;
+  const out='unique words: '+total;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='uw '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

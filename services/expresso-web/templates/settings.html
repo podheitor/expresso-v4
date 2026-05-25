@@ -6257,5 +6257,25 @@ window.copySettingsLinkRelTypes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsImageCounts=function(){
+  const imgs=document.querySelectorAll('img');
+  const m={'png':0,'jpg':0,'jpeg':0,'gif':0,'svg':0,'webp':0,'other':0};
+  imgs.forEach(i=>{
+    const s=(i.getAttribute('src')||'').toLowerCase();
+    let matched=false;
+    Object.keys(m).forEach(k=>{
+      if(k!=='other'&&s.endsWith('.'+k)){m[k]++;matched=true;}
+    });
+    if(!matched)m.other++;
+  });
+  const lines=Object.keys(m).map(k=>k+': '+m[k]);
+  const out='images by type:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='im '+imgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
