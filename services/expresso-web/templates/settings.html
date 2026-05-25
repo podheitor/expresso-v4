@@ -4821,5 +4821,22 @@ window.copySettingsMediaQueries=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsLocalStorageKeys=function(){
+  const keys=[];
+  try{
+    for(let i=0;i<localStorage.length;i++)keys.push(localStorage.key(i));
+  }catch(e){keys.push('(localStorage blocked)');}
+  const sess=[];
+  try{
+    for(let i=0;i<sessionStorage.length;i++)sess.push(sessionStorage.key(i));
+  }catch(e){sess.push('(sessionStorage blocked)');}
+  const out='=== localStorage ('+keys.length+') ===\n'+keys.join('\n')+'\n=== sessionStorage ('+sess.length+') ===\n'+sess.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ls '+keys.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

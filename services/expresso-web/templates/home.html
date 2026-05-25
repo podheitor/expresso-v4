@@ -4281,5 +4281,16 @@ window.copyHomeFocusableCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeImagesAltMissing=function(){
+  const imgs=Array.from(document.querySelectorAll('img'));
+  const missing=imgs.filter(im=>!im.getAttribute('alt'));
+  const out=missing.map(im=>im.src+'\t'+(im.id||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(missing.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='alt '+missing.length+'/'+imgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

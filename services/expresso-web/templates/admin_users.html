@@ -4456,5 +4456,19 @@ window.copyUsersPendingInvites=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersByGroupCount=function(){
+  const counts={};
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const g=(r.getAttribute('data-groups')||'').split(',').map(s=>s.trim()).filter(Boolean).length;
+    counts[g]=(counts[g]||0)+1;
+  });
+  const out=Object.keys(counts).sort((a,b)=>parseInt(a,10)-parseInt(b,10)).map(k=>k+' groups\t'+counts[k]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gc '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

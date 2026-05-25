@@ -5134,5 +5134,21 @@ window.copyDriveBySharedWith=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveFolderTree=function(){
+  const folders={};
+  document.querySelectorAll('[data-drive-item]').forEach(it=>{
+    if(it.getAttribute('data-type')==='folder'||it.getAttribute('data-mime')==='application/vnd.folder'){
+      const p=(it.getAttribute('data-path')||'/').replace(/\/$/,'');
+      folders[p]=(it.getAttribute('data-name')||'?');
+    }
+  });
+  const out=Object.keys(folders).sort().map(p=>p+'\t'+folders[p]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fld '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

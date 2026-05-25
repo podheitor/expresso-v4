@@ -4417,5 +4417,20 @@ window.copyThreadAttachmentSizesList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadDayOfWeekHistogram=function(){
+  const names=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const counts=[0,0,0,0,0,0,0];
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const t=Date.parse(m.getAttribute('data-date')||'');
+    if(!isNaN(t))counts[new Date(t).getDay()]++;
+  });
+  const out=names.map((n,i)=>n+'\t'+counts[i]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dow';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
