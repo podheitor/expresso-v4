@@ -5632,5 +5632,19 @@ window.copyChatLinkPreviews=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatThreadDepths=function(){
+  const depths={};
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const d=parseInt(m.getAttribute('data-thread-depth')||'0',10);
+    depths[d]=(depths[d]||0)+1;
+  });
+  const out=Object.keys(depths).sort((a,b)=>parseInt(a,10)-parseInt(b,10)).map(k=>'depth='+k+'\t'+depths[k]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='thd '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

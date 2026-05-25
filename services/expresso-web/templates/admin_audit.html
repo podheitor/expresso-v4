@@ -4415,5 +4415,23 @@ window.copyAuditCountByActor=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditTimeRange=function(){
+  const ts=[];
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    const t=Date.parse(r.getAttribute('data-timestamp')||'');
+    if(!isNaN(t))ts.push(t);
+  });
+  ts.sort((a,b)=>a-b);
+  const min=ts[0]?new Date(ts[0]).toISOString():'?';
+  const max=ts[ts.length-1]?new Date(ts[ts.length-1]).toISOString():'?';
+  const span=ts.length>1?Math.round((ts[ts.length-1]-ts[0])/3600000):0;
+  const out='entries\t'+ts.length+'\nfirst\t'+min+'\nlast\t'+max+'\nspan-hours\t'+span;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rng '+span+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
