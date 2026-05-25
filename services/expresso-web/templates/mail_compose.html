@@ -4771,5 +4771,18 @@ window.composeSentenceLengthAvg=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSubjectKeywordSync=function(){
+  const subj=(document.querySelector('[name="subject"]')||{value:''}).value.toLowerCase();
+  const body=(document.querySelector('[name="body"]')||{value:''}).value.toLowerCase();
+  const words=subj.split(/\W+/).filter(w=>w.length>=4);
+  const matched=words.filter(w=>body.includes(w));
+  const out='subject-words='+words.length+'\nin-body='+matched.length+'\nratio='+(words.length?Math.round(100*matched.length/words.length):0)+'%\nmatched: '+matched.join(', ');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sks '+matched.length+'/'+words.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5014,5 +5014,36 @@ window.copyThreadUniqueDomains=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFirstReplyLatency=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-id]')).map(m=>({id:m.dataset.msgId||'',from:m.dataset.from||'',d:new Date(m.dataset.date||m.dataset.received||'')})).filter(m=>!isNaN(m.d)).sort((a,b)=>a.d-b.d);
+  if(msgs.length<2){
+    const ta=document.createElement('textarea');ta.value='need at least 2 messages';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='lat n/a';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const orig=msgs[0];
+  const reply=msgs.find(m=>m.from!==orig.from);
+  if(!reply){
+    const ta=document.createElement('textarea');ta.value='no external reply';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='lat 0';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const mins=Math.round((reply.d-orig.d)/60000);
+  const out='from='+orig.from+'\nto='+reply.from+'\nlatency='+mins+'min';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lat '+mins+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

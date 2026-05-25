@@ -5086,5 +5086,17 @@ window.copyUsersLicenseTypes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersPasswordExpiringSoon=function(){
+  const rows=Array.from(document.querySelectorAll('[data-user-row]'));
+  const now=Date.now();
+  const soon=rows.filter(r=>{const d=r.dataset.passwordExpires||r.dataset.pwExpires;if(!d)return false;const dt=new Date(d);if(isNaN(dt))return false;const days=(dt-now)/86400000;return days>=0&&days<=14;});
+  const out=soon.map(s=>(s.dataset.username||s.dataset.userId||'')+'\t'+(s.dataset.passwordExpires||s.dataset.pwExpires||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(soon.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pwx '+soon.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

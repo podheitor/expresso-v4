@@ -5341,5 +5341,17 @@ window.copyMonthEventsByStatus=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthFreeBusyRatio=function(){
+  const events=Array.from(document.querySelectorAll('[data-event]'));
+  let busy=0,free=0;
+  events.forEach(e=>{const tr=(e.dataset.transparency||e.dataset.show||'opaque').toLowerCase();if(tr==='transparent'||tr==='free')free++;else busy++;});
+  const out='busy='+busy+'\nfree='+free+'\nratio='+(events.length?Math.round(100*busy/events.length):0)+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fb '+busy+'/'+free;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

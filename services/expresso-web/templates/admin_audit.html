@@ -5101,5 +5101,17 @@ window.copyAuditPrivilegeEscalation=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditSourceBrowsers=function(){
+  const rows=Array.from(document.querySelectorAll('[data-audit-row]'));
+  const br={};
+  rows.forEach(r=>{const ua=(r.dataset.userAgent||r.dataset.ua||'').toLowerCase();let key='other';if(/edg\//.test(ua))key='Edge';else if(/firefox/.test(ua))key='Firefox';else if(/safari/.test(ua)&&!/chrome/.test(ua))key='Safari';else if(/chrome/.test(ua))key='Chrome';else if(/curl|wget|python|httpie/.test(ua))key='CLI';br[key]=(br[key]||0)+1;});
+  const out=Object.entries(br).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='br '+Object.keys(br).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

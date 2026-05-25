@@ -5615,5 +5615,16 @@ window.copyMailListSelectedRows=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListFlaggedRecipients=function(){
+  const rows=Array.from(document.querySelectorAll('[data-mail-row]'));
+  const flag=rows.filter(r=>r.dataset.flagged==='true'||r.dataset.flagged==='1'||r.hasAttribute('data-flagged')||r.classList.contains('flagged'));
+  const out=flag.map(f=>(f.dataset.from||'')+'\t'+(f.dataset.subject||'')+'\t'+(f.dataset.date||f.dataset.received||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='flg '+flag.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

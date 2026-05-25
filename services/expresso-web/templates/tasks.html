@@ -6026,5 +6026,17 @@ window.copyTasksOverdueDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksEffortEstimateTotal=function(){
+  const rows=Array.from(document.querySelectorAll('[data-task-row]'));
+  let total=0,n=0;
+  rows.forEach(r=>{const e=parseFloat(r.dataset.estimate||r.dataset.effort||'0');if(!isNaN(e)&&e>0){total+=e;n++;}});
+  const out='tasks='+rows.length+'\nwith-estimate='+n+'\ntotal='+total+'h\navg='+(n?(total/n).toFixed(1):0)+'h';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='eff '+total+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
