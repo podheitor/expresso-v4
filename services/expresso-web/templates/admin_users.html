@@ -5791,5 +5791,25 @@ window.copyUsersNeverLoggedIn=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersOverQuota=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const lines=[];
+  rows.forEach(r=>{
+    const used=parseFloat(r.getAttribute('data-quota-used')||'0');
+    const limit=parseFloat(r.getAttribute('data-quota-limit')||'0');
+    if(limit>0&&used>=limit){
+      const e=r.getAttribute('data-email')||'';
+      const pct=((used/limit)*100).toFixed(1);
+      lines.push(e+'\t'+pct+'%');
+    }
+  });
+  const out='over quota ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='oq '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

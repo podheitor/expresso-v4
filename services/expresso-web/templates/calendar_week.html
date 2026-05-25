@@ -5997,5 +5997,22 @@ window.copyWeekLongestEvent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekShortestEvent=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let best=null,bestDur=Infinity;
+  evs.forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'')||0;
+    const en=Date.parse(e.getAttribute('data-end')||'')||0;
+    const dur=en-s;
+    if(dur>0&&dur<bestDur){bestDur=dur;best=e;}
+  });
+  const out=best?('shortest event:\ntitle: '+(best.getAttribute('data-title')||'')+'\nstart: '+(best.getAttribute('data-start')||'')+'\nend: '+(best.getAttribute('data-end')||'')+'\nduration: '+Math.round(bestDur/60000)+'m'):'no events';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='shrt '+(best?Math.round(bestDur/60000)+'m':'no');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

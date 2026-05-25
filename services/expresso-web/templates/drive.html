@@ -6434,5 +6434,16 @@ window.copyDriveLargeFiles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveEmptyFolders=function(){
+  const items=document.querySelectorAll('[data-drive-item][data-type="folder"]');
+  const empty=Array.from(items).filter(i=>parseInt(i.getAttribute('data-children')||'0',10)===0).map(i=>i.getAttribute('data-name')||'').sort();
+  const out='empty folders ('+empty.length+'):\n'+empty.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='emp '+empty.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
