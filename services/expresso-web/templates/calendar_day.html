@@ -5005,5 +5005,25 @@ window.copyDayMeetingDescriptions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayReminderSettings=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const counts={};
+  const out=[];
+  evs.forEach(e=>{
+    const r=e.dataset.reminderMinutes||e.dataset.reminder||e.dataset.alertMinutes;
+    if(r==null||r==='') return;
+    const key=r==='0'?'at start':r+'m before';
+    counts[key]=(counts[key]||0)+1;
+    out.push((e.dataset.start||'').slice(11,16)+'\t'+(e.dataset.title||'')+'\t'+key);
+  });
+  const summary=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'='+v).join(', ');
+  const txt='SUMMARY: '+summary+' (of '+evs.length+' events)\n\ntime\ttitle\treminder\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rem '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

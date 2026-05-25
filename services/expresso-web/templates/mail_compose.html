@@ -4535,5 +4535,23 @@ window.composeDraftStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeEmojiCount=function(){
+  const subj=((document.querySelector('input[name=subject]')||{}).value||'').toString();
+  const body=((document.querySelector('textarea[name=body]')||{}).value||(document.querySelector('[contenteditable=true]')||{}).innerText||'').toString();
+  const re=/\p{Extended_Pictographic}/gu;
+  const sm=subj.match(re)||[];
+  const bm=body.match(re)||[];
+  const all=[...sm,...bm];
+  const freq={};
+  all.forEach(e=>{freq[e]=(freq[e]||0)+1;});
+  const top=Object.entries(freq).sort((a,b)=>b[1]-a[1]);
+  const txt='subjectEmojis='+sm.length+'\nbodyEmojis='+bm.length+'\nunique='+Object.keys(freq).length+'\nbreakdown\n'+top.map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='emo '+all.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

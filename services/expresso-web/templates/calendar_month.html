@@ -5080,5 +5080,28 @@ window.copyMonthCalendarSources=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEventChangesByWeek=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const byWeek={};
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start);if(isNaN(s))return;
+    const wk='W'+Math.ceil(s.getDate()/7);
+    byWeek[wk]=byWeek[wk]||{created:0,updated:0,cancelled:0};
+    const created=e.dataset.createdAt,upd=e.dataset.updatedAt;
+    const cancelled=(e.dataset.status||'').toLowerCase()==='cancelled';
+    if(cancelled) byWeek[wk].cancelled++;
+    else if(upd&&created&&new Date(upd)>new Date(created)) byWeek[wk].updated++;
+    else byWeek[wk].created++;
+  });
+  const wks=Object.keys(byWeek).sort();
+  const out=wks.map(w=>w+'\t'+byWeek[w].created+'\t'+byWeek[w].updated+'\t'+byWeek[w].cancelled).join('\n');
+  const txt='week\tcreated\tupdated\tcancelled ('+evs.length+' events)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='chg '+wks.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

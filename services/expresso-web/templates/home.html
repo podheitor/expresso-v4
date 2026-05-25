@@ -4592,5 +4592,24 @@ window.copyHomeNavMenuItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeKeyboardShortcuts=function(){
+  const els=document.querySelectorAll('[data-shortcut], [accesskey], kbd');
+  const out=[];
+  const seen=new Set();
+  els.forEach(el=>{
+    const key=el.dataset.shortcut||el.getAttribute('accesskey')||(el.tagName==='KBD'?el.textContent.trim():'');
+    if(!key) return;
+    const ctx=(el.title||el.getAttribute('aria-label')||el.closest('button,a,[role=button]')?.textContent||'').trim().replace(/\s+/g,' ').slice(0,80);
+    const k=key+'|'+ctx;
+    if(!seen.has(k)){seen.add(k);out.push(key+'\t'+ctx);}
+  });
+  const txt='shortcut\tcontext ('+out.length+' shortcuts)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='kbd '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

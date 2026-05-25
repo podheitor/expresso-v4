@@ -4782,5 +4782,24 @@ window.copyThreadDomainsContacted=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadInlineImages=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const out=[];
+  msgs.forEach(m=>{
+    const imgs=m.querySelectorAll('img');
+    imgs.forEach(img=>{
+      const src=img.getAttribute('src')||'';
+      const isInline=/^cid:|^data:image/.test(src);
+      out.push((m.dataset.author||'')+'\t'+(isInline?'inline':'remote')+'\t'+(img.alt||'')+'\t'+src.slice(0,80));
+    });
+  });
+  const txt='author\ttype\talt\tsrc ('+out.length+' images)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='img '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

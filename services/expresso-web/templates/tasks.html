@@ -5783,5 +5783,28 @@ window.copyTasksEstimateVsActual=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksLeadTime=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const out=[];
+  let sumHours=0,n=0;
+  rows.forEach(r=>{
+    const c=r.dataset.createdAt,d=r.dataset.completedAt||r.dataset.doneAt;
+    if(!c||!d) return;
+    const cd=new Date(c),dd=new Date(d);
+    if(isNaN(cd)||isNaN(dd)) return;
+    const h=(dd-cd)/3600000;
+    sumHours+=h;n++;
+    out.push((r.dataset.id||'')+'\t'+(r.dataset.title||'').slice(0,40)+'\t'+c.slice(0,10)+'\t'+d.slice(0,10)+'\t'+h.toFixed(1)+'h');
+  });
+  out.sort((a,b)=>parseFloat(b.split('\t')[4])-parseFloat(a.split('\t')[4]));
+  const avg=n?(sumHours/n).toFixed(1):'0';
+  const txt='id\ttitle\tcreated\tcompleted\tleadH (n='+n+', avg='+avg+'h)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lead '+avg+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5150,5 +5150,26 @@ window.copySettingsKeyboardLayout=function(){
     finish({layout:sample.KeyQ+sample.KeyW+sample.KeyA+sample.KeyZ,sample,size:m.size});
   }).catch(e=>finish({error:String(e)}));
 };
+window.copySettingsFontStack=function(){
+  const cs=getComputedStyle(document.body);
+  const root=getComputedStyle(document.documentElement);
+  const info={
+    bodyFontFamily:cs.fontFamily,
+    bodyFontSize:cs.fontSize,
+    bodyLineHeight:cs.lineHeight,
+    bodyColor:cs.color,
+    bodyBg:cs.backgroundColor,
+    htmlFontSize:root.fontSize,
+    direction:cs.direction,
+    monoFromCode:(getComputedStyle(document.querySelector('code,pre')||document.body)).fontFamily
+  };
+  const txt=Object.entries(info).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='font '+cs.fontSize;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

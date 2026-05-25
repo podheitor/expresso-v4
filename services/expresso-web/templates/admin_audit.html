@@ -4846,5 +4846,25 @@ window.copyAuditApiKeyEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditNonBusinessHours=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const ts=r.dataset.timestamp||'';
+    const d=new Date(ts);if(isNaN(d))return;
+    const h=d.getHours(),dow=d.getDay();
+    const offHours=h<8||h>=19;
+    const weekend=dow===0||dow===6;
+    if(offHours||weekend) out.push(ts+'\t'+(r.dataset.actor||'')+'\t'+(r.dataset.action||r.dataset.event||'')+'\t'+(weekend?'WE':'OH'));
+  });
+  out.sort();
+  const txt='ts\tactor\taction\twhen ('+out.length+' off-hours/weekend events of '+rows.length+')\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='oh '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

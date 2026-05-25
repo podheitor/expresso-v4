@@ -4832,5 +4832,30 @@ window.copyUsersLicenseDistribution=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersPasswordAgeCheck=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const now=Date.now();
+  const buckets={'<30d':0,'31-90d':0,'91-180d':0,'>180d':0,'unknown':0};
+  const stale=[];
+  rows.forEach(r=>{
+    const ts=r.dataset.passwordChangedAt||r.dataset.pwdLastSet||'';
+    if(!ts){buckets.unknown++;return;}
+    const d=new Date(ts);if(isNaN(d)){buckets.unknown++;return;}
+    const days=(now-d.getTime())/86400000;
+    if(days<31) buckets['<30d']++;
+    else if(days<91) buckets['31-90d']++;
+    else if(days<181) buckets['91-180d']++;
+    else {buckets['>180d']++;stale.push((r.dataset.username||r.dataset.email||'')+'\t'+days.toFixed(0)+'d');}
+  });
+  const out=Object.entries(buckets).map(([k,v])=>k+'\t'+v).join('\n');
+  stale.sort((a,b)=>parseFloat(b.split('\t')[1])-parseFloat(a.split('\t')[1]));
+  const txt='bucket\tcount (n='+rows.length+')\n'+out+'\n\nSTALE (>180d):\nuser\tdaysOld\n'+stale.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(stale.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pwd stale '+stale.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

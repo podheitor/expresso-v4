@@ -6055,5 +6055,21 @@ window.copyChatEditedMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatThreadDepthByRoot=function(){
+  const msgs=[...document.querySelectorAll('[data-msg-id]')];
+  const childrenOf={};
+  msgs.forEach(m=>{const p=m.dataset.parentMsgId||m.dataset.replyTo;if(p){childrenOf[p]=(childrenOf[p]||[]);childrenOf[p].push(m.dataset.msgId);}});
+  const depthCache={};
+  const depth=id=>{if(depthCache[id]!=null)return depthCache[id];const ch=childrenOf[id]||[];if(!ch.length){depthCache[id]=0;return 0;}let m=0;ch.forEach(c=>{const d=1+depth(c);if(d>m)m=d;});depthCache[id]=m;return m;};
+  const roots=msgs.filter(m=>!(m.dataset.parentMsgId||m.dataset.replyTo));
+  const out=roots.map(r=>r.dataset.msgId+'\t'+(r.dataset.author||'')+'\t'+depth(r.dataset.msgId)+'\t'+(childrenOf[r.dataset.msgId]||[]).length).sort((a,b)=>parseInt(b.split('\t')[2])-parseInt(a.split('\t')[2]));
+  const txt='rootId\tauthor\tmaxDepth\tdirectReplies ('+roots.length+' roots)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dpt '+roots.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
