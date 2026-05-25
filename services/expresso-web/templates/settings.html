@@ -5018,5 +5018,24 @@ window.copySettingsCspViolations=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsServiceWorker=function(){
+  const finish=info=>{
+    const ta=document.createElement('textarea');ta.value=JSON.stringify(info,null,2);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:'+(info.error?'#c00':info.controller?'#0a0':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='sw '+(info.scope||info.error||'none');
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  };
+  if(!('serviceWorker' in navigator)){finish({error:'unsupported'});return;}
+  navigator.serviceWorker.getRegistrations().then(regs=>{
+    finish({
+      controller: !!navigator.serviceWorker.controller,
+      scriptUrl: navigator.serviceWorker.controller?navigator.serviceWorker.controller.scriptURL:null,
+      registrations: regs.map(r=>({scope:r.scope,active:!!r.active,waiting:!!r.waiting,installing:!!r.installing,updateViaCache:r.updateViaCache})),
+      scope: regs[0]?regs[0].scope:null
+    });
+  }).catch(e=>finish({error:String(e)}));
+};
 </script>
 {% endblock %}

@@ -5231,5 +5231,21 @@ window.copyMailWithReceipts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListUnreadFromVip=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const out=[];
+  rows.forEach(r=>{
+    if(r.dataset.unread==='1'&&(r.dataset.vip==='1'||r.dataset.fromImportant==='1'||r.dataset.priority==='high'))
+      out.push((r.dataset.receivedAt||'')+'\t'+(r.dataset.from||'')+'\t'+(r.dataset.subject||''));
+  });
+  out.sort();
+  const txt='receivedAt\tfrom\tsubject (vip-unread='+out.length+')\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vipu '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

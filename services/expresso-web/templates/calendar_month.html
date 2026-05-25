@@ -4917,5 +4917,19 @@ window.copyMonthSundayEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthByWeekNumber=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const counts={};
+  const weekNum=d=>{const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));t.setUTCDate(t.getUTCDate()+4-(t.getUTCDay()||7));const y=new Date(Date.UTC(t.getUTCFullYear(),0,1));return Math.ceil((((t-y)/86400000)+1)/7);};
+  evs.forEach(e=>{const s=new Date(e.dataset.start);if(isNaN(s))return;const w='W'+String(weekNum(s)).padStart(2,'0');counts[w]=(counts[w]||0)+1;});
+  const out=Object.entries(counts).sort().map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='week\tcount\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wk '+Object.keys(counts).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

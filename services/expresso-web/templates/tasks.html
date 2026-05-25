@@ -5616,5 +5616,21 @@ window.copyTasksTimeSpentByTag=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksUnassigned=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const a=(r.dataset.assignee||r.dataset.assignedTo||'').trim();
+    if(!a||a==='none'||a==='unassigned') out.push((r.dataset.title||'')+'\t'+(r.dataset.dueDate||'')+'\t'+(r.dataset.priority||''));
+  });
+  out.sort((a,b)=>(a.split('\t')[1]||'9999').localeCompare(b.split('\t')[1]||'9999'));
+  const txt='title\tdue\tpriority ('+out.length+' unassigned)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='unas '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

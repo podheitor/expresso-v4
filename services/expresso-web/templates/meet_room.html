@@ -4378,5 +4378,22 @@ window.copyMeetExternalGuests=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetActiveSpeakers=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const out=[];
+  parts.forEach(p=>{
+    const sec=parseFloat(p.dataset.speakingSeconds||p.dataset.talkTime||'0');
+    if(sec>0) out.push((p.dataset.name||p.dataset.participant||'')+'\t'+sec.toFixed(1)+'s\t'+(p.dataset.email||''));
+  });
+  out.sort((a,b)=>parseFloat(b.split('\t')[1])-parseFloat(a.split('\t')[1]));
+  const total=out.reduce((s,r)=>s+parseFloat(r.split('\t')[1]),0).toFixed(1);
+  const txt='name\tspeaking\temail (total='+total+'s, n='+out.length+')\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='spk '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

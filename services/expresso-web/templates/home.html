@@ -4451,5 +4451,17 @@ window.copyHomeLinkRels=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeMetaThemes=function(){
+  const metas=document.querySelectorAll('meta[name="theme-color"], meta[name="color-scheme"], meta[name="application-name"]');
+  const out=[];
+  metas.forEach(m=>out.push((m.getAttribute('name')||'')+'\t'+(m.getAttribute('media')||'')+'\t'+(m.getAttribute('content')||'')));
+  const txt='name\tmedia\tcontent\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='theme '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

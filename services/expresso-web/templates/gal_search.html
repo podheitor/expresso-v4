@@ -4437,5 +4437,24 @@ window.copyGalAttendanceHours=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalReportingChain=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const byUser={};
+  rows.forEach(r=>{byUser[(r.dataset.username||r.dataset.email||'').toLowerCase()]={mgr:(r.dataset.manager||r.dataset.managerEmail||'').toLowerCase(),name:r.dataset.displayName||r.dataset.name||''};});
+  const out=[];
+  Object.entries(byUser).forEach(([u,info])=>{
+    const chain=[u];let cur=info.mgr;let guard=0;
+    while(cur&&!chain.includes(cur)&&guard++<20){chain.push(cur);cur=(byUser[cur]||{}).mgr;}
+    if(chain.length>1) out.push(chain.join(' → '));
+  });
+  out.sort((a,b)=>b.split(' → ').length-a.split(' → ').length);
+  const txt='chain ('+out.length+' users with manager)\n'+out.slice(0,30).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='chain '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

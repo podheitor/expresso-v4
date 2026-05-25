@@ -4849,5 +4849,20 @@ window.copyDayConflicts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayBackToBackPairs=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({s:new Date(e.dataset.start).getTime(),e:new Date(e.dataset.end).getTime(),t:e.dataset.title||''})).filter(x=>!isNaN(x.s)&&!isNaN(x.e)).sort((a,b)=>a.s-b.s);
+  const out=[];
+  for(let i=0;i<evs.length-1;i++){
+    const gap=evs[i+1].s-evs[i].e;
+    if(gap>=0&&gap<=5*60000) out.push(evs[i].t+'\t→\t'+evs[i+1].t+'\tgap='+Math.round(gap/60000)+'m');
+  }
+  const txt='from\trel\tto\tgap\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='b2b '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

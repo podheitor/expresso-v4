@@ -4387,5 +4387,24 @@ window.composeLineEndingCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeDuplicateRecipients=function(){
+  const fields=['to','cc','bcc'];
+  const seen={};
+  const dups=[];
+  fields.forEach(f=>{
+    const v=(document.querySelector('input[name='+f+']')||{}).value||'';
+    v.split(/[,;]/).map(s=>s.trim().toLowerCase()).filter(Boolean).forEach(addr=>{
+      if(seen[addr]) dups.push(addr+'\t'+seen[addr]+'+'+f);
+      else seen[addr]=f;
+    });
+  });
+  const out='duplicates='+dups.length+'\naddr\tfields\n'+dups.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(dups.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dup '+dups.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
