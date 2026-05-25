@@ -2448,5 +2448,26 @@ window.copyUsersOverQuota=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersByRole=function(){
+  const r=(prompt('role:')||'').toLowerCase().trim();
+  if(!r)return;
+  const rows=document.querySelectorAll('[data-user-id]');
+  const out=[];
+  rows.forEach(row=>{
+    const ur=(row.dataset.role||'').toLowerCase();
+    if(ur===r)out.push(row.dataset.email||row.dataset.userId);
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=r+' '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

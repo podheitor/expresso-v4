@@ -2553,5 +2553,20 @@ window.previewSendSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyComposeTo=function(){
+  const to=(document.getElementById('to')||{}).value||'';
+  const ta=document.createElement('textarea');
+  ta.value=to;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const n=to.split(',').map(s=>s.trim()).filter(s=>s.length>0).length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='to '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
