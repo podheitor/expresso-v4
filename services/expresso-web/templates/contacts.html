@@ -6563,5 +6563,19 @@ window.copyContactsByJobTitle=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsAvatarPresent=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  let with_=0,without=0;
+  cs.forEach(c=>{
+    if((c.getAttribute('data-avatar')||'').trim())with_++;else without++;
+  });
+  const out='with avatar: '+with_+'\nwithout: '+without;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='av '+with_;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

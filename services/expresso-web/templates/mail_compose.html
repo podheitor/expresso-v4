@@ -5597,5 +5597,18 @@ window.composeDraftAge=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBodyAsBase64=function(){
+  const body=document.querySelector('[name="body"]');
+  const txt=body?body.value:'';
+  let b64='';
+  try{b64=btoa(unescape(encodeURIComponent(txt)));}catch(e){b64='(encode error)';}
+  const out='body b64 ('+b64.length+' chars):\n'+b64.slice(0,200);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='b64 '+b64.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

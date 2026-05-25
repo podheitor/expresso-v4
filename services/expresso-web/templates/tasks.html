@@ -6955,5 +6955,21 @@ window.copyTasksFlaggedImportant=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksAverageEstimate=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let total=0,count=0;
+  rows.forEach(r=>{
+    const e=parseFloat(r.getAttribute('data-estimate')||'0');
+    if(e>0){total+=e;count++;}
+  });
+  const avg=count?(total/count).toFixed(2):'0';
+  const out='avg estimate (h): '+avg+' over '+count+' tasks';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
