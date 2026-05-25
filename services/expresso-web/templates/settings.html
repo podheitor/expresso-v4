@@ -4460,5 +4460,23 @@ window.copySettingsPermissionSummary=function(){
     setTimeout(()=>t.remove(),1500);
   });
 };
+window.copySettingsStorageEstimate=function(){
+  navigator.storage?.estimate().then(e=>{
+    const used=(e.usage||0)/1048576,quota=(e.quota||0)/1048576,pct=quota?(e.usage/e.quota*100).toFixed(1):'?';
+    const out='usage='+used.toFixed(1)+'MB\nquota='+quota.toFixed(1)+'MB\npct='+pct+'%';
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pct>80?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='storage '+pct+'%';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }).catch(()=>{
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='storage unsupported';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}

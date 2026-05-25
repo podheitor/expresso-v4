@@ -4546,5 +4546,22 @@ window.copyMailSpamScoreList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailDkimDmarcStatus=function(){
+  const stats={dkim_pass:0,dkim_fail:0,dmarc_pass:0,dmarc_fail:0,spf_pass:0,spf_fail:0};
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    ['dkim','dmarc','spf'].forEach(k=>{
+      const v=(r.getAttribute('data-'+k)||'').toLowerCase();
+      if(v==='pass'||v==='1')stats[k+'_pass']++;else if(v==='fail'||v==='0')stats[k+'_fail']++;
+    });
+  });
+  const out=Object.entries(stats).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  const fails=stats.dkim_fail+stats.dmarc_fail+stats.spf_fail;
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(fails?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='auth-fail '+fails;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

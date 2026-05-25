@@ -3780,5 +3780,20 @@ window.copyMeetChatLog=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetSpeakerStats=function(){
+  const stats={};
+  document.querySelectorAll('[data-participant]').forEach(p=>{
+    const name=p.getAttribute('data-name')||'?';
+    const ms=parseInt(p.getAttribute('data-speak-ms')||'0',10);
+    stats[name]=(stats[name]||0)+ms;
+  });
+  const out=Object.entries(stats).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+(v/1000).toFixed(1)+'s').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='speakers '+Object.keys(stats).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

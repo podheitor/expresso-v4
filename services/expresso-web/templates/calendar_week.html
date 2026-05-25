@@ -4180,5 +4180,22 @@ window.copyWeekLunchBlockCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekEarliestLatest=function(){
+  const days={};
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||''),en=Date.parse(e.getAttribute('data-end')||'');
+    if(isNaN(s)||isNaN(en))return;
+    const d=new Date(s).toISOString().slice(0,10);
+    if(!days[d]||s<days[d].first)days[d]=Object.assign(days[d]||{},{first:s});
+    if(!days[d].last||en>days[d].last)days[d].last=en;
+  });
+  const out=Object.entries(days).sort().map(([k,v])=>k+'\t'+new Date(v.first).toTimeString().slice(0,5)+'→'+new Date(v.last).toTimeString().slice(0,5)).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='span '+Object.keys(days).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

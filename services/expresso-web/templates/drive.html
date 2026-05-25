@@ -4665,5 +4665,19 @@ window.copyDriveTrashedItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveSharedExternal=function(){
+  const out=[];
+  document.querySelectorAll('[data-drive-item]').forEach(r=>{
+    const shares=(r.getAttribute('data-shared-with')||'').split(',').filter(Boolean);
+    const ext=shares.filter(s=>!s.endsWith('@expresso.local'));
+    if(ext.length)out.push((r.getAttribute('data-name')||'?')+'\t'+ext.join(';'));
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ext-share '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
