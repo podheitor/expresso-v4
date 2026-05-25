@@ -4299,5 +4299,21 @@ window.copyMailReplyThreadDepth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailReadVsUnread=function(){
+  let read=0,unread=0;
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    if(r.getAttribute('data-unread')==='1'||r.classList.contains('unread'))unread++;
+    else read++;
+  });
+  const total=read+unread;
+  const pct=total?(unread/total*100).toFixed(1):'0';
+  const out='read='+read+'\nunread='+unread+'\ntotal='+total+'\nunread-pct='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(unread?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='un '+unread;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
