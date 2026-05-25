@@ -2484,5 +2484,26 @@ window.toggleComposeUppercaseSubj=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyComposeDuplicateRecipients=function(){
+  const all=[];
+  ['to','cc','bcc'].forEach(k=>{
+    const v=(document.querySelector('input[name="'+k+'"]')||{}).value||'';
+    v.split(/[,;]/).map(s=>s.trim().toLowerCase()).filter(Boolean).forEach(e=>all.push(e));
+  });
+  const seen={};
+  all.forEach(e=>{seen[e]=(seen[e]||0)+1;});
+  const dupes=Object.entries(seen).filter(([_,v])=>v>1);
+  const ta=document.createElement('textarea');
+  ta.value=dupes.map(([e,n])=>n+'\t'+e).join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(dupes.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dup '+dupes.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

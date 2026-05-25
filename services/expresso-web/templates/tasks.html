@@ -3270,5 +3270,27 @@ window.copyTasksAssigneeStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksAgeStats=function(){
+  const items=document.querySelectorAll('[data-task-item]');
+  const now=Date.now();
+  const buckets={'<1w':0,'1-4w':0,'1-3m':0,'>3m':0};
+  items.forEach(i=>{
+    const c=Date.parse(i.dataset.created||'');
+    if(isNaN(c))return;
+    const d=Math.floor((now-c)/86400000);
+    if(d<7)buckets['<1w']++; else if(d<28)buckets['1-4w']++; else if(d<90)buckets['1-3m']++; else buckets['>3m']++;
+  });
+  const ta=document.createElement('textarea');
+  ta.value=Object.entries(buckets).map(([k,v])=>v+'\t'+k).join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='age';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

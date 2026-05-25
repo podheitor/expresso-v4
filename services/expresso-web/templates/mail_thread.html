@@ -2392,5 +2392,33 @@ window.copyThreadAttachmentList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadResponseTime=function(){
+  const msgs=[...document.querySelectorAll('[data-msg-ts]')];
+  msgs.sort((a,b)=>(a.dataset.ts||'').localeCompare(b.dataset.ts||''));
+  const me='{{ me.email }}'.toLowerCase();
+  const times=[];
+  for(let i=1;i<msgs.length;i++){
+    const cur=msgs[i];
+    const prev=msgs[i-1];
+    const curFrom=(cur.dataset.from||'').toLowerCase();
+    const prevFrom=(prev.dataset.from||'').toLowerCase();
+    if(curFrom===me&&prevFrom!==me){
+      const dt=Date.parse(cur.dataset.ts||'')-Date.parse(prev.dataset.ts||'');
+      if(!isNaN(dt))times.push(Math.round(dt/60000));
+    }
+  }
+  const avg=times.length?Math.round(times.reduce((a,b)=>a+b,0)/times.length):0;
+  const ta=document.createElement('textarea');
+  ta.value='replies: '+times.length+'\navg response: '+avg+' min\nmin: '+(times.length?Math.min(...times):0)+'\nmax: '+(times.length?Math.max(...times):0);
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

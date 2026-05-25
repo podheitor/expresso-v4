@@ -3117,5 +3117,24 @@ window.copyDriveSharedOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveFolderTree=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const folders=[];
+  items.forEach(i=>{
+    if(i.dataset.kind==='folder'||i.dataset.type==='folder'||i.classList.contains('folder'))folders.push(i.dataset.path||i.dataset.name||'');
+  });
+  folders.sort();
+  const ta=document.createElement('textarea');
+  ta.value=folders.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dir '+folders.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

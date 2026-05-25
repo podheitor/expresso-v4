@@ -3787,5 +3787,25 @@ window.copyChatEmojiUsage=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatSelfMsgs=function(){
+  const me='{{ me.email }}'.toLowerCase();
+  const msgs=document.querySelectorAll('[data-msg-body]');
+  const out=[];
+  msgs.forEach(m=>{
+    const f=(m.dataset.from||'').toLowerCase();
+    if(f===me||f.startsWith(me.split('@')[0]+'@'))out.push((m.dataset.ts||'')+'\t'+(m.dataset.body||m.textContent||'').slice(0,120));
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mine '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

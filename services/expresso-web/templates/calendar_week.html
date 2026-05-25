@@ -2518,5 +2518,28 @@ window.copyWeekShortEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekLongEvents=function(){
+  const evs=document.querySelectorAll('[data-event-id]');
+  const out=[];
+  evs.forEach(e=>{
+    const s=Date.parse(e.dataset.start||'');
+    const f=Date.parse(e.dataset.end||'');
+    if(!isNaN(s)&&!isNaN(f)){
+      const m=Math.round((f-s)/60000);
+      if(m>=120)out.push(m+'min\t'+(e.dataset.start||'')+'\t'+(e.dataset.title||''));
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='long '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

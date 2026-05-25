@@ -2667,5 +2667,21 @@ window.copyHomeLangList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeOnlineStatus=function(){
+  const o=navigator.onLine;
+  const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+  const info='online: '+o+(c?'\neffectiveType: '+c.effectiveType+'\ndownlink: '+c.downlink+' Mbps\nrtt: '+c.rtt+' ms\nsaveData: '+c.saveData:'');
+  const ta=document.createElement('textarea');
+  ta.value=info;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(o?'#069':'#c00')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=o?'online':'offline';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

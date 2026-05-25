@@ -3057,5 +3057,27 @@ window.copyMemoryInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMediaDevices=async function(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.enumerateDevices){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='no api';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const devs=await navigator.mediaDevices.enumerateDevices();
+  const ta=document.createElement('textarea');
+  ta.value=devs.map(d=>d.kind+'\t'+(d.label||'(no label)')+'\t'+d.deviceId.slice(0,12)).join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dev '+devs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
