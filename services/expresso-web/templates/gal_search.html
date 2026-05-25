@@ -2967,5 +2967,30 @@ window.copyGalNameInitials=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalDeptDistribution=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const buckets={};
+  let total=0;
+  rows.forEach(r=>{
+    const d=(r.getAttribute('data-department')||'(none)').trim();
+    buckets[d]=(buckets[d]||0)+1;
+    total++;
+  });
+  const out=Object.keys(buckets).sort((a,b)=>buckets[b]-buckets[a]).map(k=>{
+    const pct=total?((buckets[k]*100)/total).toFixed(1):'0';
+    return buckets[k]+'\t'+pct+'%\t'+k;
+  }).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dd '+Object.keys(buckets).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

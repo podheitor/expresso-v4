@@ -3351,5 +3351,27 @@ window.copyMonthCategories=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthDayDistribution=function(){
+  const events=document.querySelectorAll('[data-event]');
+  const buckets={Sun:0,Mon:0,Tue:0,Wed:0,Thu:0,Fri:0,Sat:0};
+  const names=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  events.forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    if(isNaN(s)){return;}
+    buckets[names[new Date(s).getDay()]]++;
+  });
+  const out=names.map(n=>n+'\t'+buckets[n]).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dd '+events.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
