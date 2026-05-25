@@ -6304,5 +6304,18 @@ window.copyChatThreadStarters=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatLongRunningThreads=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-id]'));
+  const byThread={};
+  msgs.forEach(m=>{const tid=m.dataset.threadId||m.dataset.parent||m.dataset.msgId;const d=new Date(m.dataset.time||m.dataset.ts||'');if(isNaN(d))return;if(!byThread[tid])byThread[tid]={min:d,max:d,n:0};if(d<byThread[tid].min)byThread[tid].min=d;if(d>byThread[tid].max)byThread[tid].max=d;byThread[tid].n++;});
+  const ranked=Object.entries(byThread).map(([k,v])=>({k,span:(v.max-v.min)/60000,n:v.n})).filter(x=>x.n>=2).sort((a,b)=>b.span-a.span).slice(0,15);
+  const out=ranked.map(r=>Math.round(r.span)+'min\tn='+r.n+'\t'+r.k).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lrt '+ranked.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

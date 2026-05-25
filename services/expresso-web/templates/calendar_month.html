@@ -5353,5 +5353,17 @@ window.copyMonthFreeBusyRatio=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEventsByDuration=function(){
+  const events=Array.from(document.querySelectorAll('[data-event]'));
+  const buckets={'15min':0,'30min':0,'1h':0,'2h':0,'half-day':0,'all-day':0,'multi-day':0};
+  events.forEach(e=>{const s=e.dataset.start;const en=e.dataset.end;if(!s||!en)return;const sd=new Date(s);const ed=new Date(en);if(isNaN(sd)||isNaN(ed))return;const mins=(ed-sd)/60000;if(mins>=1440)buckets['multi-day']++;else if(mins>=720)buckets['all-day']++;else if(mins>=240)buckets['half-day']++;else if(mins>=120)buckets['2h']++;else if(mins>=60)buckets['1h']++;else if(mins>=30)buckets['30min']++;else buckets['15min']++;});
+  const out=Object.entries(buckets).map(([k,v])=>k+'='+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='du '+events.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

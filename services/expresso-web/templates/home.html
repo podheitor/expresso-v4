@@ -4821,5 +4821,17 @@ window.copyHomeIframeSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeFormFieldNames=function(){
+  const forms=Array.from(document.querySelectorAll('form'));
+  const lines=[];
+  forms.forEach((f,i)=>{const id=f.id||f.getAttribute('name')||('form'+i);Array.from(f.elements).forEach(el=>{if(el.name)lines.push(id+'\t'+el.tagName.toLowerCase()+'\t'+el.name);});});
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fld '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
