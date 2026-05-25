@@ -4685,5 +4685,21 @@ window.copyMeetCameraOnRatio=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetBandwidthUsage=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  let totalIn=0,totalOut=0;
+  parts.forEach(p=>{
+    totalIn+=parseFloat(p.getAttribute('data-bytes-in')||'0')||0;
+    totalOut+=parseFloat(p.getAttribute('data-bytes-out')||'0')||0;
+  });
+  const mb=n=>(n/1048576).toFixed(2)+'MB';
+  const out='participants='+parts.length+'\ntotal_in='+mb(totalIn)+'\ntotal_out='+mb(totalOut)+'\ntotal='+mb(totalIn+totalOut);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bw '+mb(totalIn+totalOut);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

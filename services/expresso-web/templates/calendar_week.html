@@ -5211,5 +5211,21 @@ window.copyWeekMostFrequentAttendees=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekRescheduleCount=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let resched=0,cancelled=0;
+  evs.forEach(e=>{
+    const n=parseInt(e.getAttribute('data-reschedule-count')||'0',10)||0;
+    if(n>0)resched++;
+    if(e.hasAttribute('data-cancelled'))cancelled++;
+  });
+  const out='rescheduled='+resched+'/'+evs.length+'\ncancelled='+cancelled;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(resched?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rsh '+resched;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

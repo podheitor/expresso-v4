@@ -5270,5 +5270,23 @@ window.copyMonthSequentialFreeDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthMeetingsByQuarter=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const quarters={Q1:0,Q2:0,Q3:0,Q4:0};
+  evs.forEach(e=>{
+    const m=parseInt((e.getAttribute('data-start')||'').substring(5,7),10);
+    if(m>=1&&m<=3)quarters.Q1++;
+    else if(m>=4&&m<=6)quarters.Q2++;
+    else if(m>=7&&m<=9)quarters.Q3++;
+    else if(m>=10&&m<=12)quarters.Q4++;
+  });
+  const out='quarter\tevents\n'+Object.entries(quarters).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='q '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

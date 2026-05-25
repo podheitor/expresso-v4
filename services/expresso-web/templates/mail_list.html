@@ -5551,5 +5551,21 @@ window.copyMailListLabelDistribution=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListThreadDepths=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const depths={};
+  rows.forEach(r=>{
+    const d=parseInt(r.getAttribute('data-thread-depth')||r.getAttribute('data-threadDepth')||'1',10)||1;
+    depths[d]=(depths[d]||0)+1;
+  });
+  const sorted=Object.entries(depths).sort((a,b)=>parseInt(a[0])-parseInt(b[0]));
+  const out='depth\tthreads\n'+sorted.map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='td '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

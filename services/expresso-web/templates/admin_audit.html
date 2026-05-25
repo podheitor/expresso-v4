@@ -5033,5 +5033,26 @@ window.copyAuditRoleChangeEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditFirstLastByActor=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const seen={};
+  rows.forEach(r=>{
+    const a=r.getAttribute('data-actor')||'?';
+    const t=r.getAttribute('data-at')||'';
+    if(!t)return;
+    if(!seen[a])seen[a]={first:t,last:t,count:0};
+    if(t<seen[a].first)seen[a].first=t;
+    if(t>seen[a].last)seen[a].last=t;
+    seen[a].count++;
+  });
+  const lines=Object.entries(seen).sort((a,b)=>b[1].count-a[1].count).map(([a,o])=>a+'\t'+o.first+'\t'+o.last+'\t'+o.count);
+  const out='actor\tfirst\tlast\tactions\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='act '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

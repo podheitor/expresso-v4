@@ -6233,5 +6233,20 @@ window.copyChatTypingIndicators=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatChannelMembership=function(){
+  const members=document.querySelectorAll('[data-channel-member], [data-member]');
+  const roles={admin:0,moderator:0,member:0,guest:0,other:0};
+  members.forEach(m=>{
+    const r=(m.getAttribute('data-role')||'member').toLowerCase();
+    if(roles[r]!==undefined)roles[r]++;else roles.other++;
+  });
+  const out='channel='+(document.querySelector('[data-channel-name]')||{textContent:'(current)'}).textContent.trim()+'\ntotal_members='+members.length+'\nrole\tcount\n'+Object.entries(roles).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mem '+members.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5354,5 +5354,14 @@ window.copySettingsClipboardCapabilities=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsDocumentStats=function(){
+  const out='nodes='+document.getElementsByTagName('*').length+'\nscripts='+document.scripts.length+'\nstylesheets='+document.styleSheets.length+'\nimages='+document.images.length+'\nlinks='+document.links.length+'\nforms='+document.forms.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='doc '+document.getElementsByTagName('*').length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
