@@ -4108,5 +4108,17 @@ window.copyTimezoneOffset=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.exportPrefsBackup=function(){
+  const dump={};
+  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('expresso_'))dump[k]=localStorage.getItem(k);}
+  const blob=new Blob([JSON.stringify(dump,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='expresso-prefs-{{ me.user_id }}-'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},100);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bkp '+Object.keys(dump).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

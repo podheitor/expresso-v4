@@ -4106,5 +4106,19 @@ window.copyMailLargest=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailRepliedRatio=function(){
+  let r=0,total=0;
+  document.querySelectorAll('[data-mail-row]').forEach(m=>{
+    total++;
+    if((m.getAttribute('data-replied')||'')==='true'||m.querySelector('[data-replied=true]'))r++;
+  });
+  const pct=total?Math.round(r*100/total):0;
+  const ta=document.createElement('textarea');ta.value='replied '+r+'/'+total+' = '+pct+'%';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rpl '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

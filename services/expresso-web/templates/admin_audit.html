@@ -3581,5 +3581,20 @@ window.copyAuditByDayOfWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditAfterHours=function(){
+  const out=[];
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    const t=Date.parse(r.getAttribute('data-ts')||'');
+    if(isNaN(t))return;
+    const h=new Date(t).getHours();
+    if(h<8||h>=20)out.push((r.getAttribute('data-ts')||'')+'\t'+(r.getAttribute('data-actor')||'')+'\t'+(r.getAttribute('data-action')||''));
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ah '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
