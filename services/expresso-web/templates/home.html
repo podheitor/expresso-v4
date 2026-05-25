@@ -5257,5 +5257,17 @@ window.copyHomeStyleSheetsSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeFormCount=function(){
+  const forms=document.querySelectorAll('form');
+  const lines=[];
+  forms.forEach((f,i)=>{lines.push(i+'\t'+(f.id||'(no id)')+'\t'+(f.action||'(no action)')+'\t'+(f.method||'get')+'\t'+f.elements.length+' fields');});
+  const out='forms ('+forms.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='frm '+forms.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

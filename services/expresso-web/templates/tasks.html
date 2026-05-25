@@ -6528,5 +6528,18 @@ window.copyTasksStaleNoUpdate30d=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksAssigneeLoad=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const counts={};
+  rows.forEach(r=>{const a=(r.getAttribute('data-assignee')||'(unassigned)').trim()||'(unassigned)';const st=r.getAttribute('data-status')||'';if(st!=='done'){counts[a]=(counts[a]||0)+1;}});
+  const sorted=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
+  const out='open task load per assignee ('+sorted.length+'):\n'+sorted.map(k=>k+'\t'+counts[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='asg '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

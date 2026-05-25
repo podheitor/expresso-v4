@@ -6113,5 +6113,17 @@ window.copyMailListPriorityHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListReplyAllAbuse=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const lines=[];
+  rows.forEach(r=>{const toCnt=parseInt(r.getAttribute('data-to-count')||'0',10);const ccCnt=parseInt(r.getAttribute('data-cc-count')||'0',10);if(toCnt+ccCnt>=10){lines.push((r.getAttribute('data-ts')||'')+'\t'+(r.getAttribute('data-from')||'')+'\tto:'+toCnt+' cc:'+ccCnt+'\t'+(r.getAttribute('data-subject')||''));}});
+  const out='reply-all suspects (>=10 recipients) ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ra '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

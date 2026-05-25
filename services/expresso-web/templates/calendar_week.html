@@ -5787,5 +5787,18 @@ window.copyWeekRecurringSeriesIds=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTopAttendees=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const counts={};
+  evs.forEach(e=>{const at=(e.getAttribute('data-attendees')||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);at.forEach(a=>{counts[a]=(counts[a]||0)+1;});});
+  const sorted=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).slice(0,20);
+  const out='top 20 attendees by event count:\n'+sorted.map(k=>k+'\t'+counts[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

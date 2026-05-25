@@ -5761,5 +5761,18 @@ window.copyDayCategorySummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayWorkdayDensity=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let busyMin=0;
+  evs.forEach(e=>{const s=e.getAttribute('data-start'),en=e.getAttribute('data-end');if(s&&en){const a=new Date(s),b=new Date(en);const startH=a.getHours()+a.getMinutes()/60;const endH=b.getHours()+b.getMinutes()/60;const clipS=Math.max(9,startH),clipE=Math.min(18,endH);if(clipE>clipS)busyMin+=(clipE-clipS)*60;}});
+  const pct=Math.round(busyMin/(9*60)*100);
+  const out='workday density (9-18h):\nbusy minutes: '+Math.round(busyMin)+'\ntotal workday: 540 min\ndensity: '+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pct>80?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wd '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

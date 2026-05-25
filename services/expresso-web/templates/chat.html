@@ -6777,5 +6777,17 @@ window.copyChatChannelMembers=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatUnreadCount=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const lines=[];
+  msgs.forEach(m=>{if(m.hasAttribute('data-unread')||m.getAttribute('data-read')==='0'){lines.push((m.getAttribute('data-ts')||'')+'\t'+(m.getAttribute('data-author')||'')+'\t'+((m.textContent||'').trim().slice(0,80)));}});
+  const out='unread messages ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='unr '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

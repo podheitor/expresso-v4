@@ -5315,5 +5315,17 @@ window.copyGalManagersOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalFreeBusyToday=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const lines=[];
+  rows.forEach(r=>{const fb=(r.getAttribute('data-freebusy')||r.getAttribute('data-status')||'').toLowerCase();const n=r.getAttribute('data-name')||'';lines.push(n+'\t'+(fb||'(unknown)'));});
+  const out='free/busy today ('+rows.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fb '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

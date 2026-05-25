@@ -5246,5 +5246,18 @@ window.composeBodyEmojiCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeReadTime=function(){
+  const body=document.querySelector('[name="body"],#body,[data-body-input],[contenteditable="true"]');
+  const v=body?(body.value||body.textContent||''):'';
+  const words=v.trim()?v.trim().split(/\s+/).length:0;
+  const min=Math.max(1,Math.round(words/200));
+  const out='words: '+words+'\nestimated read time: '+min+' min (at 200 wpm)\nchars: '+v.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rt '+min+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
