@@ -5016,5 +5016,22 @@ window.copyAuditLoginsByCountry=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditRoleChangeEvents=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const action=(r.getAttribute('data-action')||'').toLowerCase();
+    if(action.includes('role')||action.includes('permission')||action.includes('grant')||action.includes('revoke')){
+      out.push((r.getAttribute('data-at')||'?')+'\t'+(r.getAttribute('data-actor')||'?')+'\t'+action+'\t'+(r.getAttribute('data-target')||'?'));
+    }
+  });
+  const result='role_changes='+out.length+'\nwhen\tactor\taction\ttarget\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=result;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rol '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

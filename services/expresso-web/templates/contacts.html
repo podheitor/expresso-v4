@@ -5565,5 +5565,24 @@ window.copyContactsBlockedList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsBySharedDomain=function(){
+  const rows=document.querySelectorAll('[data-contact]');
+  const myDomain=(document.body.getAttribute('data-user-email')||document.documentElement.getAttribute('data-user-email')||'').split('@')[1]||'expresso.local';
+  let same=0,different=0,noEmail=0;
+  rows.forEach(r=>{
+    const e=r.getAttribute('data-email')||'';
+    const d=e.split('@')[1];
+    if(!d)noEmail++;
+    else if(d.toLowerCase()===myDomain.toLowerCase())same++;
+    else different++;
+  });
+  const out='my_domain='+myDomain+'\nsame_domain='+same+'\nexternal_domain='+different+'\nno_email='+noEmail;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sd '+same+'/'+different;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

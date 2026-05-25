@@ -4694,5 +4694,18 @@ window.composeInlineImageCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeUnsubscribeFooterCheck=function(){
+  const body=document.getElementById('compose-body')||document.querySelector('[name="body"]')||document.querySelector('.compose-body');
+  const text=(body?(body.innerText||body.value):'')||'';
+  const re=/\b(unsubscribe|opt[- ]out|cancelar inscri[çc][ãa]o)\b/i;
+  const present=re.test(text);
+  const out='unsubscribe_footer='+(present?'present':'missing')+'\nrecommended_when=marketing_or_newsletter';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(present?'#0a0':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='uns '+(present?'ok':'miss');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

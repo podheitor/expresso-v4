@@ -5246,5 +5246,29 @@ window.copyMonthCrossDayEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthSequentialFreeDays=function(){
+  const days=Array.from(document.querySelectorAll('[data-day]'));
+  const busy=new Set();
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=(e.getAttribute('data-start')||'').substring(0,10);
+    if(s)busy.add(s);
+  });
+  let maxStreak=0,curStreak=0,streakStart='';
+  days.forEach(d=>{
+    const date=d.getAttribute('data-day');
+    if(busy.has(date)){curStreak=0;}
+    else{
+      curStreak++;
+      if(curStreak>maxStreak){maxStreak=curStreak;streakStart=days[days.indexOf(d)-curStreak+1].getAttribute('data-day');}
+    }
+  });
+  const out='longest_free_streak='+maxStreak+' days\nstreak_start='+(streakStart||'(none)');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='free '+maxStreak+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

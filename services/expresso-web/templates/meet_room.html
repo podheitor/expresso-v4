@@ -4669,5 +4669,21 @@ window.copyMeetGuestVsAuth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetCameraOnRatio=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  let camOn=0,micOn=0;
+  parts.forEach(p=>{
+    if(p.getAttribute('data-camera')==='on'||p.hasAttribute('data-camera-on'))camOn++;
+    if(p.getAttribute('data-mic')==='on'||p.hasAttribute('data-mic-on'))micOn++;
+  });
+  const total=parts.length||1;
+  const out='camera_on='+camOn+'/'+parts.length+' ('+((camOn/total)*100).toFixed(0)+'%)\nmic_on='+micOn+'/'+parts.length+' ('+((micOn/total)*100).toFixed(0)+'%)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cam '+camOn+'/'+parts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

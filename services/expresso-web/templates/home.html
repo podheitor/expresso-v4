@@ -4737,5 +4737,22 @@ window.copyHomeButtonInventory=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeTabIndexAudit=function(){
+  const focusable=document.querySelectorAll('[tabindex]');
+  const positive=[],zero=[],negative=[];
+  focusable.forEach(el=>{
+    const ti=parseInt(el.getAttribute('tabindex'),10);
+    if(ti>0)positive.push({tag:el.tagName,idx:ti});
+    else if(ti===0)zero.push(el.tagName);
+    else negative.push(el.tagName);
+  });
+  const out='positive_tabindex='+positive.length+' (anti-pattern)\nzero='+zero.length+'\nnegative='+negative.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(positive.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tab '+positive.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

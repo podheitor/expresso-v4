@@ -5336,5 +5336,23 @@ window.copySettingsWebGlInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsClipboardCapabilities=function(){
+  const has={
+    clipboard_api:!!navigator.clipboard,
+    write_text:!!(navigator.clipboard&&navigator.clipboard.writeText),
+    read_text:!!(navigator.clipboard&&navigator.clipboard.readText),
+    write_items:!!(navigator.clipboard&&navigator.clipboard.write),
+    read_items:!!(navigator.clipboard&&navigator.clipboard.read),
+    execCommand:!!document.execCommand,
+  };
+  const out=Object.entries(has).map(([k,v])=>k+'='+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const supported=Object.values(has).filter(Boolean).length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cb '+supported+'/6';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

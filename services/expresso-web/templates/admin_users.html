@@ -5007,5 +5007,20 @@ window.copyUsersSessionCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersDelegationGrants=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const grants=[];
+  rows.forEach(r=>{
+    const dels=(r.getAttribute('data-delegates-to')||r.getAttribute('data-delegation')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    dels.forEach(d=>{grants.push((r.getAttribute('data-email')||'?')+'\t→\t'+d);});
+  });
+  const out='delegation_grants='+grants.length+'\nfrom\t→\tto\n'+grants.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(grants.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dlg '+grants.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
