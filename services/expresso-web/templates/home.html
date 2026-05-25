@@ -3099,5 +3099,26 @@ window.copyHomeDateIso=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeUtcOffset=function(){
+  const d=new Date();
+  const off=-d.getTimezoneOffset();
+  const sign=off>=0?'+':'-';
+  const abs=Math.abs(off);
+  const hh=String(Math.floor(abs/60)).padStart(2,'0');
+  const mm=String(abs%60).padStart(2,'0');
+  const tz=Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const out=tz+'\tUTC'+sign+hh+':'+mm+'\t'+off+'m';
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='off UTC'+sign+hh+':'+mm;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2950,5 +2950,28 @@ window.copyThreadHeadersAll=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFromDomains=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const buckets={};
+  msgs.forEach(m=>{
+    const f=(m.getAttribute('data-from')||'').toLowerCase();
+    const i=f.lastIndexOf('@');
+    if(i<0){return;}
+    const d=f.slice(i+1).replace(/[>\s]+$/,'');
+    buckets[d]=(buckets[d]||0)+1;
+  });
+  const out=Object.keys(buckets).sort().map(k=>k+'\t'+buckets[k]).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fd '+Object.keys(buckets).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

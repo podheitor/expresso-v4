@@ -3525,5 +3525,29 @@ window.copyContactsExportMd=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsDomainsCsv=function(){
+  const rows=document.querySelectorAll('[data-contact-row]');
+  const buckets={};
+  rows.forEach(r=>{
+    const e=(r.getAttribute('data-email')||'').toLowerCase();
+    const i=e.lastIndexOf('@');
+    if(i<0){return;}
+    const d=e.slice(i+1);
+    buckets[d]=(buckets[d]||0)+1;
+  });
+  const out=['domain,count'];
+  Object.keys(buckets).sort().forEach(d=>out.push(d+','+buckets[d]));
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dom '+Object.keys(buckets).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
