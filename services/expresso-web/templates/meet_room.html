@@ -4004,5 +4004,15 @@ window.copyMeetCohostList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRecordingStatus=function(){
+  const rec=document.querySelector('[data-recording]')||document.body;
+  const out=['recording\t'+(rec.getAttribute('data-recording')||'?'),'started\t'+(rec.getAttribute('data-recording-started')||'?'),'duration\t'+(rec.getAttribute('data-recording-duration')||'?'),'by\t'+(rec.getAttribute('data-recording-by')||'?')];
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(rec.getAttribute('data-recording')==='1'?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rec '+(rec.getAttribute('data-recording')||'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

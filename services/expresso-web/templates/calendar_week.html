@@ -4436,5 +4436,24 @@ window.copyWeekSubjectLines=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFreeBlocks=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]')).map(e=>({s:Date.parse(e.getAttribute('data-start')||''),en:Date.parse(e.getAttribute('data-end')||'')})).filter(x=>!isNaN(x.s)&&!isNaN(x.en)).sort((a,b)=>a.s-b.s);
+  const merged=[];
+  evs.forEach(e=>{
+    if(merged.length&&e.s<=merged[merged.length-1].en)merged[merged.length-1].en=Math.max(merged[merged.length-1].en,e.en);
+    else merged.push({s:e.s,en:e.en});
+  });
+  const out=[];
+  for(let i=1;i<merged.length;i++){
+    const gap=(merged[i].s-merged[i-1].en)/60000;
+    if(gap>=15)out.push(new Date(merged[i-1].en).toISOString()+' → '+new Date(merged[i].s).toISOString()+'\t'+gap.toFixed(0)+'min');
+  }
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='free '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

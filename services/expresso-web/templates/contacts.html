@@ -4812,5 +4812,20 @@ window.copyContactsFavorites=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsPhoneTypes=function(){
+  const types={mobile:0,work:0,home:0,fax:0,other:0};
+  document.querySelectorAll('[data-contact]').forEach(c=>{
+    ['mobile','work','home','fax','other'].forEach(k=>{
+      if(c.getAttribute('data-phone-'+k))types[k]++;
+    });
+  });
+  const out=Object.keys(types).map(k=>k+'\t'+types[k]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ph '+Object.values(types).reduce((a,b)=>a+b,0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
