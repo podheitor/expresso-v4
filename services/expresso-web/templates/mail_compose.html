@@ -3669,5 +3669,20 @@ window.composeCountRecipients=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeCheckMissingSubject=function(){
+  const subj=(document.querySelector('input[name=subject]')?.value||'').trim();
+  const body=(document.querySelector('textarea[name=body],textarea#body')?.value||'').trim();
+  const issues=[];
+  if(!subj)issues.push('missing subject');
+  if(body.length<10)issues.push('body too short ('+body.length+')');
+  if(/\battach(ed|ment)\b/i.test(body)&&!document.querySelector('[data-attachment]'))issues.push('mentions attachment, none added');
+  const out=issues.length?issues.join('\n'):'(no issues)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(issues.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=issues.length?'iss '+issues.length:'ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

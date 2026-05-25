@@ -5136,5 +5136,16 @@ window.copyChatHourHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMsgWordCount=function(){
+  let words=0,chars=0,msgs=0;
+  document.querySelectorAll('[data-msg]').forEach(m=>{const t=(m.textContent||'').trim();if(!t)return;msgs++;chars+=t.length;words+=t.split(/\s+/).length;});
+  const out='msgs='+msgs+'\nwords='+words+'\nchars='+chars+'\navg-words='+(msgs?(words/msgs).toFixed(1):'0');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wc '+words;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

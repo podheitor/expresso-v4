@@ -3863,5 +3863,15 @@ window.copyAuditHourPeak=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditRecentN=function(){
+  const rows=[...document.querySelectorAll('[data-audit-row]')].map(r=>({ts:Date.parse(r.getAttribute('data-ts')||''),a:r.getAttribute('data-actor')||'?',ac:r.getAttribute('data-action')||'?',tgt:r.getAttribute('data-target')||''})).filter(r=>!isNaN(r.ts)).sort((a,b)=>b.ts-a.ts).slice(0,50);
+  const out=rows.map(r=>new Date(r.ts).toISOString()+'\t'+r.a+'\t'+r.ac+'\t'+r.tgt).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='last '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
