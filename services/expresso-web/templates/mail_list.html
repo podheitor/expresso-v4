@@ -3089,5 +3089,26 @@ window.copyMailUnreadCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailLargest=function(){
+  const rows=document.querySelectorAll('[data-msg-id]');
+  const arr=[];
+  rows.forEach(r=>{
+    const s=parseInt(r.dataset.size||'0',10);
+    if(s>0)arr.push({s:s,n:r.dataset.subject||r.dataset.msgId});
+  });
+  arr.sort((a,b)=>b.s-a.s);
+  const top=arr.slice(0,5);
+  const ta=document.createElement('textarea');
+  ta.value=top.map(x=>x.s+' '+x.n).join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lg '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
