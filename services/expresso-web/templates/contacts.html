@@ -5603,5 +5603,16 @@ window.copyContactsCustomLabelKeys=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsFavorites=function(){
+  const items=Array.from(document.querySelectorAll('[data-contact]'));
+  const favs=items.filter(c=>c.dataset.favorite==='true'||c.dataset.favorite==='1'||c.hasAttribute('data-favorite'));
+  const out=favs.map(f=>(f.dataset.name||'')+'\t'+(f.dataset.email||'')+'\t'+(f.dataset.phone||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fav '+favs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

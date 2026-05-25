@@ -5206,5 +5206,25 @@ window.copyDayAttachmentsAcrossEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayWorkingHoursCoverage=function(){
+  const events=Array.from(document.querySelectorAll('[data-event]'));
+  let workMin=0,offMin=0;
+  events.forEach(e=>{
+    const s=e.dataset.start;const en=e.dataset.end;
+    if(!s||!en)return;
+    const sd=new Date(s);const ed=new Date(en);
+    if(isNaN(sd)||isNaN(ed))return;
+    const dur=(ed-sd)/60000;
+    const h=sd.getHours();
+    if(h>=9&&h<18)workMin+=dur;else offMin+=dur;
+  });
+  const out='work='+Math.round(workMin)+'min\noff='+Math.round(offMin)+'min';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wh '+Math.round(workMin)+'/'+Math.round(offMin);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

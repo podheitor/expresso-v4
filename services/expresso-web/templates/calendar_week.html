@@ -5227,5 +5227,16 @@ window.copyWeekRescheduleCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekLunchSlots=function(){
+  const events=Array.from(document.querySelectorAll('[data-event]'));
+  const lunch=events.filter(e=>{const s=e.dataset.start;if(!s)return false;const d=new Date(s);if(isNaN(d))return false;const h=d.getHours();return h===12||h===13;});
+  const out=lunch.map(l=>(l.dataset.start||'')+'\t'+(l.dataset.title||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lunch '+lunch.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

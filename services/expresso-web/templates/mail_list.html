@@ -5567,5 +5567,18 @@ window.copyMailListThreadDepths=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListReplyChains=function(){
+  const rows=Array.from(document.querySelectorAll('[data-mail-row]'));
+  const chains={};
+  rows.forEach(r=>{const subj=(r.dataset.subject||'').replace(/^(Re:|Fwd:|RES:|ENC:)\s*/i,'').trim();if(subj){chains[subj]=(chains[subj]||0)+1;}});
+  const longest=Object.entries(chains).filter(([,c])=>c>1).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  const out=longest.map(([s,c])=>c+'\t'+s).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='chn '+longest.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
