@@ -3496,5 +3496,19 @@ window.composeBodyPreviewHtml=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAutoBullet=function(){
+  const ta=document.querySelector('textarea[name=body],textarea#body');
+  if(!ta)return;
+  ta.value=ta.value.split('\n').map(l=>{
+    if(/^\s*[-*]\s/.test(l)||l.trim()==='')return l;
+    if(l.trim().length===0)return l;
+    return '- '+l;
+  }).join('\n');
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bullets';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

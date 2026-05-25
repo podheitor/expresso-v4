@@ -3631,5 +3631,20 @@ window.copyThreadActivityByHour=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadEmojiSet=function(){
+  const set=new Set();
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const txt=m.textContent||'';
+    const ems=txt.match(/[\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{2600}-\u{27BF}]/gu)||[];
+    ems.forEach(e=>set.add(e));
+  });
+  const out=[...set].join(' ');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='emo '+set.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

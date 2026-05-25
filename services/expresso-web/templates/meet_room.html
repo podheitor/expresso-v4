@@ -3490,5 +3490,22 @@ window.copyMeetClearEventsLog=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetSpeakerTestTone=function(){
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();const gn=ctx.createGain();
+    osc.frequency.value=440;gn.gain.value=0.05;
+    osc.connect(gn);gn.connect(ctx.destination);
+    osc.start();setTimeout(()=>{osc.stop();ctx.close();},400);
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='tone 440Hz';
+    document.body.appendChild(t);setTimeout(()=>t.remove(),1500);
+  }catch(e){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='err '+e.message;document.body.appendChild(t);setTimeout(()=>t.remove(),1500);
+  }
+};
 </script>
 {% endblock %}

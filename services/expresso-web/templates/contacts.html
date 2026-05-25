@@ -4209,5 +4209,23 @@ window.copyContactsRandomPicks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsBirthdayCsv=function(){
+  const out=['name,birthday,age_today'];
+  const now=new Date();
+  document.querySelectorAll('[data-contact-row]').forEach(c=>{
+    const b=c.getAttribute('data-birthday')||c.getAttribute('data-bday')||'';
+    if(!b)return;
+    const d=new Date(b);if(isNaN(d))return;
+    let age=now.getFullYear()-d.getFullYear();
+    if(now.getMonth()<d.getMonth()||(now.getMonth()===d.getMonth()&&now.getDate()<d.getDate()))age--;
+    out.push((c.getAttribute('data-name')||'')+','+b+','+age);
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bd '+(out.length-1);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

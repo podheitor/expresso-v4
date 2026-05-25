@@ -3651,5 +3651,21 @@ window.copyUsersCreatedLast30d=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAvgQuotaUsage=function(){
+  const rows=Array.from(document.querySelectorAll('[data-user-row]')).map(r=>({
+    used:parseInt(r.getAttribute('data-used')||'0',10),quota:parseInt(r.getAttribute('data-quota')||'0',10)
+  })).filter(u=>u.quota>0);
+  if(!rows.length){const e=document.createElement('div');e.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';e.textContent='no quota data';document.body.appendChild(e);setTimeout(()=>e.remove(),1500);return;}
+  const pct=rows.map(u=>u.used/u.quota*100);
+  const avg=pct.reduce((a,b)=>a+b,0)/pct.length;
+  const max=Math.max(...pct);const min=Math.min(...pct);
+  const out='n='+rows.length+'\navg='+avg.toFixed(1)+'%\nmin='+min.toFixed(1)+'%\nmax='+max.toFixed(1)+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg.toFixed(0)+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
