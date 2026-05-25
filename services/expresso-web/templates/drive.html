@@ -5079,5 +5079,21 @@ window.copyDriveLockedFiles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveSizeByExt=function(){
+  const sizes={};
+  document.querySelectorAll('[data-drive-item]').forEach(it=>{
+    const n=(it.getAttribute('data-name')||'').toLowerCase();
+    const ext=(n.match(/\.([a-z0-9]+)$/)||[,'(none)'])[1];
+    const sz=parseInt(it.getAttribute('data-size')||'0',10);
+    sizes[ext]=(sizes[ext]||0)+sz;
+  });
+  const out=Object.keys(sizes).sort((a,b)=>sizes[b]-sizes[a]).map(k=>k+'\t'+sizes[k]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ext '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

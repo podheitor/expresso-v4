@@ -4782,5 +4782,15 @@ window.copySettingsCookieEnabled=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsScreenInfo=function(){
+  const s=window.screen||{};
+  const out='width\t'+(s.width||0)+'\nheight\t'+(s.height||0)+'\navailWidth\t'+(s.availWidth||0)+'\navailHeight\t'+(s.availHeight||0)+'\ncolorDepth\t'+(s.colorDepth||0)+'\npixelDepth\t'+(s.pixelDepth||0)+'\ndpr\t'+(window.devicePixelRatio||1);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='scr '+(s.width||0)+'x'+(s.height||0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

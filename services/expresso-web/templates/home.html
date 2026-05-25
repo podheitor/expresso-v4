@@ -4240,5 +4240,15 @@ window.copyHomeTablesSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeWidgetTitles=function(){
+  const ws=Array.from(document.querySelectorAll('[data-widget],[data-widget-id],.widget'));
+  const out=ws.map(w=>(w.getAttribute('data-widget-id')||w.id||'?')+'\t'+((w.querySelector('h1,h2,h3,header,.widget-title')||{}).textContent||'').trim()).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wg '+ws.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

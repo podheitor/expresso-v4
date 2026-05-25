@@ -4639,5 +4639,20 @@ window.copyMonthEventsByCreator=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthLongestEvent=function(){
+  let best=null,bestMs=0;
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    const en=Date.parse(e.getAttribute('data-end')||'');
+    if(!isNaN(s)&&!isNaN(en)&&(en-s)>bestMs){bestMs=en-s;best=e;}
+  });
+  const out=best?('title\t'+(best.getAttribute('data-title')||'?')+'\nstart\t'+best.getAttribute('data-start')+'\nend\t'+best.getAttribute('data-end')+'\nhours\t'+(bestMs/3600000).toFixed(1)):'(no event)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lng '+(bestMs/3600000).toFixed(1)+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
