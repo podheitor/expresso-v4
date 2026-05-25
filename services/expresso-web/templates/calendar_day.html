@@ -2994,5 +2994,25 @@ window.copyDayBusyMorning=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayBusyAfternoon=function(){
+  const evs=document.querySelectorAll('[data-event-start]');
+  let n=0;
+  evs.forEach(e=>{
+    const s=(e.dataset.eventStart||'').slice(11,13);
+    const h=parseInt(s,10);
+    if(!isNaN(h)&&h>=12&&h<18){n++;}
+  });
+  const ta=document.createElement('textarea');
+  ta.value='afternoon '+n+' events';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pm '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
