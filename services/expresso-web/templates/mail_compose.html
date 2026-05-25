@@ -2964,5 +2964,22 @@ window.copyComposeAttachments=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySignatureBlock=function(){
+  const me='{{ me.email }}';
+  const sig='--\n'+me+'\n'+window.location.host;
+  const body=document.querySelector('textarea[name="body"]');
+  if(body){body.value=(body.value||'')+'\n\n'+sig;}
+  const ta=document.createElement('textarea');
+  ta.value=sig;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sig '+sig.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -3012,5 +3012,30 @@ window.copyThreadAttachments=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFirstFromLast=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  if(msgs.length===0){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='no msgs';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const f=msgs[0];
+  const l=msgs[msgs.length-1];
+  const out='first\t'+(f.getAttribute('data-from')||'')+'\t'+(f.getAttribute('data-date')||'')+'\nlast\t'+(l.getAttribute('data-from')||'')+'\t'+(l.getAttribute('data-date')||'');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fl 2';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

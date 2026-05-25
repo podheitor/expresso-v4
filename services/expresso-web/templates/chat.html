@@ -4332,5 +4332,29 @@ window.copyChatPinnedList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatUnreadCount=function(){
+  const chans=document.querySelectorAll('[data-channel]');
+  const out=['channel\tunread'];
+  let total=0;
+  chans.forEach(c=>{
+    const u=parseInt(c.getAttribute('data-unread')||'0',10);
+    if(u>0){
+      out.push((c.getAttribute('data-channel')||'')+'\t'+u);
+      total+=u;
+    }
+  });
+  out.push('TOTAL\t'+total);
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='unr '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
