@@ -4627,5 +4627,20 @@ window.copyAuditByResult=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditPrivilegedDeletions=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const a=(r.dataset.action||'').toLowerCase();
+    if(/delete|remove|drop|purge/.test(a)) out.push((r.dataset.timestamp||'')+'\t'+(r.dataset.actor||'')+'\t'+a+'\t'+(r.dataset.resource||''));
+  });
+  const txt='ts\tactor\taction\tresource\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='del '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

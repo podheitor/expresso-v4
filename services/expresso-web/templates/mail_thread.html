@@ -4565,5 +4565,22 @@ window.copyThreadInlineImagesCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadReplyAllRatio=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  let replyAll=0,reply=0,other=0;
+  msgs.forEach(m=>{
+    const rt=(m.dataset.replyType||m.dataset.actionType||'').toLowerCase();
+    if(rt==='reply-all'||rt==='replyall'||(m.dataset.cc&&m.dataset.replyTo))replyAll++;
+    else if(rt==='reply'||m.dataset.replyTo)reply++;
+    else other++;
+  });
+  const out='replyAll='+replyAll+'\nreply='+reply+'\nother='+other+'\nratio='+(reply?(replyAll/reply).toFixed(2):'∞');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ra '+replyAll;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4398,5 +4398,15 @@ window.copyHomeStorageQuotaUsage=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomePrefersScheme=function(){
+  const queries=['(prefers-color-scheme: dark)','(prefers-color-scheme: light)','(prefers-reduced-motion: reduce)','(prefers-contrast: more)','(prefers-reduced-transparency: reduce)','(forced-colors: active)','(inverted-colors: inverted)'];
+  const out=queries.map(q=>q+'='+(window.matchMedia(q).matches?'yes':'no')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='prf '+queries.filter(q=>window.matchMedia(q).matches).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

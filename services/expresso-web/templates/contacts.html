@@ -5171,5 +5171,26 @@ window.copyContactsMissingEssentials=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsByEmailProvider=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const providers={'gmail.com':0,'outlook.com':0,'hotmail.com':0,'yahoo.com':0,'icloud.com':0,'proton.me':0,'(corp)':0,'(other)':0};
+  cs.forEach(c=>{
+    const e=(c.dataset.email||'').toLowerCase();
+    const m=e.match(/@([a-z0-9.-]+)/);
+    if(!m){providers['(other)']++;return;}
+    const d=m[1];
+    if(providers[d]!=null)providers[d]++;
+    else if(/\.(com|org|net|io|co)$/.test(d))providers['(corp)']++;
+    else providers['(other)']++;
+  });
+  const out=Object.entries(providers).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='provider\tcount\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='prv '+cs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

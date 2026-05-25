@@ -4333,5 +4333,20 @@ window.composeMailtoSyntaxCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAddDisclaimer=function(){
+  const ta2=document.querySelector('textarea[name=body]');
+  if(!ta2)return;
+  const disclaimer='\n\n-- \nThis message and any attachments are confidential and intended only for the named recipient.';
+  if(!ta2.value.includes(disclaimer)){
+    ta2.value=ta2.value.replace(/\s+$/,'')+disclaimer;
+    ta2.dispatchEvent(new Event('input',{bubbles:true}));
+  }
+  const ta=document.createElement('textarea');ta.value=disclaimer.trim();document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dis added';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

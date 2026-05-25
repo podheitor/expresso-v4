@@ -4604,5 +4604,22 @@ window.copyUsersForwardingEnabled=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersSessionCount=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  let tot=0;
+  const out=[];
+  rows.forEach(r=>{
+    const n=parseInt(r.dataset.activeSessions||r.dataset.sessionCount||'0',10);
+    if(n>0){tot+=n;out.push((r.dataset.username||r.dataset.email||'')+'\t'+n);}
+  });
+  out.sort((a,b)=>parseInt(b.split('\t')[1])-parseInt(a.split('\t')[1]));
+  const txt='user\tsessions\n'+out.slice(0,30).join('\n')+'\n---\ntotal='+tot;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ses '+tot;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

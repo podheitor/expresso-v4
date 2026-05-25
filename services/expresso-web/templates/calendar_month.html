@@ -4850,5 +4850,23 @@ window.copyMonthBackdatedCreations=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthBusyDayPctTable=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const dayMin={};
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start),ed=new Date(e.dataset.end||e.dataset.start);
+    if(isNaN(s)||isNaN(ed))return;
+    const k=s.toISOString().slice(0,10);
+    dayMin[k]=(dayMin[k]||0)+Math.max(0,(ed-s)/60000);
+  });
+  const out=Object.entries(dayMin).sort().map(([k,v])=>k+'\t'+v.toFixed(0)+'min\t'+(v/8/60*100).toFixed(0)+'%').join('\n');
+  const txt='date\tbusyMin\tpctOf8h\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bpct '+Object.keys(dayMin).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
