@@ -4510,5 +4510,19 @@ window.copyContactsCountryCodes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsNotesLengths=function(){
+  const out=[];let total=0;
+  document.querySelectorAll('[data-contact]').forEach(c=>{
+    const n=(c.getAttribute('data-notes')||'').length;
+    if(n>0){total+=n;out.push((c.getAttribute('data-name')||c.getAttribute('data-email')||'?')+'\t'+n);}
+  });
+  out.sort((a,b)=>parseInt(b.split('\t')[1],10)-parseInt(a.split('\t')[1],10));
+  const ta=document.createElement('textarea');ta.value=out.join('\n')+'\n--\ntotal-chars='+total;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='notes '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

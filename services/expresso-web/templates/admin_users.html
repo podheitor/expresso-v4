@@ -3935,5 +3935,19 @@ window.copyUsersCreatedThisYear=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersOverQuotaPct=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const used=parseFloat(r.getAttribute('data-quota-used')||'0'),max=parseFloat(r.getAttribute('data-quota')||'0');
+    if(max>0){const pct=used/max*100;if(pct>=80)out.push((r.getAttribute('data-email')||'?')+'\t'+pct.toFixed(1)+'%');}
+  });
+  out.sort((a,b)=>parseFloat(b.split('\t')[1])-parseFloat(a.split('\t')[1]));
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='>80% '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

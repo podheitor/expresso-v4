@@ -4863,5 +4863,19 @@ window.copyTasksBlockedList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksEstimateAccuracy=function(){
+  const out=[];let totalEst=0,totalAct=0;
+  document.querySelectorAll('[data-task-row][data-status="done"]').forEach(r=>{
+    const est=parseFloat(r.getAttribute('data-estimate-h')||'0'),act=parseFloat(r.getAttribute('data-actual-h')||'0');
+    if(est>0&&act>0){totalEst+=est;totalAct+=act;out.push((r.getAttribute('data-id')||'?')+'\test='+est+'h\tact='+act+'h\tdelta='+((act-est)/est*100).toFixed(0)+'%');}
+  });
+  const summary='--\ntotal-est='+totalEst.toFixed(1)+'h\ntotal-act='+totalAct.toFixed(1)+'h\noverall-delta='+(totalEst?((totalAct-totalEst)/totalEst*100).toFixed(1)+'%':'?');
+  const ta=document.createElement('textarea');ta.value=out.join('\n')+'\n'+summary;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='est '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

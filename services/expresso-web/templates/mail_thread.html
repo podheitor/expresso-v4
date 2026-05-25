@@ -3904,5 +3904,18 @@ window.copyThreadInlineImages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFlaggedMsgs=function(){
+  const out=[];
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const flag=m.getAttribute('data-flagged')||m.getAttribute('data-flag')||'';
+    if(flag&&flag!=='0'&&flag!=='none')out.push(m.getAttribute('data-msg-id')+'\t'+(m.getAttribute('data-sender')||'?')+'\t'+flag);
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='flag '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
