@@ -3699,5 +3699,19 @@ window.composeBodyLineWidth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeDuplicateRecipients=function(){
+  const split=v=>(v||'').split(/[,;]/).map(s=>s.trim().toLowerCase()).filter(Boolean);
+  const all=[...split(document.querySelector('input[name=to]')?.value),...split(document.querySelector('input[name=cc]')?.value),...split(document.querySelector('input[name=bcc]')?.value)];
+  const seen={};const dup=[];
+  all.forEach(a=>{seen[a]=(seen[a]||0)+1;});
+  Object.entries(seen).forEach(([k,v])=>{if(v>1)dup.push(k+'\t×'+v);});
+  const out=dup.length?dup.join('\n'):'(no duplicates)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(dup.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=dup.length?'dup '+dup.length:'no-dup';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

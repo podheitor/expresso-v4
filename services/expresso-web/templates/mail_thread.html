@@ -3840,5 +3840,16 @@ window.copyThreadMsgSizes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadGapsList=function(){
+  const tss=[...document.querySelectorAll('[data-msg-id]')].map(m=>({ts:Date.parse(m.getAttribute('data-ts')||''),s:m.getAttribute('data-sender')||'?'})).filter(m=>!isNaN(m.ts)).sort((a,b)=>a.ts-b.ts);
+  const out=[];
+  for(let i=1;i<tss.length;i++){const d=tss[i].ts-tss[i-1].ts;if(d>86400000)out.push(Math.round(d/3600000)+'h gap before '+tss[i].s+' @ '+new Date(tss[i].ts).toISOString());}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gap '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
