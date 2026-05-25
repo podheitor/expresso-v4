@@ -3593,5 +3593,14 @@ window.copyHomeResourceCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeDeviceMemory=function(){
+  const info={memory:navigator.deviceMemory||'?',cores:navigator.hardwareConcurrency||'?',ua:navigator.userAgent.slice(0,80)};
+  const ta=document.createElement('textarea');ta.value=JSON.stringify(info,null,2);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dev '+info.memory+'GB/'+info.cores+'c';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -3727,5 +3727,22 @@ window.copyWeekICalExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFirstLastEvent=function(){
+  let first=null,fts=Infinity,last=null,lts=-Infinity;
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    if(isNaN(s))return;
+    if(s<fts){fts=s;first=e;}
+    if(s>lts){lts=s;last=e;}
+  });
+  const out=(first?'first\t'+(first.getAttribute('data-title')||'')+'\t'+(first.getAttribute('data-start')||''):'-')+'\n'+
+            (last?'last\t'+(last.getAttribute('data-title')||'')+'\t'+(last.getAttribute('data-start')||''):'-');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=first?'fl ok':'-';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

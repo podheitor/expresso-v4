@@ -3699,5 +3699,21 @@ window.copyDayNextEventDelta=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayBusyHours=function(){
+  const hours=new Set();
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    const en=Date.parse(e.getAttribute('data-end')||'')||s+3600000;
+    if(isNaN(s))return;
+    for(let h=new Date(s).getHours();h<=new Date(en).getHours();h++)hours.add(h);
+  });
+  const arr=[...hours].sort((a,b)=>a-b);
+  const ta=document.createElement('textarea');ta.value=arr.join(',');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hr '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

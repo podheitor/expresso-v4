@@ -3392,5 +3392,18 @@ window.composeSnapshotDraft=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeCountAttachments=function(){
+  const f=document.querySelector('input[type=file][name=attachments],input[type=file][multiple]');
+  const n=(f&&f.files)?f.files.length:0;
+  let sz=0;
+  if(f&&f.files){for(let i=0;i<f.files.length;i++)sz+=f.files[i].size;}
+  const kb=(sz/1024).toFixed(1);
+  const ta=document.createElement('textarea');ta.value=n+' files / '+kb+'KB';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='att '+n+'/'+kb+'KB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
