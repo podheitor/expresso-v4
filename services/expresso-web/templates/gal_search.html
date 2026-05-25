@@ -4211,5 +4211,20 @@ window.copyGalManagerChain=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalDirectReports=function(){
+  const rows=Array.from(document.querySelectorAll('[data-gal-row]'));
+  const reports={};
+  rows.forEach(r=>{
+    const m=(r.getAttribute('data-manager')||'').toLowerCase();
+    if(m)(reports[m]=reports[m]||[]).push((r.getAttribute('data-name')||'?')+' <'+(r.getAttribute('data-email')||'')+'>');
+  });
+  const out=Object.keys(reports).sort().map(m=>m+'\t'+reports[m].length+'\n  '+reports[m].join('\n  ')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rep '+Object.keys(reports).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

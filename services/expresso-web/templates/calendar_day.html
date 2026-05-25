@@ -4599,5 +4599,27 @@ window.copyDayReminderSet=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayUtilizationPct=function(){
+  const events=[];
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    const en=Date.parse(e.getAttribute('data-end')||'');
+    if(!isNaN(s)&&!isNaN(en))events.push([s,en]);
+  });
+  events.sort((a,b)=>a[0]-b[0]);
+  const merged=[];
+  for(const ev of events){
+    if(merged.length&&ev[0]<=merged[merged.length-1][1])merged[merged.length-1][1]=Math.max(merged[merged.length-1][1],ev[1]);
+    else merged.push([ev[0],ev[1]]);
+  }
+  const busy=merged.reduce((a,m)=>a+(m[1]-m[0]),0);
+  const out='busy-min\t'+Math.round(busy/60000)+'\nworkday-min\t'+(8*60)+'\nutilization-pct\t'+(100*busy/(8*3600000)).toFixed(1);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='util '+(100*busy/(8*3600000)).toFixed(0)+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4801,5 +4801,15 @@ window.copySettingsHistoryLength=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsPlatformDetect=function(){
+  const ua=navigator.userAgent||'';
+  const plat='isMac\t'+(/Mac/.test(ua)?'yes':'no')+'\nisWin\t'+(/Windows/.test(ua)?'yes':'no')+'\nisLinux\t'+(/Linux/.test(ua)?'yes':'no')+'\nisMobile\t'+(/Mobile|Android|iPhone/.test(ua)?'yes':'no')+'\nisFirefox\t'+(/Firefox/.test(ua)?'yes':'no')+'\nisChrome\t'+(/Chrome/.test(ua)?'yes':'no')+'\nisSafari\t'+(/Safari/.test(ua)&&!/Chrome/.test(ua)?'yes':'no');
+  const ta=document.createElement('textarea');ta.value=plat;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='plt';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
