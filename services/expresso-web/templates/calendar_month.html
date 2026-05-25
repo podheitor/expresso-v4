@@ -2664,5 +2664,30 @@ window.copyMonthEventsCsv=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthQuietDays=function(){
+  const ev=document.querySelectorAll('[data-event-id]');
+  const days={};
+  ev.forEach(e=>{
+    const d=(e.dataset.start||'').slice(0,10);
+    if(d)days[d]=(days[d]||0)+1;
+  });
+  const cells=document.querySelectorAll('[data-day-cell],[data-date]');
+  const quiet=[];
+  cells.forEach(c=>{
+    const d=c.dataset.dayCell||c.dataset.date;
+    if(d&&!days[d])quiet.push(d);
+  });
+  const ta=document.createElement('textarea');
+  ta.value=quiet.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qt '+quiet.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
