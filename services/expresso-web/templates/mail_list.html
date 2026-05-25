@@ -5997,5 +5997,17 @@ window.copyMailListEnvelopeFromMismatch=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListSubjectAllCaps=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const lines=[];
+  rows.forEach(r=>{const s=(r.getAttribute('data-subject')||'').trim();if(s.length>=5&&s===s.toUpperCase()&&/[A-Z]/.test(s)){lines.push((r.getAttribute('data-date')||'').slice(0,10)+'\t'+(r.getAttribute('data-from')||'')+'\t'+s);}});
+  const out='ALL-CAPS subjects ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='caps '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

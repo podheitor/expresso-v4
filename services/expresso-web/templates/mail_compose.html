@@ -5125,5 +5125,17 @@ window.composePhoneNumberDetect=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAddressBookSnapshot=function(){
+  const fields=['to','cc','bcc'];
+  const lines=[];
+  fields.forEach(f=>{const el=document.querySelector('input[name="'+f+'"]')||document.querySelector('#'+f);if(el){const addrs=(el.value||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);lines.push(f.toUpperCase()+' ('+addrs.length+'):');addrs.forEach(a=>lines.push('  '+a));}});
+  const out=lines.join('\n');
+  const tx=document.createElement('textarea');tx.value=out;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='abk '+fields.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

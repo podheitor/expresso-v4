@@ -5470,5 +5470,19 @@ window.copyUsersGroupMembershipDepth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersTwoFactorAdoption=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  let on=0,off=0;
+  rows.forEach(r=>{const tfa=(r.getAttribute('data-2fa')||r.getAttribute('data-mfa')||r.getAttribute('data-2fa-enabled')||'').toLowerCase();if(tfa==='true'||tfa==='1'||tfa==='enabled'||tfa==='yes'){on++;}else{off++;}});
+  const tot=on+off;
+  const pct=tot?Math.round(on*100/tot):0;
+  const out='2FA on: '+on+'/'+tot+' ('+pct+'%)\n2FA off: '+off;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pct<50?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='2fa '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

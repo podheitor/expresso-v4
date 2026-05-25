@@ -5110,5 +5110,17 @@ window.copyMeetNetworkQuality=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetGuestCount=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  let guests=0,members=0;const names=[];
+  parts.forEach(p=>{const r=(p.getAttribute('data-role')||'').toLowerCase();const ext=(p.getAttribute('data-external')||'').toLowerCase();if(r==='guest'||r==='external'||ext==='true'||ext==='1'){guests++;names.push((p.getAttribute('data-name')||'').trim());}else{members++;}});
+  const out='guests: '+guests+'\nmembers: '+members+'\nguest list:\n'+names.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(guests?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gst '+guests;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

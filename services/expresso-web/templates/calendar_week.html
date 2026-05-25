@@ -5670,5 +5670,18 @@ window.copyWeekVideoCallEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTimeBlockSummary=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const m={'morning (6-12)':0,'afternoon (12-18)':0,'evening (18-22)':0,'night (22-6)':0};
+  evs.forEach(e=>{const s=e.getAttribute('data-start')||'';const mt=s.match(/T(\d{2})/);if(!mt)return;const h=parseInt(mt[1],10);if(h>=6&&h<12){m['morning (6-12)']++;}else if(h<18){m['afternoon (12-18)']++;}else if(h<22){m['evening (18-22)']++;}else{m['night (22-6)']++;}});
+  const lines=Object.keys(m).map(k=>k+': '+m[k]);
+  const out='week time blocks:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='blk '+Object.values(m).reduce((a,b)=>a+b,0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

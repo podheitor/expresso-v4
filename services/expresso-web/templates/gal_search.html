@@ -5200,5 +5200,18 @@ window.copyGalEmailUniqueness=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalLastNameInitials=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const m={};
+  rows.forEach(r=>{const n=(r.getAttribute('data-name')||'').trim();const parts=n.split(/\s+/);const last=parts[parts.length-1]||'';const c=last.charAt(0).toUpperCase();if(c.match(/[A-Z]/)){m[c]=(m[c]||0)+1;}});
+  const lines=Object.keys(m).sort().map(k=>k+': '+m[k]);
+  const out='last-name initials:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ini '+Object.keys(m).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

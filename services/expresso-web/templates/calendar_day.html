@@ -5646,5 +5646,18 @@ window.copyDayUrgentEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayAttendeeDomains=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const m={};
+  evs.forEach(e=>{const list=(e.getAttribute('data-attendees')||'').split(/[,;]/).map(s=>s.trim()).filter(s=>s.includes('@'));list.forEach(a=>{const d=a.split('@').pop().toLowerCase();if(d){m[d]=(m[d]||0)+1;}});});
+  const sorted=Object.keys(m).map(k=>[k,m[k]]).sort((a,b)=>b[1]-a[1]);
+  const out='attendee domains today ('+sorted.length+'):\n'+sorted.map(x=>x[1]+'\t'+x[0]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dom '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

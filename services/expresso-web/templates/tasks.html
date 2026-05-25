@@ -6414,5 +6414,18 @@ window.copyTasksDueThisQuarter=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksProgressBuckets=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const b={"0":0,"1-25":0,"26-50":0,"51-75":0,"76-99":0,"100":0};
+  rows.forEach(r=>{const p=parseInt(r.getAttribute('data-progress')||r.getAttribute('data-percent')||'0',10)||0;if(p<=0){b["0"]++;}else if(p<=25){b["1-25"]++;}else if(p<=50){b["26-50"]++;}else if(p<=75){b["51-75"]++;}else if(p<100){b["76-99"]++;}else{b["100"]++;}});
+  const lines=Object.keys(b).map(k=>k+'%: '+b[k]);
+  const out='progress buckets:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='prg '+b["100"];
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
