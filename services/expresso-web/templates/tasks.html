@@ -5128,5 +5128,20 @@ window.copyTasksWatchersList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDueTodayList=function(){
+  const today=new Date().toISOString().slice(0,10);
+  const out=[];
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const due=(r.getAttribute('data-due')||'').slice(0,10);
+    if(due===today)out.push((r.getAttribute('data-title')||'?')+'\t'+(r.getAttribute('data-assignee')||'?')+'\t'+(r.getAttribute('data-priority')||'?'));
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='today '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4872,5 +4872,25 @@ window.copyDriveModifiedToday=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveSizeHistogram=function(){
+  const buckets={'<10KB':0,'<100KB':0,'<1MB':0,'<10MB':0,'<100MB':0,'<1GB':0,'>=1GB':0};
+  document.querySelectorAll('[data-drive-item]').forEach(it=>{
+    const sz=parseInt(it.getAttribute('data-size')||'0',10);
+    if(sz<10240)buckets['<10KB']++;
+    else if(sz<102400)buckets['<100KB']++;
+    else if(sz<1048576)buckets['<1MB']++;
+    else if(sz<10485760)buckets['<10MB']++;
+    else if(sz<104857600)buckets['<100MB']++;
+    else if(sz<1073741824)buckets['<1GB']++;
+    else buckets['>=1GB']++;
+  });
+  const out=Object.keys(buckets).map(k=>k+'\t'+buckets[k]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hist 7';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
