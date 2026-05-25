@@ -6203,5 +6203,19 @@ window.copyMailListAgeBuckets=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListSelectedSubjects=function(){
+  const checked=document.querySelectorAll('[data-mail-row] input[type=checkbox]:checked, [data-mail-row].selected');
+  const rows=new Set();
+  checked.forEach(c=>{const r=c.closest('[data-mail-row]')||c;if(r.hasAttribute('data-mail-row'))rows.add(r);});
+  const lines=[];
+  rows.forEach(r=>{lines.push((r.getAttribute('data-from')||'')+'\t'+(r.getAttribute('data-subject')||''));});
+  const out='selected mails ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sel '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

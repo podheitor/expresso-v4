@@ -6236,5 +6236,17 @@ window.copyContactsRecentlyAdded=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsMissingFields=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const counts={email:0,phone:0,company:0,title:0};
+  cs.forEach(c=>{if(!(c.getAttribute('data-email')||'').trim())counts.email++;if(!(c.getAttribute('data-phone')||'').trim())counts.phone++;if(!(c.getAttribute('data-company')||'').trim())counts.company++;if(!(c.getAttribute('data-title')||'').trim())counts.title++;});
+  const out='missing fields ('+cs.length+' contacts):\n'+Object.entries(counts).map(([k,n])=>n+'\t'+k).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mis '+(counts.email+counts.phone);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6867,5 +6867,18 @@ window.copyChatUserActivity=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMessageTimeRange=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const ts=[];
+  msgs.forEach(m=>{const d=new Date(m.getAttribute('data-ts')||m.getAttribute('data-date')||0);if(!isNaN(d))ts.push(d.getTime());});
+  ts.sort((a,b)=>a-b);
+  const out=ts.length?('chat range: '+new Date(ts[0]).toISOString()+' → '+new Date(ts[ts.length-1]).toISOString()+'\nspan: '+Math.round((ts[ts.length-1]-ts[0])/3600000)+'h, '+ts.length+' msgs'):'no messages';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rng '+ts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
