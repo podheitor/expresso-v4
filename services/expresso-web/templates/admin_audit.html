@@ -3851,5 +3851,17 @@ window.copyAuditTopActors=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditHourPeak=function(){
+  const hrs=Array(24).fill(0);
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{const ts=Date.parse(r.getAttribute('data-ts')||'');if(!isNaN(ts))hrs[new Date(ts).getHours()]++;});
+  const peak=hrs.indexOf(Math.max(...hrs));
+  const out=hrs.map((v,i)=>i.toString().padStart(2,'0')+'h='+v).join('\n')+'\npeak='+peak+'h';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='peak '+peak+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

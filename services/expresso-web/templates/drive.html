@@ -4502,5 +4502,15 @@ window.copyDriveSharedItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveLargestN=function(){
+  const items=[...document.querySelectorAll('[data-drive-item]')].map(r=>({n:r.getAttribute('data-name')||'',s:parseFloat(r.getAttribute('data-size')||'0')})).filter(i=>i.s>0).sort((a,b)=>b.s-a.s).slice(0,20);
+  const out=items.map(i=>i.s+'\t'+i.n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top '+items.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

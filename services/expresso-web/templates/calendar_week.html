@@ -4022,5 +4022,16 @@ window.copyWeekFreeSlots=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekEarliestStart=function(){
+  let best=null;
+  document.querySelectorAll('[data-event]').forEach(e=>{const s=Date.parse(e.getAttribute('data-start')||'');if(isNaN(s))return;if(best===null||s<best.ts)best={ts:s,t:e.getAttribute('data-title')||''};});
+  const out=best?'start='+new Date(best.ts).toISOString()+'\ntitle='+best.t:'(no events)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=best?'early '+new Date(best.ts).toTimeString().slice(0,5):'-';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

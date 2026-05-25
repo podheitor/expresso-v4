@@ -3656,5 +3656,18 @@ window.composeInsertSignatureBlock=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeCountRecipients=function(){
+  const split=v=>(v||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+  const to=split(document.querySelector('input[name=to]')?.value);
+  const cc=split(document.querySelector('input[name=cc]')?.value);
+  const bcc=split(document.querySelector('input[name=bcc]')?.value);
+  const out='to='+to.length+'\ncc='+cc.length+'\nbcc='+bcc.length+'\ntotal='+(to.length+cc.length+bcc.length);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rcpt '+(to.length+cc.length+bcc.length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

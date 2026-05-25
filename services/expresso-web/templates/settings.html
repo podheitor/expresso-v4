@@ -4322,5 +4322,20 @@ window.copySettingsActiveElement=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsFormValues=function(){
+  const out=[];
+  document.querySelectorAll('form input,form select,form textarea').forEach(el=>{
+    if(el.type==='password')return;
+    const name=el.name||el.id||'(unnamed)';
+    const val=el.type==='checkbox'||el.type==='radio'?el.checked:el.value;
+    out.push(name+'='+val);
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='form '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

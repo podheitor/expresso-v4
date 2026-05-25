@@ -3619,5 +3619,19 @@ window.copyGalTitleCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalManagerChain=function(){
+  const byEmail={};
+  document.querySelectorAll('[data-gal-row]').forEach(r=>{byEmail[(r.getAttribute('data-email')||'').toLowerCase()]=r;});
+  const sel=document.querySelector('[data-gal-row].selected,[data-gal-row][data-selected="1"]');
+  if(!sel){const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='no selection';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  const chain=[];let cur=sel,guard=0;
+  while(cur&&guard<20){chain.push((cur.getAttribute('data-name')||'?')+' <'+(cur.getAttribute('data-email')||'')+'>');const m=(cur.getAttribute('data-manager')||'').toLowerCase();cur=m?byEmail[m]:null;guard++;}
+  const ta=document.createElement('textarea');ta.value=chain.join('\n→ ');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='chain '+chain.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
