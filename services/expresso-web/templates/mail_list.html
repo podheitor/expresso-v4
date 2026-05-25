@@ -4924,5 +4924,18 @@ window.copyMailSpamFlagged=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailDkimDmarcResults=function(){
+  const counts={dkim:{},spf:{},dmarc:{}};
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    ['dkim','spf','dmarc'].forEach(k=>{const v=(r.getAttribute('data-'+k)||'unknown').toLowerCase();counts[k][v]=(counts[k][v]||0)+1;});
+  });
+  const out=['=== DKIM ==='].concat(Object.keys(counts.dkim).map(k=>k+'\t'+counts.dkim[k])).concat(['=== SPF ===']).concat(Object.keys(counts.spf).map(k=>k+'\t'+counts.spf[k])).concat(['=== DMARC ===']).concat(Object.keys(counts.dmarc).map(k=>k+'\t'+counts.dmarc[k])).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='auth ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

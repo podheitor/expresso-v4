@@ -4220,5 +4220,15 @@ window.copyHomeMetaList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeHeadings=function(){
+  const hs=Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'));
+  const out=hs.map(h=>h.tagName+'\t'+(h.textContent||'').trim().slice(0,120)+'\t'+(h.id||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hd '+hs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

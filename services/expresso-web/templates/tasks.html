@@ -5304,5 +5304,24 @@ window.copyTasksDueThisWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOverdueByDays=function(){
+  const now=Date.now();
+  const out=[];
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const d=Date.parse(r.getAttribute('data-due')||'');
+    const s=(r.getAttribute('data-status')||'').toLowerCase();
+    if(!isNaN(d)&&d<now&&s!=='done'&&s!=='completed'){
+      const days=Math.floor((now-d)/86400000);
+      out.push(days+'d\t'+(r.getAttribute('data-title')||'?')+'\t'+(r.getAttribute('data-assignee')||''));
+    }
+  });
+  out.sort((a,b)=>parseInt(b.split('d')[0],10)-parseInt(a.split('d')[0],10));
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='od '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
