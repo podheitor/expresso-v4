@@ -2773,5 +2773,21 @@ window.insertGreeting=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyComposeQuoteOnly=function(){
+  const b=document.getElementById('body');
+  const v=(b&&b.value)||'';
+  const out=v.split('\n').filter(l=>l.trimStart().startsWith('>')).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qt '+out.split('\n').length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

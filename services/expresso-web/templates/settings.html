@@ -3399,5 +3399,22 @@ window.copyMatchMediaDark=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyOnLineEventCount=function(){
+  const k='expresso_online_events_{{ me.user_id }}';
+  let n=parseInt(sessionStorage.getItem(k)||'0',10);
+  n++;
+  sessionStorage.setItem(k,String(n));
+  const ta=document.createElement('textarea');
+  ta.value='online events '+n+'\tcurrent '+(navigator.onLine?'online':'offline');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ev '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

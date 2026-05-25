@@ -2821,5 +2821,24 @@ window.copyMeetRoomDuration=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetParticipantNames=function(){
+  const els=document.querySelectorAll('[data-participant-name]');
+  const out=[];
+  els.forEach(e=>{
+    const n=(e.dataset.participantName||e.textContent||'').trim();
+    if(n){out.push(n);}
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pn '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

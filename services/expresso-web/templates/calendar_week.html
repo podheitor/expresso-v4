@@ -2920,5 +2920,22 @@ window.copyWeekParticipants=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFirstLast=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  const items=evs.map(e=>({s:Date.parse(e.dataset.start||''),t:e.dataset.title||''})).filter(x=>!isNaN(x.s)).sort((a,b)=>a.s-b.s);
+  if(!items.length){return;}
+  const first=items[0],last=items[items.length-1];
+  const ta=document.createElement('textarea');
+  ta.value='first '+new Date(first.s).toISOString()+'\t'+first.t+'\nlast  '+new Date(last.s).toISOString()+'\t'+last.t;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fl '+items.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
