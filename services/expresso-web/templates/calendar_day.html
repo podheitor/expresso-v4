@@ -5737,5 +5737,16 @@ window.copyDayShortEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFreeBusyJson=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  const busy=evs.map(e=>({start:e.getAttribute('data-start'),end:e.getAttribute('data-end'),title:e.getAttribute('data-title')})).filter(b=>b.start&&b.end);
+  const out=JSON.stringify({date:(busy[0]?busy[0].start.slice(0,10):''),busy:busy},null,2);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fb '+busy.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

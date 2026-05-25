@@ -6119,5 +6119,18 @@ window.copyContactsEmailDomains=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsTagsHistogram=function(){
+  const rows=document.querySelectorAll('[data-contact]');
+  const counts={};
+  rows.forEach(r=>{const ts=(r.getAttribute('data-tags')||r.getAttribute('data-labels')||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);ts.forEach(t=>{counts[t]=(counts[t]||0)+1;});});
+  const sorted=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
+  const out='tag histogram ('+sorted.length+'):\n'+sorted.map(k=>k+'\t'+counts[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tag '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

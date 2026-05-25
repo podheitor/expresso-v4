@@ -5222,5 +5222,17 @@ window.composeBccCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeMixedDomainsWarning=function(){
+  const all=['to','cc','bcc'].flatMap(f=>{const el=document.querySelector('[name="'+f+'"],#'+f+',[data-'+f+'-input]');return el?((el.value||el.textContent||'')+'').split(/[,;]/).map(s=>s.trim()).filter(Boolean):[];});
+  const domains=new Set();
+  all.forEach(a=>{const at=a.indexOf('@');if(at>=0)domains.add(a.slice(at+1).toLowerCase());});
+  const out='recipients: '+all.length+'\nunique domains: '+domains.size+'\n'+Array.from(domains).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(domains.size>3?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dms '+domains.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

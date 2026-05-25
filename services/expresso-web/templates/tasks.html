@@ -6501,5 +6501,19 @@ window.copyTasksProjectsCsv=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDueTomorrow=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const tom=new Date();tom.setDate(tom.getDate()+1);
+  const target=tom.toISOString().slice(0,10);
+  const lines=[];
+  rows.forEach(r=>{const d=(r.getAttribute('data-due')||'').slice(0,10);if(d===target){lines.push((r.getAttribute('data-id')||'')+'\t'+(r.getAttribute('data-title')||'')+'\t'+(r.getAttribute('data-assignee')||''));}});
+  const out='due tomorrow ('+target+') ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tmr '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

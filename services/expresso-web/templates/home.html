@@ -5231,5 +5231,18 @@ window.copyHomeMediaCapabilities=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeMetaRobots=function(){
+  const robots=document.querySelector('meta[name="robots"]');
+  const desc=document.querySelector('meta[name="description"]');
+  const kw=document.querySelector('meta[name="keywords"]');
+  const auth=document.querySelector('meta[name="author"]');
+  const out='robots: '+(robots?robots.getAttribute('content'):'(none)')+'\ndescription: '+(desc?desc.getAttribute('content'):'(none)')+'\nkeywords: '+(kw?kw.getAttribute('content'):'(none)')+'\nauthor: '+(auth?auth.getAttribute('content'):'(none)');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rob '+(robots?'set':'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

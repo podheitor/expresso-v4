@@ -5836,5 +5836,18 @@ window.copyMonthOrganizerWorkload=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthAvgEventDuration=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const mins=[];
+  evs.forEach(e=>{const s=e.getAttribute('data-start'),en=e.getAttribute('data-end');if(s&&en){const d=(new Date(en)-new Date(s))/60000;if(d>0)mins.push(d);}});
+  const avg=mins.length?(mins.reduce((a,b)=>a+b,0)/mins.length).toFixed(1):'-';
+  const out='avg event duration: '+avg+'min\nmedian: '+(mins.length?mins.sort((a,b)=>a-b)[Math.floor(mins.length/2)].toFixed(1)+'min':'-')+'\ntotal events: '+evs.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dur '+avg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
