@@ -5123,5 +5123,24 @@ window.copyUsersMfaCoverage=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersDormantSince=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const dormant=[];
+  const cutoff=Date.now()-180*86400000;
+  rows.forEach(r=>{
+    const last=r.getAttribute('data-last-login')||r.getAttribute('data-last-seen');
+    if(!last)return;
+    const ts=new Date(last).getTime();
+    if(!isNaN(ts)&&ts<cutoff)dormant.push(last+'\t'+(r.getAttribute('data-email')||'?'));
+  });
+  dormant.sort();
+  const out=dormant.join('\n')||'no dormant accounts (180d)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(dormant.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dorm '+dormant.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4812,5 +4812,21 @@ window.composeExclamationDensity=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAttachmentMimeTypes=function(){
+  const atts=document.querySelectorAll('[data-attachment]');
+  const tally={};
+  atts.forEach(a=>{
+    const mt=(a.getAttribute('data-mime')||a.getAttribute('data-type')||'application/octet-stream').toLowerCase();
+    tally[mt]=(tally[mt]||0)+1;
+  });
+  const lines=Object.entries(tally).sort((a,b)=>b[1]-a[1]).map(([m,n])=>n+'\t'+m);
+  const out=lines.join('\n')||'no attachments';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mime '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

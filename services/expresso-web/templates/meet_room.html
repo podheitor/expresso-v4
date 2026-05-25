@@ -4786,5 +4786,21 @@ window.copyMeetBreakoutRooms=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetGuestVsInternal=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  let guest=0,intern=0;
+  parts.forEach(p=>{
+    const email=(p.getAttribute('data-email')||'').toLowerCase();
+    const domain=email.split('@')[1]||'';
+    if(p.hasAttribute('data-guest')||domain && !email.endsWith('@expresso.local'))guest++;else intern++;
+  });
+  const out='internal='+intern+'\nguests='+guest+'\ntotal='+(intern+guest);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(guest?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gst '+guest+'/'+(intern+guest);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

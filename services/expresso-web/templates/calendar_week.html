@@ -5319,5 +5319,22 @@ window.copyWeekEarlyMorningEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekLateEvents=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const late=[];
+  evs.forEach(e=>{
+    const s=e.getAttribute('data-start');
+    if(!s)return;
+    const d=new Date(s);
+    if(d.getHours()>=18)late.push(s+'\t'+(e.getAttribute('data-title')||'(no title)'));
+  });
+  const out=late.join('\n')||'no late events';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(late.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lt '+late.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6062,5 +6062,24 @@ window.copyTasksUnassigned=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDueThisWeek=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const now=new Date();
+  const weekEnd=new Date(now.getTime()+7*86400000);
+  const hits=[];
+  rows.forEach(r=>{
+    const due=r.getAttribute('data-due');
+    if(!due)return;
+    const d=new Date(due);
+    if(d>=now&&d<=weekEnd)hits.push(due+'\t'+(r.getAttribute('data-title')||'(no title)'));
+  });
+  const out=hits.join('\n')||'no tasks due this week';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='due '+hits.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
