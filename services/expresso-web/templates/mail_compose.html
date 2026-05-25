@@ -3778,5 +3778,21 @@ window.composeBodyLineLengths=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeMissingSubjectCheck=function(){
+  const s=(document.querySelector('input[name=subject],input#subject')?.value||'').trim();
+  const body=(document.querySelector('textarea[name=body],textarea#body')?.value||'');
+  const to=(document.querySelector('input[name=to],textarea[name=to]')?.value||'').trim();
+  const issues=[];
+  if(!s)issues.push('missing-subject');
+  if(!to)issues.push('missing-to');
+  if(/anexo|attached|attach/i.test(body)&&!document.querySelector('[data-attachment]'))issues.push('mentions-attachment-but-none');
+  const out=issues.length?issues.join('\n'):'(ok)';
+  const tx=document.createElement('textarea');tx.value=out;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(issues.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='chk '+(issues.length||'ok');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

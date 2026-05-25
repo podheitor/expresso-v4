@@ -4156,5 +4156,20 @@ window.copyMonthOrganizerHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthAvgEventLength=function(){
+  let total=0,n=0;
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||''),en=Date.parse(e.getAttribute('data-end')||'');
+    if(!isNaN(s)&&!isNaN(en)&&en>s){total+=en-s;n++;}
+  });
+  const avgMin=n?(total/n/60000).toFixed(1):'0';
+  const out='events='+n+'\ntotal-hours='+(total/3600000).toFixed(2)+'\navg-minutes='+avgMin;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avgMin+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
