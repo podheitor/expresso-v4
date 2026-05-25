@@ -5411,5 +5411,17 @@ window.copyGalCsvExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalAvailability=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const map={available:0,busy:0,away:0,offline:0,unknown:0};
+  rows.forEach(r=>{const s=(r.getAttribute('data-availability')||r.getAttribute('data-presence')||'unknown').toLowerCase();if(s in map)map[s]++;else map.unknown++;});
+  const out='gal availability:\n'+Object.entries(map).map(([k,n])=>n+'\t'+k).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='av '+map.available;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

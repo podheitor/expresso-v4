@@ -6635,5 +6635,19 @@ window.copyTasksTagsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksProgressSummary=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const map={todo:0,'in-progress':0,blocked:0,done:0,other:0};
+  rows.forEach(r=>{const s=(r.getAttribute('data-status')||'').toLowerCase();if(s in map)map[s]++;else if(s==='completed')map.done++;else if(s==='wip')map['in-progress']++;else map.other++;});
+  const total=Object.values(map).reduce((a,b)=>a+b,0);
+  const pct=total?Math.round((map.done/total)*100):0;
+  const out='progress: '+pct+'% done\n'+Object.entries(map).map(([k,n])=>n+'\t'+k).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='prog '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

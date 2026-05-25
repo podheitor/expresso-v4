@@ -5351,5 +5351,20 @@ window.copyHomeLinkCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeLocalTime=function(){
+  const d=new Date();
+  const tz=Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const off=d.getTimezoneOffset();
+  const sign=off<=0?'+':'-';
+  const hh=String(Math.floor(Math.abs(off)/60)).padStart(2,'0');
+  const mm=String(Math.abs(off)%60).padStart(2,'0');
+  const out='now: '+d.toISOString()+' local: '+d.toString()+' tz: '+tz+' UTC'+sign+hh+':'+mm;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='now '+d.toTimeString().slice(0,8);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

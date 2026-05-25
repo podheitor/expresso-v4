@@ -5347,5 +5347,17 @@ window.composeBodyCharCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAttachmentList=function(){
+  const atts=document.querySelectorAll('[data-attachment], .attachment, [name=attachments] + ul li');
+  const lines=[];
+  atts.forEach(a=>{const n=a.getAttribute('data-filename')||a.getAttribute('data-name')||a.textContent||'?';const s=a.getAttribute('data-size')||'';lines.push(n.trim()+(s?'\t'+s+'B':''));});
+  const out='attachments ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='att '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
