@@ -2453,5 +2453,24 @@ window.appendDispNotifyHeader=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyComposeRecipientCount=function(){
+  const to=(document.querySelector('input[name="to"]')||{}).value||'';
+  const cc=(document.querySelector('input[name="cc"]')||{}).value||'';
+  const bcc=(document.querySelector('input[name="bcc"]')||{}).value||'';
+  const cT=to.split(/[,;]/).map(s=>s.trim()).filter(Boolean).length;
+  const cC=cc.split(/[,;]/).map(s=>s.trim()).filter(Boolean).length;
+  const cB=bcc.split(/[,;]/).map(s=>s.trim()).filter(Boolean).length;
+  const ta=document.createElement('textarea');
+  ta.value='to: '+cT+'\ncc: '+cC+'\nbcc: '+cB+'\ntotal: '+(cT+cC+cB);
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=cT+'/'+cC+'/'+cB;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2350,5 +2350,29 @@ window.copyThreadLargestMsg=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadGaps=function(){
+  const msgs=[...document.querySelectorAll('[data-msg-ts]')];
+  msgs.sort((a,b)=>(a.dataset.ts||'').localeCompare(b.dataset.ts||''));
+  const out=[];
+  for(let i=1;i<msgs.length;i++){
+    const p=Date.parse(msgs[i-1].dataset.ts||'');
+    const c=Date.parse(msgs[i].dataset.ts||'');
+    if(!isNaN(p)&&!isNaN(c)){
+      const h=Math.round((c-p)/3600000);
+      if(h>=24)out.push(h+'h gap: '+msgs[i-1].dataset.ts+' -> '+msgs[i].dataset.ts);
+    }
+  }
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gap '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

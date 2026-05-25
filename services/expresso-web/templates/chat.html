@@ -3743,5 +3743,26 @@ window.copyChatLinks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatBusiestHour=function(){
+  const msgs=document.querySelectorAll('[data-msg-ts]');
+  const cnt=new Array(24).fill(0);
+  msgs.forEach(m=>{
+    const d=new Date(m.dataset.ts||'');
+    if(!isNaN(d))cnt[d.getHours()]++;
+  });
+  let max=0,h=0;
+  cnt.forEach((c,i)=>{if(c>max){max=c;h=i;}});
+  const ta=document.createElement('textarea');
+  ta.value=cnt.map((c,i)=>i+':00\t'+c).join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=h+'h ('+max+')';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
