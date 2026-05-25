@@ -5641,5 +5641,19 @@ window.copySettingsFontsCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsBuildInfo=function(){
+  const meta=name=>{const m=document.querySelector('meta[name="'+name+'"]');return m?m.getAttribute('content'):'';};
+  const ver=meta('build-version')||meta('version')||'?';
+  const sha=meta('build-sha')||meta('git-sha')||'?';
+  const env=meta('build-env')||'?';
+  const t1=meta('build-time')||'?';
+  const out='version='+ver+'\nsha='+sha+'\nenv='+env+'\nbuilt='+t1;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bld '+ver;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

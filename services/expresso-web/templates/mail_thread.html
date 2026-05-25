@@ -5295,5 +5295,19 @@ window.copyThreadFlagged=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAvgMessageSize=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  let sum=0,n=0,mx=0;
+  msgs.forEach(m=>{const s=parseInt(m.getAttribute('data-size')||'0',10);
+    if(s>0){sum+=s;n++;if(s>mx)mx=s;}});
+  const avg=n?Math.round(sum/n):0;
+  const out='msgs='+n+'\navg='+avg+'\nmax='+mx+'\ntotal='+sum;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

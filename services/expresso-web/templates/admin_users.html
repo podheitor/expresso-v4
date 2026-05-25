@@ -5341,5 +5341,18 @@ window.copyUsersLicenseAssignments=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersOver1GbMailbox=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const lines=[];
+  rows.forEach(r=>{const sz=parseInt(r.getAttribute('data-mailbox-bytes')||'0',10);
+    if(sz>=1073741824){lines.push((r.getAttribute('data-email')||'?')+'\t'+(sz/1073741824).toFixed(2)+'G');}});
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='1g '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

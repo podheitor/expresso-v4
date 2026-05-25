@@ -5601,5 +5601,21 @@ window.copyMonthVirtualVsInPerson=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthMostActiveWeek=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const m={};
+  evs.forEach(e=>{const s=new Date(e.getAttribute('data-start')||0);
+    if(isNaN(s))return;
+    const wk=new Date(s);wk.setDate(s.getDate()-s.getDay());
+    const k=wk.toISOString().slice(0,10);m[k]=(m[k]||0)+1;});
+  const sorted=Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  const out=sorted.map(e=>'week of '+e[0]+'\t'+e[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='aw '+(sorted[0]?sorted[0][1]:0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

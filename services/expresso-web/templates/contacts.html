@@ -5900,5 +5900,18 @@ window.copyContactsTimezoneSpread=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsEmailLengthHistogram=function(){
+  const rows=document.querySelectorAll('[data-contact]');
+  const b={s:0,m:0,l:0};
+  rows.forEach(r=>{const e=(r.getAttribute('data-email')||'').length;
+    if(e<20)b.s++;else if(e<40)b.m++;else b.l++;});
+  const out='short(<20)='+b.s+'\nmid(20-40)='+b.m+'\nlong(>=40)='+b.l;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='elh '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

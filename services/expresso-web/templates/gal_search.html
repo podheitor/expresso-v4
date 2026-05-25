@@ -5067,5 +5067,20 @@ window.copyGalReportsToTree=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalEmployeeHierarchyDepth=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const mgr={};
+  rows.forEach(r=>{const e=r.getAttribute('data-email')||'';const m=r.getAttribute('data-manager-email')||'';mgr[e]=m;});
+  const depth=email=>{let d=0,cur=email;const seen=new Set();
+    while(mgr[cur]&&!seen.has(cur)){seen.add(cur);cur=mgr[cur];d++;}return d;};
+  const lines=Object.keys(mgr).map(e=>e+'\t'+depth(e));
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hd '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

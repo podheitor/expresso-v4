@@ -4994,5 +4994,18 @@ window.composeAverageSentenceLength=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeUniqueRecipients=function(){
+  const fields=['to','cc','bcc'];
+  const all=[];
+  fields.forEach(f=>{const el=document.querySelector('[name="'+f+'"],#'+f);if(el){(el.value||'').split(/[,;]/).forEach(e=>{const x=e.trim().toLowerCase();if(x)all.push(x);});}});
+  const u=[...new Set(all)];
+  const out='total='+all.length+'\nunique='+u.length+'\n'+u.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ur '+u.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
