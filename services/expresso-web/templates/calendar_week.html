@@ -6250,5 +6250,20 @@ window.copyWeekLatestEnd=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekEarliestStart=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let lt=Infinity,title='';
+  evs.forEach(e=>{
+    const t=Date.parse(e.getAttribute('data-start')||'')||Infinity;
+    if(t<lt){lt=t;title=e.getAttribute('data-title')||'';}
+  });
+  const out='earliest start: '+(isFinite(lt)?new Date(lt).toISOString():'(none)')+'\ntitle: '+title;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wes';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
