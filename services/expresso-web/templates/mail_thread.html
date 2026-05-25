@@ -3493,5 +3493,27 @@ window.copyThreadExternalImages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadHeadersList=function(){
+  const out=[];
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const id=m.getAttribute('data-msg-id')||'';
+    const headers={};
+    for(const a of m.attributes){
+      if(a.name.startsWith('data-')){headers[a.name.slice(5)]=a.value;}
+    }
+    out.push('=== '+id+' ===\n'+Object.entries(headers).map(([k,v])=>k+': '+v).join('\n'));
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hdr '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

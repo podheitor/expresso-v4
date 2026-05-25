@@ -3375,5 +3375,22 @@ window.composeAddBccSelf=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSnapshotDraft=function(){
+  const fields={};
+  document.querySelectorAll('input[name],textarea[name]').forEach(el=>{fields[el.name]=el.value;});
+  const k='draft_snapshot_'+Date.now();
+  localStorage.setItem(k,JSON.stringify(fields));
+  const ta=document.createElement('textarea');
+  ta.value=k+'\n'+JSON.stringify(fields,null,2);
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='snap';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

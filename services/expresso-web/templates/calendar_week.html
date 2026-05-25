@@ -3703,5 +3703,29 @@ window.copyWeekTopOrganizers=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekICalExport=function(){
+  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//expresso//week-export//EN'];
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=(e.getAttribute('data-start')||'').replace(/[-:]/g,'').slice(0,15);
+    const f=(e.getAttribute('data-end')||'').replace(/[-:]/g,'').slice(0,15);
+    const t=(e.getAttribute('data-title')||'').replace(/[\r\n]/g,' ');
+    lines.push('BEGIN:VEVENT','UID:'+(e.getAttribute('data-uid')||Math.random().toString(36).slice(2))+'@expresso','DTSTART:'+s,'DTEND:'+f,'SUMMARY:'+t,'END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  const ics=lines.join('\r\n');
+  const blob=new Blob([ics],{type:'text/calendar'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='week_'+Date.now()+'.ics';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},500);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ics '+(lines.length-3)/6;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

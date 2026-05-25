@@ -3517,5 +3517,25 @@ window.copyUsersNoLogin=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersFullCsv=function(){
+  const rows=[['email','status','role','tenant','last_login','created_at','mfa']];
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    rows.push([r.getAttribute('data-email')||'',r.getAttribute('data-status')||'',r.getAttribute('data-role')||'',r.getAttribute('data-tenant')||'',r.getAttribute('data-last-login')||'',r.getAttribute('data-created-at')||'',r.getAttribute('data-mfa')||'']);
+  });
+  const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='users_'+Date.now()+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},500);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='csv '+(rows.length-1);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
