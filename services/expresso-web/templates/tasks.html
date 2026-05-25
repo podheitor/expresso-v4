@@ -7351,5 +7351,18 @@ window.copyTasksNoAssignee=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksEstimatedHours=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let total=0;
+  const arr=[];
+  rows.forEach(r=>{const h=parseFloat(r.getAttribute('data-estimate-hours')||'0');if(h>0){total+=h;arr.push((r.getAttribute('data-title')||'?')+' '+h+'h');}});
+  const out=arr.join('\n')+'\n---\ntotal='+Math.round(total*10)/10+'h';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='est '+Math.round(total)+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7558,5 +7558,18 @@ window.copyChatCodeBlocks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMentionMe=function(){
+  const me=(document.body.getAttribute('data-current-user')||'').toLowerCase();
+  const ms=document.querySelectorAll('[data-msg-id]');
+  const arr=[];
+  ms.forEach(m=>{const t=(m.textContent||'');if(me&&t.toLowerCase().includes('@'+me))arr.push((m.getAttribute('data-from')||'?')+': '+t.trim().slice(0,100));});
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='@me '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

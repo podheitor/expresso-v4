@@ -6117,5 +6117,17 @@ window.copyGalLongestName=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalEmployeeIds=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const arr=[];
+  rows.forEach(r=>{const eid=r.getAttribute('data-employee-id')||r.getAttribute('data-id')||'';if(eid)arr.push(eid+'\t'+(r.getAttribute('data-name')||'?'));});
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='eid '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
