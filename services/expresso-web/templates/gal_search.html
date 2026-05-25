@@ -5882,5 +5882,21 @@ window.copyGalAllEmails=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalStatusList=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const counts={};
+  rows.forEach(r=>{
+    const s=r.getAttribute('data-status')||'(none)';
+    counts[s]=(counts[s]||0)+1;
+  });
+  const lines=Object.keys(counts).sort().map(k=>k+': '+counts[k]);
+  const out='gal by status:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gst '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

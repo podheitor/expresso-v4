@@ -6441,5 +6441,20 @@ window.copyMonthPrivateOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEarliestAndLatest=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let lo=Infinity,hi=0,lt='',ht='';
+  evs.forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'')||0;
+    if(s){if(s<lo){lo=s;lt=e.getAttribute('data-title')||'';}if(s>hi){hi=s;ht=e.getAttribute('data-title')||'';}}
+  });
+  const out='earliest: '+(isFinite(lo)?new Date(lo).toISOString():'(none)')+' '+lt+'\nlatest: '+(hi?new Date(hi).toISOString():'(none)')+' '+ht;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='elr';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

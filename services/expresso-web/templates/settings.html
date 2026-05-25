@@ -6385,5 +6385,17 @@ window.copySettingsSectionHeaders=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsLinkHrefs=function(){
+  const ls=document.querySelectorAll('a[href]');
+  const hrefs=[];
+  ls.forEach(a=>hrefs.push(a.getAttribute('href')||''));
+  const out='link hrefs:\n'+hrefs.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='href '+hrefs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
