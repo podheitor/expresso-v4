@@ -3685,5 +3685,16 @@ window.copyMeetChatLog=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRecordingState=function(){
+  const rec=document.querySelector('[data-recording],.recording-on,[data-rec="1"]');
+  const sub=document.querySelector('[data-subtitles="1"],.subtitles-on');
+  const out='recording='+(rec?'on':'off')+'\nrec-since='+(rec?.getAttribute('data-rec-since')||'?')+'\nsubtitles='+(sub?'on':'off');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(rec?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rec?'REC':'no-rec';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

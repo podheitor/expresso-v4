@@ -3898,5 +3898,18 @@ window.copyAuditPrivilegedActions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditWeekdayHistogram=function(){
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const counts=Array(7).fill(0);
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{const ts=Date.parse(r.getAttribute('data-ts')||'');if(!isNaN(ts))counts[new Date(ts).getDay()]++;});
+  const out=counts.map((v,i)=>days[i]+'='+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const peak=days[counts.indexOf(Math.max(...counts))];
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='peak '+peak;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4804,5 +4804,22 @@ window.copyTasksAgeBuckets=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksCompletionRate=function(){
+  let done=0,total=0;const byUser={};
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    total++;const u=r.getAttribute('data-assignee')||'(unassigned)';
+    byUser[u]=byUser[u]||{d:0,t:0};byUser[u].t++;
+    if(r.getAttribute('data-status')==='done'){done++;byUser[u].d++;}
+  });
+  const rate=total?(done/total*100).toFixed(1):'0';
+  const detail=Object.entries(byUser).map(([k,v])=>k+'\t'+v.d+'/'+v.t+'\t'+(v.t?(v.d/v.t*100).toFixed(0):'0')+'%').join('\n');
+  const out='global='+done+'/'+total+' ('+rate+'%)\n--\n'+detail;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rate+'% done';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

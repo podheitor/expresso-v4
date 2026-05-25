@@ -3851,5 +3851,18 @@ window.copyThreadGapsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadHeadersDump=function(){
+  const out=[];
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const hdr={ts:m.getAttribute('data-ts'),from:m.getAttribute('data-sender'),subj:m.getAttribute('data-subject'),id:m.getAttribute('data-msg-id'),irt:m.getAttribute('data-in-reply-to'),ref:m.getAttribute('data-references')};
+    out.push('--- '+hdr.id+' ---\n'+Object.entries(hdr).filter(([k,v])=>v).map(([k,v])=>k+'='+v).join('\n'));
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hdr '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
