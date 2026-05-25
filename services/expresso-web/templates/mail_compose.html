@@ -4226,5 +4226,16 @@ window.composeSignatureCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeFormFieldsState=function(){
+  const form=document.querySelector('form');
+  if(!form){const ta=document.createElement('textarea');ta.value='(no form)';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return;}
+  const out=Array.from(form.elements).filter(e=>e.name).map(e=>e.name+'\t'+(e.type||e.tagName)+'\tlen='+(e.value||'').length+'\trequired='+(e.required?'yes':'no')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fld '+form.elements.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4470,5 +4470,20 @@ window.copyUsersByGroupCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersUpgradeEligible=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const used=parseInt(r.getAttribute('data-storage-used')||'0',10);
+    const quota=parseInt(r.getAttribute('data-storage-quota')||'0',10);
+    if(quota>0&&used/quota>=0.8&&used<quota)
+      out.push((r.getAttribute('data-email')||'?')+'\t'+(100*used/quota).toFixed(1)+'%\t'+(r.getAttribute('data-plan')||''));
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='upg '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

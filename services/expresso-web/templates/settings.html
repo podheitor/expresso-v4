@@ -4838,5 +4838,21 @@ window.copySettingsLocalStorageKeys=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsServiceWorker=function(){
+  const sw='service-worker-api\t'+(('serviceWorker' in navigator)?'yes':'no');
+  if(!('serviceWorker' in navigator)){
+    const ta=document.createElement('textarea');ta.value=sw;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    return;
+  }
+  navigator.serviceWorker.getRegistrations().then(regs=>{
+    const out=sw+'\nregistrations\t'+regs.length+'\n'+regs.map(r=>r.scope+'\t'+(r.active?r.active.scriptURL:'(no active)')).join('\n');
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='sw '+regs.length;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }).catch(()=>{});
+};
 </script>
 {% endblock %}

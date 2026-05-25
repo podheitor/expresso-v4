@@ -4505,5 +4505,17 @@ window.copyAuditTopIps=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditExportCsv=function(){
+  const rows=Array.from(document.querySelectorAll('[data-audit-row]'));
+  const head='timestamp,actor,action,resource,resource_type,ip,user_agent,status';
+  const csv=rows.map(r=>['data-timestamp','data-actor','data-action','data-resource','data-resource-type','data-ip','data-user-agent','data-status'].map(k=>'"'+((r.getAttribute(k)||'').replace(/"/g,'""'))+'"').join(',')).join('\n');
+  const out=head+'\n'+csv;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='csv '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
