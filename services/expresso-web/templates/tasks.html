@@ -4499,5 +4499,18 @@ window.copyTasksCreatedThisWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksTimeEstimateSum=function(){
+  let sum=0,n=0;
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const est=parseFloat(r.getAttribute('data-estimate')||r.getAttribute('data-hours')||'0');
+    if(est>0){sum+=est;n++;}
+  });
+  const ta=document.createElement('textarea');ta.value='total '+sum.toFixed(1)+'h across '+n+' tasks';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='est '+sum.toFixed(1)+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

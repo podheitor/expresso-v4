@@ -3443,5 +3443,21 @@ window.composeSubjectTitleCase=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeUniqueRecipients=function(){
+  const inputs=['to','cc','bcc'];
+  let changed=0;
+  inputs.forEach(name=>{
+    const inp=document.querySelector('input[name='+name+']');
+    if(!inp||!inp.value)return;
+    const seen=new Set();const out=[];
+    inp.value.split(/[,;]\s*/).forEach(a=>{const k=a.trim().toLowerCase();if(k&&!seen.has(k)){seen.add(k);out.push(a.trim());}});
+    const next=out.join(', ');if(next!==inp.value){inp.value=next;changed++;}
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(changed?'#0a0':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dedup '+changed;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

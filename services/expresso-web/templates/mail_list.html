@@ -4136,5 +4136,21 @@ window.copyMailSendersFreq=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailByMonth=function(){
+  const buckets={};
+  document.querySelectorAll('[data-mail-row]').forEach(m=>{
+    const t=Date.parse(m.getAttribute('data-ts')||'');
+    if(isNaN(t))return;
+    const k=new Date(t).toISOString().slice(0,7);
+    buckets[k]=(buckets[k]||0)+1;
+  });
+  const out=Object.entries(buckets).sort().map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mo '+Object.keys(buckets).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

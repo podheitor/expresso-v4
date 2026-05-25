@@ -4270,5 +4270,20 @@ window.copyDriveLastModifiedSorted=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveDuplicateNames=function(){
+  const seen={},dup=new Set();
+  document.querySelectorAll('[data-drive-item]').forEach(d=>{
+    const n=(d.getAttribute('data-name')||'').toLowerCase();
+    if(!n)return;
+    if(seen[n])dup.add(n);else seen[n]=true;
+  });
+  const out=[...dup].join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(dup.size?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dup '+dup.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -3787,5 +3787,20 @@ window.copyWeekAvgDuration=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekByCalendar=function(){
+  const counts={};
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const c=e.getAttribute('data-calendar')||e.getAttribute('data-cal')||'(default)';
+    counts[c]=(counts[c]||0)+1;
+  });
+  const arr=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  const out=arr.map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cal '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
