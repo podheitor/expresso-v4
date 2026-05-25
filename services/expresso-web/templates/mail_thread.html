@@ -4020,5 +4020,18 @@ window.copyThreadAsEml=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFlaggedMessages=function(){
+  const out=[];
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const f=(m.getAttribute('data-flags')||'').toLowerCase();
+    if(f.includes('flagged')||f.includes('important')||m.getAttribute('data-flagged')==='1')out.push((m.getAttribute('data-ts')||'?')+'\t'+(m.getAttribute('data-sender')||'?')+'\t'+(m.textContent||'').trim().slice(0,80));
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='flag '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

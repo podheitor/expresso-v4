@@ -4239,5 +4239,26 @@ window.copyWeekFreeSlots=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFocusBlocks=function(){
+  const days={};
+  [...document.querySelectorAll('[data-event]')].map(e=>({s:Date.parse(e.getAttribute('data-start')||''),en:Date.parse(e.getAttribute('data-end')||'')})).filter(e=>!isNaN(e.s)&&!isNaN(e.en)).forEach(e=>{
+    const d=new Date(e.s).toISOString().slice(0,10);
+    days[d]=days[d]||[];days[d].push([e.s,e.en]);
+  });
+  const out=[];
+  Object.entries(days).forEach(([d,evs])=>{
+    evs.sort((a,b)=>a[0]-b[0]);
+    let busy=0;
+    evs.forEach(([s,en])=>busy+=(en-s)/60000);
+    const focus=(9*60-busy);
+    if(focus>=120)out.push(d+'\tbusy='+busy.toFixed(0)+'min\tfocus='+focus.toFixed(0)+'min');
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='focus '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

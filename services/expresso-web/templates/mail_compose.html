@@ -3869,5 +3869,17 @@ window.composeCcBccCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeMissingSubject=function(){
+  const subj=(document.querySelector('[name=subject]')?.value||'').trim();
+  const body=document.querySelector('[name=body]')?.value||document.querySelector('[contenteditable=true]')?.innerText||'';
+  const warn=!subj&&body.trim().length>20;
+  const out='subject-empty='+(!subj)+'\nbody-len='+body.length+'\nwarn='+warn;
+  const tx=document.createElement('textarea');tx.value=out;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(warn?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=warn?'no-subject!':'subject ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
