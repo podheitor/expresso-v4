@@ -5095,5 +5095,17 @@ window.copySettingsCacheStorage=function(){
     Promise.all(names.map(n=>caches.open(n).then(c=>c.keys()).then(keys=>({name:n,entries:keys.length})))).then(arr=>finish({caches:arr}));
   }).catch(e=>finish({error:String(e)}));
 };
+window.copySettingsIndexedDbDatabases=function(){
+  const finish=info=>{
+    const ta=document.createElement('textarea');ta.value=JSON.stringify(info,null,2);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:'+(info.error?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='idb '+(info.databases?info.databases.length:info.error);
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  };
+  if(!('indexedDB' in self)||!indexedDB.databases){finish({error:'unsupported'});return;}
+  indexedDB.databases().then(dbs=>finish({databases:dbs.map(d=>({name:d.name,version:d.version}))})).catch(e=>finish({error:String(e)}));
+};
 </script>
 {% endblock %}

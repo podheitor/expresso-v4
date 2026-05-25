@@ -5005,5 +5005,29 @@ window.copyMonthLongestStreak=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthOrganizerHeatmap=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const grid={};
+  const weeks=new Set();
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start);if(isNaN(s))return;
+    const org=(e.dataset.organizer||'?').toLowerCase();
+    const wk='W'+Math.ceil(s.getDate()/7);
+    weeks.add(wk);
+    grid[org]=grid[org]||{};
+    grid[org][wk]=(grid[org][wk]||0)+1;
+  });
+  const wkList=[...weeks].sort();
+  const orgs=Object.keys(grid).sort();
+  const header='organizer\t'+wkList.join('\t');
+  const rows=orgs.map(o=>o+'\t'+wkList.map(w=>grid[o][w]||0).join('\t'));
+  const txt=header+'\n'+rows.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='heat '+orgs.length+'x'+wkList.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

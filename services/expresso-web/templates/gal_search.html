@@ -4530,5 +4530,22 @@ window.copyGalTitleSeniority=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalSkillsList=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const freq={};
+  rows.forEach(r=>{
+    const raw=(r.dataset.skills||r.dataset.expertise||r.dataset.tags||'');
+    raw.split(/[,;|]/).map(s=>s.trim()).filter(Boolean).forEach(s=>{const k=s.toLowerCase();freq[k]=(freq[k]||0)+1;});
+  });
+  const sorted=Object.entries(freq).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
+  const out=sorted.map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='skill\tcount ('+sorted.length+' unique, '+rows.length+' people)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='skl '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

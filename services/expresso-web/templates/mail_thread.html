@@ -4712,5 +4712,23 @@ window.copyThreadFirstResponseSla=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadReadStatusFlags=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const out=[];
+  let unread=0;
+  msgs.forEach(m=>{
+    const r=(m.dataset.read||m.dataset.isRead||'').toLowerCase();
+    const isRead=r==='1'||r==='true'||r==='yes'||m.classList.contains('read');
+    if(!isRead) unread++;
+    out.push(m.dataset.msgId+'\t'+(isRead?'read':'unread')+'\t'+(m.dataset.from||'')+'\t'+(m.dataset.timestamp||''));
+  });
+  const txt='id\tstatus\tfrom\tts ('+msgs.length+' msgs, '+unread+' unread)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(unread?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='unread '+unread+'/'+msgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

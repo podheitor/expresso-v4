@@ -4937,5 +4937,23 @@ window.copyDayAcceptedDeclined=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayHoursWithoutBreak=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({s:new Date(e.dataset.start),en:new Date(e.dataset.end||e.dataset.start)})).filter(x=>!isNaN(x.s)&&!isNaN(x.en)).sort((a,b)=>a.s-b.s);
+  let bestStart=null,bestEnd=null,bestMin=0,curStart=null,curEnd=null;
+  evs.forEach(e=>{
+    if(curEnd&&e.s<=curEnd){if(e.en>curEnd) curEnd=e.en;}
+    else {curStart=e.s;curEnd=e.en;}
+    const m=(curEnd-curStart)/60000;
+    if(m>bestMin){bestMin=m;bestStart=curStart;bestEnd=curEnd;}
+  });
+  const fmt=d=>d?d.toTimeString().slice(0,5):'';
+  const txt='longestBusySpan='+(bestMin/60).toFixed(2)+'h\nfrom='+fmt(bestStart)+'\nto='+fmt(bestEnd)+'\nevents='+evs.length;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(bestMin>=240?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nobreak '+(bestMin/60).toFixed(1)+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

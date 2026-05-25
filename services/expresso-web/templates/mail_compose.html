@@ -4473,5 +4473,21 @@ window.composeBccCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSignatureCheck=function(){
+  const body=((document.querySelector('textarea[name=body]')||document.querySelector('[contenteditable=true]')||{}).value||(document.querySelector('[contenteditable=true]')||{}).innerText||'').toString();
+  const lines=body.split(/\r?\n/);
+  const sigIdx=lines.findIndex(l=>l==='-- '||l==='--');
+  const hasSig=sigIdx>=0;
+  const sigLines=hasSig?lines.slice(sigIdx+1):[];
+  const sigLen=sigLines.join('\n').length;
+  const sigOver=sigLines.length>4;
+  const txt='hasDelimiter='+hasSig+'\nsigLines='+sigLines.length+'\nsigChars='+sigLen+'\nover4Lines='+sigOver+'\nsigPreview='+sigLines.slice(0,4).join(' | ');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(!hasSig?'#c60':sigOver?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sig '+(hasSig?sigLines.length+'L':'none');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5430,5 +5430,22 @@ window.copyDriveAclSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveByExtension=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const counts={};
+  items.forEach(i=>{
+    const n=i.dataset.name||'';
+    const ext=(n.match(/\.([a-z0-9]+)$/i)||[,'(no-ext)'])[1].toLowerCase();
+    counts[ext]=(counts[ext]||0)+1;
+  });
+  const out=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='ext\tcount ('+Object.keys(counts).length+' distinct, '+items.length+' items)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ext '+Object.keys(counts).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

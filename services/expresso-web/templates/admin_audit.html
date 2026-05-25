@@ -4780,5 +4780,19 @@ window.copyAuditDeletedObjects=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByMonth=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const counts={};
+  rows.forEach(r=>{const ts=r.dataset.timestamp||'';const m=ts.slice(0,7);if(/^\d{4}-\d{2}$/.test(m)) counts[m]=(counts[m]||0)+1;});
+  const sorted=Object.keys(counts).sort();
+  const out=sorted.map(k=>k+'\t'+counts[k]).join('\n');
+  const txt='month\tcount ('+sorted.length+' months, '+rows.length+' events)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mon '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
