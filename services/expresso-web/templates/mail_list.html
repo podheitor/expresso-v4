@@ -4812,5 +4812,20 @@ window.copyMailReceiptRequested=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailLargestByOwner=function(){
+  const owners={};
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    const o=r.getAttribute('data-from')||'?';
+    const s=parseInt(r.getAttribute('data-size')||'0',10);
+    if(!owners[o]||s>owners[o].s)owners[o]={s:s,subj:r.getAttribute('data-subject')||''};
+  });
+  const out=Object.keys(owners).sort((a,b)=>owners[b].s-owners[a].s).map(o=>o+'\t'+owners[o].s+'\t'+owners[o].subj);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lg '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

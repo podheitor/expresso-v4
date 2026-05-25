@@ -4934,5 +4934,21 @@ window.copyDrivePublicLinks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveExpiringSoon=function(){
+  const now=Date.now();
+  const horizon=now+7*24*3600*1000;
+  const out=[];
+  document.querySelectorAll('[data-drive-item]').forEach(it=>{
+    const exp=Date.parse(it.getAttribute('data-expires-at')||'');
+    if(!isNaN(exp)&&exp>=now&&exp<=horizon)out.push((it.getAttribute('data-name')||'?')+'\t'+new Date(exp).toISOString());
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='exp '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
