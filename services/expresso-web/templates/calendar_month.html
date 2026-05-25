@@ -5617,5 +5617,24 @@ window.copyMonthMostActiveWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthBackToBackChains=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({
+    t:e.getAttribute('data-title')||'?',
+    s:new Date(e.getAttribute('data-start')||0),
+    e:new Date(e.getAttribute('data-end')||0)})).filter(e=>!isNaN(e.s)).sort((a,b)=>a.s-b.s);
+  const chains=[];let cur=[];
+  for(let i=0;i<evs.length;i++){
+    if(cur.length===0){cur.push(evs[i]);continue;}
+    if(Math.abs(evs[i].s-cur[cur.length-1].e)<=5*60000)cur.push(evs[i]);
+    else{if(cur.length>=3)chains.push(cur.length+'x: '+cur.map(x=>x.t).join(' > '));cur=[evs[i]];}}
+  if(cur.length>=3)chains.push(cur.length+'x: '+cur.map(x=>x.t).join(' > '));
+  const out=chains.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(chains.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bb '+chains.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

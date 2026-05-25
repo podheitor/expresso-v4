@@ -5552,5 +5552,17 @@ window.copyWeekLocationsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekEarliestEvent=function(){
+  const evs=[...document.querySelectorAll('[data-event]')];
+  const sorted=evs.map(e=>({t:e.getAttribute('data-title')||'?',
+    s:new Date(e.getAttribute('data-start')||0)})).filter(x=>!isNaN(x.s)).sort((a,b)=>a.s-b.s);
+  const out=sorted.slice(0,5).map(x=>x.s.toISOString()+'\t'+x.t).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ee '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

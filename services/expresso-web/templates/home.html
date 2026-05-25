@@ -5036,5 +5036,17 @@ window.copyHomeIframeTally=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeNavigationEntries=function(){
+  const entries=performance.getEntriesByType('navigation');
+  if(!entries.length){alert('no nav entries');return;}
+  const e=entries[0];
+  const out='type='+e.type+'\nredirects='+e.redirectCount+'\ndomComplete='+e.domComplete.toFixed(0)+'\nloadEvent='+e.loadEventEnd.toFixed(0)+'\ntransferSize='+e.transferSize;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nav '+e.type;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

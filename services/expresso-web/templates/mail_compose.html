@@ -5007,5 +5007,18 @@ window.composeUniqueRecipients=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeDraftTimestamp=function(){
+  const sa=document.querySelector('[data-saved-at]');
+  const at=sa?sa.getAttribute('data-saved-at'):'';
+  const subj=(document.querySelector('[name=subject],#subject')||{}).value||'';
+  const body=(document.querySelector('[name=body],#body,textarea')||{}).value||'';
+  const out='savedAt='+at+'\nnow='+new Date().toISOString()+'\nsubject.len='+subj.length+'\nbody.len='+body.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='drf '+(at||'unsaved');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

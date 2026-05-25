@@ -5881,5 +5881,19 @@ window.copyMailListUnreadByFolder=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListConversationCount=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const m={};
+  rows.forEach(r=>{const c=r.getAttribute('data-conversation-id')||r.getAttribute('data-thread-id')||r.getAttribute('data-mail-row');
+    m[c]=(m[c]||0)+1;});
+  const single=Object.values(m).filter(v=>v===1).length;
+  const out='conversations='+Object.keys(m).length+'\nmessages='+rows.length+'\nsingleton='+single;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cv '+Object.keys(m).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

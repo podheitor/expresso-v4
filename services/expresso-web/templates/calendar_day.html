@@ -5530,5 +5530,18 @@ window.copyDayHourCoverage=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayMaxAttendees=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let best=null,mx=0;
+  evs.forEach(e=>{const n=(e.getAttribute('data-attendees')||'').split(',').filter(Boolean).length;
+    if(n>mx){mx=n;best=e;}});
+  const out=best?(best.getAttribute('data-title')||'?')+'\t'+mx+' attendees':'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ma '+mx;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
