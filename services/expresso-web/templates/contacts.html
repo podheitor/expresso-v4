@@ -5092,5 +5092,31 @@ window.copyContactsWithNotes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsAgeStats=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const ages=[];
+  const today=new Date();
+  cs.forEach(c=>{
+    const bd=c.dataset.birthday||c.dataset.bday;
+    if(!bd) return;
+    const d=new Date(bd);
+    if(isNaN(d)) return;
+    let a=today.getFullYear()-d.getFullYear();
+    const m=today.getMonth()-d.getMonth();
+    if(m<0||(m===0&&today.getDate()<d.getDate())) a--;
+    if(a>=0&&a<150) ages.push(a);
+  });
+  ages.sort((a,b)=>a-b);
+  const sum=ages.reduce((a,b)=>a+b,0);
+  const avg=ages.length?(sum/ages.length).toFixed(1):'0';
+  const med=ages.length?ages[Math.floor(ages.length/2)]:0;
+  const out='count='+ages.length+'\navg='+avg+'\nmedian='+med+'\nmin='+(ages[0]||0)+'\nmax='+(ages[ages.length-1]||0);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='age '+ages.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

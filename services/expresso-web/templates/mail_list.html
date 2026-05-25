@@ -5086,5 +5086,25 @@ window.copyMailEncryptedOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSizeBuckets=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const buckets={'<10K':0,'10-100K':0,'100K-1M':0,'1-10M':0,'>10M':0};
+  rows.forEach(r=>{
+    const s=parseInt(r.dataset.size||'0',10);
+    if(s<10240)buckets['<10K']++;
+    else if(s<102400)buckets['10-100K']++;
+    else if(s<1048576)buckets['100K-1M']++;
+    else if(s<10485760)buckets['1-10M']++;
+    else buckets['>10M']++;
+  });
+  const out=Object.entries(buckets).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='bucket\tcount\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sz '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

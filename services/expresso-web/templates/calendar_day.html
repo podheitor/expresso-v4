@@ -4715,5 +4715,23 @@ window.copyDayCategoriesBreakdown=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFreeBusyStrip=function(){
+  const slots=new Array(48).fill('.');
+  const evs=document.querySelectorAll('[data-event]');
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start),ed=new Date(e.dataset.end||e.dataset.start);
+    if(isNaN(s)||isNaN(ed)) return;
+    const si=s.getHours()*2+(s.getMinutes()>=30?1:0);
+    const ei=ed.getHours()*2+(ed.getMinutes()>=30?1:0);
+    for(let i=si;i<ei && i<48;i++) slots[i]='#';
+  });
+  const out='00:00 ['+slots.join('')+'] 24:00\nbusy='+slots.filter(s=>s==='#').length+'/48 slots';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='strip';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

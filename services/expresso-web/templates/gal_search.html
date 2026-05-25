@@ -4306,5 +4306,21 @@ window.copyGalCostCenters=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalAvailability=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const counts={available:0,away:0,busy:0,dnd:0,offline:0,unknown:0};
+  rows.forEach(r=>{
+    const p=(r.dataset.presence||r.dataset.status||'unknown').toLowerCase();
+    if(counts[p]!=null) counts[p]++;else counts.unknown++;
+  });
+  const out=Object.entries(counts).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='presence\tcount\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='av '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

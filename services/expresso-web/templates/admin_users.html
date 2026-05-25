@@ -4533,5 +4533,22 @@ window.copyUsersByRole=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersStorageTopConsumers=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const arr=[];
+  rows.forEach(r=>{
+    const used=parseInt(r.dataset.storageUsed||r.dataset.usedBytes||'0',10);
+    if(used>0) arr.push({u:r.dataset.username||r.dataset.email||'',used});
+  });
+  arr.sort((a,b)=>b.used-a.used);
+  const top=arr.slice(0,20).map(x=>x.u+'\t'+(x.used/1048576).toFixed(1)+'MB').join('\n');
+  const txt='user\tusedMB\n'+top;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top '+Math.min(arr.length,20);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
