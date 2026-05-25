@@ -3287,5 +3287,28 @@ window.composeTrimAllFields=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeCountRecipients=function(){
+  const fields=['to','cc','bcc'];
+  const out=[];
+  let total=0;
+  fields.forEach(f=>{
+    const el=document.querySelector('input[name="'+f+'"]');
+    const raw=el?el.value:'';
+    const n=raw.split(/[,;]/).map(s=>s.trim()).filter(Boolean).length;
+    out.push(f+'\t'+n);
+    total+=n;
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n')+'\ntotal\t'+total;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rcp '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
