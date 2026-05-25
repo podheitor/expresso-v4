@@ -6555,5 +6555,19 @@ window.copyTasksOverdueByDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksStatusFlow=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const counts={};
+  rows.forEach(r=>{const st=(r.getAttribute('data-status')||'unknown').toLowerCase();counts[st]=(counts[st]||0)+1;});
+  const order=['todo','in-progress','review','blocked','done','cancelled','archived'];
+  const sorted=order.filter(s=>counts[s]).concat(Object.keys(counts).filter(s=>!order.includes(s)));
+  const out='status flow:\n'+sorted.map(k=>k+'\t'+counts[k]).join('\n')+'\ntotal: '+rows.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='flw '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

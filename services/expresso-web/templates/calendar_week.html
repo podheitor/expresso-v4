@@ -5813,5 +5813,18 @@ window.copyWeekBusyDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFocusBlocks=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  const arr=evs.map(e=>({s:new Date(e.getAttribute('data-start')).getTime(),e:new Date(e.getAttribute('data-end')).getTime()})).filter(x=>!isNaN(x.s)).sort((a,b)=>a.s-b.s);
+  const focus=[];
+  for(let i=1;i<arr.length;i++){const g=arr[i].s-arr[i-1].e;if(g>=120*60000){focus.push(new Date(arr[i-1].e).toISOString()+' -> '+new Date(arr[i].s).toISOString()+'\t'+Math.round(g/60000)+'min');}}
+  const out='focus blocks (>=2h gaps) ('+focus.length+'):\n'+focus.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fcs '+focus.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5626,5 +5626,17 @@ window.copyAuditWeekendActivity=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditFailedLogins=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const lines=[];
+  rows.forEach(r=>{const a=(r.getAttribute('data-action')||'').toLowerCase();const st=(r.getAttribute('data-status')||r.getAttribute('data-result')||'').toLowerCase();if((a.includes('login')||a.includes('auth'))&&(st==='fail'||st==='failed'||st==='denied'||r.hasAttribute('data-failed'))){lines.push((r.getAttribute('data-ts')||'')+'\t'+(r.getAttribute('data-actor')||'')+'\t'+(r.getAttribute('data-ip')||'')+'\t'+a);}});
+  const out='failed logins ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fl '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

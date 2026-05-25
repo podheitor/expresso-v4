@@ -5888,5 +5888,21 @@ window.copyMonthBusiestWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthMeetingFreeDays=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const meetDays=new Set();
+  evs.forEach(e=>{const att=(e.getAttribute('data-attendees')||'').split(/[,;]/).filter(Boolean);if(att.length>=2){const s=(e.getAttribute('data-start')||'').slice(0,10);if(s)meetDays.add(s);}});
+  const cells=document.querySelectorAll('[data-day]');
+  const all=[];
+  cells.forEach(c=>{const d=c.getAttribute('data-day');if(d)all.push(d);});
+  const free=all.filter(d=>!meetDays.has(d));
+  const out='meeting-free days ('+free.length+'/'+all.length+'):\n'+free.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mf '+free.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

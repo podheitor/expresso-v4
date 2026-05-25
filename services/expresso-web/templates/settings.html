@@ -5886,5 +5886,16 @@ window.copySettingsPermissionsStatus=function(){
   names.forEach(n=>{if(!navigator.permissions||!navigator.permissions.query){results.push(n+': unsupported');if(--pending===0)done();return;}navigator.permissions.query({name:n}).then(r=>{results.push(n+': '+r.state);}).catch(e=>{results.push(n+': error');}).finally(()=>{if(--pending===0)done();});});
   function done(){const out='permissions status:\n'+results.sort().join('\n');const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='prm '+results.length;document.body.appendChild(t);setTimeout(()=>t.remove(),1500);}
 };
+window.copySettingsRtlAndDirection=function(){
+  const dir=document.documentElement.getAttribute('dir')||document.body.getAttribute('dir')||getComputedStyle(document.documentElement).direction||'ltr';
+  const lang=document.documentElement.getAttribute('lang')||'(unset)';
+  const out='document direction: '+dir+'\nhtml lang: '+lang+'\nrtl support: '+(dir==='rtl'?'enabled':'disabled');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dir '+dir;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

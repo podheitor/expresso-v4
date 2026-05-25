@@ -5787,5 +5787,18 @@ window.copyDayConflicts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayIcsFormat=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Expresso//Day//EN'];
+  evs.forEach(e=>{const s=(e.getAttribute('data-start')||'').replace(/[-:]/g,'').replace(/\.\d+/,'');const en=(e.getAttribute('data-end')||'').replace(/[-:]/g,'').replace(/\.\d+/,'');lines.push('BEGIN:VEVENT','UID:'+(e.getAttribute('data-id')||Math.random().toString(36).slice(2))+'@expresso','DTSTART:'+s,'DTEND:'+en,'SUMMARY:'+(e.getAttribute('data-title')||''),'END:VEVENT');});
+  lines.push('END:VCALENDAR');
+  const out=lines.join('\r\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ics '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

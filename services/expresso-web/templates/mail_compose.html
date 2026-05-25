@@ -5272,5 +5272,19 @@ window.composeBodyLineCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBlockquoteRatio=function(){
+  const body=document.querySelector('[name="body"],#body,[data-body-input],[contenteditable="true"]');
+  const v=body?(body.value||body.textContent||''):'';
+  const lines=v.split(/\r?\n/);
+  const quoted=lines.filter(l=>/^\s*>/.test(l)).length;
+  const pct=lines.length?Math.round(quoted/lines.length*100):0;
+  const out='total lines: '+lines.length+'\nquoted lines: '+quoted+'\nquote ratio: '+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pct>50?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bq '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
