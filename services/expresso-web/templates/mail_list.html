@@ -4637,5 +4637,18 @@ window.copyMailReplyAllCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailDeliveryFailures=function(){
+  const out=[];
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    const sub=(r.getAttribute('data-subject')||'').toLowerCase(),from=(r.getAttribute('data-from')||'').toLowerCase();
+    if(/mailer-daemon|postmaster|undeliver|delivery (failure|status)|bounce/.test(from)||/undeliver|failure notice|returned/.test(sub))out.push((r.getAttribute('data-date')||'?')+'\t'+from+'\t'+(r.getAttribute('data-subject')||'?').slice(0,80));
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bounce '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -3892,5 +3892,23 @@ window.composeStripSignature=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeUnclosedQuotes=function(){
+  const body=document.querySelector('[name=body]')?.value||document.querySelector('[contenteditable=true]')?.innerText||'';
+  const counts={'"':0,"'":0,'`':0,'(':0,')':0,'[':0,']':0,'{':0,'}':0};
+  for(const c of body)if(c in counts)counts[c]++;
+  const issues=[];
+  if(counts['"']%2)issues.push('"');
+  if(counts["'"]%2)issues.push("'");
+  if(counts['(']!==counts[')'])issues.push('()');
+  if(counts['[']!==counts[']'])issues.push('[]');
+  if(counts['{']!==counts['}'])issues.push('{}');
+  const out='counts='+JSON.stringify(counts)+'\nimbalanced='+issues.join(',');
+  const tx=document.createElement('textarea');tx.value=out;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(issues.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=issues.length?'imbal '+issues.join(','):'quotes ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

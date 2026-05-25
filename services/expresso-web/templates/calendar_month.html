@@ -4289,5 +4289,21 @@ window.copyMonthOneOnOnes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEarliestEvent=function(){
+  let best=null;
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    if(isNaN(s))return;
+    const h=new Date(s).getHours()+new Date(s).getMinutes()/60;
+    if(!best||h<best.h)best={h:h,ts:e.getAttribute('data-start')||'?',t:e.getAttribute('data-title')||'?'};
+  });
+  const out=best?best.ts+'\t'+best.t+'\t'+best.h.toFixed(2)+'h':'(no events)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='early '+(best?best.h.toFixed(1)+'h':'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

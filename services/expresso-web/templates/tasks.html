@@ -5008,5 +5008,21 @@ window.copyTasksCommentCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksLabelMatrix=function(){
+  const labels={};
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    (r.getAttribute('data-labels')||r.getAttribute('data-tags')||'').split(',').filter(Boolean).forEach(l=>{
+      l=l.trim();labels[l]=labels[l]||{open:0,done:0};
+      if(r.getAttribute('data-status')==='done')labels[l].done++;else labels[l].open++;
+    });
+  });
+  const out=Object.entries(labels).sort((a,b)=>(b[1].open+b[1].done)-(a[1].open+a[1].done)).map(([k,v])=>k+'\topen='+v.open+'\tdone='+v.done).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lbl '+Object.keys(labels).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
