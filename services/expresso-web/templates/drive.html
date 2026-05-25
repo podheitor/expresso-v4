@@ -5903,5 +5903,20 @@ window.copyDriveColorLabels=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveCheckedOut=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const lines=[];
+  items.forEach(i=>{
+    const who=i.getAttribute('data-checked-out-by');
+    if(who||i.hasAttribute('data-checked-out'))lines.push((i.getAttribute('data-name')||'?')+'\tby '+(who||'?'));
+  });
+  const out=lines.join('\n')||'nothing checked out';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='co '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

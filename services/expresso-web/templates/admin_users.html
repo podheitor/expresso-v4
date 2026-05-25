@@ -5259,5 +5259,22 @@ window.copyUsersOverdueResets=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersStorageUsageHistogram=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const buckets={'0-1GB':0,'1-5GB':0,'5-20GB':0,'20-50GB':0,'>50GB':0};
+  rows.forEach(r=>{
+    const b=parseFloat(r.getAttribute('data-storage-bytes')||r.getAttribute('data-quota-used-bytes')||'0');
+    const gb=b/(1024*1024*1024);
+    if(gb<=1)buckets['0-1GB']++;else if(gb<=5)buckets['1-5GB']++;else if(gb<=20)buckets['5-20GB']++;else if(gb<=50)buckets['20-50GB']++;else buckets['>50GB']++;
+  });
+  const lines=Object.entries(buckets).map(([k,n])=>k+'\t'+n);
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sh '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5273,5 +5273,24 @@ window.copyAuditMultiFailureActors=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditUniqueActorsDay=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const byDay={};
+  rows.forEach(r=>{
+    const ts=(r.getAttribute('data-timestamp')||'').slice(0,10);
+    const a=r.getAttribute('data-actor')||'?';
+    if(!ts)return;
+    if(!byDay[ts])byDay[ts]=new Set();
+    byDay[ts].add(a);
+  });
+  const lines=Object.entries(byDay).sort().map(([d,s])=>d+'\t'+s.size);
+  const out=lines.join('\n')||'no data';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ua '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

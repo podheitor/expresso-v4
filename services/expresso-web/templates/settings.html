@@ -5567,5 +5567,17 @@ window.copySettingsServiceWorkerStatus=function(){
     setTimeout(()=>t.remove(),1500);
   }).catch(()=>{});
 };
+window.copySettingsScrollPosition=function(){
+  const x=window.scrollX,y=window.scrollY;
+  const total=document.documentElement.scrollHeight-window.innerHeight;
+  const pct=total>0?((y/total)*100).toFixed(1):'0';
+  const out='x='+x+'\ny='+y+'\nviewportH='+window.innerHeight+'\ndocH='+document.documentElement.scrollHeight+'\nscroll='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='scr '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

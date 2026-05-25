@@ -5512,5 +5512,23 @@ window.copyMonthVisibilityBreakdown=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthDurationP90=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const durs=[];
+  evs.forEach(e=>{
+    const s=new Date(e.getAttribute('data-start')||0).getTime();
+    const en=new Date(e.getAttribute('data-end')||0).getTime();
+    if(!isNaN(s)&&!isNaN(en)&&en>s)durs.push((en-s)/60000);
+  });
+  durs.sort((a,b)=>a-b);
+  const pick=p=>durs.length?durs[Math.min(durs.length-1,Math.floor(durs.length*p))]:0;
+  const out='events='+durs.length+'\np50='+pick(.5).toFixed(0)+'m\np90='+pick(.9).toFixed(0)+'m\np99='+pick(.99).toFixed(0)+'m';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='p90 '+pick(.9).toFixed(0)+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

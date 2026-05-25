@@ -6456,5 +6456,23 @@ window.copyChatTypingIndicatorsLog=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatHistoryDepth=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const times=[];
+  msgs.forEach(m=>{
+    const ts=m.getAttribute('data-timestamp');
+    if(ts){const t=new Date(ts).getTime();if(!isNaN(t))times.push(t);}
+  });
+  if(!times.length){const ta=document.createElement('textarea');ta.value='no timestamped msgs';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='hd n/a';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  const min=Math.min(...times),max=Math.max(...times);
+  const days=((max-min)/86400000).toFixed(1);
+  const out='messages='+times.length+'\nearliest='+new Date(min).toISOString()+'\nlatest='+new Date(max).toISOString()+'\ndepth='+days+'d';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hd '+days+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

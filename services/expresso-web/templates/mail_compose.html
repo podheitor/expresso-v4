@@ -4920,5 +4920,18 @@ window.composeBccCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeEmojiCount=function(){
+  const body=document.querySelector('[data-compose-body],textarea[name=body],#compose-body')?.value||document.querySelector('[data-compose-body]')?.textContent||'';
+  const subj=document.querySelector('[name=subject],#compose-subject')?.value||'';
+  const re=/\p{Extended_Pictographic}/gu;
+  const bn=(body.match(re)||[]).length,sn=(subj.match(re)||[]).length;
+  const out='subject='+sn+'\nbody='+bn+'\ntotal='+(sn+bn);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='emj '+(sn+bn);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
