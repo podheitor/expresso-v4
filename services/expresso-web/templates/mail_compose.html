@@ -3725,5 +3725,18 @@ window.composeAttachmentSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeExternalRecipients=function(){
+  const myDomain=('{{ me.email }}'||'').split('@')[1]?.toLowerCase()||'';
+  const split=v=>(v||'').split(/[,;]/).map(s=>s.trim().toLowerCase()).filter(Boolean);
+  const all=[...split(document.querySelector('input[name=to]')?.value),...split(document.querySelector('input[name=cc]')?.value),...split(document.querySelector('input[name=bcc]')?.value)];
+  const ext=all.filter(a=>{const m=a.match(/@(.+)$/);return m&&m[1]!==myDomain;});
+  const out=ext.length?ext.join('\n'):'(no external recipients)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(ext.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=ext.length?'ext '+ext.length:'internal';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -3696,5 +3696,15 @@ window.copyMeetRecordingState=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetScreenShareInfo=function(){
+  const share=document.querySelector('[data-screen-share="1"],.screen-sharing');
+  const out=share?'sharing=yes\nby='+(share.getAttribute('data-user')||'?')+'\nsince='+(share.getAttribute('data-share-since')||'?')+'\nfps='+(share.getAttribute('data-fps')||'?'):'sharing=no';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(share?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=share?'share '+(share.getAttribute('data-user')||'?'):'no-share';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

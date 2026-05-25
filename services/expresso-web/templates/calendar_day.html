@@ -4061,5 +4061,22 @@ window.copyDayDescriptionLinks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayBusyPct=function(){
+  let busyMin=0;
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    if((e.getAttribute('data-busy')||'busy')==='free')return;
+    const s=Date.parse(e.getAttribute('data-start')||''),en=Date.parse(e.getAttribute('data-end')||'');
+    if(isNaN(s)||isNaN(en))return;busyMin+=(en-s)/60000;
+  });
+  const workMin=8*60;
+  const pct=(busyMin/workMin*100).toFixed(1);
+  const out='busy-min='+Math.round(busyMin)+'\nwork-day-min='+workMin+'\npct='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(busyMin>workMin?'#c00':busyMin>workMin*0.7?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='busy '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
