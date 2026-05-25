@@ -5735,5 +5735,18 @@ window.copyWeekHourlyHeatmap=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekShortestGap=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  const arr=evs.map(e=>({s:new Date(e.getAttribute('data-start')).getTime(),e:new Date(e.getAttribute('data-end')).getTime(),t:e.getAttribute('data-title')||''})).filter(x=>!isNaN(x.s)&&!isNaN(x.e)).sort((a,b)=>a.s-b.s);
+  let minGap=Infinity,pair=null;
+  for(let i=1;i<arr.length;i++){const g=arr[i].s-arr[i-1].e;if(g>=0&&g<minGap){minGap=g;pair=[arr[i-1],arr[i]];}}
+  const out=pair?'shortest gap: '+Math.round(minGap/60000)+'min\nafter: '+pair[0].t+' (ends '+new Date(pair[0].e).toISOString()+')\nbefore: '+pair[1].t+' (starts '+new Date(pair[1].s).toISOString()+')':'no measurable gap';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(minGap<300000?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gap '+(pair?Math.round(minGap/60000)+'m':'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

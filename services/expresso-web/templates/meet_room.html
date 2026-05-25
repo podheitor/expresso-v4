@@ -5175,5 +5175,18 @@ window.copyMeetSpeakerStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetReactions=function(){
+  const reacts=document.querySelectorAll('[data-reaction]');
+  const counts={};
+  reacts.forEach(r=>{const k=(r.getAttribute('data-emoji')||r.getAttribute('data-reaction')||'').trim();if(k)counts[k]=(counts[k]||0)+1;});
+  const sorted=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
+  const out='reactions ('+reacts.length+', '+sorted.length+' unique):\n'+sorted.map(k=>k+'\t'+counts[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rct '+reacts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

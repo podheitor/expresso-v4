@@ -5196,5 +5196,19 @@ window.composeSubjectLength=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeReplyChainLength=function(){
+  const sub=document.querySelector('[name="subject"],#subject,[data-subject-input]');
+  const v=sub?(sub.value||sub.textContent||''):'';
+  let depth=0;
+  const m=v.match(/^((?:re|fwd?|enc?|tr|aw|sv|rv)\s*[:\s])+/i);
+  if(m)depth=m[0].split(/[:\s]+/).filter(Boolean).length;
+  const out='reply/forward chain depth: '+depth+'\nprefix: "'+(m?m[0].trim():'(none)')+'"\nclean subject: "'+(m?v.slice(m[0].length).trim():v)+'"';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(depth>3?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='chn '+depth;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

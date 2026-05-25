@@ -5206,5 +5206,18 @@ window.copyHomeBrowserLanguages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeImagesLoadStatus=function(){
+  const imgs=document.querySelectorAll('img');
+  let loaded=0,broken=0,pending=0;
+  const broks=[];
+  imgs.forEach(i=>{if(i.complete){if(i.naturalWidth===0){broken++;broks.push(i.src);}else loaded++;}else pending++;});
+  const out='images: '+imgs.length+'\nloaded: '+loaded+'\nbroken: '+broken+'\npending: '+pending+'\n\nbroken sources:\n'+broks.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(broken?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='img '+loaded+'/'+imgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
