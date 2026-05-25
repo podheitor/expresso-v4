@@ -2558,5 +2558,25 @@ window.copyUsers2faOff=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersInactive=function(){
+  const cutoff=Date.now()-30*86400000;
+  const rows=document.querySelectorAll('[data-user-id]');
+  const out=[];
+  rows.forEach(r=>{
+    const t=Date.parse(r.dataset.lastLogin||r.dataset.lastSeen||'');
+    if(!t||t<cutoff)out.push((r.dataset.email||r.dataset.userId)+' '+(r.dataset.lastLogin||'never'));
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='in '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

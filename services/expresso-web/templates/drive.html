@@ -3315,5 +3315,23 @@ window.copyDriveTypeCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTotalKB=function(){
+  const rows=document.querySelectorAll('[data-id]');
+  let sum=0;
+  rows.forEach(r=>{const s=parseInt(r.dataset.size||'0',10);if(s>0)sum+=s;});
+  const kb=Math.round(sum/1024);
+  const mb=(sum/1048576).toFixed(2);
+  const ta=document.createElement('textarea');
+  ta.value=kb+' KB ('+mb+' MB across '+rows.length+' files)';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tot '+mb+'M';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
