@@ -4026,5 +4026,27 @@ window.copyTasksOldestPending=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksUnassignedCount=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let un=0,tot=0;
+  rows.forEach(r=>{
+    tot++;
+    const o=(r.getAttribute('data-owner')||'').trim();
+    if(!o){un++;}
+  });
+  const pct=tot?((un*100)/tot).toFixed(1):'0';
+  const out='total\t'+tot+'\nunassigned\t'+un+'\npct\t'+pct+'%';
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='un '+un+'/'+tot;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
