@@ -5211,5 +5211,22 @@ window.copyMonthEventDurationHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthReminderTotals=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const types={email:0,popup:0,sms:0,none:0,multiple:0};
+  evs.forEach(e=>{
+    const r=(e.getAttribute('data-reminders')||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+    if(r.length===0)types.none++;
+    else if(r.length>1)types.multiple++;
+    else if(types[r[0]]!==undefined)types[r[0]]++;
+  });
+  const out='reminder_type\tevents\n'+Object.entries(types).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rmd '+(evs.length-types.none);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4663,5 +4663,17 @@ window.composeSubjectLengthCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBccLargeCount=function(){
+  const bcc=(document.getElementById('compose-bcc')||document.querySelector('[name="bcc"]')||{value:''}).value;
+  const recipients=bcc.split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+  const warn=recipients.length>=20;
+  const out='bcc_count='+recipients.length+'\nthreshold=20\nwarn='+warn+'\nrecipients=\n'+recipients.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(warn?'#c00':(recipients.length>10?'#c60':'#069'))+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bcc '+recipients.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

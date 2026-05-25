@@ -5530,5 +5530,24 @@ window.copyContactsCreatedVsUpdated=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsRelationshipsGraph=function(){
+  const rows=document.querySelectorAll('[data-contact]');
+  const types={};
+  rows.forEach(r=>{
+    const rels=(r.getAttribute('data-relationships')||r.getAttribute('data-relations')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    rels.forEach(rel=>{
+      const k=rel.split(':')[0]||rel;
+      types[k]=(types[k]||0)+1;
+    });
+  });
+  const sorted=Object.entries(types).sort((a,b)=>b[1]-a[1]);
+  const out='relationship_type\tcount\n'+sorted.map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rel '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

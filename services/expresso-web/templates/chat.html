@@ -6184,5 +6184,21 @@ window.copyChatMessagesPerMinute=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatGifStickerUsage=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  let gifs=0,stickers=0,images=0;
+  msgs.forEach(m=>{
+    gifs+=m.querySelectorAll('img[src$=".gif"], [data-type="gif"]').length;
+    stickers+=m.querySelectorAll('[data-type="sticker"], .sticker').length;
+    images+=m.querySelectorAll('img:not([src$=".gif"])').length;
+  });
+  const out='gifs='+gifs+'\nstickers='+stickers+'\nstatic_images='+images+'\ntotal_msgs='+msgs.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gif '+gifs;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

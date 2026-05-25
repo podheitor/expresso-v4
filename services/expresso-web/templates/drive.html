@@ -5627,5 +5627,21 @@ window.copyDriveFolderHierarchy=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveShortcutItems=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const sc=[];
+  items.forEach(i=>{
+    if(i.getAttribute('data-type')==='shortcut'||i.hasAttribute('data-shortcut')||i.querySelector('.shortcut-icon')){
+      sc.push((i.getAttribute('data-name')||'?')+'\t→\t'+(i.getAttribute('data-target')||i.getAttribute('data-shortcut-target')||'?'));
+    }
+  });
+  const out='shortcuts='+sc.length+'/'+items.length+'\nname\t→\ttarget\n'+sc.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sc '+sc.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

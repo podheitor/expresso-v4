@@ -4638,5 +4638,21 @@ window.copyMeetNetworkQuality=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetScreenSharers=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const sharers=[];
+  parts.forEach(p=>{
+    if(p.hasAttribute('data-screen-sharing')||p.querySelector('.screen-sharing-icon')){
+      sharers.push((p.getAttribute('data-name')||'?')+'\t'+(p.getAttribute('data-share-type')||'screen'));
+    }
+  });
+  const out='active_sharers='+sharers.length+'\nname\tshare_type\n'+sharers.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(sharers.length?'#069':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ss '+sharers.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

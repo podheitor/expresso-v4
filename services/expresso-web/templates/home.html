@@ -4709,5 +4709,17 @@ window.copyHomeMetaCharset=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeCookieSizes=function(){
+  const all=document.cookie.split(';').map(c=>c.trim()).filter(Boolean);
+  const lines=all.map(c=>{const [k,...v]=c.split('=');const val=v.join('=');return k+'\t'+val.length+'B';});
+  const total=all.reduce((s,c)=>s+c.length+2,0);
+  const out='cookies='+all.length+'\ntotal_bytes='+total+'\nname\tvalue_size\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ck '+all.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

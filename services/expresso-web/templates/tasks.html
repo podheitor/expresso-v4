@@ -5908,5 +5908,23 @@ window.copyTasksAssigneeDistribution=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksTimeToFirstAction=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const diffs=[];
+  rows.forEach(r=>{
+    const c=Date.parse(r.getAttribute('data-created')||'');
+    const f=Date.parse(r.getAttribute('data-firstAction')||r.getAttribute('data-first-action')||'');
+    if(!isNaN(c)&&!isNaN(f)&&f>=c)diffs.push((f-c)/3600000);
+  });
+  const avg=diffs.length?(diffs.reduce((a,b)=>a+b,0)/diffs.length).toFixed(2):'0';
+  const max=diffs.length?Math.max(...diffs).toFixed(2):'0';
+  const out='tasks_with_action='+diffs.length+'/'+rows.length+'\navg_hours_to_first='+avg+'\nmax_hours='+max;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ttfa '+avg+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
