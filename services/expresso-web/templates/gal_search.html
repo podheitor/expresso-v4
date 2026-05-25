@@ -4191,5 +4191,25 @@ window.copyGalByLocation=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalManagerChain=function(){
+  const rows=Array.from(document.querySelectorAll('[data-gal-row]'));
+  const byEmail={};
+  rows.forEach(r=>{byEmail[(r.getAttribute('data-email')||'').toLowerCase()]=r;});
+  const sel=rows[0];
+  if(!sel){const ta=document.createElement('textarea');ta.value='(no rows)';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return;}
+  const chain=[];
+  let cur=sel,guard=0;
+  while(cur&&guard++<10){
+    chain.push((cur.getAttribute('data-name')||'?')+'\t'+(cur.getAttribute('data-email')||'')+'\t'+(cur.getAttribute('data-title')||''));
+    const m=(cur.getAttribute('data-manager')||'').toLowerCase();
+    cur=m?byEmail[m]:null;
+  }
+  const ta=document.createElement('textarea');ta.value=chain.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mgr '+chain.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

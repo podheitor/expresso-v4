@@ -4174,5 +4174,17 @@ window.composeAttachmentSizeTotal=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBccCheck=function(){
+  const bcc=document.querySelector('input[name=bcc],textarea[name=bcc]');
+  const v=(bcc&&bcc.value)||'';
+  const addrs=v.split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+  const out='bcc-recipients\t'+addrs.length+'\nbcc-visible\t'+(bcc&&getComputedStyle(bcc).display!=='none'?'yes':'no')+'\naddresses\n'+addrs.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(addrs.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bcc '+addrs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
