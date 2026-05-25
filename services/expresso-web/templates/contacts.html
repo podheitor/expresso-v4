@@ -3097,5 +3097,30 @@ window.copyContactsNoEmail=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsRandomEmail=function(){
+  const rows=document.querySelectorAll('[data-contact-id]');
+  const emails=[];
+  rows.forEach(r=>{const e=(r.dataset.email||'').trim();if(e)emails.push(e);});
+  if(emails.length===0){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='no emails';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const pick=emails[Math.floor(Math.random()*emails.length)];
+  const ta=document.createElement('textarea');
+  ta.value=pick;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rnd '+pick;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

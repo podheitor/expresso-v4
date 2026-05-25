@@ -3253,5 +3253,25 @@ window.copyDriveNewest=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveAvgSize=function(){
+  const rows=document.querySelectorAll('[data-id]');
+  let sum=0,n=0;
+  rows.forEach(r=>{
+    const s=parseInt(r.dataset.size||'0',10);
+    if(s>0){sum+=s;n++;}
+  });
+  const avg=n?Math.round(sum/n/1024):0;
+  const ta=document.createElement('textarea');
+  ta.value='avg '+avg+' KB ('+n+' files)';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg+'K';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
