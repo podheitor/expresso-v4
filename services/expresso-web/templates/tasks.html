@@ -5665,5 +5665,24 @@ window.copyTasksByProject=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksClosedThisWeek=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const cutoff=Date.now()-7*86400000;
+  const out=[];
+  rows.forEach(r=>{
+    const closed=r.dataset.closedAt||r.dataset.completedAt||r.dataset.doneAt;
+    if(!closed)return;
+    const t=new Date(closed).getTime();
+    if(!isNaN(t)&&t>=cutoff) out.push((r.dataset.title||'')+'\t'+(r.dataset.assignee||r.dataset.assignedTo||'')+'\t'+closed);
+  });
+  out.sort((a,b)=>(b.split('\t')[2]||'').localeCompare(a.split('\t')[2]||''));
+  const txt='title\tassignee\tclosedAt ('+out.length+' closed in last 7d)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#0a0':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='clw '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

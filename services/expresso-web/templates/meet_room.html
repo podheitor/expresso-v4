@@ -4423,5 +4423,23 @@ window.copyMeetScreenShareEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRecordingState=function(){
+  const root=document.querySelector('[data-meet-room]')||document.body;
+  const info={
+    recording: root.dataset.recording==='1'||root.dataset.recordingState==='active',
+    startedAt: root.dataset.recordingStart||'',
+    durationSec: parseInt(root.dataset.recordingDuration||'0',10),
+    storage: root.dataset.recordingStorage||'',
+    consentRequired: root.dataset.recordingConsent==='1',
+    recorders: [...document.querySelectorAll('[data-recorder]')].map(r=>r.dataset.recorder).filter(Boolean)
+  };
+  const txt=JSON.stringify(info,null,2);
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(info.recording?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rec '+(info.recording?'live':'off');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

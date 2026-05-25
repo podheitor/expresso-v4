@@ -5395,5 +5395,24 @@ window.copyDriveOrphanedItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveCreatedThisQuarter=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const now=new Date();
+  const q=Math.floor(now.getMonth()/3);
+  const qStart=new Date(now.getFullYear(),q*3,1).getTime();
+  const out=[];
+  items.forEach(i=>{
+    const c=new Date(i.dataset.createdAt||i.dataset.created||'').getTime();
+    if(!isNaN(c)&&c>=qStart) out.push((i.dataset.name||'')+'\t'+(i.dataset.owner||'')+'\t'+(i.dataset.createdAt||''));
+  });
+  out.sort((a,b)=>(b.split('\t')[2]||'').localeCompare(a.split('\t')[2]||''));
+  const txt='name\towner\tcreatedAt (Q'+(q+1)+' '+now.getFullYear()+', n='+out.length+')\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='q '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4681,5 +4681,18 @@ window.copyThreadGapsBetween=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadSubjectHash=function(){
+  const subjects=[...document.querySelectorAll('[data-msg-id]')].map(m=>(m.dataset.subject||'').replace(/^(re|fwd?|fw):\s*/i,'').trim());
+  const set=new Set(subjects.filter(Boolean));
+  let hash=0;
+  subjects.forEach(s=>{for(let i=0;i<s.length;i++){hash=((hash<<5)-hash)+s.charCodeAt(i);hash|=0;}});
+  const out='messages='+subjects.length+'\nuniqueSubjects='+set.size+'\nhash='+hash+'\nfirst='+(subjects[0]||'(none)')+'\nlast='+(subjects[subjects.length-1]||'(none)');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='subj '+set.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

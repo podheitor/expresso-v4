@@ -4733,5 +4733,22 @@ window.copyUsersWithoutManager=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAdminGroup=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const adminRe=/admin|superuser|root|owner|sysadm/i;
+  const out=[];
+  rows.forEach(r=>{
+    const role=r.dataset.role||r.dataset.roles||'';
+    const groups=r.dataset.groups||'';
+    if(adminRe.test(role)||adminRe.test(groups)) out.push((r.dataset.username||r.dataset.email||'')+'\t'+role+'\t'+groups);
+  });
+  const txt='user\trole\tgroups ('+out.length+' admins)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length>10?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='adm '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

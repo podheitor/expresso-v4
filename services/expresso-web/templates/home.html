@@ -4494,5 +4494,25 @@ window.copyHomePerfTiming=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeResourceTotals=function(){
+  const entries=performance.getEntriesByType('resource');
+  const byType={};
+  let total=0;
+  entries.forEach(e=>{
+    const tp=e.initiatorType||'other';
+    byType[tp]=byType[tp]||{count:0,bytes:0};
+    byType[tp].count++;
+    byType[tp].bytes+=e.transferSize||0;
+    total+=e.transferSize||0;
+  });
+  const out=Object.entries(byType).sort((a,b)=>b[1].bytes-a[1].bytes).map(([k,v])=>k+'\t'+v.count+'\t'+v.bytes).join('\n');
+  const txt='type\tcount\tbytes (totalBytes='+total+', n='+entries.length+')\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='res '+entries.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

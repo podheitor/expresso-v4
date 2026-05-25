@@ -5948,5 +5948,26 @@ window.copyChatDailyVolume=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMsgLengthDistribution=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const buckets={'1-50':0,'51-200':0,'201-500':0,'501-1000':0,'1000+':0};
+  msgs.forEach(m=>{
+    const text=((m.querySelector('[data-text]')||m).textContent||'').trim();
+    const l=text.length;
+    if(l<=50) buckets['1-50']++;
+    else if(l<=200) buckets['51-200']++;
+    else if(l<=500) buckets['201-500']++;
+    else if(l<=1000) buckets['501-1000']++;
+    else buckets['1000+']++;
+  });
+  const out=Object.entries(buckets).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='bucket\tcount (n='+msgs.length+')\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='len '+msgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
