@@ -3952,5 +3952,24 @@ window.copyDriveSharedFiles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTotalSizeMB=function(){
+  let total=0;
+  document.querySelectorAll('[data-drive-row]').forEach(r=>{
+    const s=parseInt(r.getAttribute('data-size')||'0',10);
+    if(!isNaN(s)){total+=s;}
+  });
+  const mb=(total/1048576).toFixed(2);
+  const ta=document.createElement('textarea');
+  ta.value='total_bytes\t'+total+'\ntotal_mb\t'+mb;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=mb+'MB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

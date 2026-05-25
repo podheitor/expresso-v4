@@ -3268,5 +3268,27 @@ window.copyAuditMethodMix=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAudit4xxOnly=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const s=parseInt(r.getAttribute('data-status')||'0',10);
+    if(s>=400&&s<500){
+      out.push((r.getAttribute('data-ts')||'')+'\t'+s+'\t'+(r.getAttribute('data-method')||'')+'\t'+(r.getAttribute('data-path')||''));
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  const bg=out.length>0?'#c60':'#069';
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+bg+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='4xx '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
