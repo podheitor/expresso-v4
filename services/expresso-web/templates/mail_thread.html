@@ -6030,5 +6030,30 @@ window.copyThreadMessageIds=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadReceivedSpan=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  const arr=[];
+  msgs.forEach(m=>{
+    const t=Date.parse(m.getAttribute('data-date')||'')||0;
+    if(t)arr.push(t);
+  });
+  if(!arr.length){
+    const ta=document.createElement('textarea');ta.value='no dates';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='span none';
+    document.body.appendChild(t);setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  arr.sort((a,b)=>a-b);
+  const span=Math.round((arr[arr.length-1]-arr[0])/86400000);
+  const out='span: '+span+' days\nfirst: '+new Date(arr[0]).toISOString()+'\nlast: '+new Date(arr[arr.length-1]).toISOString();
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='spn '+span;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

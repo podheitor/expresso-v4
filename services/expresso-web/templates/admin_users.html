@@ -6081,5 +6081,19 @@ window.copyUsersSuspendedList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersWithMfaCount=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  let yes=0,no=0;
+  rows.forEach(r=>{
+    if((r.getAttribute('data-mfa')||'')==='1')yes++;else no++;
+  });
+  const out='mfa enabled: '+yes+'\nmfa disabled: '+no+'\ntotal: '+(yes+no);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mfa '+yes+'/'+(yes+no);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
