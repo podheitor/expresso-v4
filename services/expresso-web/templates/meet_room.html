@@ -4346,5 +4346,19 @@ window.copyMeetParticipantsByRole=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetEncryptionMode=function(){
+  const root=document.querySelector('[data-meet-room]')||document.body;
+  const mode=root.dataset.encryption||root.dataset.encryptionMode||'unknown';
+  const e2ee=root.dataset.e2ee==='1'||root.dataset.endToEndEncrypted==='1';
+  const dtls=root.dataset.dtls||'?';
+  const srtp=root.dataset.srtp||'?';
+  const out='mode='+mode+'\ne2ee='+e2ee+'\ndtls='+dtls+'\nsrtp='+srtp+'\nsecureContext='+window.isSecureContext;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(e2ee?'#0a0':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='enc '+mode;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

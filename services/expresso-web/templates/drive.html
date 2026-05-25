@@ -5311,5 +5311,22 @@ window.copyDriveModifiedThisWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTextFiles=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const out=[];
+  items.forEach(i=>{
+    const mime=(i.dataset.mime||'').toLowerCase();
+    const name=i.dataset.name||'';
+    if(mime.startsWith('text/')||/\.(txt|md|log|csv|tsv|json|xml|yaml|yml)$/i.test(name))
+      out.push(name+'\t'+(i.dataset.size||'0')+'\t'+mime);
+  });
+  const txt='name\tsize\tmime\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='txt '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

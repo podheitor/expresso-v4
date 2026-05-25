@@ -4659,5 +4659,20 @@ window.copyAuditAfterHoursActions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditApiCalls=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const path=r.dataset.path||r.dataset.apiPath||r.dataset.endpoint;
+    if(path) out.push((r.dataset.timestamp||'')+'\t'+(r.dataset.method||'')+'\t'+path+'\t'+(r.dataset.statusCode||r.dataset.status||''));
+  });
+  const txt='ts\tmethod\tpath\tstatus\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='api '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

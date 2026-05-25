@@ -5208,5 +5208,21 @@ window.copyContactsLanguagePref=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsWithSocialHandles=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const out=[];
+  const fields=['twitter','x','linkedin','instagram','facebook','telegram','whatsapp','github','mastodon'];
+  cs.forEach(c=>{
+    const handles=fields.filter(f=>c.dataset[f]).map(f=>f+'='+c.dataset[f]);
+    if(handles.length) out.push((c.dataset.displayName||c.dataset.name||'')+'\t'+handles.join('|'));
+  });
+  const txt='contact\tsocial\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='soc '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

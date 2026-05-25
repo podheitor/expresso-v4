@@ -4403,5 +4403,21 @@ window.copyGalDistributionLists=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalHireDates=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const h=r.dataset.hireDate||r.dataset.startDate||r.dataset.joinedAt;
+    if(h) out.push((r.dataset.email||r.dataset.username||'')+'\t'+(r.dataset.displayName||r.dataset.name||'')+'\t'+h);
+  });
+  out.sort((a,b)=>(b.split('\t')[2]||'').localeCompare(a.split('\t')[2]||''));
+  const txt='email\tname\thireDate\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hire '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

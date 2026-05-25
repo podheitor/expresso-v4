@@ -4845,5 +4845,22 @@ window.copyWeekShortestGap=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFirstMeetingPerDay=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const firsts={};
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start);if(isNaN(s))return;
+    const k=s.toISOString().slice(0,10);
+    if(!firsts[k]||s<firsts[k].s) firsts[k]={s,t:e.dataset.title||''};
+  });
+  const out=Object.entries(firsts).sort().map(([k,v])=>k+'\t'+v.s.toTimeString().slice(0,5)+'\t'+v.t).join('\n');
+  const txt='date\tfirstTime\ttitle\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='1st '+Object.keys(firsts).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

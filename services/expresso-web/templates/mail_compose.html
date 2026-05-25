@@ -4358,5 +4358,21 @@ window.composeSubjectChars=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeRemoveTrailingSpaces=function(){
+  const ta2=document.querySelector('textarea[name=body]');
+  if(!ta2)return;
+  const before=ta2.value;
+  const after=before.split('\n').map(l=>l.replace(/[ \t]+$/,'')).join('\n').replace(/\n{3,}/g,'\n\n');
+  const trimmedLines=before.split('\n').filter((l,i)=>l!==after.split('\n')[i]).length;
+  ta2.value=after;
+  ta2.dispatchEvent(new Event('input',{bubbles:true}));
+  const out='trimmedLines='+trimmedLines+'\nbeforeLen='+before.length+'\nafterLen='+after.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='trim '+trimmedLines;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
