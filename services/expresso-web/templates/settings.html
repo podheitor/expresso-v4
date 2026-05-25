@@ -5618,5 +5618,16 @@ window.copySettingsClipboardCheck=function(){
     }).catch(()=>{});
   }).catch(()=>{});
 };
+window.copySettingsGamepadList=function(){
+  const pads=(navigator.getGamepads&&navigator.getGamepads())||[];
+  const list=[...pads].filter(Boolean).map(p=>p.id+'\tbtns='+p.buttons.length+'\taxes='+p.axes.length);
+  const out='count='+list.length+'\n'+list.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gp '+list.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4970,5 +4970,16 @@ window.composeAttachmentTotalSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAllCapsWordCount=function(){
+  const body=(document.querySelector('[name=body],#body,textarea')||{}).value||'';
+  const words=body.split(/\s+/).filter(w=>w.length>=3&&w===w.toUpperCase()&&/[A-Z]/.test(w));
+  const out='allCapsCount='+words.length+'\nsample='+words.slice(0,30).join(', ');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(words.length>5?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='caps '+words.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

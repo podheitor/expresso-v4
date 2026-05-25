@@ -5486,5 +5486,20 @@ window.copyDayBusyMinutesByCategory=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayMeetingFreeBlock=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({
+    s:new Date(e.getAttribute('data-start')||0),
+    e:new Date(e.getAttribute('data-end')||0)})).filter(e=>!isNaN(e.s)).sort((a,b)=>a.s-b.s);
+  const lines=[];
+  for(let i=0;i<evs.length-1;i++){const gap=(evs[i+1].s-evs[i].e)/60000;
+    if(gap>=60)lines.push(evs[i].e.toISOString()+' -> '+evs[i+1].s.toISOString()+'\t'+Math.round(gap)+'m');}
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fb '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
