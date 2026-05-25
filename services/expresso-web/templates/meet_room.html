@@ -3225,5 +3225,31 @@ window.copyMeetRoomUrl=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetMediaPerms=function(){
+  if(!navigator.permissions){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='no perm api';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  Promise.all([
+    navigator.permissions.query({name:'camera'}).catch(()=>({state:'n/a'})),
+    navigator.permissions.query({name:'microphone'}).catch(()=>({state:'n/a'}))
+  ]).then(rs=>{
+    const ta=document.createElement('textarea');
+    ta.value='camera\t'+rs[0].state+'\nmicrophone\t'+rs[1].state;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='cam '+rs[0].state.slice(0,1)+' mic '+rs[1].state.slice(0,1);
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}

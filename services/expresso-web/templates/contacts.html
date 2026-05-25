@@ -3878,5 +3878,26 @@ window.copyContactsExportCsvFull=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsDuplicatesByEmail=function(){
+  const buckets={};
+  document.querySelectorAll('[data-contact-row]').forEach(r=>{
+    const em=(r.getAttribute('data-email')||'').toLowerCase().trim();
+    if(em){buckets[em]=(buckets[em]||0)+1;}
+  });
+  const dup=Object.entries(buckets).filter(x=>x[1]>1).sort((a,b)=>b[1]-a[1]);
+  const out=dup.map(x=>x[1]+'\t'+x[0]).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  const bg=dup.length>0?'#c60':'#069';
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+bg+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dup '+dup.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

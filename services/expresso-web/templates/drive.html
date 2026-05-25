@@ -4010,5 +4010,24 @@ window.copyDriveFolderStructure=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTrashedItems=function(){
+  const rows=document.querySelectorAll('[data-drive-row][data-trashed="true"]');
+  const out=[];
+  rows.forEach(r=>{
+    out.push((r.getAttribute('data-owner')||'')+'\t'+(r.getAttribute('data-name')||''));
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  const bg=out.length>0?'#c60':'#069';
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+bg+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tr '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

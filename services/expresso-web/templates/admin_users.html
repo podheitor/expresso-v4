@@ -3321,5 +3321,26 @@ window.copyUsersTenantList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersTotalCount=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  let act=0,dis=0,oth=0;
+  rows.forEach(r=>{
+    const s=(r.getAttribute('data-status')||'').toLowerCase();
+    if(s==='active'){act++;}
+    else if(s==='disabled'||s==='inactive'){dis++;}
+    else{oth++;}
+  });
+  const ta=document.createElement('textarea');
+  ta.value='total\t'+rows.length+'\nactive\t'+act+'\ndisabled\t'+dis+'\nother\t'+oth;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='u '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
