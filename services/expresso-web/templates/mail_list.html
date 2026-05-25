@@ -6876,5 +6876,19 @@ window.copyMailMessageIds=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailDateBuckets=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const today=new Date().toISOString().slice(0,10);
+  const b={today:0,thisWeek:0,thisMonth:0,older:0};
+  const now=new Date(today);
+  rows.forEach(r=>{const d=r.getAttribute('data-date')||'';if(!d){b.older++;return;}const dd=new Date(d.slice(0,10));const diff=(now-dd)/86400000;if(diff<1)b.today++;else if(diff<7)b.thisWeek++;else if(diff<31)b.thisMonth++;else b.older++;});
+  const out=Object.entries(b).map(([k,v])=>k+': '+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bkt '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
