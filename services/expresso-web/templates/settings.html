@@ -4437,5 +4437,15 @@ window.copySettingsLocalStorageKeys=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsCookieCount=function(){
+  const cs=document.cookie?document.cookie.split(';').map(c=>c.trim()):[];
+  const out=cs.map(c=>{const eq=c.indexOf('=');return (eq>=0?c.slice(0,eq):c)+'\t'+(c.length)+'b';}).join('\n')+'\n--\ntotal-cookies='+cs.length+'\ntotal-bytes='+document.cookie.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ck '+cs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

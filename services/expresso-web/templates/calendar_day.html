@@ -4130,5 +4130,25 @@ window.copyDayCategoryColors=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFreeSlots=function(){
+  const busy=[];
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||''),en=Date.parse(e.getAttribute('data-end')||'');
+    if(!isNaN(s)&&!isNaN(en))busy.push([s,en]);
+  });
+  busy.sort((a,b)=>a[0]-b[0]);
+  const dayStart=new Date();dayStart.setHours(8,0,0,0);
+  const dayEnd=new Date();dayEnd.setHours(18,0,0,0);
+  const free=[];let cur=dayStart.getTime();
+  busy.forEach(([s,e])=>{if(s>cur)free.push([cur,s]);cur=Math.max(cur,e);});
+  if(cur<dayEnd.getTime())free.push([cur,dayEnd.getTime()]);
+  const out=free.filter(([a,b])=>b-a>=15*60000).map(([a,b])=>new Date(a).toTimeString().slice(0,5)+'–'+new Date(b).toTimeString().slice(0,5)+'\t'+Math.round((b-a)/60000)+'min').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='free '+out.split('\n').filter(x=>x).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

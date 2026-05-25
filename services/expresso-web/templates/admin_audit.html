@@ -3980,5 +3980,20 @@ window.copyAuditTargetTopList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditHttpStatusBreakdown=function(){
+  const counts={};
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    const s=r.getAttribute('data-status')||r.getAttribute('data-http-status')||'';
+    if(/^\d/.test(s))counts[s[0]+'xx']=(counts[s[0]+'xx']||0)+1;
+  });
+  const out=Object.entries(counts).sort().map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  const bad=(counts['4xx']||0)+(counts['5xx']||0);
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(bad?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='err '+bad;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

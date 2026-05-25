@@ -4150,5 +4150,19 @@ window.copyWeekRoomBookings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekSoloVsGroup=function(){
+  let solo=0,group=0;
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const n=(e.getAttribute('data-attendees')||'').split(/[,;]/).filter(Boolean).length;
+    if(n<=1)solo++;else group++;
+  });
+  const out='solo='+solo+'\ngroup='+group+'\ntotal='+(solo+group)+'\nsolo-pct='+(solo+group?(solo/(solo+group)*100).toFixed(1)+'%':'?');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='solo '+solo+'/'+(solo+group);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

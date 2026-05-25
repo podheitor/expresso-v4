@@ -3917,5 +3917,15 @@ window.copyHomeResourceCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeSlowResources=function(){
+  const out=performance.getEntriesByType('resource').filter(r=>r.duration>500).sort((a,b)=>b.duration-a.duration).slice(0,30).map(r=>Math.round(r.duration)+'ms\t'+r.initiatorType+'\t'+r.name.split('/').slice(-2).join('/')).join('\n')||'(none slow)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  const slow=performance.getEntriesByType('resource').filter(r=>r.duration>500).length;
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(slow?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='slow '+slow;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
