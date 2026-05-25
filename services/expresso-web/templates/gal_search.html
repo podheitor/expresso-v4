@@ -2398,5 +2398,25 @@ window.copyGalEmailsBcc=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalNamesEmails=function(){
+  const rows=document.querySelectorAll('[data-email]');
+  const out=[];
+  rows.forEach(r=>{
+    const n=(r.dataset.name||'').trim();
+    const e=(r.dataset.email||'').trim();
+    if(e)out.push(n?n+' <'+e+'>':e);
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ne '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

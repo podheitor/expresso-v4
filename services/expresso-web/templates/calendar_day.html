@@ -2698,5 +2698,29 @@ window.copyDayConflicts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayShortest=function(){
+  const ev=document.querySelectorAll('[data-event-id]');
+  let best=null;
+  ev.forEach(e=>{
+    const s=Date.parse(e.dataset.start||'');
+    const en=Date.parse(e.dataset.end||'');
+    if(s&&en&&en>s){
+      const d=en-s;
+      if(!best||d<best.d)best={d:d,n:e.dataset.title||e.dataset.eventId};
+    }
+  });
+  const out=best?Math.round(best.d/60000)+'min '+best.n:'(none)';
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=best?'sh':'-';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

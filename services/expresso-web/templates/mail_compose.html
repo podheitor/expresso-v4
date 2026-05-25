@@ -2621,5 +2621,17 @@ window.insertSeparator=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.capitalizeSubject=function(){
+  const s=document.getElementById('subject');
+  if(!s)return;
+  const v=(s.value||'').trim();
+  if(!v)return;
+  s.value=v.split(/\s+/).map(w=>w.length?w[0].toUpperCase()+w.slice(1).toLowerCase():w).join(' ');
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cap';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

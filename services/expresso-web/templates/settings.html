@@ -3230,5 +3230,20 @@ window.copySupportedLanguages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyLocaleNumber=function(){
+  const n=1234567.89;
+  const fmt=new Intl.NumberFormat().format(n);
+  const ta=document.createElement('textarea');
+  ta.value='locale '+navigator.language+' fmt '+fmt;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=fmt;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

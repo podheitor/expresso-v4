@@ -2751,5 +2751,30 @@ window.copyMonthCsvIso=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthBusiestWeek=function(){
+  const ev=document.querySelectorAll('[data-event-id]');
+  const wk={};
+  ev.forEach(e=>{
+    const t=Date.parse(e.dataset.start||'');
+    if(!t)return;
+    const d=new Date(t);
+    d.setDate(d.getDate()-d.getDay());
+    const k=d.toISOString().slice(0,10);
+    wk[k]=(wk[k]||0)+1;
+  });
+  const arr=Object.entries(wk).sort((a,b)=>b[1]-a[1]);
+  const top=arr[0]||['-',0];
+  const ta=document.createElement('textarea');
+  ta.value='week of '+top[0]+' '+top[1]+' events';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bw '+top[1];
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
