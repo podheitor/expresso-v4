@@ -2479,5 +2479,26 @@ window.copyMonthAttendeeStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthWeekendCount=function(){
+  const evs=document.querySelectorAll('[data-event-id]');
+  let we=0,wd=0;
+  evs.forEach(e=>{
+    const d=new Date(e.dataset.start||'');
+    if(isNaN(d))return;
+    const day=d.getDay();
+    if(day===0||day===6)we++; else wd++;
+  });
+  const ta=document.createElement('textarea');
+  ta.value='weekend: '+we+'\nweekday: '+wd;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='we '+we+'/wd '+wd;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

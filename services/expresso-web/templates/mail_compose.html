@@ -2423,5 +2423,15 @@ window.toggleBodyMarkdown=function(){
     setTimeout(()=>t.remove(),1500);
   }
 };
+window.countSubjectWords=function(){
+  const s=document.querySelector('input[name="subject"]');
+  if(!s)return;
+  const w=(s.value||'').trim().split(/\s+/).filter(Boolean).length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=w+'w';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

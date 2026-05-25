@@ -3701,5 +3701,25 @@ window.copyChatAvgLength=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMentionsMe=function(){
+  const me='{{ me.email }}'.split('@')[0].toLowerCase();
+  const msgs=document.querySelectorAll('[data-msg-body]');
+  const out=[];
+  msgs.forEach(m=>{
+    const b=(m.dataset.body||m.textContent||'').toLowerCase();
+    if(b.includes('@'+me))out.push((m.dataset.ts||'')+'\t'+(m.dataset.from||'')+'\t'+b.slice(0,80));
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='@me '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
