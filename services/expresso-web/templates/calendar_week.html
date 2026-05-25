@@ -4366,5 +4366,20 @@ window.copyWeekHourlyHeatmap=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekVideoVsInPerson=function(){
+  let vid=0,inp=0,unk=0;
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    if(e.getAttribute('data-meet-url')||e.getAttribute('data-conference-url'))vid++;
+    else if(e.getAttribute('data-location'))inp++;
+    else unk++;
+  });
+  const out='Video: '+vid+'\nIn-person: '+inp+'\nUnknown: '+unk;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vid '+vid+'/inp '+inp;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

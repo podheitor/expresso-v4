@@ -4840,5 +4840,22 @@ window.copyDriveStarredItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTrashedItems=function(){
+  const out=[];
+  let total=0;
+  document.querySelectorAll('[data-drive-item][data-trashed="1"]').forEach(it=>{
+    const sz=parseInt(it.getAttribute('data-size')||'0',10);
+    total+=sz;
+    out.push((it.getAttribute('data-name')||'?')+'\t'+(it.getAttribute('data-trashed-at')||'?')+'\t'+(sz/1024).toFixed(1)+'KB');
+  });
+  out.sort();
+  const body=out.join('\n')+'\nTotal trash: '+(total/1048576).toFixed(2)+'MB';
+  const ta=document.createElement('textarea');ta.value=body;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='trash '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
