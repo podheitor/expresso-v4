@@ -6167,5 +6167,20 @@ window.copyDayResponseStatus=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayInPersonOnline=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let inp=0,onl=0;
+  evs.forEach(e=>{
+    const m=(e.getAttribute('data-mode')||'').trim();
+    if(m==='online')onl++;else if(m==='in-person')inp++;
+  });
+  const out='in-person: '+inp+'\nonline: '+onl;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mo '+(inp+onl);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

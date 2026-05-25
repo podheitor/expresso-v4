@@ -6618,5 +6618,21 @@ window.copyDriveZipBundleHint=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveMimeCounts=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const m={};
+  items.forEach(i=>{
+    const mt=(i.getAttribute('data-mime')||'(none)').trim()||'(none)';
+    m[mt]=(m[mt]||0)+1;
+  });
+  const lines=Object.keys(m).sort().map(k=>k+': '+m[k]);
+  const out='mime counts:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mim '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5585,5 +5585,17 @@ window.composeRecipientDomains=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeDraftAge=function(){
+  const draft=document.querySelector('[data-draft-saved-at]');
+  const at=draft?Date.parse(draft.getAttribute('data-draft-saved-at')||'')||0:0;
+  const age=at?Math.round((Date.now()-at)/1000):-1;
+  const out='draft age (s): '+age;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dft '+age;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
