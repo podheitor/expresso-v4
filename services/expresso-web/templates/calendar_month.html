@@ -5464,5 +5464,21 @@ window.copyMonthOrganizerLeaderboard=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthTitleLengthHistogram=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const buckets={'0-10':0,'11-20':0,'21-40':0,'41-80':0,'81+':0};
+  evs.forEach(e=>{
+    const l=(e.getAttribute('data-title')||'').length;
+    if(l<=10)buckets['0-10']++;else if(l<=20)buckets['11-20']++;else if(l<=40)buckets['21-40']++;else if(l<=80)buckets['41-80']++;else buckets['81+']++;
+  });
+  const lines=Object.entries(buckets).map(([k,n])=>k+'\t'+n);
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tlh '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

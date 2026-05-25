@@ -6412,5 +6412,22 @@ window.copyChatChannelSettings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatThreadStartersByDay=function(){
+  const msgs=document.querySelectorAll('[data-msg-id][data-thread-start]');
+  const tally={};
+  msgs.forEach(m=>{
+    const ts=m.getAttribute('data-timestamp')||'';
+    const day=ts.slice(0,10);
+    if(day)tally[day]=(tally[day]||0)+1;
+  });
+  const lines=Object.entries(tally).sort().map(([d,n])=>d+'\t'+n);
+  const out=lines.join('\n')||'no thread starts';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ts '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

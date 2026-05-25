@@ -5766,5 +5766,23 @@ window.copyContactsJobTitleCloud=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsImAddresses=function(){
+  const rows=document.querySelectorAll('[data-contact]');
+  const lines=[];
+  rows.forEach(r=>{
+    const name=r.getAttribute('data-name')||'?';
+    ['data-im','data-xmpp','data-matrix','data-skype','data-discord','data-telegram'].forEach(attr=>{
+      const v=r.getAttribute(attr);
+      if(v)lines.push(name+'\t'+attr.replace('data-','')+'\t'+v);
+    });
+  });
+  const out=lines.join('\n')||'no IM addresses';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='im '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5522,5 +5522,26 @@ window.copySettingsDoNotTrack=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsPrefersScheme=function(){
+  const q=name=>window.matchMedia('(prefers-'+name+')').matches;
+  const lines=[
+    'prefers-color-scheme=dark='+q('color-scheme: dark'),
+    'prefers-color-scheme=light='+q('color-scheme: light'),
+    'prefers-reduced-motion=reduce='+q('reduced-motion: reduce'),
+    'prefers-reduced-transparency=reduce='+q('reduced-transparency: reduce'),
+    'prefers-contrast=more='+q('contrast: more'),
+    'prefers-contrast=less='+q('contrast: less'),
+    'prefers-reduced-data=reduce='+q('reduced-data: reduce'),
+    'forced-colors=active='+q('forced-colors: active')
+  ];
+  const yes=lines.filter(l=>l.endsWith('=true')).length;
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pref '+yes;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

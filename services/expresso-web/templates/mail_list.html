@@ -5737,5 +5737,23 @@ window.copyMailListExternalSenders=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListSubjectPrefixes=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const tally={};
+  rows.forEach(r=>{
+    const s=(r.getAttribute('data-subject')||'').trim();
+    const m=s.match(/^(\[[^\]]+\]|(?:re|fwd?|fw|enc):)/i);
+    const k=m?m[1].toLowerCase():'(none)';
+    tally[k]=(tally[k]||0)+1;
+  });
+  const lines=Object.entries(tally).sort((a,b)=>b[1]-a[1]).map(([k,n])=>n+'\t'+k);
+  const out=lines.join('\n')||'no rows';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pfx '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

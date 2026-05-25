@@ -4863,5 +4863,22 @@ window.copyMeetParticipantRoles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetTalkTime=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const lines=[];
+  parts.forEach(p=>{
+    const sec=parseInt(p.getAttribute('data-talk-time-seconds')||p.getAttribute('data-speaking-seconds')||'0',10);
+    if(sec>0)lines.push(sec+'\t'+(p.getAttribute('data-name')||'?'));
+  });
+  lines.sort((a,b)=>parseInt(b)-parseInt(a));
+  const total=lines.reduce((s,l)=>s+parseInt(l),0);
+  const out='total='+total+'s\nspeakers='+lines.length+'\n\n'+lines.map(l=>{const [s,n]=l.split('\t');return Math.round(s/60)+'m'+(s%60)+'s\t'+n;}).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tk '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
