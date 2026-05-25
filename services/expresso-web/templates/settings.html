@@ -5978,5 +5978,17 @@ window.copySettingsClipboardTest=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsViewportInfo=function(){
+  const vp=document.querySelector('meta[name=viewport]');
+  const content=vp?vp.getAttribute('content'):'(none)';
+  const orient=screen.orientation?(screen.orientation.type+' '+screen.orientation.angle+'°'):'(unsupported)';
+  const out='viewport: '+content+'\norientation: '+orient+'\nzoom: '+(window.visualViewport?window.visualViewport.scale:'?');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vp '+(screen.orientation?screen.orientation.type.slice(0,4):'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

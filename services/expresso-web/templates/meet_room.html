@@ -5331,5 +5331,17 @@ window.copyMeetVideoOnList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetMicOnList=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const lines=[];
+  parts.forEach(p=>{const a=p.getAttribute('data-audio')||p.getAttribute('data-mic-on');if(a==='true'||a==='on'||a==='1'){lines.push(p.getAttribute('data-name')||p.getAttribute('data-participant')||'?');}});
+  const out='mic on ('+lines.length+'/'+parts.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mic '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

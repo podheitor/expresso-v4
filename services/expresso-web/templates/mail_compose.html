@@ -5359,5 +5359,18 @@ window.composeAttachmentList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeUrlsInBody=function(){
+  const body=((document.querySelector('[name=body]')||document.querySelector('textarea')||{}).value||'');
+  const rx=/https?:\/\/[^\s<>"']+/g;
+  const urls=body.match(rx)||[];
+  const uniq=Array.from(new Set(urls));
+  const out='urls in body ('+uniq.length+' unique / '+urls.length+' total):\n'+uniq.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='url '+uniq.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

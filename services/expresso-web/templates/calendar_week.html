@@ -5905,5 +5905,19 @@ window.copyWeekTentativeEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekOverlapDetect=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]')).map(e=>({s:new Date(e.getAttribute('data-start')||0).getTime(),e:new Date(e.getAttribute('data-end')||0).getTime(),t:e.getAttribute('data-title')||''}));
+  const valid=evs.filter(v=>!isNaN(v.s)&&!isNaN(v.e)&&v.s<v.e);
+  valid.sort((a,b)=>a.s-b.s);
+  const overlaps=[];
+  for(let i=0;i<valid.length;i++)for(let j=i+1;j<valid.length;j++){if(valid[i].e>valid[j].s&&valid[i].s<valid[j].e){overlaps.push(valid[i].t+' ⟂ '+valid[j].t);}}
+  const out='overlaps ('+overlaps.length+'):\n'+overlaps.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(overlaps.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ov '+overlaps.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
