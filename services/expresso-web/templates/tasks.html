@@ -3877,5 +3877,29 @@ window.copyTasksPriorityCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOverdueCsv=function(){
+  const now=Date.now();
+  const rows=document.querySelectorAll('[data-task-row]');
+  const out=['title,due,owner'];
+  rows.forEach(r=>{
+    const due=Date.parse(r.getAttribute('data-due')||'');
+    if(!isNaN(due)&&due<now&&r.getAttribute('data-status')!=='done'){
+      const ti=(r.getAttribute('data-title')||'').replace(/,/g,';');
+      const ow=(r.getAttribute('data-owner')||'').replace(/,/g,';');
+      out.push(ti+','+(r.getAttribute('data-due')||'')+','+ow);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ovd '+(out.length-1);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

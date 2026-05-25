@@ -2930,5 +2930,21 @@ window.countComposeRecipients=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyComposeDraftPath=function(){
+  const draftId=document.querySelector('input[name="draft_id"]');
+  const id=draftId?draftId.value:'';
+  const out='path\t'+window.location.pathname+'\ndraft_id\t'+(id||'(none)')+'\nurl\t'+window.location.href;
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dp '+(id||'(none)');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
