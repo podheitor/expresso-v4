@@ -2635,5 +2635,26 @@ window.copyThreadAttachCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadDuration=function(){
+  const msgs=document.querySelectorAll('[data-msg-id],[data-message-id]');
+  const ts=[];
+  msgs.forEach(m=>{
+    const d=Date.parse(m.dataset.date||m.dataset.timestamp||'');
+    if(d)ts.push(d);
+  });
+  ts.sort((a,b)=>a-b);
+  const out=ts.length>=2?Math.round((ts[ts.length-1]-ts[0])/60000)+' min':ts.length+' msg';
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dur';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

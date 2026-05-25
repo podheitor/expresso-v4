@@ -2660,5 +2660,22 @@ window.copyComposeWordCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.previewWrapped=function(){
+  const b=(document.getElementById('body')||{}).value||'';
+  const lines=b.split('\n');
+  let over=0;
+  lines.forEach(l=>{if(l.length>72)over++;});
+  const ta=document.createElement('textarea');
+  ta.value='lines '+lines.length+' over72 '+over;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(over?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wr '+over;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
