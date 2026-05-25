@@ -6761,5 +6761,17 @@ window.copyMonthByStatus=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthLongestEvent=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let best=null;
+  evs.forEach(e=>{const s=Date.parse(e.getAttribute('data-start')||'');const en=Date.parse(e.getAttribute('data-end')||'');if(!isNaN(s)&&!isNaN(en)){const d=en-s;if(best===null||d>best.d)best={d,title:e.getAttribute('data-title')||''};}});
+  const out=best?(best.title+'\t'+Math.round(best.d/60000)+'min'):'-';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lng '+(best?Math.round(best.d/60000):'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
