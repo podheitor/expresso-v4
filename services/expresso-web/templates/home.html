@@ -3289,5 +3289,28 @@ window.copyHomeReferrer=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomePagePerf=function(){
+  const nav=performance.getEntriesByType('navigation')[0];
+  if(!nav){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='no perf';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const out='dns\t'+Math.round(nav.domainLookupEnd-nav.domainLookupStart)+'\nconnect\t'+Math.round(nav.connectEnd-nav.connectStart)+'\nttfb\t'+Math.round(nav.responseStart-nav.requestStart)+'\ndom\t'+Math.round(nav.domContentLoadedEventEnd)+'\nload\t'+Math.round(nav.loadEventEnd)+'\ntransfer\t'+nav.transferSize;
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='perf '+Math.round(nav.loadEventEnd)+'ms';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

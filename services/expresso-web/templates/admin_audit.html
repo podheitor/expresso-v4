@@ -3181,5 +3181,28 @@ window.copyAuditByDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditSlowestPaths=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const items=[];
+  rows.forEach(r=>{
+    const ms=parseInt(r.getAttribute('data-duration-ms')||'0',10);
+    if(!isNaN(ms)&&ms>0){
+      items.push([ms,(r.getAttribute('data-method')||'')+' '+(r.getAttribute('data-path')||'')]);
+    }
+  });
+  items.sort((a,b)=>b[0]-a[0]);
+  const out=items.slice(0,30).map(x=>x[0]+'ms\t'+x[1]).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='slow '+Math.min(30,items.length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -3088,5 +3088,28 @@ window.copyComposeWordCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.printComposeDraft=function(){
+  const to=(document.querySelector('input[name="to"]')||{}).value||'';
+  const subj=(document.querySelector('input[name="subject"]')||{}).value||'';
+  const body=(document.querySelector('textarea[name="body"]')||{}).value||'';
+  const w=window.open('','_blank');
+  if(!w){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='popup blocked';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  w.document.write('<html><head><title>Draft</title><style>body{font-family:sans-serif;padding:20px}pre{white-space:pre-wrap}</style></head><body><h2>To: '+esc(to)+'</h2><h3>Subject: '+esc(subj)+'</h3><hr><pre>'+esc(body)+'</pre></body></html>');
+  w.document.close();
+  setTimeout(()=>w.print(),250);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='prn';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
