@@ -6617,5 +6617,18 @@ window.copyMonthHolidays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthDayHistogram=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const map={};
+  for(let i=1;i<=31;i++)map[i]=0;
+  evs.forEach(e=>{const s=e.getAttribute('data-start')||'';const d=parseInt(s.slice(8,10),10);if(d)map[d]=(map[d]||0)+1;});
+  const out=Object.entries(map).filter(([,v])=>v).map(([k,v])=>k+': '+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hst '+Object.values(map).filter(v=>v).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
