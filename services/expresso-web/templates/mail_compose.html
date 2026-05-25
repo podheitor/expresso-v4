@@ -3184,5 +3184,16 @@ window.copyComposeBodyLineCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.appendComposeSignature=function(){
+  const el=document.querySelector('textarea[name="body"]');
+  if(!el){return;}
+  const sig='\n\n-- \n{{ me.email }}';
+  if(el.value.indexOf(sig)===-1){el.value+=sig;}
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sig ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
