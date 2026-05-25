@@ -4907,5 +4907,18 @@ window.copyDriveFolderTree=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveLockedFiles=function(){
+  const out=[];
+  document.querySelectorAll('[data-drive-item][data-locked="1"]').forEach(it=>{
+    out.push((it.getAttribute('data-name')||'?')+'\t'+(it.getAttribute('data-locked-by')||'?')+'\t'+(it.getAttribute('data-locked-at')||'?'));
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lock '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

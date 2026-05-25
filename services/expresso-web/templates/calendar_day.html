@@ -4397,5 +4397,23 @@ window.copyDayJsonExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayLunchSlot=function(){
+  const today=new Date();
+  const lunchStart=new Date(today.getFullYear(),today.getMonth(),today.getDate(),12,0,0).getTime();
+  const lunchEnd=lunchStart+3600000;
+  const conflicts=[];
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    const en=Date.parse(e.getAttribute('data-end')||'');
+    if(!isNaN(s)&&!isNaN(en)&&s<lunchEnd&&en>lunchStart)conflicts.push((e.getAttribute('data-start')||'?')+'\t'+(e.getAttribute('data-title')||'?'));
+  });
+  const out=(conflicts.length?'Lunch conflicts:\n'+conflicts.join('\n'):'Lunch slot 12:00–13:00 is FREE');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(conflicts.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=conflicts.length?'lunch '+conflicts.length:'lunch free';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
