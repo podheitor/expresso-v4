@@ -5849,5 +5849,18 @@ window.copyMonthAvgEventDuration=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthVacationDays=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const days=new Set();
+  evs.forEach(e=>{const cat=(e.getAttribute('data-category')||'').toLowerCase();const ti=(e.getAttribute('data-title')||'').toLowerCase();if(cat.includes('vacation')||cat.includes('pto')||cat.includes('holiday')||ti.includes('vacation')||ti.includes('férias')||ti.includes('ferias')){const s=(e.getAttribute('data-start')||'').slice(0,10);if(s)days.add(s);}});
+  const list=Array.from(days).sort();
+  const out='vacation/PTO days ('+list.length+'):\n'+list.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vac '+list.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

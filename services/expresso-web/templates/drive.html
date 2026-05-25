@@ -6217,5 +6217,16 @@ window.copyDriveZeroByteFiles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveRecentlyModified=function(){
+  const items=Array.from(document.querySelectorAll('[data-drive-item]'));
+  const arr=items.map(i=>({m:i.getAttribute('data-mtime')||i.getAttribute('data-modified')||'',n:i.getAttribute('data-name')||'',o:i.getAttribute('data-owner')||''})).filter(x=>x.m).sort((a,b)=>a.m<b.m?1:a.m>b.m?-1:0).slice(0,30);
+  const out='top 30 recently modified:\n'+arr.map(x=>x.m+'\t'+x.n+'\t'+x.o).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mod '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

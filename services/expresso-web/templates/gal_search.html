@@ -5303,5 +5303,17 @@ window.copyGalRolesHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalManagersOnly=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const lines=[];
+  rows.forEach(r=>{const rep=parseInt(r.getAttribute('data-reports')||'0',10);if(rep>0||r.hasAttribute('data-is-manager')){lines.push((r.getAttribute('data-name')||'')+'\t'+(r.getAttribute('data-email')||'')+'\treports: '+rep);}});
+  const out='managers ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mgr '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

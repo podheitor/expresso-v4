@@ -5234,5 +5234,17 @@ window.composeMixedDomainsWarning=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBodyEmojiCount=function(){
+  const body=document.querySelector('[name="body"],#body,[data-body-input],[contenteditable="true"]');
+  const v=body?(body.value||body.textContent||''):'';
+  const emoji=v.match(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}]/gu)||[];
+  const out='emojis in body: '+emoji.length+'\nunique: '+new Set(emoji).size+'\nsample: '+emoji.slice(0,30).join(' ');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='emj '+emoji.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

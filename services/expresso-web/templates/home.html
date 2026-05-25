@@ -5244,5 +5244,18 @@ window.copyHomeMetaRobots=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeStyleSheetsSummary=function(){
+  const sheets=Array.from(document.styleSheets);
+  const lines=[];
+  let totalRules=0;
+  sheets.forEach((s,i)=>{let n=0;try{n=s.cssRules?s.cssRules.length:0;}catch(e){n=-1;}totalRules+=n>0?n:0;lines.push(i+'\t'+(s.href||'(inline)')+'\t'+(n<0?'CORS-blocked':n+' rules'));});
+  const out='stylesheets ('+sheets.length+', '+totalRules+' total rules):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='css '+sheets.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
