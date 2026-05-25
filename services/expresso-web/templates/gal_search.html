@@ -4959,5 +4959,21 @@ window.copyGalHireDateRange=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalPronounsList=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const tally={};
+  rows.forEach(r=>{
+    const p=(r.getAttribute('data-pronouns')||'(unset)').trim();
+    tally[p]=(tally[p]||0)+1;
+  });
+  const lines=Object.entries(tally).sort((a,b)=>b[1]-a[1]).map(([p,n])=>n+'\t'+p);
+  const out=lines.join('\n')||'no pronoun data';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='prn '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
