@@ -4833,5 +4833,17 @@ window.copyHomeFormFieldNames=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeHttpsCheck=function(){
+  const proto=window.location.protocol;
+  const host=window.location.host;
+  const secure=window.isSecureContext;
+  const out='protocol='+proto+'\nhost='+host+'\nisSecureContext='+secure+'\nhref='+window.location.href;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(secure?'#0a0':'#c00')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tls '+(secure?'ok':'no');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5637,5 +5637,25 @@ window.copyMailListPasswordProtected=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListSizeQuartiles=function(){
+  const sizes=Array.from(document.querySelectorAll('[data-mail-row]')).map(r=>parseFloat(r.dataset.bytes||r.dataset.size||'0')).filter(s=>s>0).sort((a,b)=>a-b);
+  if(sizes.length===0){
+    const ta=document.createElement('textarea');ta.value='no size data';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='qrt n/a';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const q=p=>sizes[Math.floor(sizes.length*p)];
+  const out='n='+sizes.length+'\nmin='+sizes[0]+'\nq1='+q(0.25)+'\nmedian='+q(0.5)+'\nq3='+q(0.75)+'\nmax='+sizes[sizes.length-1];
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qrt '+sizes.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

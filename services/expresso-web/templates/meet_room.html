@@ -4776,5 +4776,15 @@ window.copyMeetCaptionsTranscript=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetBreakoutRooms=function(){
+  const breakouts=Array.from(document.querySelectorAll('[data-breakout-room],[data-subroom]'));
+  const out=breakouts.map(b=>(b.dataset.id||b.dataset.breakoutRoom||'')+'\t'+(b.dataset.name||'')+'\t'+(b.dataset.participantCount||'0')+' participants').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='brk '+breakouts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

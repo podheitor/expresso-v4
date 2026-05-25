@@ -5762,5 +5762,18 @@ window.copyDriveTrashedItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveLargeFolders=function(){
+  const items=Array.from(document.querySelectorAll('[data-drive-item]'));
+  const folders={};
+  items.forEach(i=>{const p=(i.dataset.path||'').split('/').slice(0,-1).join('/')||'/';const s=parseFloat(i.dataset.size||'0');if(!folders[p])folders[p]={n:0,total:0};folders[p].n++;folders[p].total+=s;});
+  const top=Object.entries(folders).sort((a,b)=>b[1].total-a[1].total).slice(0,15);
+  const out=top.map(([p,v])=>v.total+'\tn='+v.n+'\t'+p).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lf '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5124,5 +5124,16 @@ window.copyAuditConfigChanges=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditDataExports=function(){
+  const rows=Array.from(document.querySelectorAll('[data-audit-row]'));
+  const exp=rows.filter(r=>{const a=(r.dataset.action||'').toLowerCase();return /export|download.*bulk|dump|backup.*download/.test(a);});
+  const out=exp.map(e=>(e.dataset.timestamp||e.dataset.ts||'')+'\t'+(e.dataset.actor||'')+'\t'+(e.dataset.action||'')+'\t'+(e.dataset.bytes||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(exp.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='exp '+exp.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

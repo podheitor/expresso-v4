@@ -4797,5 +4797,20 @@ window.composeAllCapsRatio=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeExclamationDensity=function(){
+  const body=(document.querySelector('[name="body"]')||{value:''}).value;
+  const subj=(document.querySelector('[name="subject"]')||{value:''}).value;
+  const subjEx=(subj.match(/!/g)||[]).length;
+  const bodyEx=(body.match(/!/g)||[]).length;
+  const sents=body.split(/[.!?]+/).filter(s=>s.trim()).length;
+  const pct=sents?Math.round(100*bodyEx/sents):0;
+  const out='subject-bangs='+subjEx+'\nbody-bangs='+bodyEx+'\nsentences='+sents+'\ndensity='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pct>30?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ex '+bodyEx;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
