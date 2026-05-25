@@ -3945,5 +3945,25 @@ window.copyTasksLabels=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksCompletedToday=function(){
+  const today=new Date().toISOString().slice(0,10);
+  const rows=document.querySelectorAll('[data-task-row][data-status="done"]');
+  const out=[];
+  rows.forEach(r=>{
+    const c=(r.getAttribute('data-completed-at')||'').slice(0,10);
+    if(c===today){out.push((r.getAttribute('data-completed-at')||'')+'\t'+(r.getAttribute('data-title')||''));}
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dn '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
