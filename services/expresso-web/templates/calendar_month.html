@@ -5929,5 +5929,18 @@ window.copyMonthCancelledEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthWeekendSpread=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let weekdayCt=0,weekendCt=0;
+  evs.forEach(e=>{const d=new Date(e.getAttribute('data-start')||0);if(!isNaN(d)){const w=d.getDay();if(w===0||w===6)weekendCt++;else weekdayCt++;}});
+  const total=weekdayCt+weekendCt;
+  const out='spread weekday='+weekdayCt+' weekend='+weekendCt+' ratio='+(total?((weekendCt/total)*100).toFixed(1)+'%':'0%');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wke '+weekendCt;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

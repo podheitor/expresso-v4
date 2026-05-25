@@ -5316,5 +5316,16 @@ window.copyHomeDocumentTitle=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeWindowSize=function(){
+  const w=window.innerWidth,h=window.innerHeight,dpr=window.devicePixelRatio||1;
+  const sw=screen.width,sh=screen.height,sav=screen.availWidth+'x'+screen.availHeight;
+  const out='window: '+w+'x'+h+' dpr='+dpr+' screen='+sw+'x'+sh+' avail='+sav;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='win '+w+'x'+h;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6842,5 +6842,17 @@ window.copyChatHashtags=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatRepliesCount=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  let withReply=0,total=0;
+  msgs.forEach(m=>{const rp=m.getAttribute('data-reply-count')||m.getAttribute('data-replies');if(rp){const n=parseInt(rp,10)||0;if(n>0)withReply++;total+=n;}});
+  const out='messages with replies: '+withReply+'/'+msgs.length+' total replies: '+total;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rep '+withReply;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

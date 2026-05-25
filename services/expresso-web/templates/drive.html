@@ -6289,5 +6289,17 @@ window.copyDriveFoldersOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveSharedFolders=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const lines=[];
+  items.forEach(i=>{const t=(i.getAttribute('data-type')||'').toLowerCase();const sh=i.getAttribute('data-shared')||i.getAttribute('data-shared-with');if((t==='folder'||t==='dir')&&(sh==='true'||sh==='1'||(sh&&sh.length>2))){lines.push((i.getAttribute('data-name')||'?')+'\t'+(sh||'shared'));}});
+  const out='shared folders ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='shd '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
