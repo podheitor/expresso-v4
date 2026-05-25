@@ -4792,5 +4792,17 @@ window.copyGalOfficeBuildings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalEmailLengthHistogram=function(){
+  const rows=Array.from(document.querySelectorAll('[data-gal-row]'));
+  const buckets={'1-10':0,'11-20':0,'21-30':0,'31+':0};
+  rows.forEach(r=>{const e=(r.dataset.email||'').length;if(!e)return;if(e<=10)buckets['1-10']++;else if(e<=20)buckets['11-20']++;else if(e<=30)buckets['21-30']++;else buckets['31+']++;});
+  const out=Object.entries(buckets).map(([k,v])=>k+'='+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='elh '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

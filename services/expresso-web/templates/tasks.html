@@ -5991,5 +5991,17 @@ window.copyTasksBlockedByDependency=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksMilestoneProgress=function(){
+  const rows=Array.from(document.querySelectorAll('[data-task-row]'));
+  const ms={};
+  rows.forEach(r=>{const m=(r.dataset.milestone||'').trim();if(!m)return;if(!ms[m])ms[m]={total:0,done:0};ms[m].total++;const st=r.dataset.status||'';if(st==='done'||st==='completed')ms[m].done++;});
+  const out=Object.entries(ms).map(([m,v])=>m+'\t'+v.done+'/'+v.total+'\t'+Math.round(100*v.done/v.total)+'%').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ms '+Object.keys(ms).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

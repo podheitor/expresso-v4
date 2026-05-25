@@ -5704,5 +5704,17 @@ window.copyDriveStarredItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveStaleFiles=function(){
+  const items=Array.from(document.querySelectorAll('[data-drive-item]'));
+  const now=Date.now();
+  const stale=items.filter(i=>{const m=i.dataset.modified||i.dataset.updated;if(!m)return false;const d=new Date(m);if(isNaN(d))return false;return (now-d)/(86400000)>365;});
+  const out=stale.map(s=>(s.dataset.name||'')+'\t'+(s.dataset.modified||s.dataset.updated||'')+'\t'+(s.dataset.owner||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='stl '+stale.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

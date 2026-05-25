@@ -4778,5 +4778,15 @@ window.copyHomeAnchorHashMap=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeMetaDescription=function(){
+  const m=document.querySelector('meta[name="description"]');
+  const desc=m?m.getAttribute('content')||'':'';
+  const ta=document.createElement('textarea');ta.value=desc;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(desc?'#069':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='desc '+desc.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
