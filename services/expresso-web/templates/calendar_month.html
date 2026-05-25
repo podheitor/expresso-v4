@@ -6539,5 +6539,18 @@ window.copyMonthByWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthMostCommonTime=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const m=new Map();
+  evs.forEach(e=>{const s=Date.parse(e.getAttribute('data-start')||'')||0;if(!s)return;const d=new Date(s);const k=String(d.getHours()).padStart(2,'0')+':'+String(Math.floor(d.getMinutes()/15)*15).padStart(2,'0');m.set(k,(m.get(k)||0)+1);});
+  const arr=Array.from(m.entries()).sort((a,b)=>b[1]-a[1]);
+  const out='most common start times:\n'+arr.slice(0,10).map(([k,c])=>c+'\t'+k).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cmt '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

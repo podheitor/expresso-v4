@@ -6473,5 +6473,18 @@ window.copySettingsAriaLabels=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsRadioGroups=function(){
+  const rs=document.querySelectorAll('input[type="radio"]');
+  const m=new Map();
+  rs.forEach(r=>{const n=r.name||'(noname)';if(!m.has(n))m.set(n,{total:0,checked:'(none)'});const g=m.get(n);g.total++;if(r.checked)g.checked=r.value||'(empty)';});
+  const arr=Array.from(m.entries());
+  const out='radio groups ('+arr.length+'):\n'+arr.map(([n,g])=>n+': '+g.checked+' / '+g.total).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rg '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
