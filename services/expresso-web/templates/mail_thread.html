@@ -3646,5 +3646,18 @@ window.copyThreadEmojiSet=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadUrlSet=function(){
+  const set=new Set();
+  document.querySelectorAll('[data-msg-body],.msg-body').forEach(m=>{
+    (m.textContent||'').match(/https?:\/\/[^\s)<>"]+/g)?.forEach(u=>set.add(u));
+  });
+  const out=[...set].join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='url '+set.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
