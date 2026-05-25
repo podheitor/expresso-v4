@@ -4190,5 +4190,20 @@ window.copyDayDeclinedEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayHourlyHeatmap=function(){
+  const hrs=Array(24).fill(0);
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||''),en=Date.parse(e.getAttribute('data-end')||'');
+    if(isNaN(s)||isNaN(en))return;
+    for(let h=new Date(s).getHours();h<=new Date(en).getHours()&&h<24;h++)hrs[h]++;
+  });
+  const out=hrs.map((c,h)=>String(h).padStart(2,'0')+':00\t'+'█'.repeat(c)+' '+c).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='heat '+hrs.reduce((a,b)=>a+b,0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

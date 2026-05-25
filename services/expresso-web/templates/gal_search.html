@@ -3812,5 +3812,19 @@ window.copyGalOfficeLocations=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalNewHires=function(){
+  const cutoff=Date.now()-90*86400000,out=[];
+  document.querySelectorAll('[data-gal-row]').forEach(r=>{
+    const ts=Date.parse(r.getAttribute('data-hired')||r.getAttribute('data-start-date')||'');
+    if(!isNaN(ts)&&ts>=cutoff)out.push(new Date(ts).toISOString().slice(0,10)+'\t'+(r.getAttribute('data-name')||'?')+'\t'+(r.getAttribute('data-title')||'?'));
+  });
+  out.sort().reverse();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='new '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

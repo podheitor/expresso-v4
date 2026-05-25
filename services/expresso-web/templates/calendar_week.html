@@ -4211,5 +4211,19 @@ window.copyWeekTentativeEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekVirtualVsInperson=function(){
+  let virt=0,inp=0;
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const loc=(e.getAttribute('data-location')||'').toLowerCase(),url=e.getAttribute('data-meet-url')||'';
+    if(url||/zoom|meet|teams|jitsi|http/.test(loc))virt++;else if(loc.trim())inp++;
+  });
+  const out='virtual='+virt+'\nin-person='+inp+'\nratio='+(inp?(virt/inp).toFixed(2):'inf');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='virt '+virt+'/'+(virt+inp);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

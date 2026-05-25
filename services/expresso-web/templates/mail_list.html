@@ -4577,5 +4577,20 @@ window.copyMailMailingLists=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailEncryptedCount=function(){
+  let enc=0,signed=0,plain=0;
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    if(r.getAttribute('data-encrypted')==='1')enc++;
+    else if(r.getAttribute('data-signed')==='1')signed++;
+    else plain++;
+  });
+  const out='encrypted='+enc+'\nsigned-only='+signed+'\nplain='+plain;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='enc '+enc+'/'+(enc+signed+plain);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

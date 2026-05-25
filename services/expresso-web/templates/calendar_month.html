@@ -4230,5 +4230,21 @@ window.copyMonthHolidayEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthLongEvents=function(){
+  const out=[];
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||''),en=Date.parse(e.getAttribute('data-end')||'');
+    if(isNaN(s)||isNaN(en))return;
+    const hrs=(en-s)/3600000;
+    if(hrs>=3)out.push((e.getAttribute('data-start')||'?').slice(0,10)+'\t'+hrs.toFixed(1)+'h\t'+(e.getAttribute('data-title')||'?'));
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length>3?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='long '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

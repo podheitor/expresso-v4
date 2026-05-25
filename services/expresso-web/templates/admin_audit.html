@@ -4037,5 +4037,21 @@ window.copyAuditPrivilegedActions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditUserAgentBreakdown=function(){
+  const uas={};
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    const ua=(r.getAttribute('data-user-agent')||r.getAttribute('data-ua')||'').toLowerCase();
+    let key='other';
+    if(/chrome/.test(ua))key='chrome';else if(/firefox/.test(ua))key='firefox';else if(/safari/.test(ua))key='safari';else if(/curl|wget|python|go-http/.test(ua))key='bot';else if(!ua)key='(none)';
+    uas[key]=(uas[key]||0)+1;
+  });
+  const out=Object.entries(uas).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(uas.bot?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ua '+Object.keys(uas).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
