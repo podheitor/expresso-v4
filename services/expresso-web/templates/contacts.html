@@ -6500,5 +6500,21 @@ window.copyContactsTagCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsCreatedThisMonth=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const now=new Date();
+  const ym=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const lines=[];
+  cs.forEach(c=>{
+    if((c.getAttribute('data-created')||'').startsWith(ym))lines.push(c.getAttribute('data-name')||'?');
+  });
+  const out='created '+ym+':\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ctm '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

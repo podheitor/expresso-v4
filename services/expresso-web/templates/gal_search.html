@@ -5656,5 +5656,25 @@ window.copyGalReportingChain=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalEmailDomainsTop=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const m={};
+  rows.forEach(r=>{
+    const e=(r.getAttribute('data-email')||'');
+    const idx=e.lastIndexOf('@');
+    const d=idx>0?e.slice(idx+1).toLowerCase():'(none)';
+    m[d]=(m[d]||0)+1;
+  });
+  const arr=Object.keys(m).map(k=>({k,v:m[k]}));
+  arr.sort((a,b)=>b.v-a.v);
+  const top=arr.slice(0,10).map(x=>x.k+': '+x.v);
+  const out='top domains:\n'+top.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='td '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
