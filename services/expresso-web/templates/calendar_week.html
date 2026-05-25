@@ -4312,5 +4312,16 @@ window.copyWeekTotalMeetings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekOverlappingEvents=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({s:Date.parse(e.getAttribute('data-start')||''),en:Date.parse(e.getAttribute('data-end')||''),t:e.getAttribute('data-title')||'?'})).filter(e=>!isNaN(e.s)&&!isNaN(e.en)).sort((a,b)=>a.s-b.s);
+  const out=[];
+  for(let i=1;i<evs.length;i++)if(evs[i].s<evs[i-1].en)out.push(new Date(evs[i].s).toISOString().slice(0,16)+'\t'+evs[i-1].t+' ∩ '+evs[i].t);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='overlap '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

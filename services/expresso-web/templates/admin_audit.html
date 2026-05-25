@@ -4129,5 +4129,24 @@ window.copyAuditDataExfilSuspects=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditTimeSinceLast=function(){
+  const last={};
+  const now=Date.now();
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    const actor=r.getAttribute('data-actor')||'?';
+    const ts=Date.parse(r.getAttribute('data-ts')||'');
+    if(!isNaN(ts)&&(!last[actor]||ts>last[actor]))last[actor]=ts;
+  });
+  const out=Object.keys(last).map(a=>{
+    const mins=Math.floor((now-last[a])/60000);
+    return a+'\t'+mins+'min';
+  }).sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='since '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

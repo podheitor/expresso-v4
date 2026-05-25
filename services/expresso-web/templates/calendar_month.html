@@ -4322,5 +4322,21 @@ window.copyMonthOverloadedDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthCancelledRatio=function(){
+  let cancelled=0,total=0;
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    total++;
+    const s=(e.getAttribute('data-status')||'').toLowerCase();
+    if(s==='cancelled'||s==='canceled')cancelled++;
+  });
+  const ratio=total?(cancelled/total*100).toFixed(1):'0';
+  const out='cancelled='+cancelled+'\ntotal='+total+'\nratio='+ratio+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(ratio>10?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cncl '+ratio+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

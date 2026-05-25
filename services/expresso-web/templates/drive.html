@@ -4781,5 +4781,20 @@ window.copyDriveVersionedFiles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveDownloadCount=function(){
+  const out=[];let total=0;
+  document.querySelectorAll('[data-drive-item]').forEach(r=>{
+    const dl=parseInt(r.getAttribute('data-download-count')||'0',10);
+    if(dl>0){out.push({n:r.getAttribute('data-name')||'?',d:dl});total+=dl;}
+  });
+  out.sort((a,b)=>b.d-a.d);
+  const txt='total='+total+'\n\n'+out.slice(0,20).map(x=>x.d+'\t'+x.n).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dl '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

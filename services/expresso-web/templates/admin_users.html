@@ -4104,5 +4104,22 @@ window.copyUsersNeverLoggedIn=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersMfaEnrollment=function(){
+  let enabled=0,disabled=0;
+  const out=[];
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const mfa=r.getAttribute('data-mfa-enabled')==='1';
+    if(mfa)enabled++;else{disabled++;out.push(r.getAttribute('data-email')||'?');}
+  });
+  const total=enabled+disabled;
+  const pct=total?((enabled/total)*100).toFixed(1):'0.0';
+  const body='MFA enrollment: '+enabled+'/'+total+' ('+pct+'%)\nNot enrolled:\n'+out.sort().join('\n');
+  const ta=document.createElement('textarea');ta.value=body;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(disabled?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mfa '+enabled+'/'+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

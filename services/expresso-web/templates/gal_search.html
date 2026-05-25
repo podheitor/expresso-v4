@@ -3900,5 +3900,19 @@ window.copyGalAniversariesNext30=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalDirectReports=function(){
+  const reports={};
+  document.querySelectorAll('[data-gal-row]').forEach(r=>{
+    const m=(r.getAttribute('data-manager')||'').trim();
+    if(m){reports[m]=reports[m]||[];reports[m].push(r.getAttribute('data-name')||'?');}
+  });
+  const out=Object.entries(reports).sort((a,b)=>b[1].length-a[1].length).map(([k,v])=>k+'\t'+v.length+'\t'+v.join(';')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mgr '+Object.keys(reports).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
