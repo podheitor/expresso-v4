@@ -4947,5 +4947,25 @@ window.copyMonthSaturdayEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthAvgEventsPerWeekday=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const sums=new Array(7).fill(0),counts=new Array(7).fill(new Set());
+  for(let i=0;i<7;i++) counts[i]=new Set();
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start);if(isNaN(s))return;
+    const d=s.getDay();
+    sums[d]++;
+    counts[d].add(s.toISOString().slice(0,10));
+  });
+  const names=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const out=names.map((n,i)=>n+'\t'+sums[i]+'\t'+counts[i].size+'\t'+(counts[i].size?(sums[i]/counts[i].size).toFixed(2):'0')).join('\n');
+  const txt='day\ttotal\tdaysSeen\tavg/day\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg/wd';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4665,5 +4665,21 @@ window.copyThreadEmailAddresses=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadGapsBetween=function(){
+  const msgs=[...document.querySelectorAll('[data-msg-id]')].map(m=>({t:new Date(m.dataset.timestamp).getTime(),from:m.dataset.from||''})).filter(m=>!isNaN(m.t)).sort((a,b)=>a.t-b.t);
+  const out=[];
+  for(let i=1;i<msgs.length;i++){
+    const gap=msgs[i].t-msgs[i-1].t;
+    out.push(new Date(msgs[i-1].t).toISOString()+'\t→\t'+new Date(msgs[i].t).toISOString()+'\t'+Math.round(gap/60000)+'m');
+  }
+  const maxGap=Math.max(0,...out.map(r=>parseInt(r.split('\t')[3])));
+  const txt='from\trel\tto\tgap (maxGap='+maxGap+'m, n='+out.length+')\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gap max='+maxGap+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

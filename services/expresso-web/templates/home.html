@@ -4475,5 +4475,24 @@ window.copyHomeOgTags=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomePerfTiming=function(){
+  const p=performance.timing||{};
+  const nav=performance.getEntriesByType('navigation')[0]||{};
+  const info={
+    domContentLoaded: (p.domContentLoadedEventEnd-p.navigationStart)||nav.domContentLoadedEventEnd||0,
+    loadEvent: (p.loadEventEnd-p.navigationStart)||nav.loadEventEnd||0,
+    domInteractive: (p.domInteractive-p.navigationStart)||nav.domInteractive||0,
+    ttfb: (p.responseStart-p.requestStart)||nav.responseStart-nav.requestStart||0,
+    transferSize: nav.transferSize||0,
+    type: nav.type||'unknown'
+  };
+  const txt=Object.entries(info).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='perf '+info.loadEvent+'ms';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

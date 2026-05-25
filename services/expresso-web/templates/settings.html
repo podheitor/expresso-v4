@@ -5055,5 +5055,17 @@ window.copySettingsLocalStorageKeys=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsCookieInfo=function(){
+  const cookies=document.cookie?document.cookie.split(';').map(s=>s.trim()):[];
+  const out=cookies.map(c=>{const eq=c.indexOf('=');const k=eq>=0?c.slice(0,eq):c;const v=eq>=0?c.slice(eq+1):'';return k+'\t'+v.length+'b';}).join('\n');
+  const total=cookies.reduce((s,c)=>s+c.length,0);
+  const txt='name\tsize (n='+cookies.length+', total='+total+'b)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ck '+cookies.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

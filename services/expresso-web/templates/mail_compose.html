@@ -4423,5 +4423,21 @@ window.composeAttachmentTotal=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeMissingSubject=function(){
+  const subj=((document.querySelector('input[name=subject]')||{}).value||'').trim();
+  const body=((document.querySelector('textarea[name=body]')||{}).value||'').trim();
+  const hasTo=((document.querySelector('input[name=to]')||{}).value||'').trim().length>0;
+  const issues=[];
+  if(!subj) issues.push('subject is empty');
+  if(!body) issues.push('body is empty');
+  if(!hasTo) issues.push('no recipient in To:');
+  const out='subjectLen='+subj.length+'\nbodyLen='+body.length+'\nhasTo='+hasTo+'\nissues='+(issues.length||'none')+'\n'+issues.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(issues.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='miss '+issues.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

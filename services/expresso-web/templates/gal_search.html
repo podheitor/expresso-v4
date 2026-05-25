@@ -4469,5 +4469,24 @@ window.copyGalDirectReports=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalNewHires=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const cutoff=Date.now()-90*86400000;
+  const out=[];
+  rows.forEach(r=>{
+    const h=r.dataset.hireDate||r.dataset.startDate||r.dataset.joinedAt;
+    if(!h)return;
+    const t=new Date(h).getTime();
+    if(!isNaN(t)&&t>=cutoff) out.push((r.dataset.displayName||r.dataset.name||'')+'\t'+(r.dataset.email||r.dataset.username||'')+'\t'+(r.dataset.department||'')+'\t'+h);
+  });
+  out.sort((a,b)=>(b.split('\t')[3]||'').localeCompare(a.split('\t')[3]||''));
+  const txt='name\temail\tdept\thired ('+out.length+' in last 90d)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='new '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

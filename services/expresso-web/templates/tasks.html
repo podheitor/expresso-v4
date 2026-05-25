@@ -5648,5 +5648,22 @@ window.copyTasksDueToday=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksByProject=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const counts={};
+  rows.forEach(r=>{
+    const p=(r.dataset.project||r.dataset.projectName||'(no project)');
+    counts[p]=counts[p]||{open:0,done:0};
+    if((r.dataset.status||'').toLowerCase()==='done'||r.dataset.completed==='1') counts[p].done++; else counts[p].open++;
+  });
+  const out=Object.entries(counts).sort((a,b)=>(b[1].open+b[1].done)-(a[1].open+a[1].done)).map(([k,v])=>k+'\t'+v.open+'\t'+v.done).join('\n');
+  const txt='project\topen\tdone\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='proj '+Object.keys(counts).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
