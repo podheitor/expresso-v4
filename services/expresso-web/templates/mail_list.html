@@ -5402,5 +5402,20 @@ window.copyMailListSizeHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListSelected=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const sel=[...rows].filter(r=>{
+    const cb=r.querySelector('input[type=checkbox]');
+    return (cb&&cb.checked)||r.classList.contains('selected')||r.dataset.selected==='1';
+  });
+  const out=sel.map(r=>(r.dataset.id||'?')+'\t'+(r.dataset.from||'')+'\t'+(r.dataset.subject||'').replace(/\t/g,' '));
+  const txt='id\tfrom\tsubject ('+sel.length+'/'+rows.length+' selected)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(sel.length?'#069':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sel '+sel.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

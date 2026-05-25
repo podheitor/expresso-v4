@@ -5806,5 +5806,22 @@ window.copyTasksLeadTime=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksReopenCount=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const out=[];
+  let total=0;
+  rows.forEach(r=>{
+    const re=parseInt(r.dataset.reopens||r.dataset.reopenCount||'0',10);
+    if(re>0){total+=re;out.push((r.dataset.id||'')+'\t'+(r.dataset.title||'').slice(0,50)+'\t'+re);}
+  });
+  out.sort((a,b)=>parseInt(b.split('\t')[2])-parseInt(a.split('\t')[2]));
+  const txt='id\ttitle\treopens ('+out.length+' tasks reopened, '+total+' total events)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='reo '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

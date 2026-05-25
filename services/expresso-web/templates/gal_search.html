@@ -4610,5 +4610,26 @@ window.copyGalCostCenters=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalProfileCompleteness=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const fields=['name','email','phone','title','department','manager','location','photo','bio'];
+  const out=[];
+  let totalScore=0;
+  rows.forEach(r=>{
+    const filled=fields.filter(f=>{const v=r.dataset[f];return v&&v.length>0;}).length;
+    const pct=Math.round(filled/fields.length*100);
+    totalScore+=pct;
+    out.push((r.dataset.name||r.dataset.email||'')+'\t'+filled+'/'+fields.length+'\t'+pct+'%');
+  });
+  out.sort((a,b)=>parseInt(a.split('\t')[2])-parseInt(b.split('\t')[2]));
+  const avg=rows.length?Math.round(totalScore/rows.length):0;
+  const txt='person\tfilled\tpct (n='+rows.length+', avgComplete='+avg+'%)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(avg>=80?'#0a0':avg>=60?'#c60':'#c00')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pc '+avg+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

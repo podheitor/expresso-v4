@@ -4866,5 +4866,25 @@ window.copyAuditNonBusinessHours=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditTopActorPairs=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const pairs={};
+  rows.forEach(r=>{
+    const actor=r.dataset.actor||'';
+    const tgt=r.dataset.target||r.dataset.targetUser||r.dataset.resource||'';
+    if(!actor||!tgt||actor===tgt) return;
+    const k=actor+'→'+tgt;
+    pairs[k]=(pairs[k]||0)+1;
+  });
+  const sorted=Object.entries(pairs).sort((a,b)=>b[1]-a[1]).slice(0,30);
+  const out=sorted.map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='actor→target\tcount (top 30 of '+Object.keys(pairs).length+' pairs)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pair '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

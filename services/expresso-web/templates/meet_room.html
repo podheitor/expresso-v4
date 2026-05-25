@@ -4538,5 +4538,22 @@ window.copyMeetParticipantDeviceTypes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetCaptionLanguage=function(){
+  const cap=document.querySelector('[data-captions], .captions, .closed-captions');
+  const info={
+    captionsEnabled:cap?(cap.dataset.enabled==='1'||!cap.classList.contains('hidden')):false,
+    captionLang:cap?.dataset.lang||cap?.dataset.language||'?',
+    targetLang:cap?.dataset.targetLang||'?',
+    autoTranslate:cap?.dataset.autoTranslate==='1',
+    voiceCount:document.querySelectorAll('[data-caption-line]').length
+  };
+  const txt=Object.entries(info).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(info.captionsEnabled?'#069':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cap '+(info.captionsEnabled?info.captionLang:'off');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
