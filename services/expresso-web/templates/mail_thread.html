@@ -5452,5 +5452,17 @@ window.copyThreadSpamScoreSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadSizeSummary=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  let total=0,max=0;const lines=[];
+  msgs.forEach(m=>{const s=parseInt(m.getAttribute('data-size')||m.getAttribute('data-bytes')||'0',10)||0;total+=s;if(s>max)max=s;lines.push((m.getAttribute('data-date')||'').slice(0,10)+'\t'+Math.round(s/1024)+'KB\t'+(m.getAttribute('data-from')||''));});
+  const out='thread size summary:\n  total: '+Math.round(total/1024)+' KB\n  max: '+Math.round(max/1024)+' KB\n  avg: '+(msgs.length?Math.round(total/msgs.length/1024):0)+' KB\n  per message:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sz '+Math.round(total/1024)+'K';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

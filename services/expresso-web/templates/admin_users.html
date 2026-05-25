@@ -5498,5 +5498,17 @@ window.copyUsersCreatedLast30=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersNeverLoggedIn=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const lines=[];
+  rows.forEach(r=>{const ll=(r.getAttribute('data-last-login')||r.getAttribute('data-last-seen')||'').trim();if(!ll||ll==='never'||ll==='null'||ll==='0'){lines.push((r.getAttribute('data-email')||r.getAttribute('data-username')||'').trim()+' | created '+(r.getAttribute('data-created')||'?'));}});
+  const out='users that never logged in ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nvr '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

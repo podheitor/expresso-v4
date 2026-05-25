@@ -5672,5 +5672,17 @@ window.copyDayFocusTimeGaps=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayLunchHourBusy=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const lunch=[];
+  evs.forEach(e=>{const s=Date.parse(e.getAttribute('data-start')||'')||0;const en=Date.parse(e.getAttribute('data-end')||'')||0;if(!s)return;const ds=new Date(s);const de=new Date(en||s);if((ds.getHours()<14&&de.getHours()>=12)||(ds.getHours()===12)||(ds.getHours()===13)){lunch.push(new Date(s).toISOString().slice(11,16)+'-'+(en?new Date(en).toISOString().slice(11,16):'')+' '+(e.getAttribute('data-title')||'').trim());}});
+  const out='events overlapping 12:00-14:00 ('+lunch.length+'):\n'+lunch.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lunch.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lun '+lunch.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5768,5 +5768,19 @@ window.copyMonthSeriesIds=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthExternalAttendeesList=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const own=(document.body.getAttribute('data-tenant-domain')||document.documentElement.getAttribute('data-domain')||'').toLowerCase();
+  const set=new Set();
+  evs.forEach(e=>{const list=(e.getAttribute('data-attendees')||'').split(/[,;]/).map(s=>s.trim()).filter(s=>s.includes('@'));list.forEach(a=>{const d=a.split('@').pop().toLowerCase();if(own&&d&&d!==own){set.add(a);}});});
+  const list=Array.from(set).sort();
+  const out='external attendees this month ('+list.length+'):\n'+list.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ext '+list.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

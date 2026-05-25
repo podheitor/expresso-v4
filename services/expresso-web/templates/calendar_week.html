@@ -5695,5 +5695,18 @@ window.copyWeekCustomerMeetings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekOrganizerWorkload=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const m={};
+  evs.forEach(e=>{const o=(e.getAttribute('data-organizer')||'unknown').trim();const s=Date.parse(e.getAttribute('data-start')||'')||0;const en=Date.parse(e.getAttribute('data-end')||'')||0;const min=en>s?(en-s)/60000:0;m[o]=(m[o]||0)+min;});
+  const sorted=Object.keys(m).map(k=>[k,Math.round(m[k])]).sort((a,b)=>b[1]-a[1]);
+  const out='organizer workload (minutes) ('+sorted.length+'):\n'+sorted.map(x=>x[1]+'min\t'+x[0]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='org '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

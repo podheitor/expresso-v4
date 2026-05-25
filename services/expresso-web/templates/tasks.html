@@ -6440,5 +6440,17 @@ window.copyTasksLabelsCloud=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksWithChecklist=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const lines=[];let totalItems=0,totalDone=0;
+  rows.forEach(r=>{const items=parseInt(r.getAttribute('data-checklist-items')||'0',10)||0;const done=parseInt(r.getAttribute('data-checklist-done')||'0',10)||0;if(items>0){totalItems+=items;totalDone+=done;lines.push((r.getAttribute('data-title')||'').trim()+' | '+done+'/'+items);}});
+  const out='tasks with checklists ('+lines.length+', '+totalDone+'/'+totalItems+' overall):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='chk '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5513,5 +5513,17 @@ window.copyAuditBruteForceDetect=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditDataExports=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const lines=[];
+  rows.forEach(r=>{const a=(r.getAttribute('data-action')||'').toLowerCase();if(a.includes('export')||a.includes('download')||a.includes('bulk-get')||a.includes('dump')){lines.push((r.getAttribute('data-ts')||'')+'\t'+(r.getAttribute('data-actor')||'')+'\t'+a+'\t'+(r.getAttribute('data-target')||''));}});
+  const out='data export events ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='exp '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

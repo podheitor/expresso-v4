@@ -5171,5 +5171,18 @@ window.copyHomeInstallPromptStatus=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeReferrerPolicy=function(){
+  const meta=document.querySelector('meta[name="referrer"]');
+  const policy=meta?meta.getAttribute('content'):'(default)';
+  const csp=document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  const cspVal=csp?csp.getAttribute('content'):'(none)';
+  const out='referrer policy: '+policy+'\nCSP meta: '+(cspVal.length>200?cspVal.slice(0,200)+'…':cspVal);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ref '+policy;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

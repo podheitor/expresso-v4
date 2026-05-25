@@ -6141,5 +6141,19 @@ window.copyDriveStaleFiles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTotalQuotaUsage=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  let total=0;
+  items.forEach(it=>{const s=parseInt(it.getAttribute('data-size')||it.getAttribute('data-size-bytes')||'0',10)||0;total+=s;});
+  const mb=Math.round(total/1048576);
+  const gb=(total/1073741824).toFixed(2);
+  const out='total bytes: '+total+'\ntotal MB: '+mb+'\ntotal GB: '+gb+'\nitems: '+items.length+'\navg per item: '+(items.length?Math.round(total/items.length/1024):0)+' KB';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qta '+gb+'G';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

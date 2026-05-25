@@ -6056,5 +6056,17 @@ window.copyContactsTitleFrequency=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsImSocialLinks=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const lines=[];
+  cs.forEach(c=>{const im=[];Array.from(c.attributes).forEach(a=>{if(a.name.startsWith('data-im-')||a.name.startsWith('data-social-')||a.name==='data-skype'||a.name==='data-telegram'||a.name==='data-linkedin'){im.push(a.name.replace('data-','')+'='+a.value);}});if(im.length){lines.push((c.getAttribute('data-name')||'').trim()+' | '+im.join('; '));}});
+  const out='contacts with IM/social links ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='im '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
