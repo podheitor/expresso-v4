@@ -5900,5 +5900,18 @@ window.composeSubjectPrefixes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeEmojiTally=function(){
+  const b=document.querySelector('[name="body"]')||document.querySelector('textarea');
+  const txt=b?b.value:'';
+  const map={};
+  for(const ch of txt){const cp=ch.codePointAt(0);if(cp&&cp>=0x1F300&&cp<=0x1FAFF)map[ch]=(map[ch]||0)+1;}
+  const out=Object.entries(map).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+': '+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='emo '+Object.keys(map).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

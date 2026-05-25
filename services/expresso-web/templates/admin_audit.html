@@ -6392,5 +6392,19 @@ window.copyAuditTopActors=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByWeekday=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const days=['sun','mon','tue','wed','thu','fri','sat'];
+  const map={};
+  days.forEach(d=>map[d]=0);
+  rows.forEach(r=>{const ts=r.getAttribute('data-ts');if(ts){const d=new Date(ts);if(!isNaN(d))map[days[d.getDay()]]++;}});
+  const out=days.map(d=>d+': '+map[d]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dow '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
