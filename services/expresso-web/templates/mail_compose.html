@@ -3343,5 +3343,17 @@ window.composeCountParagraphs=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeReplaceCrlf=function(){
+  const el=document.querySelector('textarea[name="body"]');
+  if(!el){return;}
+  const before=el.value;
+  el.value=before.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  const diff=before.length-el.value.length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nl '+diff;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

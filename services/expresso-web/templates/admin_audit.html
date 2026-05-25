@@ -3491,5 +3491,25 @@ window.copyAuditPermissionChanges=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditExportCsv=function(){
+  const rows=[['ts','actor','action','target','status','ip']];
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    rows.push([r.getAttribute('data-ts')||'',r.getAttribute('data-actor')||'',r.getAttribute('data-action')||'',r.getAttribute('data-target')||'',r.getAttribute('data-status')||'',r.getAttribute('data-ip')||'']);
+  });
+  const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='audit_'+Date.now()+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},500);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='csv '+(rows.length-1);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

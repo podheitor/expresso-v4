@@ -3538,5 +3538,25 @@ window.copyHomeBatteryStatus=function(){
     setTimeout(()=>t.remove(),1500);
   });
 };
+window.copyHomeFontList=function(){
+  const candidates=['Arial','Helvetica','Times','Courier','Verdana','Georgia','Tahoma','Trebuchet MS','Impact','Comic Sans MS','Inter','Roboto','Segoe UI','Ubuntu','Cantarell'];
+  const out=[];
+  if(document.fonts&&document.fonts.check){
+    candidates.forEach(f=>{
+      try{if(document.fonts.check('12px "'+f+'"')){out.push(f);}}catch(_){}
+    });
+  }
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fnt '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
