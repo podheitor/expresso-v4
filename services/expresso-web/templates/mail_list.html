@@ -4458,5 +4458,20 @@ window.copyMailExternalSenders=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailFolderTotals=function(){
+  const folders={};
+  document.querySelectorAll('[data-folder-link]').forEach(f=>{
+    const n=f.getAttribute('data-folder')||f.textContent.trim();
+    const c=parseInt(f.getAttribute('data-count')||f.querySelector('.count')?.textContent||'0',10);
+    if(n)folders[n]=c;
+  });
+  const out=Object.entries(folders).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fld '+Object.keys(folders).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

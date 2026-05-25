@@ -3706,5 +3706,16 @@ window.copyMeetScreenShareInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRoomCapacity=function(){
+  const cur=document.querySelectorAll('[data-participant],.participant-tile').length;
+  const max=parseInt(document.querySelector('[data-room-capacity]')?.getAttribute('data-room-capacity')||'0',10);
+  const out='current='+cur+'\ncapacity='+(max||'?')+'\nfree='+(max?max-cur:'?')+'\npct='+(max?(cur/max*100).toFixed(1)+'%':'?');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(max&&cur>=max?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=cur+'/'+(max||'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
