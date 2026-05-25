@@ -5627,5 +5627,18 @@ window.copyContactsBirthdayMonths=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsAgeBuckets=function(){
+  const items=Array.from(document.querySelectorAll('[data-contact]'));
+  const now=new Date();
+  const buckets={'<18':0,'18-29':0,'30-44':0,'45-59':0,'60+':0,'unknown':0};
+  items.forEach(c=>{const b=c.dataset.birthday;if(!b){buckets.unknown++;return;}const d=new Date(b);if(isNaN(d)){buckets.unknown++;return;}const age=now.getFullYear()-d.getFullYear();if(age<18)buckets['<18']++;else if(age<30)buckets['18-29']++;else if(age<45)buckets['30-44']++;else if(age<60)buckets['45-59']++;else buckets['60+']++;});
+  const out=Object.entries(buckets).map(([k,v])=>k+'='+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='age '+items.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5063,5 +5063,16 @@ window.copyUsersTimezoneSpread=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAdminFlags=function(){
+  const rows=Array.from(document.querySelectorAll('[data-user-row]'));
+  const admins=rows.filter(r=>r.dataset.admin==='true'||r.dataset.role==='admin'||r.dataset.role==='superadmin'||r.hasAttribute('data-admin'));
+  const out=admins.map(a=>(a.dataset.username||a.dataset.userId||'')+'\t'+(a.dataset.role||'admin')+'\t'+(a.dataset.email||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='adm '+admins.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

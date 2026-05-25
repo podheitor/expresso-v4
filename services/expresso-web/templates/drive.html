@@ -5716,5 +5716,17 @@ window.copyDriveStaleFiles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveExtensionSizeAvg=function(){
+  const items=Array.from(document.querySelectorAll('[data-drive-item]'));
+  const ext={};
+  items.forEach(i=>{const n=(i.dataset.name||'').toLowerCase();const m=n.match(/\.([a-z0-9]+)$/);if(!m)return;const e=m[1];const s=parseFloat(i.dataset.size||'0');if(!ext[e])ext[e]={count:0,total:0};ext[e].count++;ext[e].total+=s;});
+  const out=Object.entries(ext).map(([e,v])=>e+'\tn='+v.count+'\tavg='+Math.round(v.total/v.count)).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ext '+Object.keys(ext).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

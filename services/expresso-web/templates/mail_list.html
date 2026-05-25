@@ -5593,5 +5593,16 @@ window.copyMailListWeekdayDistribution=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListLargestAttachments=function(){
+  const rows=Array.from(document.querySelectorAll('[data-mail-row]'));
+  const withAtt=rows.map(r=>({id:r.dataset.mailId||r.dataset.id||'',size:parseFloat(r.dataset.attachmentSize||r.dataset.attSize||'0'),from:r.dataset.from||'',subj:r.dataset.subject||''})).filter(x=>x.size>0).sort((a,b)=>b.size-a.size).slice(0,10);
+  const out=withAtt.map(x=>x.size+'\t'+x.from+'\t'+x.subj).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lga '+withAtt.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

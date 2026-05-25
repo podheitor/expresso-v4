@@ -6003,5 +6003,16 @@ window.copyTasksMilestoneProgress=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksRecurringInstances=function(){
+  const rows=Array.from(document.querySelectorAll('[data-task-row]'));
+  const rec=rows.filter(r=>r.dataset.recurring==='true'||r.dataset.recurring==='1'||r.dataset.rrule||r.hasAttribute('data-recurring'));
+  const out=rec.map(r=>(r.dataset.taskId||r.dataset.id||'')+'\t'+(r.dataset.rrule||'')+'\t'+(r.dataset.title||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rec '+rec.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

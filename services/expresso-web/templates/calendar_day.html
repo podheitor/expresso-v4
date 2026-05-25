@@ -5238,5 +5238,17 @@ window.copyDayOrganizerSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayTravelTimeGaps=function(){
+  const events=Array.from(document.querySelectorAll('[data-event]')).map(e=>({s:e.dataset.start,en:e.dataset.end,loc:e.dataset.location||''})).filter(e=>e.s&&e.en).sort((a,b)=>new Date(a.s)-new Date(b.s));
+  const gaps=[];
+  for(let i=1;i<events.length;i++){const prev=events[i-1];const cur=events[i];if(prev.loc&&cur.loc&&prev.loc!==cur.loc){const gap=(new Date(cur.s)-new Date(prev.en))/60000;if(gap>=0&&gap<=30)gaps.push(prev.loc+' -> '+cur.loc+'\t'+Math.round(gap)+'min');}}
+  const out=gaps.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='trv '+gaps.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

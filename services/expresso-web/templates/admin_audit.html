@@ -5078,5 +5078,17 @@ window.copyAuditTopTargets=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditHourHistogram=function(){
+  const rows=Array.from(document.querySelectorAll('[data-audit-row]'));
+  const hours=Array(24).fill(0);
+  rows.forEach(r=>{const ts=r.dataset.timestamp||r.dataset.ts;if(!ts)return;const d=new Date(ts);if(isNaN(d))return;hours[d.getHours()]++;});
+  const out=hours.map((v,i)=>String(i).padStart(2,'0')+':00\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hh '+hours.reduce((a,b)=>a+b,0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

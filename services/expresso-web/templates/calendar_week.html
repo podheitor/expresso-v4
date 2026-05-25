@@ -5251,5 +5251,25 @@ window.copyWeekTotalMeetingTime=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekEarliestStart=function(){
+  const events=Array.from(document.querySelectorAll('[data-event]')).map(e=>e.dataset.start).filter(Boolean).map(s=>new Date(s)).filter(d=>!isNaN(d));
+  if(events.length===0){
+    const ta=document.createElement('textarea');ta.value='no events';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='es none';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const earliest=events.reduce((a,b)=>{const ah=a.getHours()*60+a.getMinutes();const bh=b.getHours()*60+b.getMinutes();return bh<ah?b:a;});
+  const out='earliest='+earliest.toISOString()+'\nclock='+earliest.toTimeString().slice(0,5);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='es '+earliest.toTimeString().slice(0,5);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
