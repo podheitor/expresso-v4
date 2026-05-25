@@ -3355,5 +3355,29 @@ window.copyDayBusiestHour=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayShortest=function(){
+  const events=document.querySelectorAll('[data-event]');
+  let best=null,mins=Infinity;
+  events.forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    const en=Date.parse(e.getAttribute('data-end')||'');
+    if(!isNaN(s)&&!isNaN(en)&&en>s){
+      const m=(en-s)/60000;
+      if(m<mins){mins=m;best=e;}
+    }
+  });
+  const out=best?(best.getAttribute('data-start')||'')+'\t'+Math.round(mins)+'m\t'+(best.getAttribute('data-title')||''):'';
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='shr '+(best?Math.round(mins)+'m':'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
