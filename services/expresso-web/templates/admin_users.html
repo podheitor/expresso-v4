@@ -4004,5 +4004,20 @@ window.copyUsersAdminRoles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersStorageHogs=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const used=parseInt(r.getAttribute('data-storage-used')||'0',10);
+    if(used>0)out.push({u:r.getAttribute('data-email')||'?',b:used});
+  });
+  out.sort((a,b)=>b.b-a.b);
+  const top=out.slice(0,30).map(o=>o.u+'\t'+(o.b/1073741824).toFixed(2)+'GB').join('\n');
+  const ta=document.createElement('textarea');ta.value=top;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hogs '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

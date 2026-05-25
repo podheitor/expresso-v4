@@ -3832,5 +3832,17 @@ window.composeRecipientDomainCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeWordCount=function(){
+  const body=document.querySelector('[name=body],[contenteditable=true]')?.value||document.querySelector('[contenteditable=true]')?.innerText||'';
+  const words=body.trim().split(/\s+/).filter(Boolean).length;
+  const chars=body.length;
+  const out='words='+words+'\nchars='+chars+'\nread-min='+(words/200).toFixed(1);
+  const tx=document.createElement('textarea');tx.value=out;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='words '+words;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
