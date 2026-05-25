@@ -3532,5 +3532,16 @@ window.composeCountSentences=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAddTrackingDisclaimer=function(){
+  const ta=document.querySelector('textarea[name=body],textarea#body');
+  if(!ta)return;
+  const note='\n\n--\nThis message contains no tracking pixels or external trackers.';
+  if(!ta.value.includes(note))ta.value=ta.value.replace(/\s*$/,'')+note;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='no-track';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

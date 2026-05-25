@@ -3533,5 +3533,14 @@ window.copyMeetWebrtcStats=async function(){
     const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='err '+e.message;document.body.appendChild(t);setTimeout(()=>t.remove(),1500);
   }
 };
+window.copyMeetGetDisplayMediaSupport=function(){
+  const info={getDisplayMedia:!!(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia),secure:window.isSecureContext,protocol:location.protocol};
+  const ta=document.createElement('textarea');ta.value=JSON.stringify(info,null,2);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(info.getDisplayMedia&&info.secure?'#0a0':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='scr '+(info.getDisplayMedia?'ok':'no');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

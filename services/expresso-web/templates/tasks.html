@@ -4606,5 +4606,23 @@ window.copyTasksDoneRatio=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOverdueRatio=function(){
+  const now=Date.now();let open=0,overdue=0;
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const st=(r.getAttribute('data-status')||'').toLowerCase();
+    if(st==='done'||st==='completed')return;
+    open++;
+    const due=Date.parse(r.getAttribute('data-due')||'');
+    if(!isNaN(due)&&due<now)overdue++;
+  });
+  const pct=open?(overdue/open*100).toFixed(1):'0';
+  const out='open='+open+'\noverdue='+overdue+'\nratio='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(overdue?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='od '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

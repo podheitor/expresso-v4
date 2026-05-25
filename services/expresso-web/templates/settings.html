@@ -4214,5 +4214,19 @@ window.copySettingsServiceWorkers=async function(){
     const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='err '+e.message;document.body.appendChild(t);setTimeout(()=>t.remove(),1500);
   }
 };
+window.copySettingsCspViolations=function(){
+  const arr=window.__cspViolations||[];
+  if(!window.__cspWired){
+    window.addEventListener('securitypolicyviolation',e=>{(window.__cspViolations=window.__cspViolations||[]).push({directive:e.violatedDirective,blocked:e.blockedURI,src:e.sourceFile+':'+e.lineNumber});});
+    window.__cspWired=true;
+  }
+  const out=JSON.stringify(arr,null,2);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(arr.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='csp '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
