@@ -4231,5 +4231,21 @@ window.copyDayAlarmsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayDurationHistogram=function(){
+  const buckets={'<15':0,'15-30':0,'30-60':0,'60-120':0,'120+':0};
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||''),en=Date.parse(e.getAttribute('data-end')||'');
+    if(isNaN(s)||isNaN(en))return;
+    const m=(en-s)/60000;
+    if(m<15)buckets['<15']++;else if(m<30)buckets['15-30']++;else if(m<60)buckets['30-60']++;else if(m<120)buckets['60-120']++;else buckets['120+']++;
+  });
+  const out=Object.entries(buckets).map(([k,v])=>k+'min\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hist '+Object.values(buckets).reduce((a,b)=>a+b,0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

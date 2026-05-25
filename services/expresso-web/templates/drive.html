@@ -4738,5 +4738,18 @@ window.copyDriveStarredItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveQuotaPercent=function(){
+  let used=0;
+  document.querySelectorAll('[data-drive-item]').forEach(r=>used+=parseInt(r.getAttribute('data-size')||'0',10));
+  const quota=parseInt(document.querySelector('meta[name=drive-quota]')?.getAttribute('content')||'0',10);
+  const pct=quota?(used/quota*100).toFixed(1):'?';
+  const out='used='+(used/1073741824).toFixed(2)+'GB\nquota='+(quota/1073741824).toFixed(2)+'GB\npct='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pct>80?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='quota '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

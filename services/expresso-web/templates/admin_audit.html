@@ -4082,5 +4082,23 @@ window.copyAuditResourceTouches=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditSessionDuration=function(){
+  const sessions={};
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    const sid=r.getAttribute('data-session-id')||'';
+    const ts=Date.parse(r.getAttribute('data-ts')||'');
+    if(!sid||isNaN(ts))return;
+    sessions[sid]=sessions[sid]||{first:ts,last:ts,actor:r.getAttribute('data-actor')||'?'};
+    if(ts<sessions[sid].first)sessions[sid].first=ts;
+    if(ts>sessions[sid].last)sessions[sid].last=ts;
+  });
+  const out=Object.entries(sessions).map(([k,v])=>k+'\t'+v.actor+'\t'+((v.last-v.first)/60000).toFixed(1)+'min').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sess '+Object.keys(sessions).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

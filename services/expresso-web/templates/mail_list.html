@@ -4622,5 +4622,20 @@ window.copyMailFolderCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailReplyAllCount=function(){
+  let raAll=0,total=0;
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    total++;
+    const recip=parseInt(r.getAttribute('data-to-count')||'0',10)+parseInt(r.getAttribute('data-cc-count')||'0',10);
+    if(recip>=3)raAll++;
+  });
+  const out='reply-all='+raAll+'\ntotal='+total+'\npct='+(total?(raAll/total*100).toFixed(1):'0')+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(raAll/Math.max(1,total)>0.3?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='reply-all '+raAll;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

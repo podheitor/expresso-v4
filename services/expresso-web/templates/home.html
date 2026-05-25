@@ -3992,5 +3992,16 @@ window.copyHomeMemoryUsage=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeNavigationTiming=function(){
+  const n=performance.getEntriesByType('navigation')[0];
+  if(!n){const ta=document.createElement('textarea');ta.value='(no nav entry)';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return;}
+  const out='dns='+(n.domainLookupEnd-n.domainLookupStart).toFixed(0)+'ms\ntcp='+(n.connectEnd-n.connectStart).toFixed(0)+'ms\nttfb='+(n.responseStart-n.requestStart).toFixed(0)+'ms\ndcl='+n.domContentLoadedEventEnd.toFixed(0)+'ms\nload='+n.loadEventEnd.toFixed(0)+'ms';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(n.loadEventEnd>3000?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='load '+n.loadEventEnd.toFixed(0)+'ms';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
