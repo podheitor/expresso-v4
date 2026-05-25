@@ -3375,5 +3375,27 @@ window.copyMailFromCurrentSender=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailDateRange=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const ts=[];
+  rows.forEach(r=>{
+    const d=Date.parse(r.dataset.date||'');
+    if(!isNaN(d)){ts.push(d);}
+  });
+  ts.sort((a,b)=>a-b);
+  const first=ts[0],last=ts[ts.length-1];
+  const out=first?'oldest '+new Date(first).toISOString().slice(0,10)+'\nnewest '+new Date(last).toISOString().slice(0,10):'(no dates)';
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dr '+ts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
