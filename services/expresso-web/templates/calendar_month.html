@@ -5875,5 +5875,18 @@ window.copyMonthLocationsHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthBusiestWeek=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const weeks={};
+  evs.forEach(e=>{const s=e.getAttribute('data-start');if(s){const d=new Date(s);const onejan=new Date(d.getFullYear(),0,1);const w=Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);const key=d.getFullYear()+'-W'+String(w).padStart(2,'0');weeks[key]=(weeks[key]||0)+1;}});
+  const sorted=Object.keys(weeks).sort((a,b)=>weeks[b]-weeks[a]);
+  const out=sorted.length?'busiest week: '+sorted[0]+' ('+weeks[sorted[0]]+' events)\nfull ranking:\n'+sorted.map(k=>k+'\t'+weeks[k]).join('\n'):'no events';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bw '+(sorted[0]||'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

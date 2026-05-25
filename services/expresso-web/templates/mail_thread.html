@@ -5552,5 +5552,19 @@ window.copyThreadDomainsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadDateSpan=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-id]'));
+  const dates=msgs.map(m=>m.getAttribute('data-ts')||m.getAttribute('data-date')||'').filter(Boolean).sort();
+  if(!dates.length){return;}
+  const first=new Date(dates[0]),last=new Date(dates[dates.length-1]);
+  const days=Math.round((last-first)/86400000);
+  const out='thread span:\nfirst: '+dates[0]+'\nlast: '+dates[dates.length-1]+'\nspan: '+days+' days\nmessages: '+msgs.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='spn '+days+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

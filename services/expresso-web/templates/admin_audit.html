@@ -5614,5 +5614,17 @@ window.copyAuditDistinctTargets=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditWeekendActivity=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const lines=[];
+  rows.forEach(r=>{const ts=r.getAttribute('data-ts')||'';if(ts){const d=new Date(ts);const day=d.getDay();if(day===0||day===6){lines.push(ts+'\t'+(day===0?'Sun':'Sat')+'\t'+(r.getAttribute('data-actor')||'')+'\t'+(r.getAttribute('data-action')||''));}}});
+  const out='weekend audit activity ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wkn '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
