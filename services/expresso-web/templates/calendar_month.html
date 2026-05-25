@@ -6152,5 +6152,24 @@ window.copyMonthBusyDates=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthDurationStats=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const durs=[];
+  evs.forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'')||0;
+    const en=Date.parse(e.getAttribute('data-end')||'')||0;
+    if(s&&en)durs.push((en-s)/60000);
+  });
+  durs.sort((a,b)=>a-b);
+  const sum=durs.reduce((a,b)=>a+b,0);
+  const med=durs.length?(durs[Math.floor(durs.length/2)]):0;
+  const out='duration stats (minutes):\ncount: '+durs.length+'\nmin: '+(durs[0]||0)+'\nmax: '+(durs[durs.length-1]||0)+'\nmedian: '+med+'\navg: '+(durs.length?(sum/durs.length).toFixed(1):0);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dur '+durs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

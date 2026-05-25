@@ -6829,5 +6829,23 @@ window.copyTasksOverdueByDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDependencyChain=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const lines=[];
+  rows.forEach(r=>{
+    const deps=(r.getAttribute('data-depends-on')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if(deps.length){
+      const id=r.getAttribute('data-id')||'';
+      lines.push(id+' <- '+deps.join(','));
+    }
+  });
+  const out='dependency chain ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dep '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

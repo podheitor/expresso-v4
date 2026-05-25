@@ -6507,5 +6507,20 @@ window.copyDriveFilesByCreator=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDrivePublicAccess=function(){
+  const items=document.querySelectorAll('[data-drive-item][data-public="true"]');
+  const lines=Array.from(items).map(i=>{
+    const n=i.getAttribute('data-name')||'';
+    const link=i.getAttribute('data-share-url')||'';
+    return n+'\t'+link;
+  });
+  const out='publicly accessible items ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pub '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

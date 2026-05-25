@@ -6405,5 +6405,17 @@ window.copyMailListSubjectLengthHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListLargestRows=function(){
+  const rows=Array.from(document.querySelectorAll('[data-mail-row]'));
+  const sorted=rows.map(r=>({s:parseInt(r.getAttribute('data-size')||'0',10),sub:r.getAttribute('data-subject')||'',from:r.getAttribute('data-from')||''})).sort((a,b)=>b.s-a.s).slice(0,10);
+  const lines=sorted.map(o=>(o.s/1024).toFixed(1)+'KB\t'+o.from+'\t'+o.sub);
+  const out='largest mail rows (top '+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='big '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

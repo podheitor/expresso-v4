@@ -5878,5 +5878,25 @@ window.copyUsersAuthMethodCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAliasCounts=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  let total=0;
+  const lines=[];
+  rows.forEach(r=>{
+    const aliases=(r.getAttribute('data-aliases')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if(aliases.length){
+      lines.push((r.getAttribute('data-email')||'')+': '+aliases.length);
+      total+=aliases.length;
+    }
+  });
+  lines.sort((a,b)=>parseInt(b.split(': ')[1])-parseInt(a.split(': ')[1]));
+  const out='users with aliases ('+lines.length+' users, '+total+' aliases):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='al '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

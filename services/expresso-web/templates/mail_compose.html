@@ -5495,5 +5495,15 @@ window.composeUnsubscribeHint=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composePriorityFlag=function(){
+  const p=(document.querySelector('[name="priority"]')||{}).value||'normal';
+  const out='priority: '+p;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(p==='high'?'#c00':p==='low'?'#999':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pri '+p;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

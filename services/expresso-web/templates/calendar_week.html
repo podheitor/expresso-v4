@@ -6085,5 +6085,21 @@ window.copyWeekAvgPerDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekHourSpread=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const hours=Array(24).fill(0);
+  evs.forEach(e=>{
+    const t=Date.parse(e.getAttribute('data-start')||'')||0;
+    if(t)hours[new Date(t).getHours()]++;
+  });
+  const lines=hours.map((c,i)=>String(i).padStart(2,'0')+'h: '+c).filter(l=>parseInt(l.slice(4))>0);
+  const out='events by hour:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hr '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
