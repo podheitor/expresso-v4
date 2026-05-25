@@ -5540,5 +5540,19 @@ window.copyChatPollMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatRepliesCount=function(){
+  let withReplies=0,totalReplies=0;
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const n=parseInt(m.getAttribute('data-reply-count')||'0',10);
+    if(n>0){withReplies++;totalReplies+=n;}
+  });
+  const out='threads-with-replies\t'+withReplies+'\ntotal-replies\t'+totalReplies;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rpl '+totalReplies;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

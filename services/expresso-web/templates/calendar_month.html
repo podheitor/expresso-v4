@@ -4523,5 +4523,21 @@ window.copyMonthByLocation=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthAttendeeCounts=function(){
+  let solo=0,small=0,large=0;
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const n=parseInt(e.getAttribute('data-attendee-count')||'0',10);
+    if(n<=1)solo++;
+    else if(n<=5)small++;
+    else large++;
+  });
+  const out='solo(<=1)\t'+solo+'\nsmall(2-5)\t'+small+'\nlarge(6+)\t'+large;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sz s/m/l '+solo+'/'+small+'/'+large;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

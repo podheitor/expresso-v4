@@ -4247,5 +4247,23 @@ window.copyThreadInReplyToChain=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFlagsList=function(){
+  const out=[];
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const flags=[];
+    if(m.getAttribute('data-seen')==='1')flags.push('seen');
+    if(m.getAttribute('data-flagged')==='1')flags.push('flag');
+    if(m.getAttribute('data-answered')==='1')flags.push('ans');
+    if(m.getAttribute('data-draft')==='1')flags.push('drft');
+    if(m.getAttribute('data-deleted')==='1')flags.push('del');
+    out.push((m.getAttribute('data-msg-id')||'?')+'\t'+flags.join(','));
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='flg '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

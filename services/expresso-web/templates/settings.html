@@ -4704,5 +4704,14 @@ window.copySettingsTouchpoints=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsDarkMode=function(){
+  const out=['prefers-dark\t'+(window.matchMedia('(prefers-color-scheme:dark)').matches?'yes':'no'),'prefers-light\t'+(window.matchMedia('(prefers-color-scheme:light)').matches?'yes':'no'),'prefers-reduced-motion\t'+(window.matchMedia('(prefers-reduced-motion:reduce)').matches?'yes':'no'),'prefers-contrast-more\t'+(window.matchMedia('(prefers-contrast:more)').matches?'yes':'no')];
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dark '+(window.matchMedia('(prefers-color-scheme:dark)').matches?'on':'off');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
