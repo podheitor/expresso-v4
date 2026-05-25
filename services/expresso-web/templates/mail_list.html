@@ -4531,5 +4531,20 @@ window.copyMailFlagsHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSpamScoreList=function(){
+  const out=[];
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    const s=parseFloat(r.getAttribute('data-spam-score')||r.getAttribute('data-spam')||'');
+    if(!isNaN(s))out.push(s.toFixed(2)+'\t'+(r.getAttribute('data-from')||'?')+'\t'+(r.getAttribute('data-subject')||'').slice(0,60));
+  });
+  out.sort((a,b)=>parseFloat(b)-parseFloat(a));
+  const ta=document.createElement('textarea');ta.value=out.slice(0,50).join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  const high=out.filter(x=>parseFloat(x)>=5).length;
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(high?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='spam '+high;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

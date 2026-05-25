@@ -4184,5 +4184,23 @@ window.copyMonthCancelledEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthAvgMeetingsPerDay=function(){
+  const byDay={};
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const d=(e.getAttribute('data-start')||'').slice(0,10);
+    if(d)byDay[d]=(byDay[d]||0)+1;
+  });
+  const days=Object.keys(byDay).length;
+  const total=Object.values(byDay).reduce((a,b)=>a+b,0);
+  const avg=days?(total/days).toFixed(2):'0';
+  const max=Math.max(0,...Object.values(byDay));
+  const out='days-with-events='+days+'\ntotal-events='+total+'\navg-per-day='+avg+'\nbusiest-day-count='+max;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg+'/d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

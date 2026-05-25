@@ -4150,5 +4150,18 @@ window.copyDayFreeSlots=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayTravelTimeGaps=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({s:Date.parse(e.getAttribute('data-start')||''),en:Date.parse(e.getAttribute('data-end')||''),loc:(e.getAttribute('data-location')||'').trim()})).filter(e=>!isNaN(e.s)&&e.loc).sort((a,b)=>a.s-b.s);
+  const out=[];
+  for(let i=1;i<evs.length;i++){
+    if(evs[i].loc!==evs[i-1].loc){const gap=(evs[i].s-evs[i-1].en)/60000;out.push(new Date(evs[i-1].en).toTimeString().slice(0,5)+'→'+new Date(evs[i].s).toTimeString().slice(0,5)+'\t'+gap.toFixed(0)+'min\t'+evs[i-1].loc+' → '+evs[i].loc);}
+  }
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='trv '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
