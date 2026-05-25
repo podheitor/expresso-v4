@@ -3000,5 +3000,24 @@ window.copyComposeSubjectPreview=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.clearComposeBody=function(){
+  const b=document.querySelector('textarea[name="body"]');
+  if(!b){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='no body';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const n=b.value.length;
+  b.value='';
+  b.dispatchEvent(new Event('input',{bubbles:true}));
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='body cleared '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

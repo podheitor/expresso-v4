@@ -3062,5 +3062,26 @@ window.copyUsersSuspendedCsv=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersLockoutsToday=function(){
+  const today=new Date().toISOString().slice(0,10);
+  const rows=document.querySelectorAll('[data-user-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const lk=(r.getAttribute('data-locked-at')||'').slice(0,10);
+    if(lk===today){out.push((r.getAttribute('data-locked-at')||'')+'\t'+(r.getAttribute('data-email')||''));}
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  const bg=out.length>0?'#c60':'#069';
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+bg+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lk '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

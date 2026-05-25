@@ -3266,5 +3266,26 @@ window.copyMonthWeekendCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthAttendeesSum=function(){
+  const events=document.querySelectorAll('[data-event]');
+  let total=0,n=0;
+  events.forEach(e=>{
+    const a=parseInt(e.getAttribute('data-attendees-count')||'0',10);
+    if(!isNaN(a)){total+=a;n++;}
+  });
+  const avg=n?(total/n).toFixed(2):'0';
+  const out='events\t'+n+'\nattendees_total\t'+total+'\nattendees_avg\t'+avg;
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='att '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

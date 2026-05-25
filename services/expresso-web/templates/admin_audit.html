@@ -3074,5 +3074,25 @@ window.copyAuditFailuresOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditUserAgents=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const buckets={};
+  rows.forEach(r=>{
+    const ua=(r.getAttribute('data-user-agent')||'').trim()||'(none)';
+    buckets[ua]=(buckets[ua]||0)+1;
+  });
+  const out=Object.keys(buckets).sort((a,b)=>buckets[b]-buckets[a]).map(k=>buckets[k]+'\t'+k).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ua '+Object.keys(buckets).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
