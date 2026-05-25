@@ -2561,5 +2561,26 @@ window.copyWeekColorLegend=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekEarliestLatest=function(){
+  const evs=document.querySelectorAll('[data-event-id]');
+  let earliest=null,latest=null;
+  evs.forEach(e=>{
+    const s=Date.parse(e.dataset.start||'');
+    const f=Date.parse(e.dataset.end||'');
+    if(!isNaN(s)&&(earliest===null||s<earliest))earliest=s;
+    if(!isNaN(f)&&(latest===null||f>latest))latest=f;
+  });
+  const ta=document.createElement('textarea');
+  ta.value='earliest: '+(earliest?new Date(earliest).toISOString():'?')+'\nlatest: '+(latest?new Date(latest).toISOString():'?');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='e/l';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

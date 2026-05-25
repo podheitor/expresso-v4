@@ -2522,5 +2522,18 @@ window.copyComposeBodyLines=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.swapToAndCc=function(){
+  const to=document.querySelector('input[name="to"]');
+  const cc=document.querySelector('input[name="cc"]');
+  if(!to||!cc)return;
+  const tmp=to.value;
+  to.value=cc.value;
+  cc.value=tmp;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='swap';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

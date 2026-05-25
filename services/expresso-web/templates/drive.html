@@ -3154,5 +3154,25 @@ window.copyDriveLockedItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveEmptyFolders=function(){
+  const items=[...document.querySelectorAll('[data-drive-item]')];
+  const folders=items.filter(i=>i.dataset.kind==='folder'||i.dataset.type==='folder');
+  const out=[];
+  folders.forEach(f=>{
+    const c=parseInt(f.dataset.childCount||f.dataset.count||'',10);
+    if(c===0||f.dataset.empty==='1')out.push(f.dataset.path||f.dataset.name||'');
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='emp '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
