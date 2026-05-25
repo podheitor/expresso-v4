@@ -5766,5 +5766,17 @@ window.copyMeetMutedList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetVideoOff=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const off=[];
+  parts.forEach(p=>{if(p.getAttribute('data-video')==='off'||p.getAttribute('data-camera')==='off')off.push(p.getAttribute('data-name')||p.getAttribute('data-participant'));});
+  const out='video off ('+off.length+'):\n'+off.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vof '+off.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

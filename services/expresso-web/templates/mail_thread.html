@@ -6145,5 +6145,17 @@ window.copyThreadDateRange=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadMsgCount=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  const senders=new Set();
+  msgs.forEach(m=>{const s=(m.getAttribute('data-from')||'').trim();if(s)senders.add(s);});
+  const out='thread:\nmessages: '+msgs.length+'\nunique senders: '+senders.size;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mc '+msgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

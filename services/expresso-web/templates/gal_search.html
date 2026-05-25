@@ -5911,5 +5911,18 @@ window.copyGalTitlesList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalByDept=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const m=new Map();
+  rows.forEach(r=>{const d=(r.getAttribute('data-department')||'(none)').trim();m.set(d,(m.get(d)||0)+1);});
+  const arr=Array.from(m.entries()).sort((a,b)=>b[1]-a[1]);
+  const out='gal by department:\n'+arr.map(([d,c])=>c+'\t'+d).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dp '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

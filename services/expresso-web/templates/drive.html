@@ -6814,5 +6814,18 @@ window.copyDriveLargestN=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTotalSize=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  let total=0;
+  items.forEach(i=>{total+=parseInt(i.getAttribute('data-size')||'0',10)||0;});
+  const mb=(total/1048576).toFixed(2);
+  const out='drive total: '+total+' bytes\n('+mb+' MiB)\nitems: '+items.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dt '+mb+'M';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6749,5 +6749,18 @@ window.copyContactsPhoneList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsByCompany=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const m=new Map();
+  cs.forEach(c=>{const co=(c.getAttribute('data-company')||'(none)').trim();m.set(co,(m.get(co)||0)+1);});
+  const arr=Array.from(m.entries()).sort((a,b)=>b[1]-a[1]);
+  const out='contacts by company:\n'+arr.map(([co,n])=>n+'\t'+co).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='co '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
