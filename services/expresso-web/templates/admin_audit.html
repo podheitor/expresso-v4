@@ -5462,5 +5462,19 @@ window.copyAuditLoginGeoSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditTimeRange=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  let min=null,max=null;
+  rows.forEach(r=>{const ts=r.getAttribute('data-ts')||'';if(!ts)return;if(min===null||ts<min)min=ts;if(max===null||ts>max)max=ts;});
+  const dt1=Date.parse(min||'')||0,dt2=Date.parse(max||'')||0;
+  const spanH=dt2>dt1?Math.round((dt2-dt1)/3600000):0;
+  const out='audit window:\n  first: '+(min||'?')+'\n  last:  '+(max||'?')+'\n  span:  '+spanH+'h ('+rows.length+' rows)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='span '+spanH+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

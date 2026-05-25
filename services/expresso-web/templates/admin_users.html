@@ -5445,5 +5445,17 @@ window.copyUsersVacationResponder=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersImapPopEnabled=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  let imap=0,pop=0,both=0,neither=0;const lines=[];
+  rows.forEach(r=>{const i=(r.getAttribute('data-imap-enabled')||'').toLowerCase();const p=(r.getAttribute('data-pop-enabled')||'').toLowerCase();const okI=i==='true'||i==='1';const okP=p==='true'||p==='1';if(okI&&okP){both++;}else if(okI){imap++;}else if(okP){pop++;}else{neither++;}if(okI||okP){lines.push((r.getAttribute('data-email')||r.getAttribute('data-username')||'').trim()+'\t'+(okI?'IMAP ':'')+(okP?'POP':''));}});
+  const out='IMAP only: '+imap+'\nPOP only: '+pop+'\nboth: '+both+'\nneither: '+neither+'\n\nlist:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ip '+(imap+pop+both);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

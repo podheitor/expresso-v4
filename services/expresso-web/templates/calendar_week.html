@@ -5644,5 +5644,19 @@ window.copyWeekColorLegend=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekPercentBookedHours=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let busy=0;
+  evs.forEach(e=>{const s=Date.parse(e.getAttribute('data-start')||'')||0;const en=Date.parse(e.getAttribute('data-end')||'')||0;if(en>s){busy+=(en-s)/60000;}});
+  const workMin=5*8*60;
+  const pct=Math.min(100,Math.round(busy*100/workMin));
+  const out='busy: '+Math.round(busy)+' min / '+workMin+' min (Mon–Fri 8h)\nbooked: '+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pct>=80?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bkd '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

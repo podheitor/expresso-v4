@@ -5402,5 +5402,17 @@ window.copyThreadEncryptedMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAttachmentCount=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  let total=0;const lines=[];
+  msgs.forEach(m=>{const n=parseInt(m.getAttribute('data-attachment-count')||m.getAttribute('data-attachments')||'0',10)||0;if(n>0){total+=n;lines.push((m.getAttribute('data-date')||'')+'\t'+n+'\t'+(m.getAttribute('data-from')||''));}});
+  const out='thread attachments total: '+total+'\nper message ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='atc '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

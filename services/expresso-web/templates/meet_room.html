@@ -5087,5 +5087,17 @@ window.copyMeetWaitingRoom=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetCameraStatus=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  let on=0,off=0;const names=[];
+  parts.forEach(p=>{const c=(p.getAttribute('data-camera')||p.getAttribute('data-video-on')||'').toLowerCase();if(c==='true'||c==='on'||c==='1'){on++;names.push((p.getAttribute('data-name')||'').trim());}else{off++;}});
+  const out='camera on: '+on+'\ncamera off: '+off+'\ncams on:\n'+names.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cam '+on+'/'+(on+off);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
