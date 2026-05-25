@@ -5720,5 +5720,20 @@ window.copyWeekEveningEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekHourlyHeatmap=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const grid=Array.from({length:7},()=>new Array(24).fill(0));
+  evs.forEach(e=>{const s=e.getAttribute('data-start');if(s){const d=new Date(s);grid[d.getDay()][d.getHours()]++;}});
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const lines=['day\\hour\t'+Array.from({length:24},(_,i)=>i).join('\t')];
+  grid.forEach((row,i)=>lines.push(days[i]+'\t'+row.join('\t')));
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hmp '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

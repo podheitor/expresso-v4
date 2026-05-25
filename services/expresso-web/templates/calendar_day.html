@@ -5696,5 +5696,22 @@ window.copyDayEarlyMorningEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayMaxParallelEvents=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const events=[];
+  evs.forEach(e=>{const s=e.getAttribute('data-start'),en=e.getAttribute('data-end');if(s&&en)events.push({s:new Date(s).getTime(),e:new Date(en).getTime(),t:e.getAttribute('data-title')||''});});
+  const points=[];
+  events.forEach(e=>{points.push([e.s,1]);points.push([e.e,-1]);});
+  points.sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+  let cur=0,max=0,maxAt=0;
+  points.forEach(p=>{cur+=p[1];if(cur>max){max=cur;maxAt=p[0];}});
+  const out='max parallel events: '+max+'\nfirst peak at: '+(maxAt?new Date(maxAt).toISOString():'-')+'\ntotal events: '+events.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(max>2?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='par '+max;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

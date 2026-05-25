@@ -6049,5 +6049,18 @@ window.copyMailListInternalDomainRatio=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListUnreadOldestFirst=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const items=[];
+  rows.forEach(r=>{if(r.getAttribute('data-unread')==='1'||!r.hasAttribute('data-seen')){items.push({ts:r.getAttribute('data-ts')||'',from:r.getAttribute('data-from')||'',subj:r.getAttribute('data-subject')||''});}});
+  items.sort((a,b)=>(a.ts<b.ts?-1:a.ts>b.ts?1:0));
+  const out='unread oldest first ('+items.length+'):\n'+items.map(i=>i.ts+'\t'+i.from+'\t'+i.subj).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='uol '+items.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

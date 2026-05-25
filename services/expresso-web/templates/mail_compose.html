@@ -5185,5 +5185,16 @@ window.composeAttachmentsTotalSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSubjectLength=function(){
+  const sub=document.querySelector('[name="subject"],#subject,[data-subject-input]');
+  const v=sub?(sub.value||sub.textContent||''):'';
+  const out='subject: "'+v+'"\nlength: '+v.length+'\nwords: '+(v.trim()?v.trim().split(/\s+/).length:0)+'\nuppercase ratio: '+(v.length?(v.replace(/[^A-Z]/g,'').length/v.length*100).toFixed(1)+'%':'-');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(v.length>100?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sub '+v.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5537,5 +5537,17 @@ window.copyAuditPasswordResets=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditAfterHoursActivity=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const lines=[];
+  rows.forEach(r=>{const ts=r.getAttribute('data-ts')||'';const m=ts.match(/T(\d{2}):/);if(m){const h=parseInt(m[1],10);if(h<7||h>=20){lines.push(ts+'\t'+(r.getAttribute('data-actor')||'')+'\t'+(r.getAttribute('data-action')||''));}}});
+  const out='after-hours activity (<07:00 or >=20:00) ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ahr '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
