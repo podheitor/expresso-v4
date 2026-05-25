@@ -3461,5 +3461,27 @@ window.copyContactsAddresses=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsFullStats=function(){
+  const rows=document.querySelectorAll('[data-contact-id]');
+  let phones=0, emails=0, notes=0, addr=0;
+  rows.forEach(r=>{
+    if((r.dataset.phone||'').trim()){phones++;}
+    if((r.dataset.email||'').trim()){emails++;}
+    if((r.dataset.notes||'').trim()){notes++;}
+    if((r.dataset.address||'').trim()){addr++;}
+  });
+  const out='total '+rows.length+'\nwith phone '+phones+'\nwith email '+emails+'\nwith notes '+notes+'\nwith address '+addr;
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cst '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

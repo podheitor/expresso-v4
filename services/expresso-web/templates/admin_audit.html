@@ -2895,5 +2895,34 @@ window.copyAuditFailuresOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditFullSummary=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  let err=0;
+  const actors=new Set(), paths=new Set(), ips=new Set(), actions=new Set();
+  rows.forEach(r=>{
+    const s=parseInt((r.dataset.status||'0'),10);
+    if(s>=400){err++;}
+    const a=(r.dataset.actor||'').trim();
+    if(a){actors.add(a);}
+    const p=(r.dataset.path||'').trim();
+    if(p){paths.add(p);}
+    const i=(r.dataset.ip||'').trim();
+    if(i){ips.add(i);}
+    const ac=(r.dataset.action||'').trim();
+    if(ac){actions.add(ac);}
+  });
+  const out='rows '+rows.length+'\nfailures '+err+'\nactors '+actors.size+'\npaths '+paths.size+'\nips '+ips.size+'\nactions '+actions.size;
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='asum '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

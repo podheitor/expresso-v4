@@ -3609,5 +3609,25 @@ window.copyDriveAudioOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveArchiveOnly=function(){
+  const rows=document.querySelectorAll('[data-item-id]');
+  const out=[];
+  rows.forEach(r=>{
+    const n=(r.dataset.name||'').trim();
+    if(/\.(zip|tar|gz|bz2|xz|7z|rar|tgz)$/i.test(n)){out.push(n);}
+  });
+  out.sort();
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ar '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

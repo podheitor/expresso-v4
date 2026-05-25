@@ -3787,5 +3787,31 @@ window.copyTasksRecentlyUpdated=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksFullStats=function(){
+  const rows=document.querySelectorAll('[data-task-id]');
+  let done=0, pend=0, overdue=0, today=0;
+  const now=Date.now();
+  const todayKey=new Date().toISOString().slice(0,10);
+  rows.forEach(r=>{
+    const st=(r.dataset.status||'').toLowerCase();
+    if(st==='done'||st==='completed'){done++;}else{pend++;}
+    const due=(r.dataset.due||'').slice(0,10);
+    if(due===todayKey){today++;}
+    const t=new Date(r.dataset.due||'').getTime();
+    if(!isNaN(t)&&t<now&&st!=='done'&&st!=='completed'){overdue++;}
+  });
+  const out='total '+rows.length+'\ndone '+done+'\npending '+pend+'\noverdue '+overdue+'\ndue today '+today;
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='st '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

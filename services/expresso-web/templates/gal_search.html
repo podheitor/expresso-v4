@@ -2717,5 +2717,31 @@ window.copyGalNoEmailFlag=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalFullSummary=function(){
+  const rows=document.querySelectorAll('[data-gal-entry]');
+  let phones=0, emails=0, depts=new Set(), titles=new Set(), mgrs=new Set();
+  rows.forEach(r=>{
+    if((r.dataset.phone||'').trim()){phones++;}
+    if((r.dataset.email||'').trim()){emails++;}
+    const d=(r.dataset.dept||'').trim();
+    if(d){depts.add(d);}
+    const t=(r.dataset.title||'').trim();
+    if(t){titles.add(t);}
+    const m=(r.dataset.manager||'').trim();
+    if(m){mgrs.add(m);}
+  });
+  const out='entries '+rows.length+'\nwith email '+emails+'\nwith phone '+phones+'\ndepts '+depts.size+'\ntitles '+titles.size+'\nmanagers '+mgrs.size;
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gsum '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

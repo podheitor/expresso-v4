@@ -2857,5 +2857,24 @@ window.appendComposeFooter=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyComposeRcptCount=function(){
+  const to=(document.querySelector('input[name="to"]')||{value:''}).value;
+  const cc=(document.querySelector('input[name="cc"]')||{value:''}).value;
+  const bcc=(document.querySelector('input[name="bcc"]')||{value:''}).value;
+  const cnt=s=>s.split(/[;,]/).map(x=>x.trim()).filter(x=>x).length;
+  const t1=cnt(to),c1=cnt(cc),b1=cnt(bcc);
+  const out='to '+t1+'\ncc '+c1+'\nbcc '+b1+'\ntotal '+(t1+c1+b1);
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rcpt '+(t1+c1+b1);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

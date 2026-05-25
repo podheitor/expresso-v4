@@ -2890,5 +2890,29 @@ window.copyThreadInternalOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFullSummary=function(){
+  const msgs=document.querySelectorAll('[data-msg]');
+  let unread=0, flagged=0, attach=0;
+  const senders=new Set();
+  msgs.forEach(m=>{
+    if((m.dataset.unread||'').trim()==='1'){unread++;}
+    if((m.dataset.flagged||'').trim()==='1'){flagged++;}
+    if(parseInt(m.dataset.attachments||'0',10)>0){attach++;}
+    const fr=(m.dataset.from||'').trim();
+    if(fr){senders.add(fr);}
+  });
+  const out='msgs '+msgs.length+'\nunread '+unread+'\nflagged '+flagged+'\nwith attach '+attach+'\nsenders '+senders.size;
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tsum '+msgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
