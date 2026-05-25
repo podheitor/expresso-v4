@@ -4469,5 +4469,21 @@ window.copyMeetWaitingRoom=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetHandRaised=function(){
+  const ps=document.querySelectorAll('[data-participant]');
+  const out=[];
+  ps.forEach(p=>{
+    const raised=p.dataset.handRaised==='1'||p.dataset.handRaised==='true'||p.classList.contains('hand-raised')||p.querySelector('.hand-up');
+    if(raised) out.push((p.dataset.name||p.dataset.participant||'')+'\t'+(p.dataset.raisedAt||''));
+  });
+  out.sort((a,b)=>(a.split('\t')[1]||'').localeCompare(b.split('\t')[1]||''));
+  const txt='name\traisedAt ('+out.length+' hands up)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hand '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

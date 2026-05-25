@@ -4543,5 +4543,21 @@ window.copyHomeBreadcrumbs=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeWidgetTitles=function(){
+  const widgets=document.querySelectorAll('[data-widget], .widget, .home-card, section[id]');
+  const out=[];
+  widgets.forEach(w=>{
+    const id=w.dataset.widget||w.id||'';
+    const title=(w.querySelector('h1,h2,h3,header,.title')||{}).textContent||'';
+    out.push((id||'?')+'\t'+title.trim().replace(/\s+/g,' '));
+  });
+  const txt='id\ttitle ('+widgets.length+' widgets)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wid '+widgets.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

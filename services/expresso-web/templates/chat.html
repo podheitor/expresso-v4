@@ -6005,5 +6005,21 @@ window.copyChatRepliesFromMe=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatPinnedMessages=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const out=[];
+  msgs.forEach(m=>{
+    const pinned=m.dataset.pinned==='1'||m.dataset.pinned==='true'||m.classList.contains('pinned')||m.querySelector('.pin-icon');
+    if(pinned) out.push((m.dataset.timestamp||'')+'\t'+(m.dataset.author||'')+'\t'+((m.textContent||'').trim().replace(/\s+/g,' ').slice(0,140)));
+  });
+  out.sort();
+  const txt='ts\tauthor\ttext ('+out.length+' pinned)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#069':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pin '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

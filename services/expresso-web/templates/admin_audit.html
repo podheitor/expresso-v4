@@ -4794,5 +4794,22 @@ window.copyAuditByMonth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditPrivilegeEscalations=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const re=/(grant|escalat|promot|admin\s*add|role\s*chang|permission\s*add|sudo)/i;
+  const out=[];
+  rows.forEach(r=>{
+    const a=r.dataset.action||r.dataset.event||'';
+    if(re.test(a)) out.push((r.dataset.timestamp||'')+'\t'+(r.dataset.actor||'')+'\t'+a+'\t'+(r.dataset.target||'')+'\t'+(r.dataset.role||r.dataset.permission||''));
+  });
+  out.sort();
+  const txt='ts\tactor\taction\ttarget\trole ('+out.length+' escalations)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='esc '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5029,5 +5029,22 @@ window.copyMonthOrganizerHeatmap=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEventsAfterHours=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const out=[];
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start);if(isNaN(s))return;
+    const h=s.getHours();
+    if(h<8||h>=18) out.push(s.toISOString().slice(0,16)+'\t'+h+':00\t'+(e.dataset.title||'')+'\t'+(e.dataset.organizer||''));
+  });
+  out.sort();
+  const txt='start\thour\ttitle\torganizer ('+out.length+' off-hours of '+evs.length+')\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='oh '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

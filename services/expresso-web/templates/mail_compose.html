@@ -4489,5 +4489,20 @@ window.composeSignatureCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeWordFrequency=function(){
+  const body=((document.querySelector('textarea[name=body]')||{}).value||(document.querySelector('[contenteditable=true]')||{}).innerText||'').toString().toLowerCase();
+  const stop=new Set(['the','and','a','an','of','to','in','for','on','is','it','that','this','with','as','at','be','by','or','from','i','you','we','they','he','she','o','a','os','as','de','da','do','das','dos','e','é','que','para','em','um','uma','com','por','no','na']);
+  const words=body.match(/[a-zà-ú]{3,}/gi)||[];
+  const freq={};
+  words.forEach(w=>{if(!stop.has(w)) freq[w]=(freq[w]||0)+1;});
+  const top=Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,20);
+  const txt='word\tcount (top 20 of '+Object.keys(freq).length+' unique, '+words.length+' total)\n'+top.map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wf '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

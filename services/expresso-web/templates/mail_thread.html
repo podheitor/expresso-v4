@@ -4730,5 +4730,18 @@ window.copyThreadReadStatusFlags=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAuthorTurns=function(){
+  const msgs=[...document.querySelectorAll('[data-msg-id]')].sort((a,b)=>new Date(a.dataset.timestamp)-new Date(b.dataset.timestamp));
+  let turns=0,prev='';
+  const seq=[];
+  msgs.forEach(m=>{const f=m.dataset.from||'';if(f!==prev){turns++;seq.push(f);}prev=f;});
+  const txt='msgs='+msgs.length+'\nturns='+turns+'\navgMsgsPerTurn='+(msgs.length/Math.max(1,turns)).toFixed(2)+'\nsequence='+seq.join(' → ');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='trn '+turns;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
