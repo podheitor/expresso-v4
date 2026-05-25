@@ -5159,5 +5159,17 @@ window.copyHomeWebShareSupport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeInstallPromptStatus=function(){
+  const standalone=window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches;
+  const ios=window.navigator.standalone===true;
+  const manifest=document.querySelector('link[rel="manifest"]');
+  const out='display-mode standalone: '+standalone+'\niOS standalone: '+ios+'\nmanifest: '+(manifest?manifest.getAttribute('href'):'none')+'\nbeforeinstallprompt available: '+(typeof window.BeforeInstallPromptEvent!=='undefined');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(standalone||ios?'#0a0':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pwa '+(standalone||ios?'on':'off');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

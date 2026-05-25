@@ -5122,5 +5122,19 @@ window.copyMeetGuestCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetDurationSoFar=function(){
+  const root=document.querySelector('[data-meet-room]')||document.body;
+  const start=Date.parse(root.getAttribute('data-meet-start')||root.getAttribute('data-start')||'')||0;
+  if(!start){const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='dur n/a';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  const min=Math.floor((Date.now()-start)/60000);
+  const hh=Math.floor(min/60),mm=min%60;
+  const out='meeting started: '+new Date(start).toISOString()+'\nelapsed: '+hh+'h'+mm+'m ('+min+'min)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dur '+hh+'h'+mm+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

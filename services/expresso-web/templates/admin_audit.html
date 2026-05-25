@@ -5500,5 +5500,18 @@ window.copyAuditApiTokens=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditBruteForceDetect=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const m={};
+  rows.forEach(r=>{const a=(r.getAttribute('data-action')||'').toLowerCase();const res=(r.getAttribute('data-result')||'').toLowerCase();if((a.includes('login')||a.includes('signin')||a.includes('auth'))&&(res==='fail'||res==='failure'||res==='denied')){const ip=r.getAttribute('data-ip')||'?';m[ip]=(m[ip]||0)+1;}});
+  const susp=Object.keys(m).filter(k=>m[k]>=5).map(k=>k+' x'+m[k]);
+  const out='IPs with ≥5 auth failures ('+susp.length+'):\n'+susp.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(susp.length?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bf '+susp.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

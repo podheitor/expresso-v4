@@ -5768,5 +5768,20 @@ window.copySettingsViewportSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsStorageEstimate=function(){
+  if(!navigator.storage||!navigator.storage.estimate){const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='stg n/a';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  navigator.storage.estimate().then(e=>{
+    const usedMb=Math.round((e.usage||0)/1048576);
+    const quotaMb=Math.round((e.quota||0)/1048576);
+    const pct=e.quota?Math.round(e.usage*100/e.quota):0;
+    const out='usage: '+usedMb+' MB\nquota: '+quotaMb+' MB\nused: '+pct+'%';
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pct>80?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='stg '+usedMb+'M';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }).catch(()=>{});
+};
 </script>
 {% endblock %}

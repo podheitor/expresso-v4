@@ -5683,5 +5683,17 @@ window.copyWeekTimeBlockSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekCustomerMeetings=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const lines=[];
+  evs.forEach(e=>{const cust=(e.getAttribute('data-customer')||e.getAttribute('data-client')||'').trim();const cat=(e.getAttribute('data-category')||'').toLowerCase();if(cust||cat==='customer'||cat==='client'||cat==='sales'){lines.push((e.getAttribute('data-start')||'')+' | '+cust+' | '+(e.getAttribute('data-title')||'').trim());}});
+  const out='customer-facing meetings this week ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cli '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

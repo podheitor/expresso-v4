@@ -6009,5 +6009,18 @@ window.copyMailListSubjectAllCaps=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListSpamFolderRatio=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  let spam=0,ham=0,quarantine=0;
+  rows.forEach(r=>{const f=(r.getAttribute('data-folder')||r.getAttribute('data-mailbox')||'').toLowerCase();if(f==='spam'||f==='junk'){spam++;}else if(f==='quarantine'){quarantine++;}else{ham++;}});
+  const tot=spam+ham+quarantine;
+  const out='spam: '+spam+'/'+tot+'\nquarantine: '+quarantine+'\ninbox/other: '+ham;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(spam+quarantine>0?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sp '+spam+'/'+tot;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

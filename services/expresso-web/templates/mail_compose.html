@@ -5137,5 +5137,20 @@ window.composeAddressBookSnapshot=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeNonAsciiChars=function(){
+  const ta=document.querySelector('textarea[name="body"]')||document.querySelector('#body')||document.querySelector('textarea');
+  const body=ta?(ta.value||''):'';
+  const non=body.match(/[^\x00-\x7F]/g)||[];
+  const m={};
+  non.forEach(c=>{m[c]=(m[c]||0)+1;});
+  const sorted=Object.keys(m).map(k=>[k,m[k]]).sort((a,b)=>b[1]-a[1]);
+  const out='non-ASCII chars: '+non.length+' total, '+sorted.length+' unique\n'+sorted.slice(0,30).map(x=>x[1]+'\t'+x[0]+' (U+'+x[0].codePointAt(0).toString(16).padStart(4,'0').toUpperCase()+')').join('\n');
+  const tx=document.createElement('textarea');tx.value=out;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='utf '+non.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

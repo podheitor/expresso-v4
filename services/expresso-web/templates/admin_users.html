@@ -5484,5 +5484,19 @@ window.copyUsersTwoFactorAdoption=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersCreatedLast30=function(){
+  const cutoff=Date.now()-30*86400000;
+  const rows=document.querySelectorAll('[data-user-row]');
+  const lines=[];
+  rows.forEach(r=>{const c=Date.parse(r.getAttribute('data-created')||r.getAttribute('data-created-at')||'')||0;if(c&&c>=cutoff){lines.push(new Date(c).toISOString().slice(0,10)+'\t'+(r.getAttribute('data-email')||r.getAttribute('data-username')||''));}});
+  lines.sort();
+  const out='users created in last 30d ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='n30 '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

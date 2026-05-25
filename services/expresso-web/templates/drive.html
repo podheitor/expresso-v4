@@ -6127,5 +6127,19 @@ window.copyDrivePasswordProtected=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveStaleFiles=function(){
+  const cutoff=Date.now()-180*86400000;
+  const items=document.querySelectorAll('[data-drive-item]');
+  const lines=[];
+  items.forEach(it=>{const m=Date.parse(it.getAttribute('data-modified')||it.getAttribute('data-mtime')||'')||0;if(m&&m<cutoff){const days=Math.round((Date.now()-m)/86400000);lines.push((it.getAttribute('data-name')||'').trim()+' | '+days+'d old');}});
+  lines.sort((a,b)=>parseInt(b.match(/(\d+)d/)[1])-parseInt(a.match(/(\d+)d/)[1]));
+  const out='files not modified in >180d ('+lines.length+'):\n'+lines.slice(0,50).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='stale '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5659,5 +5659,18 @@ window.copyDayAttendeeDomains=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFocusTimeGaps=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  evs.sort((a,b)=>(a.getAttribute('data-start')||'').localeCompare(b.getAttribute('data-start')||''));
+  const gaps=[];
+  for(let i=1;i<evs.length;i++){const e1=Date.parse(evs[i-1].getAttribute('data-end')||'')||0;const s2=Date.parse(evs[i].getAttribute('data-start')||'')||0;if(s2>e1){const min=Math.round((s2-e1)/60000);if(min>=60){gaps.push(new Date(e1).toISOString().slice(11,16)+'-'+new Date(s2).toISOString().slice(11,16)+' ('+min+'min)');}}}
+  const out='focus-time gaps ≥60min today ('+gaps.length+'):\n'+gaps.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(gaps.length?'#0a0':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fcs '+gaps.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
