@@ -5591,5 +5591,18 @@ window.copySettingsHardwareConcurrency=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsMediaCapabilities=function(){
+  const c=navigator.mediaCapabilities;
+  if(!c){alert('mediaCapabilities unsupported');return;}
+  c.decodingInfo({type:'file',video:{contentType:'video/mp4;codecs="avc1.42E01E"',width:1280,height:720,bitrate:2000000,framerate:30}}).then(info=>{
+    const out='supported='+info.supported+'\nsmooth='+info.smooth+'\npowerEfficient='+info.powerEfficient;
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='mc '+(info.supported?'ok':'no');
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }).catch(()=>{});
+};
 </script>
 {% endblock %}

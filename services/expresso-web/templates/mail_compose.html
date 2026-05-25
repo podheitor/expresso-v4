@@ -4945,5 +4945,18 @@ window.composeLinkCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSubjectKeywordExtraction=function(){
+  const subj=(document.querySelector('[name=subject],#subject')||{}).value||'';
+  const words=subj.toLowerCase().split(/\W+/).filter(w=>w.length>3);
+  const stop=new Set(['this','that','with','from','your','have','will','about']);
+  const kw=[...new Set(words.filter(w=>!stop.has(w)))];
+  const out='subject='+subj+'\nkeywords='+kw.join(',');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='kw '+kw.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

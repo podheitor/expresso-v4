@@ -5479,5 +5479,23 @@ window.copyWeekRecurringRatio=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFreeSlotsMorning=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({
+    s:new Date(e.getAttribute('data-start')||0),
+    e:new Date(e.getAttribute('data-end')||0)})).filter(e=>!isNaN(e.s));
+  const days={};
+  evs.forEach(e=>{const k=e.s.toISOString().slice(0,10);(days[k]=days[k]||[]).push(e);});
+  const lines=[];
+  Object.keys(days).sort().forEach(k=>{
+    const busy=days[k].some(e=>e.s.getHours()<12&&e.e.getHours()>9);
+    if(!busy)lines.push(k+'\tfree-am');});
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fa '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
