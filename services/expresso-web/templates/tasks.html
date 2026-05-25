@@ -7084,5 +7084,21 @@ window.copyTasksDueThisWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksAvgTitleLength=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let total=0,n=0;
+  rows.forEach(r=>{
+    const t=r.getAttribute('data-title')||'';
+    if(t){total+=t.length;n++;}
+  });
+  const avg=n?(total/n).toFixed(2):0;
+  const out='avg title length: '+avg+'\ntasks: '+n;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='atl '+avg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

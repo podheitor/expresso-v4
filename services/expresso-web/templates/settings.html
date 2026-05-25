@@ -6357,5 +6357,21 @@ window.copySettingsButtonLabels=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsLabelSummary=function(){
+  const ls=document.querySelectorAll('label');
+  const lines=[];
+  ls.forEach(l=>{
+    const t=(l.textContent||'').trim();
+    const f=l.getAttribute('for')||'';
+    if(t)lines.push((f?'['+f+'] ':'')+t);
+  });
+  const out='labels:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lab '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
