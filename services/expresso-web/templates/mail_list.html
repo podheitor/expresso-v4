@@ -3668,5 +3668,26 @@ window.copyMailSubjectsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSizeTotal=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  let total=0,n=0;
+  rows.forEach(r=>{
+    const s=parseInt(r.getAttribute('data-size')||'0',10);
+    if(!isNaN(s)&&s>0){total+=s;n++;}
+  });
+  const avg=n?Math.round(total/n):0;
+  const out='messages\t'+n+'\ntotal_bytes\t'+total+'\ntotal_kb\t'+Math.round(total/1024)+'\navg_kb\t'+Math.round(avg/1024);
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sz '+Math.round(total/1024)+'kb';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

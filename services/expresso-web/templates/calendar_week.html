@@ -3278,5 +3278,26 @@ window.copyWeekFirstLast=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekRecurringTitles=function(){
+  const events=document.querySelectorAll('[data-event]');
+  const buckets={};
+  events.forEach(e=>{
+    const tt=(e.getAttribute('data-title')||'').trim();
+    if(tt){buckets[tt]=(buckets[tt]||0)+1;}
+  });
+  const out=Object.keys(buckets).filter(k=>buckets[k]>1).sort((a,b)=>buckets[b]-buckets[a]).map(k=>buckets[k]+'\t'+k).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  const n=out?out.split('\n').length:0;
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rec '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

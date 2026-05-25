@@ -4005,5 +4005,26 @@ window.copyTasksByOwner=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOldestPending=function(){
+  const rows=document.querySelectorAll('[data-task-row]:not([data-status="done"])');
+  let best=null,oldest=Infinity;
+  rows.forEach(r=>{
+    const c=Date.parse(r.getAttribute('data-created-at')||'');
+    if(!isNaN(c)&&c<oldest){oldest=c;best=r;}
+  });
+  const out=best?(best.getAttribute('data-created-at')||'')+'\t'+(best.getAttribute('data-task-id')||'')+'\t'+(best.getAttribute('data-title')||''):'';
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  const bg=best?'#c60':'#069';
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+bg+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=best?'old '+new Date(oldest).toISOString().slice(0,10):'no pending';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
