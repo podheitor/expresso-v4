@@ -2729,5 +2729,27 @@ window.copyMonthFirstEvent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthCsvIso=function(){
+  const ev=document.querySelectorAll('[data-event-id]');
+  const rows=['date,start,end,title'];
+  ev.forEach(e=>{
+    const s=e.dataset.start||'';
+    const en=e.dataset.end||'';
+    const d=s.slice(0,10);
+    const ti=(e.dataset.title||'').replace(/"/g,'""');
+    rows.push(d+','+s+','+en+',"'+ti+'"');
+  });
+  const ta=document.createElement('textarea');
+  ta.value=rows.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='iso '+ev.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

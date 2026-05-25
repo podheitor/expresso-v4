@@ -3919,5 +3919,24 @@ window.copyChatLastMsg=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatUserCount=function(){
+  const ch=document.querySelectorAll('[data-channel-id]');
+  let total=0;
+  ch.forEach(c=>{
+    const u=parseInt(c.dataset.users||c.dataset.userCount||'0',10);
+    if(u>0)total+=u;
+  });
+  const ta=document.createElement('textarea');
+  ta.value='channels '+ch.length+' total users '+total;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='u '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

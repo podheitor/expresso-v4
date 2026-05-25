@@ -2381,5 +2381,22 @@ window.copyGalSelectedEmails=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalEmailsBcc=function(){
+  const rows=document.querySelectorAll('[data-email]');
+  const out=[];
+  rows.forEach(r=>{if(r.dataset.email)out.push(r.dataset.email);});
+  const url='mailto:?bcc='+encodeURIComponent(out.join(','));
+  const ta=document.createElement('textarea');
+  ta.value=url;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bcc '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
