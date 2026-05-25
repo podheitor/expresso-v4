@@ -6302,5 +6302,21 @@ window.copyUsersAdminFlag=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersStorageOver80=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const arr=[];
+  rows.forEach(r=>{
+    const used=parseFloat(r.getAttribute('data-storage-used')||'0');
+    const quota=parseFloat(r.getAttribute('data-storage-quota')||'0');
+    if(quota>0&&used/quota>=0.8)arr.push((r.getAttribute('data-email')||'?')+' '+Math.round(used/quota*100)+'%');
+  });
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='full '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
