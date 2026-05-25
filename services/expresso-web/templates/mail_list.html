@@ -4740,5 +4740,19 @@ window.copyMailLargestThread=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailHourOfArrival=function(){
+  const hrs=new Array(24).fill(0);
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    const d=Date.parse(r.getAttribute('data-date')||'');
+    if(!isNaN(d))hrs[new Date(d).getHours()]++;
+  });
+  const out=hrs.map((c,h)=>h.toString().padStart(2,'0')+':00\t'+c);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hr 24';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

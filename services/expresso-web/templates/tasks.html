@@ -5114,5 +5114,19 @@ window.copyTasksRecentlyCompleted=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksWatchersList=function(){
+  const out=[];
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const w=(r.getAttribute('data-watchers')||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+    if(w.length>0)out.push((r.getAttribute('data-title')||'?')+'\t'+w.length+'\t'+w.join(','));
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='watch '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4155,5 +4155,19 @@ window.copyThreadLargestMessage=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadResponseLatency=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-id]')).map(m=>({d:Date.parse(m.getAttribute('data-date')||''),f:m.getAttribute('data-from')||'?'})).filter(x=>!isNaN(x.d)).sort((a,b)=>a.d-b.d);
+  const out=[];
+  for(let i=1;i<msgs.length;i++){
+    const min=((msgs[i].d-msgs[i-1].d)/60000).toFixed(0);
+    out.push(msgs[i-1].f+' → '+msgs[i].f+'\t'+min+'min');
+  }
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lat '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
