@@ -4290,5 +4290,18 @@ window.copyThreadCcRecipientsAll=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadBccDisclosure=function(){
+  let bccPresent=0;
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    if((m.getAttribute('data-bcc')||'').trim())bccPresent++;
+  });
+  const out='msgs-with-bcc\t'+bccPresent;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(bccPresent?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bcc '+bccPresent;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
