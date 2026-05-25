@@ -6009,5 +6009,19 @@ window.composeRecipientsCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeStripExtraSpaces=function(){
+  const el=document.querySelector('[name=body]');
+  if(!el)return;
+  const before=el.value.length;
+  el.value=el.value.replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n');
+  const after=el.value.length;
+  const out='before='+before+'\nafter='+after+'\nsaved='+(before-after);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sp -'+(before-after);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
