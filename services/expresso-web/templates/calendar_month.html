@@ -5653,5 +5653,19 @@ window.copyMonthHoursPerCategory=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthOverbookedDays=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const m={};
+  evs.forEach(e=>{const s=new Date(e.getAttribute('data-start')||0);
+    if(isNaN(s))return;const k=s.toISOString().slice(0,10);m[k]=(m[k]||0)+1;});
+  const over=Object.entries(m).filter(e=>e[1]>=8).sort((a,b)=>b[1]-a[1]);
+  const out=over.map(e=>e[0]+'\t'+e[1]+' events').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(over.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ob '+over.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

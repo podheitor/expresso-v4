@@ -5577,5 +5577,21 @@ window.copyWeekUnattendedEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekMeetingFreeDays=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const busy=new Set();
+  evs.forEach(e=>{const s=new Date(e.getAttribute('data-start')||0);
+    if(!isNaN(s))busy.add(s.toISOString().slice(0,10));});
+  const today=new Date();
+  const days=[];
+  for(let i=0;i<7;i++){const d=new Date(today);d.setDate(today.getDate()+i);const k=d.toISOString().slice(0,10);if(!busy.has(k))days.push(k);}
+  const out=days.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mfd '+days.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

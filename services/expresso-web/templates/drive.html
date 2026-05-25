@@ -6025,5 +6025,19 @@ window.copyDriveNestedFolderDepth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveDuplicateChecksums=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const m={};
+  items.forEach(i=>{const c=i.getAttribute('data-md5')||i.getAttribute('data-sha1')||i.getAttribute('data-checksum')||'';
+    if(c){(m[c]=m[c]||[]).push(i.getAttribute('data-name')||'?');}});
+  const dups=Object.entries(m).filter(e=>e[1].length>1);
+  const out=dups.map(e=>e[0]+'\n  '+e[1].join('\n  ')).join('\n\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(dups.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dup '+dups.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

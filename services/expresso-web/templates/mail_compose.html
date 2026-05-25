@@ -5033,5 +5033,17 @@ window.composeSignatureDetect=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeTrackingPixelDetect=function(){
+  const body=(document.querySelector('[name=body],#body,textarea')||{}).value||'';
+  const pixels=body.match(/<img[^>]+(?:width|height)\s*=\s*["']?1["']?[^>]*>/gi)||[];
+  const trk=body.match(/https?:\/\/[^\s"']*track[^\s"']*/gi)||[];
+  const out='1x1-images='+pixels.length+'\ntracking-urls='+trk.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pixels.length||trk.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='trk '+(pixels.length+trk.length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
