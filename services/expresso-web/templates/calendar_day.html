@@ -6326,5 +6326,30 @@ window.copyDayInProgress=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayUpcomingNext=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const now=Date.now();
+  let next=null,nextS=Infinity;
+  evs.forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'')||0;
+    if(s>now&&s<nextS){nextS=s;next=e;}
+  });
+  if(!next){
+    const ta=document.createElement('textarea');ta.value='no upcoming';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='nxt none';
+    document.body.appendChild(t);setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const min=Math.round((nextS-now)/60000);
+  const out='next event: '+new Date(nextS).toISOString()+'\nin: '+min+' min\ntitle: '+(next.getAttribute('data-title')||'');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nxt '+min+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

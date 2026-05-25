@@ -6347,5 +6347,23 @@ window.copyWeekFutureCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekDailyCount=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const counts=new Array(7).fill(0);
+  evs.forEach(e=>{
+    const s=e.getAttribute('data-start')||'';
+    const d=new Date(s);
+    if(!isNaN(d))counts[d.getDay()]++;
+  });
+  const lines=counts.map((c,i)=>days[i]+': '+c);
+  const out='daily counts:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wdc '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

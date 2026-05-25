@@ -5720,5 +5720,25 @@ window.copyMeetRoleDistribution=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetMeetingDuration=function(){
+  const room=document.querySelector('[data-meet-started]');
+  const started=Date.parse(room?.getAttribute('data-meet-started')||'')||0;
+  if(!started){
+    const ta=document.createElement('textarea');ta.value='not started';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='dur none';
+    document.body.appendChild(t);setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const min=Math.round((Date.now()-started)/60000);
+  const out='meeting started: '+new Date(started).toISOString()+'\nduration: '+min+' min';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dur '+min+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
