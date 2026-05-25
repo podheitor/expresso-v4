@@ -4671,5 +4671,19 @@ window.copyGalManagerSpan=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalEmptyFieldStats=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const fields=['data-phone','data-mobile','data-office','data-department','data-title','data-manager'];
+  const missing={};
+  fields.forEach(f=>missing[f]=0);
+  rows.forEach(r=>fields.forEach(f=>{if(!(r.getAttribute(f)||'').trim())missing[f]++;}));
+  const out='field\tmissing\n'+Object.entries(missing).map(([k,v])=>k+'\t'+v+'/'+rows.length).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='empty '+fields.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

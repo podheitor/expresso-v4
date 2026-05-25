@@ -6129,5 +6129,24 @@ window.copyChatLinkPosters=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatReactionTotals=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const totals={};
+  msgs.forEach(m=>{
+    m.querySelectorAll('[data-reaction]').forEach(r=>{
+      const k=r.getAttribute('data-reaction');
+      const n=parseInt(r.getAttribute('data-count')||'1',10)||1;
+      totals[k]=(totals[k]||0)+n;
+    });
+  });
+  const sorted=Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+  const out='emoji\tcount\n'+sorted.map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rx '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

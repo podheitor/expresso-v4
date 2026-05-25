@@ -5107,5 +5107,24 @@ window.copyWeekVideoVsPhysical=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekDayDensity=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const days={Mon:0,Tue:0,Wed:0,Thu:0,Fri:0,Sat:0,Sun:0};
+  const idx=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  evs.forEach(e=>{
+    const dt=e.getAttribute('data-start')||'';
+    if(!dt)return;
+    const d=new Date(dt);
+    if(!isNaN(d))days[idx[d.getDay()]]++;
+  });
+  const out='day\tevents\n'+Object.entries(days).map(([d,n])=>d+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const peak=Object.entries(days).sort((a,b)=>b[1]-a[1])[0];
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dns '+(peak?peak[0]+' '+peak[1]:'0');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

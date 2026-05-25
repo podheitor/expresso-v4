@@ -4857,5 +4857,21 @@ window.copyThreadAttachmentHashes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadParticipantsTimeline=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const seen=new Map();
+  msgs.forEach(m=>{
+    const who=m.getAttribute('data-from')||(m.querySelector('.from')||{textContent:'?'}).textContent.trim();
+    const when=m.getAttribute('data-date')||'';
+    if(!seen.has(who))seen.set(who,when);
+  });
+  const out='participant\tjoined_at\n'+Array.from(seen.entries()).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ppl '+seen.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

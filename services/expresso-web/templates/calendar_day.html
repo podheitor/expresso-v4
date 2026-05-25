@@ -5080,5 +5080,22 @@ window.copyDayCommutePadding=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayUntitledEvents=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const out=[];
+  evs.forEach(e=>{
+    const title=(e.querySelector('.title')||e.querySelector('.summary')||{textContent:''}).textContent.trim();
+    if(!title||/^(sem t[íi]tulo|untitled|\(no title\))$/i.test(title)){
+      out.push((e.getAttribute('data-start')||'?')+' → '+(e.getAttribute('data-end')||'?'));
+    }
+  });
+  const result='untitled='+out.length+'/'+evs.length+'\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=result;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='unt '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
