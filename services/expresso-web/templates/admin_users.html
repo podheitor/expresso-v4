@@ -6355,5 +6355,19 @@ window.copyUsersDisabledList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersTopQuota=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const arr=[];
+  rows.forEach(r=>{const q=parseFloat(r.getAttribute('data-storage-quota')||'0');arr.push({e:r.getAttribute('data-email')||'?',q:q});});
+  arr.sort((a,b)=>b.q-a.q);
+  const top=arr.slice(0,10);
+  const out=top.map(x=>x.e+' '+Math.round(x.q/1024/1024/1024*10)/10+'GB').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

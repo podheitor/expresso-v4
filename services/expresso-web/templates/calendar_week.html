@@ -6570,5 +6570,17 @@ window.copyWeekRecurringSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekAttendeeWorkload=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const map={};
+  evs.forEach(e=>{const as=(e.getAttribute('data-attendees')||'').split(/[,;]\s*/).filter(Boolean);const d=parseInt(e.getAttribute('data-duration-min')||'0',10);as.forEach(a=>{map[a]=(map[a]||0)+d;});});
+  const out=Object.entries(map).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+': '+Math.round(v/60*10)/10+'h').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wl '+Object.keys(map).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
