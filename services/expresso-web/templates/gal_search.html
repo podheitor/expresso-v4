@@ -5477,5 +5477,16 @@ window.copyGalManagerCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalSelectedEmails=function(){
+  const sel=document.querySelectorAll('[data-gal-row].selected, [data-gal-row][data-selected="true"]');
+  const lines=Array.from(sel).map(r=>(r.getAttribute('data-email')||'').trim()).filter(Boolean);
+  const out='selected emails ('+lines.length+'):\n'+lines.join('; ');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sel '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

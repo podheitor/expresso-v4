@@ -5962,5 +5962,23 @@ window.copyWeekStatusBreakdown=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekOnlineVsInPerson=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let online=0,inperson=0,unknown=0;
+  evs.forEach(e=>{
+    const url=(e.getAttribute('data-meeting-url')||'').trim();
+    const loc=(e.getAttribute('data-location')||'').trim();
+    if(url)online++;
+    else if(loc)inperson++;
+    else unknown++;
+  });
+  const out='week meeting type:\nonline: '+online+'\nin-person: '+inperson+'\nunknown: '+unknown;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='typ '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
