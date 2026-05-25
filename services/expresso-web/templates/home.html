@@ -3713,5 +3713,17 @@ window.copyHomeOnlineState=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeMemoryUsage=function(){
+  if(!performance.memory){const e=document.createElement('div');e.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';e.textContent='no api';document.body.appendChild(e);setTimeout(()=>e.remove(),1500);return;}
+  const m=performance.memory;
+  const mb=v=>(v/1048576).toFixed(2)+'MB';
+  const out='used='+mb(m.usedJSHeapSize)+'\ntotal='+mb(m.totalJSHeapSize)+'\nlimit='+mb(m.jsHeapSizeLimit);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='heap '+mb(m.usedJSHeapSize);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

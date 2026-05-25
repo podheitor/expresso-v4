@@ -4382,5 +4382,18 @@ window.copyDriveOldestN=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveAvgFileSize=function(){
+  const sizes=Array.from(document.querySelectorAll('[data-drive-item]')).map(r=>parseInt(r.getAttribute('data-size')||'0',10)).filter(x=>x>0);
+  if(!sizes.length){const e=document.createElement('div');e.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';e.textContent='no files';document.body.appendChild(e);setTimeout(()=>e.remove(),1500);return;}
+  const sum=sizes.reduce((a,b)=>a+b,0);const avg=sum/sizes.length;
+  const fmt=v=>v>1048576?(v/1048576).toFixed(2)+'MB':v>1024?(v/1024).toFixed(2)+'KB':v+'B';
+  const out='n='+sizes.length+'\nsum='+fmt(sum)+'\navg='+fmt(avg)+'\nmin='+fmt(Math.min(...sizes))+'\nmax='+fmt(Math.max(...sizes));
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+fmt(avg);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

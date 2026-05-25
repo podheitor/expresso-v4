@@ -3919,5 +3919,19 @@ window.copyMonthByOrganizer=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthByCategory=function(){
+  const counts={};
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    (e.getAttribute('data-categories')||e.getAttribute('data-category')||'').split(/[,;]\s*/).forEach(c=>{const k=c.trim();if(k)counts[k]=(counts[k]||0)+1;});
+  });
+  const arr=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  const out=arr.map(([k,v])=>v+'\t'+k).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cat '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

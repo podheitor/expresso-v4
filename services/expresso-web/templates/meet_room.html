@@ -3542,5 +3542,23 @@ window.copyMeetGetDisplayMediaSupport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetClockSkew=async function(){
+  try{
+    const t0=Date.now();
+    const r=await fetch(location.origin,{method:'HEAD',cache:'no-store'});
+    const t1=Date.now();
+    const srv=Date.parse(r.headers.get('date')||'')||0;
+    const skew=srv?Math.round((t0+(t1-t0)/2)-srv):null;
+    const out='client='+new Date(t0).toISOString()+'\nserver='+(srv?new Date(srv).toISOString():'(no date hdr)')+'\nskew='+(skew===null?'?':skew+'ms');
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:'+(skew===null||Math.abs(skew)<3000?'#069':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='skew '+(skew===null?'?':skew+'ms');
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }catch(e){
+    const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='err '+e.message;document.body.appendChild(t);setTimeout(()=>t.remove(),1500);
+  }
+};
 </script>
 {% endblock %}

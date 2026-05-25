@@ -5008,5 +5008,20 @@ window.copyChatReplyChains=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMessagesPerWeekday=function(){
+  const dow=[0,0,0,0,0,0,0];
+  document.querySelectorAll('[data-msg]').forEach(m=>{
+    const d=new Date(m.getAttribute('data-ts')||'');
+    if(!isNaN(d))dow[d.getDay()]++;
+  });
+  const names=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const out=names.map((n,i)=>n+'\t'+dow[i]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dow ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

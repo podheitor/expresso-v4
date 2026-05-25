@@ -3513,5 +3513,17 @@ window.copyGalNamesOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalAvgNameLength=function(){
+  const ns=Array.from(document.querySelectorAll('[data-gal-row]')).map(r=>(r.getAttribute('data-name')||'').length).filter(x=>x>0);
+  if(!ns.length){const e=document.createElement('div');e.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';e.textContent='no names';document.body.appendChild(e);setTimeout(()=>e.remove(),1500);return;}
+  const avg=(ns.reduce((a,b)=>a+b,0)/ns.length).toFixed(1);
+  const out='n='+ns.length+'\navg='+avg+'\nmin='+Math.min(...ns)+'\nmax='+Math.max(...ns);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg+'c';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
