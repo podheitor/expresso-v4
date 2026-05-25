@@ -5414,5 +5414,21 @@ window.copyDriveCreatedThisQuarter=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveAclSummary=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const counts={view:0,comment:0,edit:0,owner:0};
+  items.forEach(i=>{
+    const acl=i.querySelectorAll('[data-acl-role]');
+    acl.forEach(a=>{const r=(a.dataset.aclRole||'').toLowerCase();if(counts[r]!==undefined) counts[r]++;});
+  });
+  const out=Object.entries(counts).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='role\tcount (items='+items.length+')\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='acl '+(counts.view+counts.comment+counts.edit+counts.owner);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

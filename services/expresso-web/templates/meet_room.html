@@ -4441,5 +4441,21 @@ window.copyMeetRecordingState=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetReactionsCount=function(){
+  const reacts=document.querySelectorAll('[data-meet-reaction]');
+  const counts={};
+  reacts.forEach(r=>{
+    const k=r.dataset.meetReaction||r.dataset.emoji||'?';
+    counts[k]=(counts[k]||0)+1;
+  });
+  const out=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='emoji\tcount (n='+reacts.length+')\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='react '+reacts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

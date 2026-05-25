@@ -4504,5 +4504,31 @@ window.copyGalByLocation=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalTitleSeniority=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const levels={C:'CXO',VP:'VP',Director:'Director',Manager:'Manager',Senior:'Senior',Lead:'Lead',Junior:'Junior',IC:'IC'};
+  const counts={};
+  rows.forEach(r=>{
+    const title=(r.dataset.title||'').toLowerCase();
+    let lvl='IC';
+    if(/^(ceo|cfo|cto|cio|coo|cmo)\b/.test(title)) lvl='CXO';
+    else if(/\bvp\b|vice president/i.test(title)) lvl='VP';
+    else if(/director/.test(title)) lvl='Director';
+    else if(/manager/.test(title)) lvl='Manager';
+    else if(/lead/.test(title)) lvl='Lead';
+    else if(/senior|sr\.|principal/.test(title)) lvl='Senior';
+    else if(/junior|jr\.|intern/.test(title)) lvl='Junior';
+    counts[lvl]=(counts[lvl]||0)+1;
+  });
+  const order=['CXO','VP','Director','Manager','Lead','Senior','IC','Junior'];
+  const out=order.filter(k=>counts[k]).map(k=>k+'\t'+counts[k]).join('\n');
+  const txt='level\tcount (n='+rows.length+')\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='snr '+Object.keys(counts).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

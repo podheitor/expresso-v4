@@ -4514,5 +4514,22 @@ window.copyHomeResourceTotals=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeFirstPaint=function(){
+  const paints=performance.getEntriesByType('paint');
+  const lcp=performance.getEntriesByType('largest-contentful-paint').slice(-1)[0];
+  const info={
+    firstPaint: (paints.find(p=>p.name==='first-paint')||{}).startTime||0,
+    firstContentfulPaint: (paints.find(p=>p.name==='first-contentful-paint')||{}).startTime||0,
+    largestContentfulPaint: lcp?lcp.startTime:0,
+    lcpElement: lcp&&lcp.element?(lcp.element.tagName+(lcp.element.id?'#'+lcp.element.id:'')):''
+  };
+  const txt=Object.entries(info).map(([k,v])=>k+'\t'+(typeof v==='number'?v.toFixed(1):v)).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fp '+info.firstContentfulPaint.toFixed(0)+'ms';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5684,5 +5684,24 @@ window.copyTasksClosedThisWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksAssigneeWorkload=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const load={};
+  rows.forEach(r=>{
+    if((r.dataset.status||'').toLowerCase()==='done'||r.dataset.completed==='1')return;
+    const a=r.dataset.assignee||r.dataset.assignedTo||'(unassigned)';
+    load[a]=load[a]||{count:0,hours:0};
+    load[a].count++;
+    load[a].hours+=parseFloat(r.dataset.estimatedHours||r.dataset.estimate||'0');
+  });
+  const out=Object.entries(load).sort((a,b)=>b[1].count-a[1].count).map(([k,v])=>k+'\t'+v.count+'\t'+v.hours.toFixed(1)).join('\n');
+  const txt='assignee\topenTasks\testHours\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ldp '+Object.keys(load).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

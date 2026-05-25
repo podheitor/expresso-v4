@@ -4459,5 +4459,19 @@ window.composeExternalRecipients=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBccCheck=function(){
+  const bcc=((document.querySelector('input[name=bcc]')||{}).value||'').trim();
+  const bccCount=bcc?bcc.split(/[,;]/).map(s=>s.trim()).filter(Boolean).length:0;
+  const toCount=(((document.querySelector('input[name=to]')||{}).value||'').split(/[,;]/).filter(Boolean)).length;
+  const ccCount=(((document.querySelector('input[name=cc]')||{}).value||'').split(/[,;]/).filter(Boolean)).length;
+  const warn=bccCount>=20;
+  const txt='to='+toCount+'\ncc='+ccCount+'\nbcc='+bccCount+'\nmassBcc='+warn+'\nbccList='+bcc;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(warn?'#c60':bccCount?'#069':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bcc '+bccCount;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

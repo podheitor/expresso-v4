@@ -4947,5 +4947,25 @@ window.copyWeekEventsByOwner=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekMeetingDensity=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const byDay={};
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start);if(isNaN(s))return;
+    const en=new Date(e.dataset.end||e.dataset.start);if(isNaN(en))return;
+    const d=s.toISOString().slice(0,10);
+    byDay[d]=byDay[d]||{count:0,minutes:0};
+    byDay[d].count++;
+    byDay[d].minutes+=Math.max(0,(en-s)/60000);
+  });
+  const out=Object.entries(byDay).sort().map(([k,v])=>k+'\t'+v.count+'\t'+v.minutes.toFixed(0)+'\t'+(v.minutes/(8*60)*100).toFixed(1)+'%').join('\n');
+  const txt='date\tcount\tmins\tdensityPct\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dens '+Object.keys(byDay).length+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

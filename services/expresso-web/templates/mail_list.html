@@ -5297,5 +5297,22 @@ window.copyMailListAvgSubjectLen=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListWithLinks=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  let total=0;
+  const out=[];
+  rows.forEach(r=>{
+    const n=parseInt(r.dataset.linkCount||r.dataset.urlsCount||'0',10)||(r.dataset.hasLinks==='1'?1:0);
+    if(n>0){total+=n;out.push((r.dataset.from||'')+'\t'+(r.dataset.subject||'')+'\t'+n);}
+  });
+  out.sort((a,b)=>parseInt(b.split('\t')[2])-parseInt(a.split('\t')[2]));
+  const txt='from\tsubject\tlinkCount ('+out.length+' msgs, '+total+' links)\n'+out.slice(0,40).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lnk '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

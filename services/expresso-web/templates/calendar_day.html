@@ -4919,5 +4919,23 @@ window.copyDayLongestEvent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayAcceptedDeclined=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const counts={accepted:0,declined:0,tentative:0,needsAction:0};
+  evs.forEach(e=>{
+    const s=(e.dataset.myResponse||e.dataset.attendeeStatus||'').toLowerCase();
+    if(s==='accepted'||s==='yes') counts.accepted++;
+    else if(s==='declined'||s==='no') counts.declined++;
+    else if(s==='tentative'||s==='maybe') counts.tentative++;
+    else counts.needsAction++;
+  });
+  const txt=Object.entries(counts).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(counts.needsAction?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rsvp need='+counts.needsAction;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
