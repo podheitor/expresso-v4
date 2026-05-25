@@ -4077,5 +4077,15 @@ window.composeAttachmentNames=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeFromAddress=function(){
+  const fr=document.querySelector('select[name=from],input[name=from]');
+  const out='from\t'+((fr&&fr.value)||'')+'\nuser\t'+(document.body.getAttribute('data-current-user')||'')+'\ntenant\t'+(document.body.getAttribute('data-tenant')||'');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='from '+((fr&&fr.value)||'?').slice(0,30);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

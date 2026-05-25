@@ -4713,5 +4713,17 @@ window.copySettingsDarkMode=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsBatteryStatus=function(){
+  if(!navigator.getBattery){const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='no api';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  navigator.getBattery().then(b=>{
+    const out='level\t'+(b.level*100).toFixed(0)+'%\ncharging\t'+(b.charging?'yes':'no')+'\nchargingTime\t'+b.chargingTime+'\ndischargingTime\t'+b.dischargingTime;
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='bat '+(b.level*100).toFixed(0)+'%';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }).catch(()=>{});
+};
 </script>
 {% endblock %}

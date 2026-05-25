@@ -4299,5 +4299,20 @@ window.copyUsersExternalDomains=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersStorageOverview=function(){
+  let total=0,used=0,n=0;
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const u=parseFloat(r.getAttribute('data-storage-used')||'0');
+    const q=parseFloat(r.getAttribute('data-quota')||'0');
+    if(q>0){total+=q;used+=u;n++;}
+  });
+  const out='users\t'+n+'\ntotal-quota\t'+total+'\ntotal-used\t'+used+'\nutilization\t'+(total?(100*used/total).toFixed(1):'0')+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='util '+(total?(100*used/total).toFixed(0)+'%':'0');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
