@@ -6864,5 +6864,18 @@ window.copyDriveByExtension=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveModifiedThisWeek=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const cutoff=Date.now()-7*86400000;
+  const arr=[];
+  items.forEach(i=>{const t=Date.parse(i.getAttribute('data-modified')||'')||0;if(t>=cutoff)arr.push((i.getAttribute('data-name')||'').trim());});
+  const out='modified this week ('+arr.length+'):\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mw '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

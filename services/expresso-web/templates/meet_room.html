@@ -5814,5 +5814,15 @@ window.copyMeetRecording=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetConnectionInfo=function(){
+  const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+  const out=c?('connection:\neffectiveType: '+(c.effectiveType||'?')+'\ndownlink: '+(c.downlink||'?')+' Mbps\nrtt: '+(c.rtt||'?')+' ms\nsaveData: '+(c.saveData?'true':'false')):'navigator.connection unavailable';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(c?'#069':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cn '+(c?(c.effectiveType||'?'):'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

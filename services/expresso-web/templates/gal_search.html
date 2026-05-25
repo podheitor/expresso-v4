@@ -5962,5 +5962,17 @@ window.copyGalMobileNumbers=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalUidList=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const arr=[];
+  rows.forEach(r=>{const u=(r.getAttribute('data-uid')||r.getAttribute('data-gal-row')||'').trim();if(u)arr.push(u);});
+  const out='gal uids ('+arr.length+'):\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='uid '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

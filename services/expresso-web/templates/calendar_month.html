@@ -6526,5 +6526,18 @@ window.copyMonthCancelledEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthByWeek=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const m=new Map();
+  evs.forEach(e=>{const s=Date.parse(e.getAttribute('data-start')||'')||0;if(!s)return;const d=new Date(s);const onejan=new Date(d.getFullYear(),0,1);const wk=Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);m.set(wk,(m.get(wk)||0)+1);});
+  const arr=Array.from(m.entries()).sort((a,b)=>a[0]-b[0]);
+  const out='month by ISO week:\n'+arr.map(([w,c])=>'W'+w+': '+c).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wk '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

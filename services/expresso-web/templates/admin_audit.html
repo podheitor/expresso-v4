@@ -6286,5 +6286,17 @@ window.copyAuditByResource=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditNonGmt=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const arr=[];
+  rows.forEach(r=>{const tz=(r.getAttribute('data-tz')||'').trim();if(tz&&tz!=='UTC'&&tz!=='GMT')arr.push((r.getAttribute('data-actor')||'?')+' @ '+tz);});
+  const out='non-UTC entries ('+arr.length+'):\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tz '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
