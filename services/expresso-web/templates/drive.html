@@ -6301,5 +6301,19 @@ window.copyDriveSharedFolders=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveSelectedItems=function(){
+  const sel=document.querySelectorAll('[data-drive-item].selected, [data-drive-item][aria-selected="true"], [data-drive-item] input[type=checkbox]:checked');
+  const items=new Set();
+  sel.forEach(s=>{const row=s.closest('[data-drive-item]')||s;if(row.hasAttribute('data-drive-item'))items.add(row);});
+  const lines=[];
+  items.forEach(i=>{lines.push((i.getAttribute('data-name')||'?')+'\t'+(i.getAttribute('data-size')||'')+'\t'+(i.getAttribute('data-type')||''));});
+  const out='selected items ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sel '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

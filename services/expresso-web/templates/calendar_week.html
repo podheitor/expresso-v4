@@ -5868,5 +5868,17 @@ window.copyWeekTopOrganizers=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekVirtualMeetings=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const lines=[];
+  evs.forEach(e=>{const url=e.getAttribute('data-meet-url')||e.getAttribute('data-conf-url')||'';const loc=(e.getAttribute('data-location')||'').toLowerCase();if(url||loc.includes('zoom')||loc.includes('teams')||loc.includes('meet')||loc.includes('http')){lines.push((e.getAttribute('data-start')||'')+'\t'+(e.getAttribute('data-title')||'')+'\t'+(url||loc));}});
+  const out='virtual meetings ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vm '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6190,5 +6190,18 @@ window.copyMailListAttachmentsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListAgeBuckets=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const now=Date.now();
+  const buckets={'<1d':0,'1-7d':0,'7-30d':0,'30-90d':0,'>90d':0};
+  rows.forEach(r=>{const d=new Date(r.getAttribute('data-date')||0);if(isNaN(d))return;const days=(now-d.getTime())/864e5;if(days<1)buckets['<1d']++;else if(days<7)buckets['1-7d']++;else if(days<30)buckets['7-30d']++;else if(days<90)buckets['30-90d']++;else buckets['>90d']++;});
+  const out='mail age buckets:\n'+Object.entries(buckets).map(([k,n])=>n+'\t'+k).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='age '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

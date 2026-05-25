@@ -6854,5 +6854,18 @@ window.copyChatRepliesCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatUserActivity=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const map={};
+  msgs.forEach(m=>{const u=(m.getAttribute('data-sender')||m.getAttribute('data-author')||'?').trim();map[u]=(map[u]||0)+1;});
+  const sorted=Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  const out='chat activity ('+sorted.length+' users):\n'+sorted.map(([u,n])=>n+'\t'+u).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='act '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
