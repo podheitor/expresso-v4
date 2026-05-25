@@ -2309,5 +2309,27 @@ window.copyUsersByDomain=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersInactive=function(){
+  const days=parseInt(prompt('Inactive for ≥N days:','60'),10);
+  if(!days||days<1)return;
+  const cutoff=Date.now()-(days*86400000);
+  const rows=document.querySelectorAll('[data-user-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const ll=Date.parse(r.dataset.lastLogin||'');
+    if(isNaN(ll)||ll<cutoff)out.push((r.dataset.lastLogin||'never')+'\t'+(r.dataset.email||''));
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' inact';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
