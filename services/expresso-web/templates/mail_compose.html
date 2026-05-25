@@ -3310,5 +3310,21 @@ window.composeCountRecipients=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeInsertHorizontalRule=function(){
+  const el=document.querySelector('textarea[name="body"]');
+  if(!el){return;}
+  const s=el.selectionStart;
+  const before=el.value.slice(0,s);
+  const after=el.value.slice(s);
+  const sep='\n\n---\n\n';
+  el.value=before+sep+after;
+  el.selectionStart=el.selectionEnd=s+sep.length;
+  el.focus();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hr';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
