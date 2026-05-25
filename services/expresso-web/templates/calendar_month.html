@@ -5530,5 +5530,19 @@ window.copyMonthDurationP90=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthAttendeeRsvpRates=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let inv=0,acc=0,dec=0,ten=0;
+  evs.forEach(e=>{(e.getAttribute('data-attendees')||'').split(',').forEach(a=>{
+    if(!a)return;inv++;const s=a.split(':')[1]||'';
+    if(s==='accepted')acc++;else if(s==='declined')dec++;else if(s==='tentative')ten++;});});
+  const out='invited='+inv+' accepted='+acc+' declined='+dec+' tentative='+ten;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rsv '+acc+'/'+inv;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

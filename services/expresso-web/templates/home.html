@@ -4968,5 +4968,17 @@ window.copyHomeAriaLandmarks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeFormElements=function(){
+  const forms=document.querySelectorAll('form').length;
+  const inputs=document.querySelectorAll('input,select,textarea').length;
+  const buttons=document.querySelectorAll('button').length;
+  const out='forms='+forms+' inputs='+inputs+' buttons='+buttons;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fe '+forms+'/'+inputs;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

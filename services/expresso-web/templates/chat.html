@@ -6474,5 +6474,18 @@ window.copyChatHistoryDepth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMessageLengthBuckets=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const b={short:0,medium:0,long:0,huge:0};
+  msgs.forEach(m=>{const l=(m.getAttribute('data-body')||m.textContent||'').length;
+    if(l<50)b.short++;else if(l<200)b.medium++;else if(l<800)b.long++;else b.huge++;});
+  const out='short(<50)='+b.short+'\nmedium(50-200)='+b.medium+'\nlong(200-800)='+b.long+'\nhuge(>=800)='+b.huge;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mlb '+msgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

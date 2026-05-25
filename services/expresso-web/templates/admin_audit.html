@@ -5292,5 +5292,19 @@ window.copyAuditUniqueActorsDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditSessionDurations=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const m={};
+  rows.forEach(r=>{const s=r.getAttribute('data-session');if(!s)return;
+    const ts=parseInt(r.getAttribute('data-ts')||'0',10);
+    if(!m[s])m[s]={min:ts,max:ts};else{if(ts<m[s].min)m[s].min=ts;if(ts>m[s].max)m[s].max=ts;}});
+  const out=Object.entries(m).map(([k,v])=>k+'\t'+Math.round((v.max-v.min)/60)+'m').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sd '+Object.keys(m).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
