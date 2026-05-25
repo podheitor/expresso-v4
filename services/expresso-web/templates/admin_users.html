@@ -4121,5 +4121,20 @@ window.copyUsersMfaEnrollment=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersQuotaOverage=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const used=parseInt(r.getAttribute('data-quota-used')||'0',10);
+    const max=parseInt(r.getAttribute('data-quota-max')||'0',10);
+    if(max>0&&used>max)out.push((r.getAttribute('data-email')||'?')+'\t'+(used/1073741824).toFixed(2)+'GB/'+(max/1073741824).toFixed(2)+'GB');
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='over '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

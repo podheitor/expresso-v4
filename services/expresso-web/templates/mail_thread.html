@@ -4089,5 +4089,21 @@ window.copyThreadCitedLines=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadParticipantCount=function(){
+  const ppl=new Set();
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const f=m.getAttribute('data-from');
+    if(f)ppl.add(f);
+    (m.getAttribute('data-to')||'').split(/[,;]/).forEach(t=>{const v=t.trim();if(v)ppl.add(v);});
+    (m.getAttribute('data-cc')||'').split(/[,;]/).forEach(t=>{const v=t.trim();if(v)ppl.add(v);});
+  });
+  const out=Array.from(ppl).sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ppl '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

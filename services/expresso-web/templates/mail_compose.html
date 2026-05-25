@@ -3931,5 +3931,21 @@ window.composeDraftId=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAttachmentTotal=function(){
+  let total=0;
+  const out=[];
+  document.querySelectorAll('[data-attachment]').forEach(a=>{
+    const sz=parseInt(a.getAttribute('data-size')||'0',10);
+    total+=sz;
+    out.push((a.getAttribute('data-name')||'?')+'\t'+(sz/1024).toFixed(1)+'KB');
+  });
+  const body=out.join('\n')+'\nTotal: '+(total/1048576).toFixed(2)+'MB';
+  const ta=document.createElement('textarea');ta.value=body;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(total>25*1048576?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='att '+(total/1048576).toFixed(1)+'MB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

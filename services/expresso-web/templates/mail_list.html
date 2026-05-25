@@ -4678,5 +4678,23 @@ window.copyMailColorLabels=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailAvgSubjectLength=function(){
+  const lens=[];
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    const s=r.getAttribute('data-subject')||'';
+    lens.push(s.length);
+  });
+  const total=lens.length;
+  const avg=total?(lens.reduce((a,b)=>a+b,0)/total).toFixed(1):'0';
+  const max=total?Math.max.apply(null,lens):0;
+  const min=total?Math.min.apply(null,lens):0;
+  const out='Subject length: avg='+avg+' min='+min+' max='+max+' n='+total;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avglen '+avg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

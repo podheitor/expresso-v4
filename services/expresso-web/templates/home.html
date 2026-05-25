@@ -4033,5 +4033,15 @@ window.copyHomeIframeList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeMediaQueries=function(){
+  const qs=['(prefers-color-scheme: dark)','(prefers-reduced-motion: reduce)','(prefers-contrast: more)','(hover: hover)','(pointer: fine)','(min-width: 768px)','(min-width: 1200px)','(orientation: portrait)'];
+  const out=qs.map(q=>q+'\t'+(window.matchMedia(q).matches?'yes':'no'));
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mq '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
