@@ -3274,5 +3274,18 @@ window.composeLowercaseSubject=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeTrimAllFields=function(){
+  let n=0;
+  document.querySelectorAll('input[type="text"],input[type="email"],textarea').forEach(el=>{
+    const v=el.value;
+    const trimmed=v.trim();
+    if(v!==trimmed){el.value=trimmed;n++;}
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='trim '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

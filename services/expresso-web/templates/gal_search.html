@@ -3214,5 +3214,23 @@ window.copyGalDepartments=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalNoPhone=function(){
+  const out=[];
+  document.querySelectorAll('[data-gal-row]').forEach(r=>{
+    const p=(r.getAttribute('data-phone')||'').trim();
+    if(!p){out.push((r.getAttribute('data-name')||'')+'\t'+(r.getAttribute('data-email')||''));}
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='np '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
