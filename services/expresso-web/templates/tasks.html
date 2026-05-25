@@ -6674,5 +6674,18 @@ window.copyTasksTitlesOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksStaleOpen=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const now=Date.now();
+  const lines=[];
+  rows.forEach(r=>{const st=(r.getAttribute('data-status')||'').toLowerCase();if(st==='done'||st==='completed')return;const upd=new Date(r.getAttribute('data-updated')||r.getAttribute('data-modified')||0);if(!isNaN(upd)&&upd.getTime()>0){const days=Math.floor((now-upd.getTime())/864e5);if(days>=30)lines.push(days+'d\t'+(r.getAttribute('data-task-id')||'')+'\t'+(r.getAttribute('data-title')||'').slice(0,60));}});
+  const out='stale open tasks ('+lines.length+', >=30d):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='stale '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

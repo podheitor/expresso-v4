@@ -6285,5 +6285,17 @@ window.copyContactsAddresses=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsWebsites=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const lines=[];
+  cs.forEach(c=>{const w=(c.getAttribute('data-website')||c.getAttribute('data-url')||'').trim();if(w)lines.push((c.getAttribute('data-name')||'?')+'\t'+w);});
+  const out='websites ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='web '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6002,5 +6002,16 @@ window.copySettingsTouchPoints=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsThemeColors=function(){
+  const cs=getComputedStyle(document.documentElement);
+  const pick=v=>(cs.getPropertyValue(v)||'').trim()||'(unset)';
+  const out='theme colors:\n--bg: '+pick('--bg')+'\n--fg: '+pick('--fg')+'\n--accent: '+pick('--accent')+'\n--primary: '+pick('--primary')+'\nbody bg: '+getComputedStyle(document.body).backgroundColor+'\nbody fg: '+getComputedStyle(document.body).color;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='thm';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

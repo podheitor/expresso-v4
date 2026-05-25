@@ -5391,5 +5391,15 @@ window.copyHomeMemoryUsage=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeNavigatorInfo=function(){
+  const n=navigator;
+  const out='ua: '+n.userAgent+'\nlang: '+n.language+'\nlangs: '+(n.languages||[]).join(',')+'\nplatform: '+n.platform+'\nvendor: '+n.vendor+'\ncookieEnabled: '+n.cookieEnabled+'\nonLine: '+n.onLine+'\ndoNotTrack: '+n.doNotTrack;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nav '+n.language;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
