@@ -3813,5 +3813,29 @@ window.copyTasksFullStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksMine=function(){
+  const me='{{ me.email }}';
+  const rows=document.querySelectorAll('[data-task-id]');
+  const out=[];
+  rows.forEach(r=>{
+    if((r.dataset.assignee||'').trim().toLowerCase()===me.toLowerCase()){
+      const ti=(r.dataset.title||'').trim();
+      const st=(r.dataset.status||'').trim();
+      const due=(r.dataset.due||'').slice(0,10);
+      out.push(st+'\t'+due+'\t'+ti);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mt '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
