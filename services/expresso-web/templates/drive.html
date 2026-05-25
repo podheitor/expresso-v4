@@ -6800,5 +6800,19 @@ window.copyDriveRecentItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveLargestN=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const arr=[];
+  items.forEach(i=>{const sz=parseInt(i.getAttribute('data-size')||'0',10)||0;arr.push({n:i.getAttribute('data-name')||'',s:sz});});
+  arr.sort((a,b)=>b.s-a.s);
+  const top=arr.slice(0,10);
+  const out='top 10 largest:\n'+top.map(x=>x.s+'\t'+x.n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lg '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
