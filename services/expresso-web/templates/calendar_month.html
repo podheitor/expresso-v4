@@ -5171,5 +5171,21 @@ window.copyMonthTimezoneEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEventColorCodes=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const colors={};
+  evs.forEach(e=>{
+    const c=e.getAttribute('data-color')||getComputedStyle(e).backgroundColor||'(none)';
+    colors[c]=(colors[c]||0)+1;
+  });
+  const sorted=Object.entries(colors).sort((a,b)=>b[1]-a[1]);
+  const out='color\tevents\n'+sorted.map(([c,n])=>c+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='clr '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6148,5 +6148,23 @@ window.copyChatReactionTotals=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatQuestionMessages=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const qs=[];
+  msgs.forEach(m=>{
+    const txt=(m.querySelector('.text')||m).textContent.trim();
+    if(/\?\s*$/.test(txt)){
+      const who=m.getAttribute('data-from')||'?';
+      qs.push(who+': '+txt);
+    }
+  });
+  const out='questions='+qs.length+'/'+msgs.length+'\n'+qs.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='q '+qs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

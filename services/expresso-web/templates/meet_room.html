@@ -4606,5 +4606,22 @@ window.copyMeetRecordingStatus=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetActiveSpeaker=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const ranking=[];
+  parts.forEach(p=>{
+    const name=p.getAttribute('data-name')||p.textContent.trim().split('\n')[0];
+    const speak=parseFloat(p.getAttribute('data-speak-seconds')||'0')||0;
+    ranking.push({name,speak});
+  });
+  ranking.sort((a,b)=>b.speak-a.speak);
+  const out='speaker\tseconds\n'+ranking.map(r=>r.name+'\t'+r.speak.toFixed(1)).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='spk '+(ranking[0]?ranking[0].name:'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

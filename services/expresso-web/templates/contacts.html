@@ -5492,5 +5492,25 @@ window.copyContactsPhoneCountryCodes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsWebsiteDomains=function(){
+  const rows=document.querySelectorAll('[data-contact]');
+  const domains={};
+  rows.forEach(r=>{
+    const ws=(r.getAttribute('data-websites')||r.getAttribute('data-website')||'').split(/[,;\s]+/);
+    ws.forEach(w=>{
+      if(!w)return;
+      const m=w.match(/^(?:https?:\/\/)?([^\/]+)/);
+      if(m){domains[m[1].toLowerCase()]=(domains[m[1].toLowerCase()]||0)+1;}
+    });
+  });
+  const sorted=Object.entries(domains).sort((a,b)=>b[1]-a[1]);
+  const out='domain\tcontacts\n'+sorted.map(([d,n])=>d+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wd '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

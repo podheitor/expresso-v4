@@ -4685,5 +4685,23 @@ window.copyGalEmptyFieldStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalAlphabetBuckets=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const buckets={};
+  for(let c=65;c<=90;c++)buckets[String.fromCharCode(c)]=0;
+  buckets['#']=0;
+  rows.forEach(r=>{
+    const name=(r.getAttribute('data-name')||r.textContent.trim()).trim();
+    const first=name.charAt(0).toUpperCase();
+    if(buckets[first]!==undefined)buckets[first]++;else buckets['#']++;
+  });
+  const out='letter\tcount\n'+Object.entries(buckets).filter(([,n])=>n>0).map(([l,n])=>l+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='abc '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

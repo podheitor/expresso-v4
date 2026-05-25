@@ -4873,5 +4873,22 @@ window.copyThreadParticipantsTimeline=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadInternalExternalRatio=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  let internal=0,external=0;
+  msgs.forEach(m=>{
+    const from=m.getAttribute('data-from')||'';
+    const ext=m.hasAttribute('data-external')||(from.includes('@')&&!from.endsWith('@expresso.local'));
+    if(ext)external++;else internal++;
+  });
+  const pct=msgs.length?((external/msgs.length)*100).toFixed(1):'0';
+  const out='internal='+internal+'\nexternal='+external+'\nexternal_pct='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ext '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

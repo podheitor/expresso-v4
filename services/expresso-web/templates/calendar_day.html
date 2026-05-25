@@ -5097,5 +5097,22 @@ window.copyDayUntitledEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayDeclinedEvents=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const declined=[];
+  evs.forEach(e=>{
+    const st=(e.getAttribute('data-my-status')||'').toLowerCase();
+    if(st==='declined'||st==='no'){
+      declined.push((e.getAttribute('data-start')||'?')+' '+(e.querySelector('.title')||e).textContent.trim());
+    }
+  });
+  const out='declined='+declined.length+'/'+evs.length+'\n'+declined.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(declined.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dec '+declined.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

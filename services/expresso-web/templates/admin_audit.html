@@ -4944,5 +4944,23 @@ window.copyAuditTargetObjectTypes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditSelfActions=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const selfBucket=[];
+  rows.forEach(r=>{
+    const actor=r.getAttribute('data-actor')||'';
+    const target=r.getAttribute('data-target')||'';
+    if(actor&&actor===target){
+      selfBucket.push((r.getAttribute('data-at')||'?')+'\t'+actor+'\t'+(r.getAttribute('data-action')||'?'));
+    }
+  });
+  const out='self_actions='+selfBucket.length+'/'+rows.length+'\nwhen\tactor\taction\n'+selfBucket.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='self '+selfBucket.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
