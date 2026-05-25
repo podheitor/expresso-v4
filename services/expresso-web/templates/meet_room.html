@@ -3371,5 +3371,25 @@ window.copyMeetWindowSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetUptime=function(){
+  const start=window.__meetStartTs||(window.__meetStartTs=Date.now());
+  const ms=Date.now()-start;
+  const s=Math.floor(ms/1000);
+  const hh=String(Math.floor(s/3600)).padStart(2,'0');
+  const mm=String(Math.floor((s%3600)/60)).padStart(2,'0');
+  const ss=String(s%60).padStart(2,'0');
+  const out=hh+':'+mm+':'+ss;
+  const ta=document.createElement('textarea');
+  ta.value='session_uptime\t'+out+'\nstart\t'+new Date(start).toISOString();
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='up '+out;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
