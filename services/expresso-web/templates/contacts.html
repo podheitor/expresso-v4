@@ -6793,5 +6793,19 @@ window.copyContactsTagCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsRecentlyAdded=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const arr=[];
+  cs.forEach(c=>{const ts=Date.parse(c.getAttribute('data-created')||'')||0;if(ts)arr.push({t:ts,n:(c.getAttribute('data-name')||'').trim()});});
+  arr.sort((a,b)=>b.t-a.t);
+  const top=arr.slice(0,10);
+  const out='recently added:\n'+top.map(x=>new Date(x.t).toISOString().slice(0,10)+'\t'+x.n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ra '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

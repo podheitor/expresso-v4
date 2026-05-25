@@ -5738,5 +5738,16 @@ window.copyHomeStorageSizes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeFavicon=function(){
+  const link=document.querySelector('link[rel~="icon"]')||document.querySelector('link[rel="shortcut icon"]');
+  const href=link?(link.getAttribute('href')||''):'';
+  const out='favicon: '+(href||'(none)');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(href?'#069':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fav '+(href?'ok':'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

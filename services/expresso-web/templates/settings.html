@@ -6445,5 +6445,21 @@ window.copySettingsHeadingsOutline=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsCheckboxesState=function(){
+  const cbs=document.querySelectorAll('input[type="checkbox"]');
+  let on=0,off=0;
+  const lines=[];
+  cbs.forEach(c=>{
+    const lbl=(c.id?((document.querySelector('label[for="'+c.id+'"]')||{}).textContent||''):'').trim()||c.name||c.id||'?';
+    if(c.checked){on++;lines.push('[x] '+lbl);}else{off++;lines.push('[ ] '+lbl);}
+  });
+  const out='checkboxes ('+on+'/'+(on+off)+' on):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cb '+on+'/'+(on+off);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
