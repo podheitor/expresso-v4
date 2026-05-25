@@ -5382,5 +5382,22 @@ window.copyTasksByLabel=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksStaleNoUpdate=function(){
+  const cutoff=Date.now()-14*86400000;
+  const out=[];
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const u=Date.parse(r.getAttribute('data-updated-at')||'');
+    const s=(r.getAttribute('data-status')||'').toLowerCase();
+    if(!isNaN(u)&&u<cutoff&&s!=='done'&&s!=='completed')
+      out.push((r.getAttribute('data-updated-at')||'?').slice(0,10)+'\t'+(r.getAttribute('data-title')||'?')+'\t'+(r.getAttribute('data-assignee')||''));
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='stl '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

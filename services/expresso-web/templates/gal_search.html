@@ -4226,5 +4226,17 @@ window.copyGalDirectReports=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalSearchResultCount=function(){
+  const total=document.querySelectorAll('[data-gal-row]').length;
+  const visible=Array.from(document.querySelectorAll('[data-gal-row]')).filter(r=>r.offsetParent!==null).length;
+  const q=(document.querySelector('input[name=q],input[type=search]')||{}).value||'';
+  const out='query\t'+q+'\ntotal\t'+total+'\nvisible\t'+visible+'\nhidden\t'+(total-visible);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='res '+visible+'/'+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

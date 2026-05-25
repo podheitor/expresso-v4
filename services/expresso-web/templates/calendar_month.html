@@ -4684,5 +4684,21 @@ window.copyMonthFridayEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthMondayEvents=function(){
+  const out=[];
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=e.getAttribute('data-start')||'';
+    const d=Date.parse(s);
+    if(!isNaN(d)&&new Date(d).getDay()===1)
+      out.push(s.slice(0,10)+'\t'+(e.getAttribute('data-title')||'?'));
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mon '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
