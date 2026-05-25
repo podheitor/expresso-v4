@@ -3741,5 +3741,22 @@ window.copyThreadMarkdownExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadQuoteRatio=function(){
+  let quoted=0,total=0;
+  document.querySelectorAll('[data-msg-body],.msg-body').forEach(m=>{
+    (m.textContent||'').split('\n').forEach(l=>{
+      total++;
+      if(l.trim().startsWith('>'))quoted++;
+    });
+  });
+  const pct=total?(quoted/total*100).toFixed(1):'0';
+  const out='quoted='+quoted+'\ntotal='+total+'\nratio='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='quote '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

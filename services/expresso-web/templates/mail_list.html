@@ -4315,5 +4315,19 @@ window.copyMailReadVsUnread=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailLongestSubject=function(){
+  let best={len:0,subj:'',from:''};
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    const s=r.getAttribute('data-subject')||'';
+    if(s.length>best.len)best={len:s.length,subj:s,from:r.getAttribute('data-from')||''};
+  });
+  const out=best.subj?best.len+' chars\n'+best.from+'\n'+best.subj:'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='longest '+best.len;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
