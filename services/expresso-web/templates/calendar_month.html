@@ -6705,5 +6705,23 @@ window.copyMonthLocationFrequency=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthMaxStreak=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const days=new Set();
+  evs.forEach(e=>{const d=(e.getAttribute('data-start')||'').slice(0,10);if(d)days.add(d);});
+  const sorted=Array.from(days).sort();
+  let max=0,cur=0,prev=null;
+  sorted.forEach(d=>{
+    if(prev){const dp=new Date(prev);const dc=new Date(d);if((dc-dp)===86400000)cur++;else cur=1;}else cur=1;
+    if(cur>max)max=cur;prev=d;
+  });
+  const out='max_streak_days='+max;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='strk '+max;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
