@@ -5219,5 +5219,17 @@ window.copyHomeImagesLoadStatus=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeMediaCapabilities=function(){
+  const v=document.createElement('video');
+  const fmts=['video/mp4; codecs="avc1.42E01E"','video/webm; codecs="vp9"','video/webm; codecs="av01.0.05M.08"','application/vnd.apple.mpegurl'];
+  const lines=fmts.map(f=>f+': '+(v.canPlayType(f)||'no'));
+  const out='video codec support:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cdc '+lines.filter(l=>!l.endsWith(': no')).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

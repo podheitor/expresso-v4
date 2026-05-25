@@ -5210,5 +5210,17 @@ window.composeReplyChainLength=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBccCount=function(){
+  const bcc=document.querySelector('[name="bcc"],#bcc,[data-bcc-input]');
+  const v=bcc?(bcc.value||bcc.textContent||''):'';
+  const addrs=v.split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+  const out='bcc recipients: '+addrs.length+'\n'+addrs.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(addrs.length>10?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bcc '+addrs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

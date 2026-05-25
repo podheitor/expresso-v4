@@ -5546,5 +5546,18 @@ window.copyUsersAdminRoleList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersExpiredPasswords=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const lines=[];
+  const now=Date.now();
+  rows.forEach(r=>{const exp=r.getAttribute('data-password-expires');if(exp){const t=new Date(exp).getTime();if(!isNaN(t)&&t<now){lines.push((r.getAttribute('data-login')||'')+'\texpired '+exp);}}else if(r.getAttribute('data-password-expired')==='1'){lines.push((r.getAttribute('data-login')||'')+'\texpired');}});
+  const out='expired passwords ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='exp '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

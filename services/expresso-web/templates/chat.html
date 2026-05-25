@@ -6739,5 +6739,17 @@ window.copyChatDeletedMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatBotMessages=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const lines=[];
+  msgs.forEach(m=>{const a=(m.getAttribute('data-author')||'').toLowerCase();if(a.includes('bot')||m.hasAttribute('data-bot')||m.getAttribute('data-author-type')==='bot'){lines.push((m.getAttribute('data-ts')||'')+'\t'+(m.getAttribute('data-author')||'')+'\t'+((m.textContent||'').trim().slice(0,80)));}});
+  const out='bot messages ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bot '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
