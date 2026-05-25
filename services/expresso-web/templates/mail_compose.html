@@ -3152,5 +3152,20 @@ window.copyComposeAllRecipients=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyComposeSubjectLen=function(){
+  const el=document.querySelector('input[name="subject"]');
+  const v=el?el.value:'';
+  const ta=document.createElement('textarea');
+  ta.value='subject_len\t'+v.length+'\nwords\t'+v.trim().split(/\s+/).filter(Boolean).length;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sub '+v.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

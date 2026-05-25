@@ -3403,5 +3403,26 @@ window.copyWeekHourHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekWeekdayDist=function(){
+  const buckets=new Array(7).fill(0);
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    if(isNaN(s)){return;}
+    buckets[new Date(s).getDay()]++;
+  });
+  const names=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const out=buckets.map((c,i)=>names[i]+'\t'+c).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wkd ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
