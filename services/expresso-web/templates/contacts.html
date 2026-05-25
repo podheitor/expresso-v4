@@ -6197,5 +6197,17 @@ window.copyContactsJobTitles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsWithNotes=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const lines=[];
+  cs.forEach(c=>{const n=(c.getAttribute('data-notes')||c.getAttribute('data-note')||'').trim();if(n){lines.push((c.getAttribute('data-name')||c.getAttribute('data-contact')||'?')+'\t'+n.slice(0,60).replace(/\s+/g,' '));}});
+  const out='contacts with notes ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='not '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5364,5 +5364,16 @@ window.copyGalTitleHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalSearchTerm=function(){
+  const q=(document.querySelector('[name=q]')||document.querySelector('[name=query]')||document.querySelector('input[type=search]')||{}).value||'';
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const out='gal search: "'+q+'" → '+rows.length+' results';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='q '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

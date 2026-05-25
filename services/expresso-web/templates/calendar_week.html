@@ -5839,5 +5839,21 @@ window.copyWeekDailyTotals=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekDurationStats=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const durs=[];
+  evs.forEach(e=>{const s=new Date(e.getAttribute('data-start')||0);const en=new Date(e.getAttribute('data-end')||0);if(!isNaN(s)&&!isNaN(en)){durs.push(Math.round((en-s)/60000));}});
+  durs.sort((a,b)=>a-b);
+  const sum=durs.reduce((a,b)=>a+b,0);
+  const avg=durs.length?Math.round(sum/durs.length):0;
+  const med=durs.length?durs[Math.floor(durs.length/2)]:0;
+  const out='week duration stats n='+durs.length+' total='+sum+'m avg='+avg+'m median='+med+'m min='+(durs[0]||0)+'m max='+(durs[durs.length-1]||0)+'m';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dur '+avg+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

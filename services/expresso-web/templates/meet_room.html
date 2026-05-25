@@ -5269,5 +5269,17 @@ window.copyMeetScreenShareActive=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRoomTitle=function(){
+  const title=document.querySelector('[data-room-title]')||document.querySelector('h1');
+  const room=document.querySelector('[data-room-id]');
+  const start=document.querySelector('[data-room-start]');
+  const out='room: '+((title&&title.textContent)||document.title||'?')+'\nid: '+((room&&room.getAttribute('data-room-id'))||'?')+'\nstart: '+((start&&start.getAttribute('data-room-start'))||'?');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='room';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
