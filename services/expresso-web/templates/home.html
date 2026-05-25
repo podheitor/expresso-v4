@@ -3140,5 +3140,22 @@ window.copyHomeReadyState=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeOriginCert=function(){
+  const secure=window.isSecureContext;
+  const proto=window.location.protocol;
+  const out='origin\t'+window.location.origin+'\nprotocol\t'+proto+'\nsecure_context\t'+secure+'\ntls\t'+(proto==='https:'?'yes':'no');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  const bg=secure?'#069':'#c60';
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+bg+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tls '+(secure?'ok':'no');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

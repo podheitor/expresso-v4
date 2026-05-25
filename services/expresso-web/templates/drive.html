@@ -3711,5 +3711,22 @@ window.copyDriveSelectedNames=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveFolderPath=function(){
+  const crumbs=document.querySelectorAll('[data-breadcrumb]');
+  const parts=[];
+  crumbs.forEach(c=>{const v=(c.getAttribute('data-name')||c.textContent||'').trim();if(v){parts.push(v);}});
+  const path='/'+parts.join('/');
+  const ta=document.createElement('textarea');
+  ta.value=path;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fp '+parts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

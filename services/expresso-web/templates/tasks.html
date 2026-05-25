@@ -3901,5 +3901,29 @@ window.copyTasksOverdueCsv=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDueThisWeek=function(){
+  const now=Date.now();
+  const wkEnd=now+7*86400000;
+  const rows=document.querySelectorAll('[data-task-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const due=Date.parse(r.getAttribute('data-due')||'');
+    if(!isNaN(due)&&due>=now&&due<=wkEnd&&r.getAttribute('data-status')!=='done'){
+      out.push((r.getAttribute('data-due')||'')+'\t'+(r.getAttribute('data-title')||''));
+    }
+  });
+  out.sort();
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wk '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
