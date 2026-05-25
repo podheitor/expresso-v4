@@ -6350,5 +6350,23 @@ window.copyMailListSignedRows=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListInternalVsExternal=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const myDomain=(location.hostname.split('.').slice(-2).join('.')||'').toLowerCase();
+  let internal=0,external=0;
+  rows.forEach(r=>{
+    const from=(r.getAttribute('data-from')||'').toLowerCase();
+    const dom=from.split('@')[1]||'';
+    if(dom.endsWith(myDomain))internal++;
+    else external++;
+  });
+  const out='mail origin (domain '+myDomain+'):\ninternal: '+internal+'\nexternal: '+external;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='int '+internal+'/'+external;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

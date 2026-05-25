@@ -7012,5 +7012,21 @@ window.copyChatEditedMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatDeletedMessages=function(){
+  const msgs=document.querySelectorAll('[data-msg-id][data-deleted="true"]');
+  const lines=Array.from(msgs).map(m=>{
+    const id=m.getAttribute('data-msg-id')||'';
+    const by=m.getAttribute('data-deleted-by')||'?';
+    const at=m.getAttribute('data-deleted-at')||'';
+    return id+'\t'+by+'\t'+at;
+  });
+  const out='deleted messages ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='del '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

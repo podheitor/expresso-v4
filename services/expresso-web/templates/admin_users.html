@@ -5829,5 +5829,20 @@ window.copyUsersAdminAccounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersForwardingEnabled=function(){
+  const rows=document.querySelectorAll('[data-user-row][data-forwarding="true"]');
+  const lines=Array.from(rows).map(r=>{
+    const e=r.getAttribute('data-email')||'';
+    const fwd=r.getAttribute('data-forward-to')||'';
+    return e+'\t-> '+fwd;
+  });
+  const out='forwarding enabled ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fwd '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

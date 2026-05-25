@@ -5840,5 +5840,24 @@ window.copyAuditLoginEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditConfigChanges=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const lines=[];
+  rows.forEach(r=>{
+    const act=(r.getAttribute('data-action')||'').toLowerCase();
+    if(act.includes('config')||act.includes('setting')||act.includes('update_')){
+      const ts=r.getAttribute('data-timestamp')||'';
+      const actor=r.getAttribute('data-actor')||'';
+      lines.push(ts+'\t'+actor+'\t'+act);
+    }
+  });
+  const out='config changes ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cfg '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

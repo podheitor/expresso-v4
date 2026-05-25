@@ -5534,5 +5534,26 @@ window.copyGalFullTimeList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalHiredThisYear=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const y=String(new Date().getFullYear());
+  const lines=[];
+  rows.forEach(r=>{
+    const h=(r.getAttribute('data-hire-date')||'').slice(0,4);
+    if(h===y){
+      const n=r.getAttribute('data-name')||'';
+      const d=r.getAttribute('data-hire-date')||'';
+      lines.push(d+'\t'+n);
+    }
+  });
+  lines.sort();
+  const out='hired in '+y+' ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hy '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
