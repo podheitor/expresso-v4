@@ -3951,5 +3951,19 @@ window.copyMonthAvgDuration=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthRecurringIds=function(){
+  const set=new Set();
+  document.querySelectorAll('[data-event][data-recurrence-id],[data-event][data-rrule]').forEach(e=>{
+    const id=e.getAttribute('data-recurrence-id')||e.getAttribute('data-uid')||e.getAttribute('data-id')||'';
+    if(id)set.add(id);
+  });
+  const out=[...set].sort().join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rec '+set.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

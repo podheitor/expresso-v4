@@ -4409,5 +4409,21 @@ window.copyDriveFolderNames=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveImageFiles=function(){
+  const exts=new Set(['png','jpg','jpeg','gif','webp','svg','heic','heif','bmp','tiff']);
+  const out=[];
+  document.querySelectorAll('[data-drive-item]').forEach(r=>{
+    const n=r.getAttribute('data-name')||'';
+    const e=n.split('.').pop().toLowerCase();
+    if(exts.has(e))out.push((parseInt(r.getAttribute('data-size')||'0',10)||0)+'\t'+n);
+  });
+  out.sort((a,b)=>parseInt(b)-parseInt(a));
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='img '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

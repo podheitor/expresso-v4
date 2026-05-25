@@ -3567,5 +3567,18 @@ window.composeExtractEmails=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeHashSnapshot=async function(){
+  const ta=document.querySelector('textarea[name=body],textarea#body');
+  if(!ta)return;
+  const buf=new TextEncoder().encode(ta.value);
+  const hash=await crypto.subtle.digest('SHA-256',buf);
+  const hex=Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  const tx=document.createElement('textarea');tx.value=hex;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sha '+hex.slice(0,8);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

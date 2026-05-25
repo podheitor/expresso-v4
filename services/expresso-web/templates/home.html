@@ -3736,5 +3736,14 @@ window.copyHomeBatteryStatus=async function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeDocReadyState=function(){
+  const info={readyState:document.readyState,visibilityState:document.visibilityState,hidden:document.hidden,activeElement:document.activeElement?document.activeElement.tagName:'(none)',hasFocus:document.hasFocus()};
+  const ta=document.createElement('textarea');ta.value=JSON.stringify(info,null,2);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='st '+info.readyState;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

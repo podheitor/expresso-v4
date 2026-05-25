@@ -4257,5 +4257,16 @@ window.copySettingsIndexedDbList=async function(){
     const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='err '+e.message;document.body.appendChild(t);setTimeout(()=>t.remove(),1500);
   }
 };
+window.copySettingsLocaleInfo=function(){
+  const intl=Intl.DateTimeFormat().resolvedOptions();
+  const num=Intl.NumberFormat().resolvedOptions();
+  const out='ui-lang='+navigator.language+'\nall='+(navigator.languages||[]).join(',')+'\ndate-locale='+intl.locale+'\nnumber-locale='+num.locale+'\ncalendar='+intl.calendar+'\ntz='+intl.timeZone+'\nhour-cycle='+intl.hourCycle;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='loc '+navigator.language;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

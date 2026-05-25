@@ -5038,5 +5038,19 @@ window.copyChatMessagesPerDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatLatestMsg=function(){
+  let latest=null;
+  document.querySelectorAll('[data-msg]').forEach(m=>{
+    const ts=m.getAttribute('data-ts')||'';
+    if(ts&&(!latest||ts>latest.ts))latest={ts,author:m.getAttribute('data-author')||'',body:(m.textContent||'').trim().slice(0,140)};
+  });
+  const out=latest?latest.ts+'\t'+latest.author+'\t'+latest.body:'(empty)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=latest?'last '+latest.ts.slice(11,16):'(none)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
