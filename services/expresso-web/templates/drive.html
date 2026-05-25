@@ -4258,5 +4258,17 @@ window.copyDriveEmptyFolders=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveLastModifiedSorted=function(){
+  const arr=[...document.querySelectorAll('[data-drive-item]')].map(d=>({
+    name:d.getAttribute('data-name')||'',mod:d.getAttribute('data-modified')||d.getAttribute('data-mtime')||''
+  })).filter(e=>e.mod).sort((a,b)=>Date.parse(b.mod)-Date.parse(a.mod)).slice(0,20);
+  const out=arr.map(e=>e.mod+'\t'+e.name).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mod '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

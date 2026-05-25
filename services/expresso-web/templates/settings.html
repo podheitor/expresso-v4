@@ -4120,5 +4120,19 @@ window.exportPrefsBackup=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.importPrefsBackup=function(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='application/json';
+  inp.onchange=async e=>{
+    const f=e.target.files[0];if(!f)return;
+    const txt=await f.text();let obj;
+    try{obj=JSON.parse(txt);}catch(_){const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='bad json';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+    let n=0;
+    for(const k of Object.keys(obj)){if(k.startsWith('expresso_')){localStorage.setItem(k,obj[k]);n++;}}
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='imp '+n;document.body.appendChild(t);setTimeout(()=>t.remove(),1500);
+  };
+  inp.click();
+};
 </script>
 {% endblock %}

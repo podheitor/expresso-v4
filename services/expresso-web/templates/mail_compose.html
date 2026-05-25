@@ -3433,5 +3433,15 @@ window.composeStripSignature=function(){
   document.body.appendChild(tt);
   setTimeout(()=>tt.remove(),1500);
 };
+window.composeSubjectTitleCase=function(){
+  const sub=document.querySelector('input[name=subject],input#subject');
+  if(!sub)return;
+  sub.value=sub.value.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='title-case';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
