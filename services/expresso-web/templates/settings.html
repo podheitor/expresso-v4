@@ -4745,5 +4745,15 @@ window.copySettingsConnectionInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsTimezoneOffset=function(){
+  const d=new Date();
+  const out='timezone\t'+(Intl.DateTimeFormat().resolvedOptions().timeZone||'?')+'\noffset-min\t'+d.getTimezoneOffset()+'\noffset-str\tUTC'+(d.getTimezoneOffset()<=0?'+':'-')+String(Math.abs(d.getTimezoneOffset()/60|0)).padStart(2,'0')+':'+String(Math.abs(d.getTimezoneOffset()%60)).padStart(2,'0')+'\nlocale\t'+(Intl.DateTimeFormat().resolvedOptions().locale||'?');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tz '+(Intl.DateTimeFormat().resolvedOptions().timeZone||'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

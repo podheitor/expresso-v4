@@ -5022,5 +5022,19 @@ window.copyDrivePathSnapshot=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveDeepestPaths=function(){
+  const out=[];
+  document.querySelectorAll('[data-drive-item]').forEach(it=>{
+    const p=it.getAttribute('data-path')||'/';
+    out.push({depth:p.split('/').filter(Boolean).length,line:p+(it.getAttribute('data-name')||'?')});
+  });
+  out.sort((a,b)=>b.depth-a.depth);
+  const ta=document.createElement('textarea');ta.value=out.slice(0,30).map(o=>o.depth+'\t'+o.line).join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='deep '+(out[0]?out[0].depth:0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

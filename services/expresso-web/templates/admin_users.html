@@ -4342,5 +4342,19 @@ window.copyUsersPasswordPolicy=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersWithAlias=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const al=(r.getAttribute('data-aliases')||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+    if(al.length)out.push((r.getAttribute('data-email')||'?')+'\t'+al.length+'\t'+al.join(','));
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='al '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

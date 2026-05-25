@@ -4546,5 +4546,22 @@ window.copyWeekFocusBlocks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTimeByCalendar=function(){
+  const totals={};
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    const en=Date.parse(e.getAttribute('data-end')||'');
+    if(isNaN(s)||isNaN(en))return;
+    const cal=e.getAttribute('data-calendar')||'(default)';
+    totals[cal]=(totals[cal]||0)+(en-s);
+  });
+  const out=Object.keys(totals).sort((a,b)=>totals[b]-totals[a]).map(k=>k+'\t'+(totals[k]/3600000).toFixed(1)+'h');
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cal '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
