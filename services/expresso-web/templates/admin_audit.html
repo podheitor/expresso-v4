@@ -2948,5 +2948,26 @@ window.copyAuditMine=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditMethodCsv=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const buckets={};
+  rows.forEach(r=>{
+    const m=r.getAttribute('data-method')||'?';
+    buckets[m]=(buckets[m]||0)+1;
+  });
+  const out=['method,count'];
+  Object.keys(buckets).sort().forEach(m=>out.push(m+','+buckets[m]));
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mth '+Object.keys(buckets).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -3649,5 +3649,26 @@ window.copyDriveTextOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveMd=function(){
+  const rows=document.querySelectorAll('[data-item-id]');
+  const out=['| Name | Size | Modified |','|---|---|---|'];
+  rows.forEach(r=>{
+    const n=(r.dataset.name||'').trim();
+    const sz=(r.dataset.size||'').trim();
+    const m=(r.dataset.modified||'').slice(0,10);
+    if(n){out.push('| '+n+' | '+sz+' | '+m+' |');}
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dmd '+(out.length-2);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

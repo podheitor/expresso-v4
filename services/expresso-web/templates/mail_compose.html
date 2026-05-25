@@ -2887,5 +2887,24 @@ window.toggleComposeBcc=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyComposeStats=function(){
+  const subj=document.querySelector('input[name="subject"]');
+  const body=document.querySelector('textarea[name="body"]');
+  const sv=subj?subj.value:'';
+  const bv=body?body.value:'';
+  const words=bv.trim()?bv.trim().split(/\s+/).length:0;
+  const out=['subject_chars\t'+sv.length,'body_chars\t'+bv.length,'body_words\t'+words,'body_lines\t'+(bv?bv.split('\n').length:0)].join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='st w='+words;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

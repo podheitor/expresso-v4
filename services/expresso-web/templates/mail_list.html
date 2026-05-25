@@ -3519,5 +3519,26 @@ window.copyMailSubjectsOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailMd=function(){
+  const rows=document.querySelectorAll('[data-msg-id]');
+  const out=['| Date | From | Subject |','|---|---|---|'];
+  rows.forEach(r=>{
+    const d=(r.dataset.date||'').slice(0,16);
+    const fr=(r.dataset.from||'').trim();
+    const s=(r.dataset.subject||'').trim();
+    if(s){out.push('| '+d+' | '+fr+' | '+s+' |');}
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='md '+(out.length-2);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
