@@ -5410,5 +5410,20 @@ window.copyDayMeetingMinutes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDaySoloVsGroup=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let solo=0,group=0;
+  evs.forEach(e=>{
+    const att=(e.getAttribute('data-attendees')||'').split(',').map(s=>s.trim()).filter(Boolean).length;
+    if(att<=1)solo++;else group++;
+  });
+  const out='solo='+solo+'\ngroup='+group+'\nratio-solo='+(evs.length?((solo/evs.length)*100).toFixed(1):'0')+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sg '+solo+'/'+group;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5430,5 +5430,24 @@ window.copyWeekAttachmentLinkCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekBusyVsFreeMinutes=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let busy=0;
+  evs.forEach(e=>{
+    const free=(e.getAttribute('data-free-busy')||e.getAttribute('data-availability')||'').toLowerCase();
+    const s=new Date(e.getAttribute('data-start')||0).getTime();
+    const en=new Date(e.getAttribute('data-end')||0).getTime();
+    if(free!=='free'&&!isNaN(s)&&!isNaN(en)&&en>s)busy+=(en-s)/60000;
+  });
+  const weekTotal=7*24*60;
+  const free=Math.max(0,weekTotal-busy);
+  const out='busy-min='+Math.round(busy)+'\nfree-min='+Math.round(free)+'\nbusy-pct='+((busy/weekTotal)*100).toFixed(1)+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bvf '+((busy/weekTotal)*100).toFixed(0)+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

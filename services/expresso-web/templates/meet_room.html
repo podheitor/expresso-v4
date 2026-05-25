@@ -4895,5 +4895,21 @@ window.copyMeetWebRtcStats=function(){
     setTimeout(()=>t.remove(),1500);
   }).catch(()=>{});
 };
+window.copyMeetParticipantPresenceStates=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const tally={};
+  parts.forEach(p=>{
+    const s=(p.getAttribute('data-presence')||p.getAttribute('data-status')||'unknown').toLowerCase();
+    tally[s]=(tally[s]||0)+1;
+  });
+  const lines=Object.entries(tally).sort((a,b)=>b[1]-a[1]).map(([s,n])=>n+'\t'+s);
+  const out=lines.join('\n')||'no participants';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='prs '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

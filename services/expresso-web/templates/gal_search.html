@@ -4975,5 +4975,20 @@ window.copyGalPronounsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalSecondaryEmails=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const lines=[];
+  rows.forEach(r=>{
+    const sec=(r.getAttribute('data-secondary-emails')||r.getAttribute('data-other-emails')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    sec.forEach(e=>lines.push((r.getAttribute('data-name')||'?')+'\t'+e));
+  });
+  const out=lines.join('\n')||'no secondary emails';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='se '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

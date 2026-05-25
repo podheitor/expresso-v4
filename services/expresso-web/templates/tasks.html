@@ -6181,5 +6181,20 @@ window.copyTasksCreatedThisWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksLinkedIssueIds=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const lines=[];
+  rows.forEach(r=>{
+    const ids=(r.getAttribute('data-linked-issues')||r.getAttribute('data-issue-ids')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    ids.forEach(id=>lines.push((r.getAttribute('data-title')||'?')+'\t'+id));
+  });
+  const out=lines.join('\n')||'no linked issues';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='iss '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

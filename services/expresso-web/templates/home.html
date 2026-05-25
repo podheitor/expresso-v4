@@ -4938,5 +4938,18 @@ window.copyHomeImageDimensions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeLinkTargets=function(){
+  const links=document.querySelectorAll('a[href]');
+  const tally={'_self':0,'_blank':0,'_top':0,'_parent':0,'(unset)':0};
+  links.forEach(a=>{const k=a.getAttribute('target')||'(unset)';if(tally.hasOwnProperty(k))tally[k]++;else tally[k]=(tally[k]||0)+1;});
+  const lines=Object.entries(tally).map(([k,n])=>n+'\t'+k);
+  const out='links='+links.length+'\n\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lt '+links.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
