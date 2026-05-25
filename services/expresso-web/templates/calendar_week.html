@@ -5368,5 +5368,20 @@ window.copyWeekColorTags=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekDeclinedRsvps=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const decl=[];
+  evs.forEach(e=>{
+    const r=(e.getAttribute('data-rsvp')||e.getAttribute('data-my-status')||'').toLowerCase();
+    if(r==='declined'||r==='no')decl.push((e.getAttribute('data-start')||'?')+'\t'+(e.getAttribute('data-title')||'(no title)'));
+  });
+  const out=decl.join('\n')||'no declined invites';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dec '+decl.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

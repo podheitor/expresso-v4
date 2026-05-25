@@ -4853,5 +4853,21 @@ window.composeNumericFigures=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeQuoteDepthMax=function(){
+  const body=document.querySelector('[data-compose-body],textarea[name=body],#compose-body')?.value||document.querySelector('[data-compose-body]')?.textContent||'';
+  const lines=body.split('\n');
+  let max=0;
+  lines.forEach(l=>{
+    const m=l.match(/^(>+)/);
+    if(m&&m[1].length>max)max=m[1].length;
+  });
+  const out='lines='+lines.length+'\nmax-quote-depth='+max+'\nquoted-lines='+lines.filter(l=>/^>/.test(l)).length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qd '+max;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

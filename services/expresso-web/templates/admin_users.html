@@ -5174,5 +5174,24 @@ window.copyUsersForwardingRules=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersLoginsLast24h=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const cutoff=Date.now()-86400000;
+  const lines=[];
+  rows.forEach(r=>{
+    const last=r.getAttribute('data-last-login')||r.getAttribute('data-last-seen');
+    if(!last)return;
+    const t=new Date(last).getTime();
+    if(!isNaN(t)&&t>=cutoff)lines.push(last+'\t'+(r.getAttribute('data-email')||'?'));
+  });
+  lines.sort().reverse();
+  const out=lines.join('\n')||'no logins in last 24h';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='24h '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

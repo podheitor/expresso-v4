@@ -5342,5 +5342,24 @@ window.copyDayLinkedUrls=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayUpdatedRecently=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const cutoff=Date.now()-86400000;
+  const lines=[];
+  evs.forEach(e=>{
+    const u=e.getAttribute('data-updated')||e.getAttribute('data-modified');
+    if(!u)return;
+    const t=new Date(u).getTime();
+    if(!isNaN(t)&&t>=cutoff)lines.push(u+'\t'+(e.getAttribute('data-title')||'(no title)'));
+  });
+  lines.sort().reverse();
+  const out=lines.join('\n')||'nothing updated in last 24h';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='upd '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

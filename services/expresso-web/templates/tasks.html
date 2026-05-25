@@ -6111,5 +6111,22 @@ window.copyTasksCommentTotals=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksReopenedCount=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let count=0;
+  const lines=[];
+  rows.forEach(r=>{
+    const n=parseInt(r.getAttribute('data-reopen-count')||'0',10);
+    if(n>0){count+=n;lines.push(n+'\t'+(r.getAttribute('data-title')||'?'));}
+  });
+  lines.sort((a,b)=>parseInt(b)-parseInt(a));
+  const out='total-reopens='+count+'\ntasks-reopened='+lines.length+'\n\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(count?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='reop '+count;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

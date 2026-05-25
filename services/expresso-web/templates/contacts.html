@@ -5734,5 +5734,21 @@ window.copyContactsSocialHandles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsLastContactedSummary=function(){
+  const rows=document.querySelectorAll('[data-contact]');
+  const lines=[];
+  rows.forEach(r=>{
+    const lc=r.getAttribute('data-last-contacted')||r.getAttribute('data-last-interaction');
+    if(lc)lines.push(lc+'\t'+(r.getAttribute('data-name')||'?'));
+  });
+  lines.sort().reverse();
+  const out=lines.slice(0,50).join('\n')||'no interaction data';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lc '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
