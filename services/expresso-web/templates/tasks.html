@@ -6808,5 +6808,26 @@ window.copyTasksEstimateTotal=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOverdueByDays=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const now=Date.now();
+  const lines=[];
+  rows.forEach(r=>{
+    if((r.getAttribute('data-status')||'').toLowerCase()==='done')return;
+    const due=Date.parse(r.getAttribute('data-due')||'')||0;
+    if(due&&due<now){
+      const days=Math.floor((now-due)/86400000);
+      lines.push(days+'d\t'+(r.getAttribute('data-title')||''));
+    }
+  });
+  lines.sort((a,b)=>parseInt(b)-parseInt(a));
+  const out='overdue by days ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ovd '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
