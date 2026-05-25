@@ -6072,5 +6072,21 @@ window.copyAuditFirstAndLast=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditActorCounts=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const counts={};
+  rows.forEach(r=>{
+    const a=r.getAttribute('data-actor')||'(unknown)';
+    counts[a]=(counts[a]||0)+1;
+  });
+  const lines=Object.keys(counts).sort().map(k=>k+': '+counts[k]);
+  const out='actor counts:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ac '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

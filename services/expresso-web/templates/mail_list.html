@@ -6557,5 +6557,20 @@ window.copyMailListByDayOfWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailLargestAttachment=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  let max=0,subj='';
+  rows.forEach(r=>{
+    const sz=parseInt(r.getAttribute('data-attachment-bytes')||'0',10);
+    if(sz>max){max=sz;subj=r.getAttribute('data-subject')||'';}
+  });
+  const out='largest attachment: '+max+' bytes\nsubject: '+subj;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='la '+max;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
