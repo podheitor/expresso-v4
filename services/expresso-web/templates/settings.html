@@ -5629,5 +5629,17 @@ window.copySettingsGamepadList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsFontsCheck=function(){
+  const fonts=['Arial','Verdana','Times New Roman','Courier New','Georgia','Comic Sans MS','Tahoma','Trebuchet MS','Impact','monospace','serif','sans-serif'];
+  if(!document.fonts){alert('Font API unsupported');return;}
+  const ok=fonts.filter(f=>document.fonts.check('12px '+JSON.stringify(f)));
+  const out='checked='+fonts.length+'\navailable='+ok.length+'\n'+ok.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fn '+ok.length+'/'+fonts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

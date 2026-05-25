@@ -4974,5 +4974,18 @@ window.copyMeetParticipantJoinTimes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetMuteStatusSummary=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  let m=0,c=0,t=0;
+  parts.forEach(p=>{if((p.getAttribute('data-mic-muted')||'')==='true')m++;
+    if((p.getAttribute('data-cam-off')||'')==='true')c++;t++;});
+  const out='total='+t+' micMuted='+m+' camOff='+c;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const ti=document.createElement('div');
+  ti.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  ti.textContent='mt '+m+'/'+t;
+  document.body.appendChild(ti);
+  setTimeout(()=>ti.remove(),1500);
+};
 </script>
 {% endblock %}

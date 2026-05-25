@@ -5585,5 +5585,21 @@ window.copyMonthAttendeeTopN=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthVirtualVsInPerson=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let virt=0,phys=0,both=0;
+  evs.forEach(e=>{const loc=(e.getAttribute('data-location')||'').toLowerCase();
+    const url=e.getAttribute('data-meeting-url')||'';
+    const hasV=!!url||/meet|zoom|teams|webex|jitsi/i.test(loc);
+    const hasP=loc&&!hasV;
+    if(hasV&&hasP)both++;else if(hasV)virt++;else if(hasP)phys++;});
+  const out='virtual='+virt+'\nin-person='+phys+'\nhybrid='+both;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vp '+virt+'/'+phys;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
