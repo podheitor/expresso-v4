@@ -5062,5 +5062,18 @@ window.copyMeetRecordingState=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetParticipantRoles=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const m={};
+  parts.forEach(p=>{const r=(p.getAttribute('data-role')||'attendee').toLowerCase();m[r]=(m[r]||0)+1;});
+  const lines=Object.keys(m).sort().map(k=>k+': '+m[k]);
+  const out='participant roles:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rl '+Object.keys(m).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6063,5 +6063,18 @@ window.copyDriveLockedItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveOwnedByMe=function(){
+  const me=(document.body.getAttribute('data-current-user')||document.documentElement.getAttribute('data-user-email')||'').toLowerCase();
+  const items=document.querySelectorAll('[data-drive-item]');
+  const lines=[];
+  items.forEach(it=>{const o=(it.getAttribute('data-owner')||'').toLowerCase();if(me&&o===me){lines.push((it.getAttribute('data-name')||'').trim());}});
+  const out='owned by '+me+' ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mine '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

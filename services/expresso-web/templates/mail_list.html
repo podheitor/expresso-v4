@@ -5947,5 +5947,18 @@ window.copyMailListSpfPassRate=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListDkimPassRate=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  let pass=0,fail=0,none=0;
+  rows.forEach(r=>{const s=(r.getAttribute('data-dkim')||'').toLowerCase();if(s==='pass'){pass++;}else if(s==='fail'){fail++;}else{none++;}});
+  const tot=pass+fail+none;
+  const out='DKIM pass: '+pass+'/'+tot+' ('+(tot?Math.round(pass*100/tot):0)+'%)\nfail: '+fail+'\nnone: '+none;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(fail?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dkim '+pass+'/'+tot;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5377,5 +5377,18 @@ window.copyThreadDmarcSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAttachmentMimeTypes=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const m={};
+  msgs.forEach(msg=>{const atts=msg.querySelectorAll('[data-attachment-mime], [data-mime]');atts.forEach(a=>{const t=(a.getAttribute('data-attachment-mime')||a.getAttribute('data-mime')||'').trim();if(t){m[t]=(m[t]||0)+1;}});});
+  const sorted=Object.keys(m).map(k=>[k,m[k]]).sort((a,b)=>b[1]-a[1]);
+  const out='attachment MIME types ('+sorted.length+'):\n'+sorted.map(x=>x[1]+'\t'+x[0]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mime '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

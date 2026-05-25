@@ -5072,5 +5072,17 @@ window.composeReadabilityScore=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSpellcheckState=function(){
+  const fields=document.querySelectorAll('input[name="subject"], textarea[name="body"], textarea, #body');
+  const lines=[];
+  fields.forEach(f=>{lines.push((f.name||f.id||f.tagName)+'\tspellcheck='+(f.spellcheck??f.getAttribute('spellcheck')||'default')+'\tlang='+(f.lang||document.documentElement.lang||''));});
+  const out='spellcheck state ('+fields.length+' fields):\n'+lines.join('\n');
+  const tx=document.createElement('textarea');tx.value=out;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='spl '+fields.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

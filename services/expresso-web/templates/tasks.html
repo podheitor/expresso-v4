@@ -6361,5 +6361,18 @@ window.copyTasksAttachmentsCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksReopenedCount=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const lines=[];
+  rows.forEach(r=>{const n=parseInt(r.getAttribute('data-reopen-count')||r.getAttribute('data-reopened')||'0',10)||0;if(n>0){lines.push((r.getAttribute('data-title')||'').trim()+' | '+n+'x');}});
+  lines.sort((a,b)=>parseInt(b.split(' | ')[1])-parseInt(a.split(' | ')[1]));
+  const out='reopened tasks ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rop '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
