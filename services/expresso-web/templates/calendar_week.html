@@ -3255,5 +3255,28 @@ window.copyWeekUniqueLocations=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFirstLast=function(){
+  const events=document.querySelectorAll('[data-event]');
+  let first=null,last=null;
+  events.forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    if(isNaN(s)){return;}
+    if(first===null||s<first){first=s;}
+    if(last===null||s>last){last=s;}
+  });
+  const fmt=ms=>ms===null?'(none)':new Date(ms).toISOString();
+  const out='first\t'+fmt(first)+'\nlast\t'+fmt(last);
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fl '+events.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

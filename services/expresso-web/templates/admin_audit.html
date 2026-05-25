@@ -3094,5 +3094,29 @@ window.copyAuditUserAgents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditStatusBuckets=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const buckets={'2xx':0,'3xx':0,'4xx':0,'5xx':0,'other':0};
+  rows.forEach(r=>{
+    const st=parseInt(r.getAttribute('data-status')||'0',10);
+    if(st>=200&&st<300){buckets['2xx']++;}
+    else if(st>=300&&st<400){buckets['3xx']++;}
+    else if(st>=400&&st<500){buckets['4xx']++;}
+    else if(st>=500&&st<600){buckets['5xx']++;}
+    else{buckets['other']++;}
+  });
+  const out='bucket\tcount\n2xx\t'+buckets['2xx']+'\n3xx\t'+buckets['3xx']+'\n4xx\t'+buckets['4xx']+'\n5xx\t'+buckets['5xx']+'\nother\t'+buckets['other'];
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='st '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
