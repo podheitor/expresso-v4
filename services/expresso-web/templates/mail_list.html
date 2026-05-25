@@ -6152,5 +6152,18 @@ window.copyMailListSizeQuartiles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListThreadCount=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const map={};
+  rows.forEach(r=>{const tid=r.getAttribute('data-thread-id')||r.getAttribute('data-conversation-id')||'';if(tid){map[tid]=(map[tid]||0)+1;}});
+  const groups=Object.entries(map).filter(([,n])=>n>1).sort((a,b)=>b[1]-a[1]);
+  const out='threads ('+groups.length+'):\n'+groups.map(([id,n])=>n+'\t'+id).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='thr '+groups.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

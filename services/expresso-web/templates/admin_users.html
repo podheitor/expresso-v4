@@ -5623,5 +5623,17 @@ window.copyUsersSharedMailboxes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersMfaDisabled=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const lines=[];
+  rows.forEach(r=>{const mfa=(r.getAttribute('data-mfa')||r.getAttribute('data-2fa')||'').toLowerCase();if(mfa==='false'||mfa==='0'||mfa==='disabled'||mfa===''){lines.push((r.getAttribute('data-username')||r.getAttribute('data-email')||'?'));}});
+  const out='mfa disabled ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mfa '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

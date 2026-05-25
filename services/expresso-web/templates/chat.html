@@ -6814,5 +6814,18 @@ window.copyChatMessagesByDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatLinksList=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const links=[];
+  msgs.forEach(m=>{const body=m.getAttribute('data-body')||m.textContent||'';const rx=/https?:\/\/[^\s<>"']+/g;let mm;while((mm=rx.exec(body))!==null){links.push(mm[0]);}});
+  const uniq=Array.from(new Set(links));
+  const out='links ('+uniq.length+'):\n'+uniq.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lnk '+uniq.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

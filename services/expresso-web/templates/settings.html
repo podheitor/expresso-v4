@@ -5897,5 +5897,18 @@ window.copySettingsRtlAndDirection=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsServiceWorker=function(){
+  const sw=navigator.serviceWorker;
+  let info='service worker: ';
+  if(!sw){info+='unsupported';}
+  else{const ctrl=sw.controller;info+=(ctrl?('active scope='+(ctrl.scriptURL||'?')+' state='+(ctrl.state||'?')):'no controller');}
+  const out=info;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sw '+(sw&&sw.controller?'on':'off');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

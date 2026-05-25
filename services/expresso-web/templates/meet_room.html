@@ -5257,5 +5257,17 @@ window.copyMeetParticipantsJson=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetScreenShareActive=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const sharing=[];
+  parts.forEach(p=>{if(p.hasAttribute('data-screen-share')||p.getAttribute('data-sharing')==='true'||p.querySelector('[data-screen-share]')){sharing.push(p.getAttribute('data-name')||p.getAttribute('data-participant')||'?');}});
+  const out='screen sharing ('+sharing.length+'):\n'+sharing.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(sharing.length?'#0a0':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='shr '+sharing.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

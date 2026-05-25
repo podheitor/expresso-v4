@@ -5826,5 +5826,18 @@ window.copyWeekFocusBlocks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekDailyTotals=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const map={};
+  evs.forEach(e=>{const s=e.getAttribute('data-start')||'';const d=new Date(s);if(!isNaN(d)){const key=d.toISOString().slice(0,10);map[key]=(map[key]||0)+1;}});
+  const sorted=Object.entries(map).sort();
+  const out='week daily totals:\n'+sorted.map(([d,n])=>d+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dly '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
