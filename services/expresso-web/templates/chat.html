@@ -6107,5 +6107,27 @@ window.copyChatFileTransfers=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatLinkPosters=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const posters={};
+  msgs.forEach(m=>{
+    const text=m.textContent||'';
+    const links=text.match(/https?:\/\/[^\s<>()]+/g)||[];
+    const explicitLinks=m.querySelectorAll('a[href^="http"]').length;
+    const total=Math.max(links.length,explicitLinks);
+    if(!total) return;
+    const a=m.dataset.author||'';
+    posters[a]=(posters[a]||0)+total;
+  });
+  const sorted=Object.entries(posters).sort((a,b)=>b[1]-a[1]);
+  const out=sorted.map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='author\tlinks ('+sorted.length+' posters)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lnk '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

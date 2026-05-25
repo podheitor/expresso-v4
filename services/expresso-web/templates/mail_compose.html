@@ -4592,5 +4592,24 @@ window.composeLinkPreviewCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeReadabilityScore=function(){
+  const body=((document.querySelector('textarea[name=body]')||{}).value||(document.querySelector('[contenteditable=true]')||{}).innerText||'').toString();
+  if(!body.trim()){
+    const ta=document.createElement('textarea');ta.value='empty body';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    return;
+  }
+  const sentences=(body.match(/[.!?]+\s|[.!?]+$/g)||[]).length||1;
+  const words=(body.match(/\S+/g)||[]).length;
+  const syllables=body.toLowerCase().replace(/[^a-záéíóúâêôãõç ]/g,'').split(/\s+/).filter(Boolean).reduce((sum,w)=>{const s=(w.match(/[aeiouáéíóúâêôãõ]+/g)||[]).length;return sum+Math.max(1,s);},0);
+  const flesch=206.835-1.015*(words/sentences)-84.6*(syllables/Math.max(1,words));
+  const lvl=flesch>=90?'5th grade':flesch>=80?'6th':flesch>=70?'7th':flesch>=60?'8-9th':flesch>=50?'10-12th':flesch>=30?'college':'graduate';
+  const txt='sentences='+sentences+'\nwords='+words+'\nsyllables='+syllables+'\navgWordsPerSentence='+(words/sentences).toFixed(1)+'\navgSyllablesPerWord='+(syllables/Math.max(1,words)).toFixed(2)+'\nfleschReadingEase='+flesch.toFixed(1)+'\nlevel='+lvl;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(flesch<30?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rd '+flesch.toFixed(0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

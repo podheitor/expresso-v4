@@ -4642,5 +4642,25 @@ window.copyHomeFocusableElements=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeImageAltCoverage=function(){
+  const imgs=document.querySelectorAll('img');
+  let withAlt=0,empty=0,decorative=0,missing=0;
+  const flagged=[];
+  imgs.forEach(img=>{
+    const alt=img.getAttribute('alt');
+    if(alt==null){missing++;flagged.push((img.src||'').slice(0,80));}
+    else if(alt==='') decorative++;
+    else if(alt.trim().length>0) withAlt++;
+    else empty++;
+  });
+  const pct=imgs.length?Math.round((withAlt+decorative)/imgs.length*100):100;
+  const txt='total='+imgs.length+'\nwithAlt='+withAlt+'\ndecorative(alt="")='+decorative+'\nemptyWhitespace='+empty+'\nmissingAttr='+missing+'\na11yPct='+pct+'%\n\nMISSING-ALT URLS:\n'+flagged.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(missing?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='alt '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

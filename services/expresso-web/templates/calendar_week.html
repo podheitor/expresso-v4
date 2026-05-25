@@ -5090,5 +5090,22 @@ window.copyWeekTopAttendees=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekVideoVsPhysical=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let video=0,physical=0,both=0,none=0;
+  evs.forEach(e=>{
+    const url=e.getAttribute('data-meeting-url')||e.querySelector('a[href*="meet"]');
+    const loc=e.getAttribute('data-location')||'';
+    const hasV=!!url, hasP=!!loc.trim();
+    if(hasV&&hasP)both++;else if(hasV)video++;else if(hasP)physical++;else none++;
+  });
+  const out='video_only='+video+'\nphysical_only='+physical+'\nboth='+both+'\nunspecified='+none+'\ntotal='+evs.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='v/p '+video+'/'+physical;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

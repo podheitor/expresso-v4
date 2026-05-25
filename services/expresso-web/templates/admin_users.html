@@ -4894,5 +4894,20 @@ window.copyUsersGroupMemberships=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersMfaMethods=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const m={sms:0,totp:0,webauthn:0,none:0,other:0};
+  rows.forEach(r=>{
+    const v=(r.getAttribute('data-mfaMethod')||r.getAttribute('data-mfa-method')||'none').toLowerCase();
+    if(m[v]!==undefined)m[v]++;else m.other++;
+  });
+  const out='method\tcount\n'+Object.entries(m).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mfa '+(rows.length-m.none);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

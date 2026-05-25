@@ -4571,5 +4571,27 @@ window.copyMeetBreakoutRooms=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetPollResults=function(){
+  const polls=document.querySelectorAll('[data-poll], .poll, .poll-result');
+  const out=[];
+  polls.forEach(p=>{
+    const q=p.dataset.question||p.querySelector('.poll-question,.question')?.textContent||'?';
+    const opts=p.querySelectorAll('[data-poll-option], .poll-option, .poll-choice');
+    const lines=[];
+    opts.forEach(o=>{
+      const label=o.dataset.label||o.querySelector('.label')?.textContent||o.textContent.split(':')[0]||'';
+      const votes=o.dataset.votes||o.dataset.count||(o.textContent.match(/(\d+)/)||[])[1]||'0';
+      lines.push('  '+label.trim().slice(0,40)+' = '+votes);
+    });
+    out.push('Q: '+q.trim().slice(0,80)+'\n'+lines.join('\n'));
+  });
+  const txt=polls.length?out.join('\n\n'):'no polls active';
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(polls.length?'#069':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='poll '+polls.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

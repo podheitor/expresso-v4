@@ -5842,5 +5842,22 @@ window.copyTasksChecklistProgress=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksCommentActivity=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const out=[];
+  let totalComments=0;
+  rows.forEach(r=>{
+    const c=parseInt(r.dataset.commentCount||r.dataset.comments||'0',10);
+    if(c>0){totalComments+=c;out.push((r.dataset.id||'')+'\t'+(r.dataset.title||'').slice(0,50)+'\t'+c+'\t'+(r.dataset.lastCommentAt||''));}
+  });
+  out.sort((a,b)=>parseInt(b.split('\t')[2])-parseInt(a.split('\t')[2]));
+  const txt='id\ttitle\tcomments\tlastAt ('+out.length+' tasks with comments, '+totalComments+' total)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cmt '+totalComments;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5432,5 +5432,23 @@ window.copyMailListMessageIds=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListByPriority=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const counts={high:0,normal:0,low:0};
+  const high=[];
+  rows.forEach(r=>{
+    const p=(r.dataset.priority||r.dataset.importance||'normal').toLowerCase();
+    if(p==='high'||p==='1'||p==='urgent'){counts.high++;high.push((r.dataset.id||'')+'\t'+(r.dataset.from||'')+'\t'+(r.dataset.subject||'').slice(0,60));}
+    else if(p==='low'||p==='5') counts.low++;
+    else counts.normal++;
+  });
+  const txt='SUMMARY: high='+counts.high+', normal='+counts.normal+', low='+counts.low+' (n='+rows.length+')\n\nHIGH PRIORITY:\nid\tfrom\tsubject\n'+high.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(counts.high?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pri '+counts.high+'H';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
