@@ -6914,5 +6914,17 @@ window.copyMailEncrypted=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSizeBuckets=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const b={small:0,medium:0,large:0,huge:0};
+  rows.forEach(r=>{const s=parseInt(r.getAttribute('data-size')||'0',10);if(s<10240)b.small++;else if(s<102400)b.medium++;else if(s<1048576)b.large++;else b.huge++;});
+  const out=Object.entries(b).map(([k,v])=>k+': '+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='szb '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

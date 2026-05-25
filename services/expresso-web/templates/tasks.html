@@ -7364,5 +7364,21 @@ window.copyTasksEstimatedHours=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDueThisWeek=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const now=new Date();
+  const today=now.toISOString().slice(0,10);
+  const end=new Date(now.getTime()+(7-now.getDay())*86400000).toISOString().slice(0,10);
+  const arr=[];
+  rows.forEach(r=>{const due=r.getAttribute('data-due')||'';if(due>=today&&due<=end)arr.push(due+' '+(r.getAttribute('data-title')||'?'));});
+  arr.sort();
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dwk '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
