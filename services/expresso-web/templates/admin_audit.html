@@ -4053,5 +4053,20 @@ window.copyAuditUserAgentBreakdown=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditConsecutiveFailures=function(){
+  const byActor={};
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    const a=r.getAttribute('data-actor')||'?',ok=r.getAttribute('data-status')==='success'||r.getAttribute('data-result')==='ok';
+    byActor[a]=byActor[a]||{cur:0,max:0};
+    if(ok){byActor[a].cur=0;}else{byActor[a].cur++;if(byActor[a].cur>byActor[a].max)byActor[a].max=byActor[a].cur;}
+  });
+  const out=Object.entries(byActor).filter(([,v])=>v.max>=3).sort((a,b)=>b[1].max-a[1].max).map(([k,v])=>k+'\t'+v.max).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='brute '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

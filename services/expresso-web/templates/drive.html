@@ -4709,5 +4709,21 @@ window.copyDriveLockedFiles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveFolderDepth=function(){
+  const depths=[];
+  document.querySelectorAll('[data-drive-item]').forEach(r=>{
+    const p=(r.getAttribute('data-path')||r.getAttribute('data-name')||'');
+    depths.push({d:(p.match(/\//g)||[]).length,p:p});
+  });
+  depths.sort((a,b)=>b.d-a.d);
+  const max=depths[0]?.d||0,avg=depths.length?(depths.reduce((a,b)=>a+b.d,0)/depths.length).toFixed(1):'0';
+  const out='max='+max+'\navg='+avg+'\ntop:\n'+depths.slice(0,10).map(x=>x.d+'\t'+x.p).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(max>6?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='depth '+max;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

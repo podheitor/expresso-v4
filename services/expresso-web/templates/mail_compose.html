@@ -3856,5 +3856,18 @@ window.composeSubjectLengthCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeCcBccCount=function(){
+  const cnt={to:0,cc:0,bcc:0};
+  ['to','cc','bcc'].forEach(f=>{
+    cnt[f]=(document.querySelector('[name='+f+']')?.value||'').split(/[,;]/).filter(s=>s.trim()).length;
+  });
+  const out='to='+cnt.to+'\ncc='+cnt.cc+'\nbcc='+cnt.bcc+'\ntotal='+(cnt.to+cnt.cc+cnt.bcc);
+  const tx=document.createElement('textarea');tx.value=out;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='recip '+(cnt.to+cnt.cc+cnt.bcc);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4002,5 +4002,23 @@ window.copyThreadKeywordFrequency=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAsEml=function(){
+  const lines=[];
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    lines.push('From: '+(m.getAttribute('data-sender')||'?'));
+    lines.push('Date: '+(m.getAttribute('data-ts')||'?'));
+    lines.push('Subject: '+(m.getAttribute('data-subject')||document.title));
+    lines.push('Message-ID: <'+(m.getAttribute('data-msg-id')||'?')+'>');
+    lines.push('');
+    lines.push((m.textContent||'').trim());
+    lines.push('--');
+  });
+  const ta=document.createElement('textarea');ta.value=lines.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='eml '+document.querySelectorAll('[data-msg-id]').length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
