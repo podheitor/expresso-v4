@@ -3990,5 +3990,25 @@ window.copyDriveOwnerCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveFolderStructure=function(){
+  const rows=document.querySelectorAll('[data-drive-row]');
+  const paths=[];
+  rows.forEach(r=>{
+    const p=(r.getAttribute('data-path')||r.getAttribute('data-name')||'').trim();
+    if(p){paths.push(p);}
+  });
+  paths.sort();
+  const ta=document.createElement('textarea');
+  ta.value=paths.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tree '+paths.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

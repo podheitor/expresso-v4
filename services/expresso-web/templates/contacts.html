@@ -3852,5 +3852,31 @@ window.copyContactsPhoneList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsExportCsvFull=function(){
+  const rows=document.querySelectorAll('[data-contact-row]');
+  const lines=['name,email,phone,company,address,birthday'];
+  const esc=s=>'"'+String(s||'').replace(/"/g,'""')+'"';
+  rows.forEach(r=>{
+    lines.push([
+      esc(r.getAttribute('data-name')),
+      esc(r.getAttribute('data-email')),
+      esc(r.getAttribute('data-phone')),
+      esc(r.getAttribute('data-company')),
+      esc(r.getAttribute('data-address')),
+      esc(r.getAttribute('data-birthday'))
+    ].join(','));
+  });
+  const ta=document.createElement('textarea');
+  ta.value=lines.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='csv '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

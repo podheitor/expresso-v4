@@ -3494,5 +3494,31 @@ window.copyMonthAvgPerDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthQuietDays=function(){
+  const busy=new Set();
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const d=(e.getAttribute('data-start')||'').slice(0,10);
+    if(d){busy.add(d);}
+  });
+  const ref=Array.from(busy).sort()[0]||new Date().toISOString().slice(0,10);
+  const year=parseInt(ref.slice(0,4),10),mo=parseInt(ref.slice(5,7),10);
+  const dim=new Date(year,mo,0).getDate();
+  const out=[];
+  for(let d=1;d<=dim;d++){
+    const k=year+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    if(!busy.has(k)){out.push(k);}
+  }
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='quiet '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

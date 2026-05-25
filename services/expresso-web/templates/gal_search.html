@@ -3107,5 +3107,30 @@ window.copyGalWithPhone=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalEmailSelfDomain=function(){
+  const me='{{ me.email }}'.toLowerCase();
+  const at=me.indexOf('@');
+  if(at<0){return;}
+  const myDom=me.slice(at+1);
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const em=(r.getAttribute('data-email')||'').toLowerCase();
+    if(em.endsWith('@'+myDom)){
+      out.push((r.getAttribute('data-name')||'')+'\t'+em);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='@'+myDom+' '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
