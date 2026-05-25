@@ -3479,5 +3479,16 @@ window.copyMeetEventsLog=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetClearEventsLog=function(){
+  const key='expresso_meet_events_{{ me.user_id }}';
+  const n=(JSON.parse(localStorage.getItem(key)||'[]')).length;
+  if(!confirm('Clear '+n+' meet event records?'))return;
+  localStorage.removeItem(key);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cleared '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

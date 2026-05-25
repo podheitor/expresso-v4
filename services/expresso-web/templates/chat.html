@@ -4935,5 +4935,19 @@ window.copyChatPollMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatAvgMsgLength=function(){
+  let sum=0,n=0;
+  document.querySelectorAll('[data-chat-msg]').forEach(m=>{
+    const len=(m.textContent||'').trim().length;
+    if(len>0){sum+=len;n++;}
+  });
+  const avg=n?Math.round(sum/n):0;
+  const ta=document.createElement('textarea');ta.value='avg '+avg+' chars across '+n+' msgs';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg+'c';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

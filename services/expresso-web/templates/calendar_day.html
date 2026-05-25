@@ -3803,5 +3803,21 @@ window.copyDayMeetingMinutes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFocusTime=function(){
+  const ranges=[...document.querySelectorAll('[data-event]')].map(e=>({s:Date.parse(e.getAttribute('data-start')||''),en:Date.parse(e.getAttribute('data-end')||'')}))
+    .filter(e=>!isNaN(e.s)&&!isNaN(e.en)).sort((a,b)=>a.s-b.s);
+  let focus=0,prev=null;
+  ranges.forEach(r=>{
+    if(prev!==null&&r.s>prev)focus+=r.s-prev;
+    prev=Math.max(prev||0,r.en);
+  });
+  const min=Math.round(focus/60000);
+  const ta=document.createElement('textarea');ta.value='focus gaps '+min+' min';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fcs '+min+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

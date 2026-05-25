@@ -3483,5 +3483,18 @@ window.composeInsertTable=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBodyPreviewHtml=function(){
+  const ta=document.querySelector('textarea[name=body],textarea#body');
+  if(!ta)return;
+  const w=window.open('','_blank','width=600,height=700');
+  if(!w)return;
+  const html='<!doctype html><meta charset=utf-8><title>Preview</title><style>body{font-family:sans-serif;padding:20px;max-width:600px;margin:0 auto}pre{white-space:pre-wrap;word-wrap:break-word}</style><pre>'+ta.value.replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'</pre>';
+  w.document.write(html);w.document.close();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='preview';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
