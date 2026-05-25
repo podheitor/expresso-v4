@@ -5431,5 +5431,21 @@ window.copyTasksByDueWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksAvgCompletionTime=function(){
+  let total=0,n=0;
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const c=Date.parse(r.getAttribute('data-created-at')||'');
+    const d=Date.parse(r.getAttribute('data-completed-at')||r.getAttribute('data-done-at')||'');
+    if(!isNaN(c)&&!isNaN(d)&&d>=c){total+=(d-c);n++;}
+  });
+  const avg=n?Math.round(total/n/3600000):0;
+  const out='completed-tasks\t'+n+'\navg-hours\t'+avg+'\navg-days\t'+(avg/24).toFixed(1);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ct avg='+avg+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5729,5 +5729,20 @@ window.copyChatMessagesWithUrls=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMessageLengthStats=function(){
+  let total=0,n=0,max=0;
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const txt=(m.querySelector('[data-body]')||m).textContent||'';
+    const len=txt.trim().length;
+    if(len>0){total+=len;n++;if(len>max)max=len;}
+  });
+  const out='messages\t'+n+'\ntotal-chars\t'+total+'\navg-chars\t'+(n?Math.round(total/n):0)+'\nmax-chars\t'+max;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ln avg='+(n?Math.round(total/n):0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

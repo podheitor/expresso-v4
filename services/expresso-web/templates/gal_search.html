@@ -4266,5 +4266,15 @@ window.copyGalActiveAccounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalContactCards=function(){
+  const rows=Array.from(document.querySelectorAll('[data-gal-row]'));
+  const out=rows.slice(0,50).map(r=>'BEGIN:VCARD\nVERSION:3.0\nFN:'+(r.getAttribute('data-name')||'')+'\nEMAIL:'+(r.getAttribute('data-email')||'')+'\nTEL:'+(r.getAttribute('data-phone')||'')+'\nORG:'+(r.getAttribute('data-company')||'')+'\nTITLE:'+(r.getAttribute('data-title')||'')+'\nEND:VCARD').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vcf '+Math.min(rows.length,50);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

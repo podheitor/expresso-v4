@@ -5048,5 +5048,20 @@ window.copyContactsWithMultipleEmails=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsByDomain=function(){
+  const counts={};
+  document.querySelectorAll('[data-contact]').forEach(c=>{
+    const em=(c.getAttribute('data-email')||'').toLowerCase();
+    const d=(em.split('@')[1]||'(no-email)');
+    counts[d]=(counts[d]||0)+1;
+  });
+  const out=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).map(k=>k+'\t'+counts[k]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dom '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

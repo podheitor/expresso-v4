@@ -4446,5 +4446,26 @@ window.copyThreadAnswered=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFirstResponseTime=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-id]'));
+  msgs.sort((a,b)=>Date.parse(a.getAttribute('data-date')||'')-Date.parse(b.getAttribute('data-date')||''));
+  if(msgs.length<2){const ta=document.createElement('textarea');ta.value='(not enough messages)';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return;}
+  const first=msgs[0];
+  const firstFrom=(first.getAttribute('data-from')||'').toLowerCase();
+  let respIdx=-1;
+  for(let i=1;i<msgs.length;i++){
+    if((msgs[i].getAttribute('data-from')||'').toLowerCase()!==firstFrom){respIdx=i;break;}
+  }
+  if(respIdx<0){const ta=document.createElement('textarea');ta.value='(no different sender)';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return;}
+  const dt=Date.parse(msgs[respIdx].getAttribute('data-date')||'')-Date.parse(first.getAttribute('data-date')||'');
+  const min=Math.round(dt/60000);
+  const out='first-message\t'+first.getAttribute('data-date')+'\nfirst-response\t'+msgs[respIdx].getAttribute('data-date')+'\ndelay-minutes\t'+min+'\ndelay-hours\t'+(min/60).toFixed(1);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='frt '+min+'min';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
