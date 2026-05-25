@@ -5791,5 +5791,23 @@ window.copyDriveOwnerCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveCreatedThisMonth=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const now=new Date();
+  const ym=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const hits=[];
+  items.forEach(i=>{
+    const c=i.getAttribute('data-created');
+    if(c&&c.startsWith(ym))hits.push(c+'\t'+(i.getAttribute('data-name')||'?'));
+  });
+  hits.sort();
+  const out=hits.join('\n')||'no items created this month';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='new '+hits.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

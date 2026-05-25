@@ -5142,5 +5142,22 @@ window.copyUsersDormantSince=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAliasCounts=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  let total=0,withAlias=0;
+  const lines=[];
+  rows.forEach(r=>{
+    const aliases=(r.getAttribute('data-aliases')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if(aliases.length){withAlias++;total+=aliases.length;lines.push(aliases.length+'\t'+(r.getAttribute('data-email')||'?'));}
+  });
+  lines.sort((a,b)=>parseInt(b)-parseInt(a));
+  const out='users-with-aliases='+withAlias+'\ntotal-aliases='+total+'\n\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ali '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

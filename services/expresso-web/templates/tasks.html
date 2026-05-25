@@ -6081,5 +6081,20 @@ window.copyTasksDueThisWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksAttachmentTotals=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let withAtt=0,totalAtt=0;
+  rows.forEach(r=>{
+    const n=parseInt(r.getAttribute('data-attachment-count')||'0',10);
+    if(n>0){withAtt++;totalAtt+=n;}
+  });
+  const out='tasks-with-attachments='+withAtt+'\ntotal-attachments='+totalAtt+'\navg/task='+(withAtt?(totalAtt/withAtt).toFixed(2):'0');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='att '+totalAtt;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

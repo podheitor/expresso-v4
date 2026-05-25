@@ -4879,5 +4879,20 @@ window.copyGalMobilePhones=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalManagerEmails=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const mgrs=new Set();
+  rows.forEach(r=>{
+    const m=r.getAttribute('data-manager-email')||r.getAttribute('data-manager');
+    if(m&&m.includes('@'))mgrs.add(m);
+  });
+  const out=Array.from(mgrs).sort().join('\n')||'no managers';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mgr '+mgrs.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

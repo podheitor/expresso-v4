@@ -5701,5 +5701,20 @@ window.copyContactsCompanyCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsWithWebsite=function(){
+  const rows=document.querySelectorAll('[data-contact]');
+  const lines=[];
+  rows.forEach(r=>{
+    const url=r.getAttribute('data-website')||r.getAttribute('data-url')||r.getAttribute('data-homepage');
+    if(url)lines.push((r.getAttribute('data-name')||'?')+'\t'+url);
+  });
+  const out=lines.join('\n')||'no websites';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='www '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

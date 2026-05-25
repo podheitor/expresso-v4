@@ -5151,5 +5151,21 @@ window.copyAuditTargetTypes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditLoginFailures=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const fails=[];
+  rows.forEach(r=>{
+    const action=(r.getAttribute('data-action')||'').toLowerCase();
+    const status=(r.getAttribute('data-status')||r.getAttribute('data-result')||'').toLowerCase();
+    if(action.includes('login')&&(status.includes('fail')||status==='denied'||status==='error'))fails.push((r.getAttribute('data-timestamp')||'?')+'\t'+(r.getAttribute('data-actor')||'?')+'\t'+(r.getAttribute('data-ip')||''));
+  });
+  const out=fails.join('\n')||'no login failures';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(fails.length?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fl '+fails.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

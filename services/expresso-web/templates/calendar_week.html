@@ -5336,5 +5336,21 @@ window.copyWeekLateEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekAttendeeFrequency=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const tally={};
+  evs.forEach(e=>{
+    const att=(e.getAttribute('data-attendees')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    att.forEach(a=>{tally[a]=(tally[a]||0)+1;});
+  });
+  const lines=Object.entries(tally).sort((a,b)=>b[1]-a[1]).map(([a,n])=>n+'\t'+a);
+  const out=lines.join('\n')||'no attendees';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='at '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
