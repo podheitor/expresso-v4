@@ -3383,5 +3383,21 @@ window.copyDocumentCookieKeys=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMatchMediaDark=function(){
+  const dark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const contrast=window.matchMedia&&window.matchMedia('(prefers-contrast: more)').matches;
+  const ta=document.createElement('textarea');
+  ta.value='dark '+!!dark+'\treduced-motion '+!!reduced+'\thigh-contrast '+!!contrast;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mq '+(dark?'dark':'light');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
