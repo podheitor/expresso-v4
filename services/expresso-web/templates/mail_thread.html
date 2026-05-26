@@ -7599,5 +7599,15 @@ window.copyThreadSubjectAlternations=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFirstAttachInfo=function(){
+  const at=document.querySelector('[data-thread-msg] [data-attachment]');
+  const out=at?(at.dataset.filename||'')+'\t'+(at.dataset.size||'?')+'\t'+(at.dataset.mime||''):'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fa '+(at?'1':'0');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
