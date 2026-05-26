@@ -7428,5 +7428,17 @@ window.copyDriveOwnerSet=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveExtHist=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const hist={};
+  items.forEach(i=>{const n=i.dataset.name||'';const m=n.match(/\.([^.]+)$/);const e=m?m[1].toLowerCase():'(none)';hist[e]=(hist[e]||0)+1;});
+  const out=Object.entries(hist).sort((a,b)=>b[1]-a[1]).map(p=>p[0]+'\t'+p[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='eh '+Object.keys(hist).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

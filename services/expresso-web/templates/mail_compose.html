@@ -6391,5 +6391,16 @@ window.composeAttachmentSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeFromAddress=function(){
+  const from=(document.querySelector('[data-compose-from]')?.value)||(document.querySelector('[data-compose-from]')?.textContent)||'';
+  const subject=(document.querySelector('[data-compose-subject]')?.value)||'';
+  const out='from='+from+'\nsubject='+subject+'\nlength='+from.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fr '+(from||'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

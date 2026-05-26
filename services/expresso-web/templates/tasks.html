@@ -7794,5 +7794,19 @@ window.copyTasksPriorityHist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksCreatedThisWeek=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const cut=Date.now()-7*86400000;
+  const arr=[];
+  rows.forEach(r=>{const c=r.dataset.createdAt||'';const d=new Date(c);if(!isNaN(d)&&d.getTime()>=cut)arr.push(c+'\t'+(r.dataset.title||''));});
+  arr.sort();
+  const out='created_last_7d='+arr.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cw '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

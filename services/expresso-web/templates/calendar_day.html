@@ -7033,5 +7033,17 @@ window.copyDayLocationList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayDurationSum=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let total=0;const arr=[];
+  evs.forEach(e=>{const s=new Date(e.dataset.start||''),en=new Date(e.dataset.end||'');if(!isNaN(s)&&!isNaN(en)){const m=(en-s)/60000;total+=m;arr.push(m.toFixed(0)+'min\t'+(e.dataset.title||''));}});
+  const out='events='+evs.length+'\ntotal_min='+total.toFixed(0)+'\ntotal_h='+(total/60).toFixed(1)+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ds '+total.toFixed(0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
