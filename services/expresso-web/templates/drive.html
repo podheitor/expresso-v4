@@ -8281,5 +8281,18 @@ window.copyDriveFiles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTotalSize=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  let total=0,n=0;
+  items.forEach(i=>{const s=parseInt(i.dataset.size||'0',10);if(s>0){total+=s;n++;}});
+  const mb=(total/1048576).toFixed(2);
+  const out='files\t'+n+'\nbytes\t'+total+'\nMB\t'+mb;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ts '+mb+'M';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
