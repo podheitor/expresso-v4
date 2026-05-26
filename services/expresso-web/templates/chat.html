@@ -9316,5 +9316,15 @@ window.copyChatMsgsToday=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMsgsYesterday=function(){
+  const now=new Date();const y=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1);const e=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const arr=[...document.querySelectorAll('[data-msg-id]')].filter(m=>{const d=m.getAttribute('data-ts')||'';if(!d)return false;const dt=new Date(d);return dt>=y&&dt<e;}).map(m=>m.getAttribute('data-msg-id'));
+  const ta=document.createElement('textarea');ta.value=arr.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='my '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
