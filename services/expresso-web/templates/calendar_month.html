@@ -7324,5 +7324,19 @@ window.copyMonthCategoryHist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthMaxAttendees=function(){
+  const ev=document.querySelectorAll('[data-event]');
+  const arr=[];
+  ev.forEach(e=>{const n=parseInt(e.dataset.attendeeCount||e.dataset.attendees||'0',10);if(!isNaN(n))arr.push([n,e.dataset.title||'?']);});
+  arr.sort((a,b)=>b[0]-a[0]);
+  const top=arr.slice(0,20);
+  const out=top.map(([n,t])=>n+'\t'+t).join('\n')||'(no attendee data)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ma '+(top[0]?top[0][0]:0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

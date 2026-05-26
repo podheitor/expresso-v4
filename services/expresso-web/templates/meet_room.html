@@ -6527,5 +6527,17 @@ window.copyMeetMicMuted=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetScreenShares=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const arr=[];
+  parts.forEach(p=>{const s=(p.dataset.screenShare||p.dataset.sharing||'').toLowerCase();if(s==='true'||s==='on'||s==='active')arr.push(p.dataset.name||p.dataset.userId||'?');});
+  const out=arr.join('\n')||'(none sharing)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ss '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

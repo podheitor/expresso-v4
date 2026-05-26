@@ -6991,5 +6991,19 @@ window.copyUsersRoleHist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersLastLoginRange=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const ts=[];
+  rows.forEach(r=>{const ll=r.dataset.lastLogin||r.dataset.lastSeen;if(!ll)return;const t=Date.parse(ll);if(!isNaN(t))ts.push(t);});
+  if(ts.length===0){const ta=document.createElement('textarea');ta.value='(no login data)';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return;}
+  ts.sort((a,b)=>a-b);
+  const out='oldest='+new Date(ts[0]).toISOString()+'\nnewest='+new Date(ts[ts.length-1]).toISOString()+'\ncount='+ts.length+'\nspanDays='+((ts[ts.length-1]-ts[0])/86400000).toFixed(1);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lr '+ts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

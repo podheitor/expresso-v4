@@ -6572,5 +6572,19 @@ window.composeWordFreq=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeRecipientCount=function(){
+  const to=document.querySelector('[data-to-field]');
+  const cc=document.querySelector('[data-cc-field]');
+  const bcc=document.querySelector('[data-bcc-field]');
+  const parse=el=>el?(el.value||el.textContent||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean):[];
+  const t1=parse(to),c1=parse(cc),b1=parse(bcc);
+  const out='to='+t1.length+'\ncc='+c1.length+'\nbcc='+b1.length+'\ntotal='+(t1.length+c1.length+b1.length);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rc '+(t1.length+c1.length+b1.length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
