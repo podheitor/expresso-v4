@@ -7996,5 +7996,19 @@ window.copyWeekTitleList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTitleWordCount=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  const words=evs.flatMap(e=>(e.dataset.title||'').toLowerCase().match(/\w+/g)||[]);
+  const m=new Map();
+  words.forEach(w=>m.set(w,(m.get(w)||0)+1));
+  const arr=Array.from(m.entries()).sort((a,b)=>b[1]-a[1]).slice(0,20);
+  const out=arr.map(([w,n])=>n+'\t'+w).join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wc '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

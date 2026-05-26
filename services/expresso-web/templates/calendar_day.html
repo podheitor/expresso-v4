@@ -7988,5 +7988,16 @@ window.copyDayLatestEnd=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayLongestEvent=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]')).map(e=>({s:new Date(e.dataset.start||''),en:new Date(e.dataset.end||''),t:(e.dataset.title||'').trim()})).filter(x=>!isNaN(x.s)&&!isNaN(x.en)).sort((a,b)=>(b.en-b.s)-(a.en-a.s));
+  const longest=evs[0];
+  const out=longest?Math.round((longest.en-longest.s)/60000)+'min\t'+longest.t:'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lg '+(longest?Math.round((longest.en-longest.s)/60000):0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
