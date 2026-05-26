@@ -8821,5 +8821,15 @@ window.copyDriveSizeMin=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveSizeMedian=function(){
+  const arr=[...document.querySelectorAll('[data-drive-item]')].map(d=>parseInt(d.getAttribute('data-size')||'0',10)).filter(n=>!isNaN(n)).sort((a,b)=>a-b);
+  const med=arr.length?(arr.length%2?arr[(arr.length-1)/2]:Math.round((arr[arr.length/2-1]+arr[arr.length/2])/2)):0;
+  const ta=document.createElement('textarea');ta.value=String(med);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sm '+med;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
