@@ -7905,5 +7905,18 @@ window.copyThreadAttachmentsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAttachmentExts=function(){
+  const att=document.querySelectorAll('[data-attachment]');
+  const map={};
+  att.forEach(a=>{const n=a.getAttribute('data-name')||'';const i=n.lastIndexOf('.');const ext=i>=0?n.slice(i+1).toLowerCase():'(none)';map[ext]=(map[ext]||0)+1;});
+  const arr=Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  const out=arr.map(([e,n])=>n+'\t'+e).join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ae '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
