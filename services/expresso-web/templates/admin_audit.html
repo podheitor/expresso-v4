@@ -7103,5 +7103,17 @@ window.copyAuditTopActors=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditDeletes=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const arr=[];
+  rows.forEach(r=>{const a=(r.dataset.action||'').toLowerCase();if(a.includes('delete')||a.includes('remove')||a==='drop'||a.includes('destroy'))arr.push((r.dataset.timestamp||'?').slice(0,19)+'\t'+a+'\t'+(r.dataset.actor||'?')+'\t'+(r.dataset.target||'?'));});
+  const out=arr.join('\n')||'(no delete events)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(arr.length>0?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='de '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -8032,5 +8032,17 @@ window.copyTasksRecurringList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDescriptionLengths=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let total=0,withDesc=0,empty=0;
+  rows.forEach(r=>{const d=(r.dataset.description||'').trim();if(d){total+=d.length;withDesc++;}else empty++;});
+  const out='tasks='+rows.length+'\nwithDescription='+withDesc+'\nempty='+empty+'\ntotalChars='+total+'\navg='+(withDesc?(total/withDesc).toFixed(0):'0');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dl '+withDesc;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

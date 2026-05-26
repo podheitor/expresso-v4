@@ -7388,5 +7388,18 @@ window.copyMonthDayOfMonthHist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthBusyDays=function(){
+  const ev=document.querySelectorAll('[data-event]');
+  const hist={};
+  ev.forEach(e=>{const s=e.dataset.start;if(!s)return;const d=s.slice(0,10);hist[d]=(hist[d]||0)+1;});
+  const days=Object.entries(hist).filter(([_,n])=>n>=5).sort((a,b)=>b[1]-a[1]);
+  const out=days.map(([d,n])=>d+'\t'+n+' events').join('\n')||'(no busy days)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bd '+days.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
