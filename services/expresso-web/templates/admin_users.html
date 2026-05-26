@@ -6725,5 +6725,17 @@ window.copyUsersUsernameList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersOverQuota=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const arr=[];
+  rows.forEach(r=>{const used=parseInt(r.dataset.usedMb||'0',10);const quota=parseInt(r.dataset.quotaMb||'0',10);if(quota>0&&used>quota)arr.push((r.dataset.username||'')+'\t'+used+'/'+quota+'mb\t'+(r.dataset.email||''));});
+  const out='over_quota='+arr.length+' of '+rows.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='oq '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7876,5 +7876,19 @@ window.copyChatChannelInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatTopUser=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const map={};
+  msgs.forEach(m=>{const u=(m.dataset.user||m.dataset.author||'').trim()||'(unknown)';map[u]=(map[u]||0)+1;});
+  const sorted=Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  const top=sorted[0]||['',0];
+  const out='top_user='+top[0]+'\nmessages='+top[1]+'\n\nall:\n'+sorted.map(p=>p[1]+'\t'+p[0]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tu '+top[0];
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

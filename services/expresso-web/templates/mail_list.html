@@ -7221,5 +7221,18 @@ window.copyMailSizeSum=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailHistoryWeek=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const names=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const buckets=new Array(7).fill(0);
+  rows.forEach(r=>{const t=Date.parse(r.dataset.date||'');if(isFinite(t))buckets[new Date(t).getDay()]++;});
+  const out=buckets.map((v,i)=>names[i]+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hw '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
