@@ -7375,5 +7375,17 @@ window.copyContactsCountryHist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsRecentMods=function(){
+  const cs=Array.from(document.querySelectorAll('[data-contact]'));
+  cs.sort((a,b)=>(b.dataset.modifiedAt||'').localeCompare(a.dataset.modifiedAt||''));
+  const top=cs.slice(0,10).map(c=>(c.dataset.modifiedAt||'')+'\t'+(c.dataset.name||''));
+  const out='top10_recent_mods\n\n'+top.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rm '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

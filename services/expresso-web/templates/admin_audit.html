@@ -6855,5 +6855,19 @@ window.copyAuditTargetTypes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditLast24h=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const cut=Date.now()-86400000;
+  const arr=[];
+  rows.forEach(r=>{const ts=r.dataset.timestamp||'';const d=new Date(ts);if(!isNaN(d)&&d.getTime()>=cut)arr.push(ts+'\t'+(r.dataset.actor||'')+'\t'+(r.dataset.action||''));});
+  arr.sort();
+  const out='last_24h='+arr.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='24 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
