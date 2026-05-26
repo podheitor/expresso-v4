@@ -6987,5 +6987,17 @@ window.copyThreadParticipants=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAttachmentList=function(){
+  const atts=document.querySelectorAll('[data-attachment]');
+  const arr=[];
+  atts.forEach(a=>{arr.push((a.dataset.name||a.dataset.filename||'?')+'\t'+(a.dataset.size||'?')+'\t'+(a.dataset.mime||a.dataset.contentType||'?'));});
+  const out=arr.join('\n')||'(no attachments)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='al '+atts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

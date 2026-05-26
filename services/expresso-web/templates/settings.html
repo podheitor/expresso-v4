@@ -7187,5 +7187,18 @@ window.copySettingsConnInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsMemoryInfo=async function(){
+  const lines=[];
+  if(performance.memory){lines.push('jsHeapSizeLimit='+performance.memory.jsHeapSizeLimit);lines.push('totalJSHeapSize='+performance.memory.totalJSHeapSize);lines.push('usedJSHeapSize='+performance.memory.usedJSHeapSize);}
+  if(navigator.deviceMemory)lines.push('deviceMemory='+navigator.deviceMemory+' GB');
+  if(navigator.storage&&navigator.storage.estimate){try{const e=await navigator.storage.estimate();lines.push('storage.usage='+e.usage);lines.push('storage.quota='+e.quota);}catch(_){}}
+  const out=lines.join('\n')||'(no memory APIs)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mi '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7571,5 +7571,17 @@ window.copyContactsCountryHist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsPhoneFormats=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const hist={e164:0,national:0,unknown:0,none:0};
+  cs.forEach(c=>{const p=(c.dataset.phone||c.dataset.tel||'').trim();if(!p)hist.none++;else if(/^\+\d{6,15}$/.test(p))hist.e164++;else if(/^[\d\s()-]+$/.test(p))hist.national++;else hist.unknown++;});
+  const out=Object.entries(hist).map(([k,n])=>k+': '+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pf '+cs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

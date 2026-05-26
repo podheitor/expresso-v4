@@ -7612,5 +7612,17 @@ window.copyDriveSharedItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveSizeBuckets=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const buckets={'<1KB':0,'1KB-1MB':0,'1MB-10MB':0,'10MB-100MB':0,'100MB-1GB':0,'>=1GB':0};
+  items.forEach(i=>{const sz=parseInt(i.dataset.size||'0',10);if(isNaN(sz))return;if(sz<1024)buckets['<1KB']++;else if(sz<1048576)buckets['1KB-1MB']++;else if(sz<10485760)buckets['1MB-10MB']++;else if(sz<104857600)buckets['10MB-100MB']++;else if(sz<1073741824)buckets['100MB-1GB']++;else buckets['>=1GB']++;});
+  const out=Object.entries(buckets).map(([b,n])=>b+': '+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sb '+items.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
