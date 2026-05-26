@@ -6461,5 +6461,18 @@ window.copyThreadDuration=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadInternalRatio=function(){
+  const ms=document.querySelectorAll('[data-thread-msg]');
+  const myDomain=location.hostname.split('.').slice(-2).join('.');
+  let int=0,ext=0;
+  ms.forEach(m=>{const f=m.getAttribute('data-from')||'';const at=f.indexOf('@');const d=at>=0?f.slice(at+1):'';if(d.endsWith(myDomain))int++;else ext++;});
+  const out='internal='+int+'\nexternal='+ext+'\nratio='+(ext?(int/ext).toFixed(2):'inf');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ir '+int+'/'+ext;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

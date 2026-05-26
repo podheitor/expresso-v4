@@ -6053,5 +6053,16 @@ window.copyMeetClipboardPermission=async function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRoomName=function(){
+  const el=document.querySelector('[data-room-name]')||document.querySelector('.room-title');
+  const nm=el?(el.getAttribute('data-room-name')||el.textContent.trim()):document.title;
+  const out='room='+nm;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rmn '+nm.slice(0,16);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
