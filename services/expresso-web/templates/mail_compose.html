@@ -6981,5 +6981,17 @@ window.composeRecipientDomains=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAllCapsCount=function(){
+  const body=document.querySelector('[data-compose-body]');
+  const txt=(body&&(body.value||body.textContent))||'';
+  const ws=txt.match(/\b[A-Z]{3,}\b/g)||[];
+  const out='caps_words\t'+ws.length+'\n'+Array.from(new Set(ws)).slice(0,30).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ac '+ws.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
