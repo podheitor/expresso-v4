@@ -6073,5 +6073,17 @@ window.composeAddSignature=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeEmailValidation=function(){
+  const all=[((document.querySelector('[name=to]')||{}).value||''),((document.querySelector('[name=cc]')||{}).value||''),((document.querySelector('[name=bcc]')||{}).value||'')].join(',').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+  const re=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const bad=all.filter(a=>!re.test(a));
+  const out='total='+all.length+'\nvalid='+(all.length-bad.length)+'\ninvalid='+bad.length+(bad.length?'\n'+bad.join('\n'):'');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(bad.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='val '+(all.length-bad.length)+'/'+all.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

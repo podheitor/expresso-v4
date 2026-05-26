@@ -6728,5 +6728,18 @@ window.copyWeekMorningRatio=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFreeBusyOverview=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let busy=0;
+  evs.forEach(e=>{const s=Date.parse(e.getAttribute('data-start')||'');const en=Date.parse(e.getAttribute('data-end')||'');if(!isNaN(s)&&!isNaN(en))busy+=en-s;});
+  const busyMin=Math.round(busy/60000);
+  const out='busy_min='+busyMin+'\nevents='+evs.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bsy '+busyMin;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

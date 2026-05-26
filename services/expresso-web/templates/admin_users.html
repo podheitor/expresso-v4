@@ -6514,5 +6514,18 @@ window.copyUsersQuotaOverages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersInactive30d=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const cutoff=Date.now()-30*86400000;
+  const arr=[];
+  rows.forEach(r=>{const ll=Date.parse(r.getAttribute('data-last-login')||'');if(isNaN(ll)||ll<cutoff)arr.push((r.getAttribute('data-username')||'-')+'\t'+(r.getAttribute('data-last-login')||'never'));});
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='in30 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
