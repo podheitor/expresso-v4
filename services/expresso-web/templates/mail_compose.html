@@ -6756,5 +6756,20 @@ window.composeAttachmentSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeQuoteDepthHist=function(){
+  const body=(document.querySelector('[data-compose-body]')||{value:'',textContent:''});
+  const txt=(body.value!==undefined?body.value:body.textContent)||'';
+  const lines=txt.split('\n');
+  const tally={};
+  lines.forEach(l=>{const m=l.match(/^(>+)/);const d=m?m[1].length:0;tally[d]=(tally[d]||0)+1;});
+  const arr=Object.entries(tally).sort((a,b)=>parseInt(a[0])-parseInt(b[0])).map(([k,v])=>'depth '+k+'\t'+v);
+  const out=arr.join('\n')||'(no lines)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qd '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

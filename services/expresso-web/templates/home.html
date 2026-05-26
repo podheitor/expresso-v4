@@ -6607,5 +6607,15 @@ window.copyHomeFocusable=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeNavigationTiming=function(){
+  const nt=performance.getEntriesByType('navigation')[0]||performance.timing||{};
+  const out='type\t'+(nt.type||'?')+'\nstart_to_dom\t'+Math.round((nt.domContentLoadedEventEnd||0)-(nt.startTime||0))+' ms\nstart_to_load\t'+Math.round((nt.loadEventEnd||0)-(nt.startTime||0))+' ms\nttfb\t'+Math.round((nt.responseStart||0)-(nt.requestStart||0))+' ms\ntransfer_size\t'+(nt.transferSize||'?');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nt '+Math.round((nt.loadEventEnd||0)-(nt.startTime||0))+'ms';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

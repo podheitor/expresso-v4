@@ -7773,5 +7773,18 @@ window.copyDriveByExtension=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveLargestFiles=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const arr=[];
+  items.forEach(i=>{const b=parseInt(i.dataset.size||'0',10);if(b>0)arr.push([b,i.dataset.name||'?',i.dataset.owner||'?']);});
+  arr.sort((a,b)=>b[0]-a[0]);
+  const out=arr.slice(0,30).map(x=>(x[0]/1048576).toFixed(2)+'MiB\t'+x[1]+'\t'+x[2]).join('\n')||'(no files)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lf '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

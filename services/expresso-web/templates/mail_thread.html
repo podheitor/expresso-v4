@@ -7150,5 +7150,19 @@ window.copyThreadBodyExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadInternalLinks=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  const host=location.hostname;
+  const re=/https?:\/\/[^\s<>"']+/g;
+  const arr=[];
+  msgs.forEach(m=>{const b=m.querySelector('[data-msg-body]')||m;const txt=b.textContent||'';(txt.match(re)||[]).forEach(u=>{try{const h=new URL(u).hostname;if(h.endsWith(host)||host.endsWith(h))arr.push((m.dataset.from||'?')+'\t'+u);}catch(_){}});});
+  const out=arr.join('\n')||'(no internal links)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='il '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

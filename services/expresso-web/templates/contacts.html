@@ -7734,5 +7734,17 @@ window.copyContactsFavoriteList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsCsvExport=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const lines=['name,email,phone,org,tags'];
+  cs.forEach(c=>{const q=v=>'"'+(v||'').replace(/"/g,'""')+'"';lines.push([q(c.dataset.name),q(c.dataset.email),q(c.dataset.phone),q(c.dataset.org),q(c.dataset.tags)].join(','));});
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cx '+cs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

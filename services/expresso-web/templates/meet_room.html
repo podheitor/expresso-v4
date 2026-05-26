@@ -6696,5 +6696,17 @@ window.copyMeetRecordingState=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetWaitingRoom=function(){
+  const ws=document.querySelectorAll('[data-waiting-room],[data-meet-waiting]');
+  const arr=[];
+  ws.forEach(w=>arr.push((w.dataset.name||w.textContent||'?').trim()+'\t'+(w.dataset.since||'?')+'\t'+(w.dataset.email||'')));
+  const out=arr.join('\n')||'(waiting room empty)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wr '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7376,5 +7376,21 @@ window.copyDayPrivateEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayAvgDuration=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const ds=[];
+  evs.forEach(e=>{const s=Date.parse(e.dataset.start||'');const en=Date.parse(e.dataset.end||'');if(!isNaN(s)&&!isNaN(en))ds.push((en-s)/60000);});
+  ds.sort((a,b)=>a-b);
+  const sum=ds.reduce((a,b)=>a+b,0);
+  const avg=ds.length?sum/ds.length:0;
+  const median=ds.length?(ds.length%2?ds[(ds.length-1)/2]:(ds[ds.length/2-1]+ds[ds.length/2])/2):0;
+  const out='count\t'+ds.length+'\navg_min\t'+avg.toFixed(1)+'\nmedian_min\t'+median.toFixed(1)+'\nmin\t'+(ds[0]||0).toFixed(0)+'\nmax\t'+(ds[ds.length-1]||0).toFixed(0);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ad '+avg.toFixed(0)+'min';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

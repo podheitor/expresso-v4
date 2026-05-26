@@ -7328,5 +7328,15 @@ window.copySettingsCookieList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsConnectionInfo=function(){
+  const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection||{};
+  const out='effective_type\t'+(c.effectiveType||'?')+'\ndownlink\t'+(c.downlink||'?')+'\nrtt\t'+(c.rtt||'?')+'\nsave_data\t'+(c.saveData?'yes':'no')+'\ntype\t'+(c.type||'?');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ci2 '+(c.effectiveType||'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
