@@ -7240,5 +7240,16 @@ window.composeAttachTotalSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSubjectLength=function(){
+  const sub=document.querySelector('[data-compose-subject]');
+  const s=(sub&&sub.value||'').trim();
+  const out='subject\t'+s.length+'\nfirst80\t'+s.slice(0,80);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sl '+s.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
