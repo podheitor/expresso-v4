@@ -7467,5 +7467,18 @@ window.composeBodyDigits=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBodyUpperRatio=function(){
+  const b=(document.querySelector('[data-compose-body]')||{value:''}).value||'';
+  const letters=b.match(/[A-Za-z]/g)||[];
+  const upper=b.match(/[A-Z]/g)||[];
+  const pct=letters.length?Math.round(upper.length*100/letters.length):0;
+  const out='letters='+letters.length+'\nupper='+upper.length+'\npct='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ur '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
