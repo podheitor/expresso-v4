@@ -7751,5 +7751,17 @@ window.copyWeekEventsByCategory=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTimeRangeMinMax=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let mn=null,mx=null;
+  evs.forEach(e=>{const s=new Date(e.dataset.start||'');const ed=new Date(e.dataset.end||'');if(!isNaN(s)&&(!mn||s<mn))mn=s;if(!isNaN(ed)&&(!mx||ed>mx))mx=ed;});
+  const out=(mn?mn.toISOString():'(none)')+' → '+(mx?mx.toISOString():'(none)');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mm '+(mn&&mx?'ok':'na');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

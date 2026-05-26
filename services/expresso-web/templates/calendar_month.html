@@ -7873,5 +7873,18 @@ window.copyMonthMidnightEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthByAttendeeCount=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const map={};
+  evs.forEach(e=>{const n=parseInt(e.dataset.attendees||'0',10);const b=n===0?'0':n<=3?'1-3':n<=10?'4-10':'>10';map[b]=(map[b]||0)+1;});
+  const arr=Object.entries(map).map(([k,v])=>k+'\t'+v);
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ac '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
