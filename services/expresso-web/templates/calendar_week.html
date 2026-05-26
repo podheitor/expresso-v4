@@ -7763,5 +7763,19 @@ window.copyWeekTimeRangeMinMax=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekEventCountsByDay=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const map={};days.forEach(d=>map[d]=0);
+  evs.forEach(e=>{const d=new Date(e.dataset.start||'');if(!isNaN(d))map[days[d.getDay()]]++;});
+  const arr=days.map(d=>d+'\t'+map[d]);
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cd '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

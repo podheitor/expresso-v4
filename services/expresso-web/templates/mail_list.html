@@ -8046,5 +8046,17 @@ window.copyMailOldestUnread=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailNewestRead=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  let best=null;
+  rows.forEach(r=>{if((r.dataset.read||'')==='true'){const d=new Date(r.dataset.date||'');if(!isNaN(d)&&(!best||d>best.d))best={d:d,r:r};}});
+  const out=best?(best.r.dataset.date||'')+'\t'+(best.r.dataset.subject||'(no subject)'):'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nr '+(best?'1':'0');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
