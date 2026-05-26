@@ -8364,5 +8364,16 @@ window.composeMaxWordLen=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeMinWordLen=function(){
+  const body=document.querySelector('[data-compose-body]');
+  const lens=(body?.value||body?.textContent||'').split(/\s+/).filter(Boolean).map(w=>w.length);
+  const n=lens.length?Math.min(...lens):0;
+  const ta=document.createElement('textarea');ta.value=String(n);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mnw '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
