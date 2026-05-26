@@ -7078,5 +7078,18 @@ window.copyUsersWithoutManager=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersWithApiKeys=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const arr=[];
+  rows.forEach(r=>{const n=parseInt(r.dataset.apiKeys||'0',10);if(n>0)arr.push((r.dataset.username||'?')+'\t'+n+'\t'+(r.dataset.lastApiUse||'never'));});
+  arr.sort((a,b)=>parseInt(b.split('\t')[1],10)-parseInt(a.split('\t')[1],10));
+  const out=arr.join('\n')||'(no users with api keys)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ak '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

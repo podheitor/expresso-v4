@@ -6523,5 +6523,16 @@ window.copyHomeIframeList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeStyleSheets=function(){
+  const arr=[];
+  for(let i=0;i<document.styleSheets.length;i++){const s=document.styleSheets[i];let n=0;try{n=(s.cssRules||[]).length;}catch(_){n=-1;}arr.push((s.href||'(inline)')+'\t'+n);}
+  const out=arr.join('\n')||'(no sheets)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sc '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6789,5 +6789,18 @@ window.copyGalDistributionLists=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalEmailValidate=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const re=/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+  let ok=0,bad=0;const badList=[];
+  rows.forEach(r=>{const e=(r.dataset.email||'').trim();if(!e)return;if(re.test(e))ok++;else{bad++;badList.push((r.dataset.name||'?')+'\t'+e);}});
+  const out='valid\t'+ok+'\ninvalid\t'+bad+(badList.length?'\n--\n'+badList.join('\n'):'');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ev '+ok+'/'+bad;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

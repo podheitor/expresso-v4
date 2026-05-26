@@ -7643,5 +7643,19 @@ window.copyContactsCsvExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsRecentlyAdded=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const arr=[];
+  const now=Date.now();const cutoff=now-30*86400000;
+  cs.forEach(c=>{const cr=Date.parse(c.dataset.created||'');if(cr&&cr>=cutoff)arr.push((c.dataset.name||'?')+'\t'+(c.dataset.email||'?')+'\t'+(c.dataset.created||'?').slice(0,10));});
+  arr.sort((a,b)=>b.split('\t')[2].localeCompare(a.split('\t')[2]));
+  const out=arr.join('\n')||'(none in last 30d)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ra '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

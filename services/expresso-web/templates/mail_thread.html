@@ -7063,5 +7063,17 @@ window.copyThreadOldestNewest=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadHasAttachment=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  const arr=[];
+  msgs.forEach(m=>{const atts=m.querySelectorAll('[data-attachment]');if(atts.length>0){const names=[];atts.forEach(a=>names.push(a.dataset.name||'?'));arr.push((m.dataset.from||'?')+'\t'+(m.dataset.date||'?').slice(0,16)+'\t'+atts.length+'\t'+names.join(','));}});
+  const out=arr.join('\n')||'(no msgs with attachments)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ha '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

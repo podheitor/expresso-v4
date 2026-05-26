@@ -7253,5 +7253,17 @@ window.copySettingsPlugins=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsMimeRegistry=function(){
+  const arr=[];
+  const types=['text/plain','text/html','application/json','application/pdf','image/png','image/jpeg','image/webp','image/gif','audio/mpeg','audio/ogg','video/mp4','video/webm','application/zip','application/octet-stream'];
+  for(const m of types){const h=navigator.mimeTypes&&navigator.mimeTypes[m]?'yes':'no';arr.push(m+'\t'+h);}
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mr '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
