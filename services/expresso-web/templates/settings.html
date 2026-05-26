@@ -7453,5 +7453,20 @@ window.copySettingsScreenInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsHashSettings=async function(){
+  const els=document.querySelectorAll('[data-setting]');
+  const txt=[];
+  els.forEach(e=>{txt.push((e.dataset.setting||'?')+'='+(e.dataset.value||''));});
+  const raw=txt.join('\n');
+  let hash='?';
+  try{const buf=new TextEncoder().encode(raw);const dg=await crypto.subtle.digest('SHA-256',buf);hash=Array.from(new Uint8Array(dg)).slice(0,8).map(b=>b.toString(16).padStart(2,'0')).join('');}catch(_){}
+  const out='count\t'+els.length+'\nsha256-8\t'+hash+'\n'+raw;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hs '+hash;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

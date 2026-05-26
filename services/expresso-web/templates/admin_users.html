@@ -7322,5 +7322,19 @@ window.copyUsersRoleCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersByLastLoginAge=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const now=Date.now();
+  const buckets={'<1d':0,'<7d':0,'<30d':0,'<90d':0,'older':0,'never':0};
+  rows.forEach(r=>{const ll=r.dataset.lastLogin||'';if(!ll){buckets.never++;return;}const age=(now-new Date(ll).getTime())/86400000;if(age<1)buckets['<1d']++;else if(age<7)buckets['<7d']++;else if(age<30)buckets['<30d']++;else if(age<90)buckets['<90d']++;else buckets.older++;});
+  const arr=Object.entries(buckets).map(([k,v])=>k+'\t'+v);
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='la '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
