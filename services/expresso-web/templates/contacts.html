@@ -8711,5 +8711,16 @@ window.copyContactsNoNotes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsByCompanyTop=function(){
+  const m=new Map();
+  document.querySelectorAll('[data-contact]').forEach(c=>{const co=c.getAttribute('data-company')||'';if(co)m.set(co,(m.get(co)||0)+1);});
+  const arr=[...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10).map(([co,c])=>c+'\t'+co);
+  const ta=document.createElement('textarea');ta.value=arr.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ct '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

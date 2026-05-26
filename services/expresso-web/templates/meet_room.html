@@ -7615,5 +7615,16 @@ window.copyMeetUnansweredParticipants=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetParticipantTimezones=function(){
+  const m=new Map();
+  document.querySelectorAll('[data-participant]').forEach(p=>{const tz=p.getAttribute('data-tz')||'';if(tz)m.set(tz,(m.get(tz)||0)+1);});
+  const arr=[...m.entries()].sort((a,b)=>b[1]-a[1]).map(([tz,c])=>c+'\t'+tz);
+  const ta=document.createElement('textarea');ta.value=arr.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tz '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
