@@ -6326,5 +6326,17 @@ window.copyMeetParticipantNames=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetMutedCount=function(){
+  const ps=document.querySelectorAll('[data-participant]');
+  let muted=0,unmuted=0;
+  ps.forEach(p=>{if(p.dataset.muted==='true')muted++;else unmuted++;});
+  const out='total='+ps.length+'\nmuted='+muted+'\nunmuted='+unmuted;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mu '+muted+'/'+ps.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

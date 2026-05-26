@@ -6786,5 +6786,17 @@ window.copyUsersCreatedByYear=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersStorageTop=function(){
+  const rows=Array.from(document.querySelectorAll('[data-user-row]'));
+  rows.sort((a,b)=>(+b.dataset.storageUsed||0)-(+a.dataset.storageUsed||0));
+  const top=rows.slice(0,10).map(r=>(r.dataset.storageUsed||'0')+'\t'+(r.dataset.email||''));
+  const out='top10_by_storage\n\n'+top.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='st10 '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
