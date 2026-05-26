@@ -6993,5 +6993,17 @@ window.composeAllCapsCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeLineCount=function(){
+  const body=document.querySelector('[data-compose-body]');
+  const text=body?(body.value||body.textContent||''):'';
+  const lines=text.split(/\r?\n/);
+  const out='lines\t'+lines.length+'\nblank\t'+lines.filter(l=>!l.trim()).length+'\nnonblank\t'+lines.filter(l=>l.trim()).length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ln '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
