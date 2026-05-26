@@ -7954,5 +7954,17 @@ window.copyDayBusyPercent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayShortGaps=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]')).map(e=>({s:new Date(e.dataset.start||''),en:new Date(e.dataset.end||''),title:(e.dataset.title||'').trim()})).filter(x=>!isNaN(x.s)&&!isNaN(x.en)).sort((a,b)=>a.s-b.s);
+  const arr=[];
+  for(let i=1;i<evs.length;i++){const gap=Math.round((evs[i].s-evs[i-1].en)/60000);if(gap>0&&gap<15){arr.push(evs[i-1].title+'→'+evs[i].title+'\t'+gap+'min');}}
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sg '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

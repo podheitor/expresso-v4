@@ -8087,5 +8087,18 @@ window.copyMonthFreeDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthMorningRatio=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  let morn=0,total=0;
+  evs.forEach(e=>{const d=new Date(e.dataset.start||'');if(isNaN(d))return;total++;if(d.getHours()<12)morn++;});
+  const pct=total?Math.round(morn*100/total):0;
+  const out='morning='+morn+'\ntotal='+total+'\npct='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mr '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7356,5 +7356,20 @@ window.composeRecipientsAll=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBodyMarkdown=function(){
+  const body=document.querySelector('[data-compose-body]');
+  if(!body)return;
+  const v=(body.value||body.textContent||'');
+  const headings=(v.match(/^#{1,6}\s/gm)||[]).length;
+  const code=(v.match(/```/g)||[]).length;
+  const links=(v.match(/\[[^\]]+\]\([^\)]+\)/g)||[]).length;
+  const out='headings\t'+headings+'\ncode_fences\t'+code+'\nlinks\t'+links;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='md '+(headings+code+links);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
