@@ -7830,5 +7830,18 @@ window.copyMailWithFlags=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailFromExternal=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const localDomain=(document.documentElement.dataset.tenantDomain||location.hostname||'').toLowerCase();
+  const arr=[];
+  rows.forEach(r=>{const f=(r.dataset.from||'').toLowerCase();const at=f.lastIndexOf('@');const dom=at>=0?f.slice(at+1):'';if(dom&&dom!==localDomain)arr.push((r.dataset.from||'?')+'\t'+(r.dataset.subject||'?'));});
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fe '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
