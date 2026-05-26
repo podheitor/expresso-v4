@@ -7371,5 +7371,16 @@ window.composeBodyMarkdown=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSentenceCount=function(){
+  const b=(document.querySelector('[data-compose-body]')||{value:''}).value||'';
+  const s=b.split(/[.!?]+\s+/).filter(x=>x.trim().length>0);
+  const out='sentences='+s.length+'\nchars='+b.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sc '+s.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
