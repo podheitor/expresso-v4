@@ -9356,5 +9356,15 @@ window.copyTasksBlockedCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksCancelledCount=function(){
+  const arr=[...document.querySelectorAll('[data-task-row]')].filter(r=>(r.getAttribute('data-status')||'').toLowerCase()==='cancelled');
+  const out=arr.map(r=>r.getAttribute('data-title')||'').filter(Boolean).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cn '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
