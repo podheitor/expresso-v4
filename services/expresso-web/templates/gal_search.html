@@ -7915,5 +7915,16 @@ window.copyGalWithCity=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalStateFreq=function(){
+  const arr=[...document.querySelectorAll('[data-gal-row]')].map(r=>r.getAttribute('data-state')||'').filter(Boolean);
+  const freq={};arr.forEach(x=>{freq[x]=(freq[x]||0)+1;});
+  const out=Object.entries(freq).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sf '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
