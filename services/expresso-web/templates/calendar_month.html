@@ -7936,5 +7936,18 @@ window.copyMonthCancelledEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthMyEventsCount=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const me=(document.body.dataset.userEmail||'').toLowerCase();
+  let mine=0,other=0;
+  evs.forEach(e=>{const o=(e.dataset.organizer||'').toLowerCase();if(me&&o===me)mine++;else other++;});
+  const out='me='+mine+'\nother='+other+'\nemail='+(me||'(unknown)');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mc '+mine;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7311,5 +7311,18 @@ window.copyGalAvgNameLen=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalByTitleSeniority=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const buckets={'C-level':0,'VP/Director':0,'Manager':0,'IC':0,'Other':0};
+  const re={'C-level':/^(cto|ceo|cfo|coo|cio|chief)/i,'VP/Director':/(vp|vice|director|head of)/i,'Manager':/(manager|lead|principal)/i,'IC':/(engineer|developer|analyst|designer|specialist)/i};
+  rows.forEach(r=>{const tt=(r.dataset.title||'');let placed=false;for(const k of ['C-level','VP/Director','Manager','IC']){if(re[k].test(tt)){buckets[k]++;placed=true;break;}}if(!placed)buckets['Other']++;});
+  const out=Object.entries(buckets).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ts '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
