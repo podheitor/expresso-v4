@@ -7214,5 +7214,19 @@ window.copyDriveSharedWithMe=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveRecentMonth=function(){
+  const cutoff=Date.now()-30*86400000;
+  const items=document.querySelectorAll('[data-drive-item]');
+  const arr=[];
+  items.forEach(i=>{const m=new Date(i.dataset.modified||'').getTime();if(m>cutoff)arr.push((i.dataset.name||'')+'\t'+(i.dataset.modified||''));});
+  arr.sort((a,b)=>(b.split('\t')[1]||'').localeCompare(a.split('\t')[1]||''));
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='r30 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

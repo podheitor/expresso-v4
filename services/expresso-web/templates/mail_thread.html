@@ -6562,5 +6562,21 @@ window.copyThreadSizeBytes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAvgMsgGap=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  const ts=[];
+  msgs.forEach(m=>{const d=new Date(m.dataset.date||'').getTime();if(!isNaN(d))ts.push(d);});
+  ts.sort((a,b)=>a-b);
+  let sum=0;
+  for(let i=1;i<ts.length;i++)sum+=(ts[i]-ts[i-1]);
+  const avg=ts.length>1?Math.round(sum/(ts.length-1)/60000):0;
+  const out='avg_gap_minutes='+avg+' msgs='+msgs.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gap '+avg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
