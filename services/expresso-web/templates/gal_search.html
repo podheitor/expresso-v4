@@ -7186,5 +7186,18 @@ window.copyGalExtensionsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalNoEmail=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const arr=[];
+  rows.forEach(r=>{if(!(r.dataset.email||'').trim())arr.push((r.dataset.name||'?')+'\t'+(r.dataset.department||'?'));});
+  arr.sort();
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ne '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

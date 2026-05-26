@@ -6877,5 +6877,16 @@ window.copyHomeFavicon=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomePerformanceTiming=function(){
+  if(!performance||!performance.timing){const ta=document.createElement('textarea');ta.value='(no timing api)';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return;}
+  const tm=performance.timing;
+  const out='domLoading\t'+tm.domLoading+'\ndomComplete\t'+tm.domComplete+'\nloadEventEnd\t'+tm.loadEventEnd+'\nnavStart\t'+tm.navigationStart;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pt ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

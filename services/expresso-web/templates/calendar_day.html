@@ -7679,5 +7679,17 @@ window.copyDayLongEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFreeBlocks=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({s:new Date(e.dataset.start).getTime(),end:new Date(e.dataset.end||e.dataset.start).getTime()})).filter(x=>x.s&&x.end&&x.end>x.s).sort((a,b)=>a.s-b.s);
+  const arr=[];
+  for(let i=1;i<evs.length;i++){const gap=evs[i].s-evs[i-1].end;if(gap>=15*60000)arr.push(new Date(evs[i-1].end).toISOString().slice(11,16)+'-'+new Date(evs[i].s).toISOString().slice(11,16)+'\t'+Math.round(gap/60000)+'m');}
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fb '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

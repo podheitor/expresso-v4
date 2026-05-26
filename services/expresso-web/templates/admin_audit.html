@@ -7527,5 +7527,17 @@ window.copyAuditLast24h=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByHour=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const buckets=new Array(24).fill(0);
+  rows.forEach(r=>{const ts=r.dataset.ts||'';const h=ts.length>=13?parseInt(ts.slice(11,13),10):-1;if(h>=0&&h<24)buckets[h]++;});
+  const out=buckets.map((c,i)=>i.toString().padStart(2,'0')+'\t'+c).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bh ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

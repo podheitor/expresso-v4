@@ -7068,5 +7068,22 @@ window.composeBodyLineLengths=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeFingerprint=async function(){
+  const sub=document.querySelector('[data-compose-subject]');
+  const body=document.querySelector('[data-compose-body]');
+  const txt=((sub?(sub.value||sub.textContent||''):'')+'\n'+(body?(body.value||body.textContent||''):''));
+  try{
+    const buf=new TextEncoder().encode(txt);
+    const dig=await crypto.subtle.digest('SHA-1',buf);
+    const hex=[...new Uint8Array(dig)].map(b=>b.toString(16).padStart(2,'0')).join('');
+    const out='sha1\t'+hex+'\nchars\t'+txt.length;
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='fp '+hex.slice(0,7);
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }catch(e){}
+};
 </script>
 {% endblock %}
