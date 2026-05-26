@@ -6809,5 +6809,18 @@ window.composeAttachmentTotalSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSpellcheckErrors=function(){
+  const body=document.querySelector('[data-compose-body]');
+  const text=(body?.value||body?.textContent||'');
+  const words=text.match(/\b[a-zA-Z]+\b/g)||[];
+  const longUnique=[...new Set(words.filter(w=>w.length>=8))];
+  const out='words\t'+words.length+'\nunique_long\t'+longUnique.length+'\nsample\t'+longUnique.slice(0,10).join(',');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='se3 '+words.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

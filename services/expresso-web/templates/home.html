@@ -6654,5 +6654,17 @@ window.copyHomeMetaCharset=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeImageCount=function(){
+  const imgs=document.querySelectorAll('img');
+  let loaded=0,broken=0,lazy=0;
+  imgs.forEach(i=>{if(i.complete&&i.naturalWidth>0)loaded++;else if(i.complete)broken++;if(i.loading==='lazy')lazy++;});
+  const out='total\t'+imgs.length+'\nloaded\t'+loaded+'\nbroken\t'+broken+'\nlazy\t'+lazy;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ic3 '+imgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
