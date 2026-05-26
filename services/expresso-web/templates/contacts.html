@@ -7312,5 +7312,19 @@ window.copyContactsEmailList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsBirthdaysSoon=function(){
+  const rows=document.querySelectorAll('[data-contact]');
+  const today=new Date();const m=today.getMonth();const d=today.getDate();
+  const arr=[];
+  rows.forEach(r=>{const b=(r.dataset.birthday||'').slice(5);if(!b)return;const bm=parseInt(b.slice(0,2),10)-1;const bd=parseInt(b.slice(3,5),10);if(!isFinite(bm)||!isFinite(bd))return;const t=new Date(today.getFullYear(),bm,bd);if(t<today)t.setFullYear(today.getFullYear()+1);const days=Math.round((t-today)/86400000);if(days<=30)arr.push(days+'d\t'+b+'\t'+(r.dataset.name||''));});
+  arr.sort();
+  const out='upcoming_30d='+arr.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bd '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

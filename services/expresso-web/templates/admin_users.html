@@ -6750,5 +6750,17 @@ window.copyUsersBy2fa=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAdminsList=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const arr=[];
+  rows.forEach(r=>{const role=(r.dataset.role||'').toLowerCase();if(role==='admin'||role==='superadmin'||r.dataset.admin==='true')arr.push((r.dataset.username||'')+'\t'+(r.dataset.email||'')+'\t'+(r.dataset.role||''));});
+  const out='admins='+arr.length+' of '+rows.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='adm '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

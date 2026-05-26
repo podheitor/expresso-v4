@@ -6724,5 +6724,18 @@ window.copyThreadLongest=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadCsvSummary=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  const esc=v=>{const s=String(v||'');return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const lines=['date,from,subject,chars,attachments'];
+  msgs.forEach(m=>{const b=m.querySelector('[data-msg-body]');const chars=b?(b.textContent||'').trim().length:0;const att=m.querySelectorAll('[data-attachment]').length;lines.push([m.dataset.date,m.dataset.from,m.dataset.subject,chars,att].map(esc).join(','));});
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cs '+msgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

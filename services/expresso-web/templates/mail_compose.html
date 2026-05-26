@@ -6317,5 +6317,17 @@ window.composeToLowerCase=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSelectionHash=async function(){
+  const sel=window.getSelection?window.getSelection().toString():'';
+  let hash='';
+  try{const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(sel));hash=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');}catch(e){hash='(failed: '+e.message+')';}
+  const out='selection_chars='+sel.length+'\nsha256='+hash;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sh '+sel.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
