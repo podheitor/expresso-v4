@@ -6892,5 +6892,18 @@ window.copyGalNameInitials=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalGroupMembers=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const g={};
+  rows.forEach(r=>{const grp=r.dataset.group||'(none)';(g[grp]=g[grp]||[]).push(r.dataset.email||'?');});
+  const arr=Object.entries(g).sort((a,b)=>b[1].length-a[1].length).map(([k,v])=>k+'\t'+v.length+'\t'+v.join(','));
+  const out=arr.join('\n')||'(no groups)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gm '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6708,5 +6708,17 @@ window.copyMeetWaitingRoom=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetBandwidthStats=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  let totalUp=0,totalDown=0,pktLoss=0;
+  parts.forEach(p=>{totalUp+=parseFloat(p.dataset.upstream||p.dataset.bitrateUp||'0');totalDown+=parseFloat(p.dataset.downstream||p.dataset.bitrateDown||'0');pktLoss+=parseFloat(p.dataset.packetLoss||'0');});
+  const out='participants\t'+parts.length+'\ntotal_up_kbps\t'+totalUp.toFixed(0)+'\ntotal_down_kbps\t'+totalDown.toFixed(0)+'\navg_packet_loss\t'+(parts.length?(pktLoss/parts.length).toFixed(2):'0')+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bs2 '+totalDown.toFixed(0)+'kbps';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

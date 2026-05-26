@@ -7395,5 +7395,17 @@ window.copyWeekVirtualMeetings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekParticipationRate=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const arr=[];
+  evs.forEach(e=>{const inv=parseInt(e.dataset.invited||'0',10);const acc=parseInt(e.dataset.accepted||'0',10);const r=inv?Math.round(acc*100/inv):0;arr.push((e.dataset.title||'?')+'\t'+acc+'/'+inv+'\t'+r+'%');});
+  const out=arr.join('\n')||'(no events)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pr2 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

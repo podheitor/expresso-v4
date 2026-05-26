@@ -7675,5 +7675,18 @@ window.copyMailEncryptedOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSpamScores=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const arr=[];
+  rows.forEach(r=>{const s=parseFloat(r.dataset.spamScore||r.dataset.score||'');if(!isNaN(s))arr.push(s.toFixed(2)+'\t'+(r.dataset.from||'?')+'\t'+(r.dataset.subject||'?'));});
+  arr.sort((a,b)=>parseFloat(b)-parseFloat(a));
+  const out=arr.slice(0,50).join('\n')||'(no scores)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sp3 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

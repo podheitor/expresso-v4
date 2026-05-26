@@ -7232,5 +7232,18 @@ window.copyAuditTopActors=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditDateRange=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const ds=[];
+  rows.forEach(r=>{const t=r.dataset.ts||'';if(t)ds.push(t);});
+  ds.sort();
+  const out=ds.length?('first\t'+ds[0]+'\nlast\t'+ds[ds.length-1]+'\ncount\t'+ds.length):'(no rows)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dr3 '+ds.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
