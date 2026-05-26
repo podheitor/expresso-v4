@@ -6042,5 +6042,16 @@ window.copyMeetParticipantRoles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetClipboardPermission=async function(){
+  let st='unavailable';
+  try{if(navigator.permissions){const p=await navigator.permissions.query({name:'clipboard-write'});st=p.state;}}catch(e){st='err:'+e.message;}
+  const out='clipboard-write='+st;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='clp '+st;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

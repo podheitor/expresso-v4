@@ -6544,5 +6544,17 @@ window.copyAuditPasswordResets=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditRecentTen=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const arr=Array.from(rows).map(r=>({ts:r.getAttribute('data-ts')||'',actor:r.getAttribute('data-actor')||'-',action:r.getAttribute('data-action')||'-'}));
+  arr.sort((a,b)=>(a.ts<b.ts?1:-1));
+  const out=arr.slice(0,10).map(o=>o.ts+'\t'+o.actor+'\t'+o.action).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rec '+Math.min(10,arr.length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6448,5 +6448,18 @@ window.copyThreadEarliestDate=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadDuration=function(){
+  const ms=document.querySelectorAll('[data-thread-msg]');
+  let lo=null,hi=null;
+  ms.forEach(m=>{const d=Date.parse(m.getAttribute('data-date')||'');if(!isNaN(d)){if(lo===null||d<lo)lo=d;if(hi===null||d>hi)hi=d;}});
+  const days=lo!==null?Math.round((hi-lo)/86400000):0;
+  const out='span_days='+days+'\nfirst='+(lo!==null?new Date(lo).toISOString():'-')+'\nlast='+(hi!==null?new Date(hi).toISOString():'-');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dur '+days+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
