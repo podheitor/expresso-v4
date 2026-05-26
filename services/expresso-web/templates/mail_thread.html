@@ -7440,5 +7440,19 @@ window.copyThreadByHour=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAuthorAvgLen=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  const sums={};
+  const cnts={};
+  msgs.forEach(m=>{const a=(m.dataset.from||'?');const l=(m.textContent||'').length;sums[a]=(sums[a]||0)+l;cnts[a]=(cnts[a]||0)+1;});
+  const arr=Object.keys(sums).sort().map(k=>k+'\t'+Math.round(sums[k]/cnts[k])+'\t'+cnts[k]);
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='al '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

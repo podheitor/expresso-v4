@@ -7054,5 +7054,19 @@ window.composeSubjectLength=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBodyLineLengths=function(){
+  const body=document.querySelector('[data-compose-body]');
+  const text=body?(body.value||body.textContent||''):'';
+  const lens=text.split(/\n/).map(l=>l.length);
+  const max=Math.max(0,...lens);
+  const avg=lens.length?(lens.reduce((a,b)=>a+b,0)/lens.length).toFixed(1):0;
+  const out='lines\t'+lens.length+'\nmax\t'+max+'\navg\t'+avg+'\n>72\t'+lens.filter(l=>l>72).length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ll '+max;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

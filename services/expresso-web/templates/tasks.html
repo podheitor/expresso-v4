@@ -8450,5 +8450,21 @@ window.copyTasksDueToday=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDueThisWeek=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const now=new Date();
+  const end=new Date(now.getTime()+7*86400000).toISOString().slice(0,10);
+  const today=now.toISOString().slice(0,10);
+  const arr=[];
+  rows.forEach(r=>{const d=(r.dataset.due||'').slice(0,10);if(d>=today&&d<=end)arr.push(d+'\t'+(r.dataset.title||'?'));});
+  arr.sort();
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dw '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
