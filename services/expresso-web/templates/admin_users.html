@@ -6699,5 +6699,18 @@ window.copyUsersDisabledList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersTotalQuota=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  let total=0;let max=0;let maxUser='';
+  rows.forEach(r=>{const q=parseInt(r.dataset.quotaMb||'0',10);total+=q;if(q>max){max=q;maxUser=r.dataset.username||'';}});
+  const avg=rows.length?Math.round(total/rows.length):0;
+  const out='users='+rows.length+'\ntotal_quota_mb='+total+'\navg_mb='+avg+'\nmax_mb='+max+' ('+maxUser+')';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tq '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

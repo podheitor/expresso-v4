@@ -6897,5 +6897,18 @@ window.copyDayFirstStart=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayLastEnd=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  if(!evs.length){return;}
+  let last=evs[0];let lastT=Date.parse(last.dataset.end||'')||-Infinity;
+  evs.forEach(e=>{const t=Date.parse(e.dataset.end||'');if(isFinite(t)&&t>lastT){lastT=t;last=e;}});
+  const out='end='+(last.dataset.end||'')+'\ntitle='+(last.dataset.title||'')+'\norganizer='+(last.dataset.organizer||'');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lst '+(last.dataset.end||'?').slice(11,16);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

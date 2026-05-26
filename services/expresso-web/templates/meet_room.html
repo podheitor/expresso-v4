@@ -6237,5 +6237,18 @@ window.copyMeetVideoOn=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRecordingStatus=function(){
+  const r=document.querySelector('[data-meet-recording]');
+  const status=r?(r.dataset.recording==='true'?'recording':'not_recording'):'unknown';
+  const startedAt=r?(r.dataset.recordingStartedAt||''):'';
+  const by=r?(r.dataset.recordingBy||''):'';
+  const out='status='+status+'\nstarted_at='+startedAt+'\nstarted_by='+by;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rec '+status;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
