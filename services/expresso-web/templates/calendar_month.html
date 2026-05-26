@@ -8325,5 +8325,16 @@ window.copyMonthBusiestDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthQuietestDay=function(){
+  const map={};[...document.querySelectorAll('[data-event]')].forEach(e=>{const d=(e.getAttribute('data-start')||'').slice(0,10);if(d)map[d]=(map[d]||0)+1;});
+  const arr=Object.entries(map);
+  const bot=arr.length?arr.sort((a,b)=>a[1]-b[1])[0]:['',0];
+  const ta=document.createElement('textarea');ta.value=bot[0]+'\t'+bot[1];document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qd '+bot[1];
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
