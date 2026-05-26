@@ -7828,5 +7828,16 @@ window.copyGalCountryList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalManagerFreq=function(){
+  const m=new Map();
+  document.querySelectorAll('[data-gal-row]').forEach(r=>{const mg=r.getAttribute('data-manager')||'';if(mg)m.set(mg,(m.get(mg)||0)+1);});
+  const arr=[...m.entries()].sort((a,b)=>b[1]-a[1]).map(([mg,c])=>c+'\t'+mg);
+  const ta=document.createElement('textarea');ta.value=arr.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mg '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
