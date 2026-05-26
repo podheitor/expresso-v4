@@ -8968,5 +8968,17 @@ window.copyChatAvgMsgLen=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMaxBurst=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-id]')).map(m=>new Date(m.dataset.ts||'')).filter(d=>!isNaN(d)).sort((a,b)=>a-b);
+  let max=1,cur=1;
+  for(let i=1;i<msgs.length;i++){if((msgs[i]-msgs[i-1])<=60000)cur++;else cur=1;if(cur>max)max=cur;}
+  const out='msgs='+msgs.length+'\nmax_burst_per_min='+max;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mb '+max;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

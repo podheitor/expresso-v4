@@ -8416,5 +8416,18 @@ window.copyDriveMediaCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTotalByMime=function(){
+  const items=Array.from(document.querySelectorAll('[data-drive-item]'));
+  const m=new Map();
+  items.forEach(i=>{const mt=(i.dataset.mime||'(none)');const s=Number(i.dataset.size||0);m.set(mt,(m.get(mt)||0)+s);});
+  const arr=Array.from(m.entries()).sort((a,b)=>b[1]-a[1]);
+  const out=arr.map(([mt,s])=>s+'\t'+mt).join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tm '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7807,5 +7807,16 @@ window.copyThreadUniqueSenders=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadDateRange=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-thread-msg]')).map(m=>new Date(m.dataset.date||'')).filter(d=>!isNaN(d)).sort((a,b)=>a-b);
+  const first=msgs[0],last=msgs[msgs.length-1];
+  const out=first?first.toISOString()+'\n'+last.toISOString()+'\nspan_days='+Math.round((last-first)/86400000):'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dr '+(first?Math.round((last-first)/86400000):0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
