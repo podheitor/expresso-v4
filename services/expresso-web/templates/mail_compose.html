@@ -7341,5 +7341,20 @@ window.composeBodySpellHint=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeRecipientsAll=function(){
+  const to=(document.querySelector('[data-compose-to]')||{}).value||'';
+  const cc=(document.querySelector('[data-compose-cc]')||{}).value||'';
+  const bcc=(document.querySelector('[data-compose-bcc]')||{}).value||'';
+  const set=new Set();
+  (to+';'+cc+';'+bcc).split(/[,;]/).forEach(a=>{const t=a.trim().toLowerCase();if(t){set.add(t);}});
+  const arr=Array.from(set).sort();
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ra '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
