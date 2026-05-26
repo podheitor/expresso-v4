@@ -7466,5 +7466,17 @@ window.copyMailEncryptedOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSpamSuspects=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const arr=[];
+  rows.forEach(r=>{const s=(r.dataset.subject||'').toUpperCase();const score=parseFloat(r.dataset.spamScore||'0');if(score>=5||s===r.dataset.subject||/\$\$|FREE|WIN|VIAGRA|URGENT|!!!/i.test(s))arr.push((r.dataset.from||'')+'\t'+(r.dataset.subject||'')+'\t'+score);});
+  const out='spam_suspects='+arr.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(arr.length>0?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sp '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

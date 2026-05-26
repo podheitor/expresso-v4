@@ -7180,5 +7180,17 @@ window.copyWeekFullDayAvg=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekOnlineEvents=function(){
+  const ev=document.querySelectorAll('[data-event]');
+  let online=0,inperson=0;
+  ev.forEach(e=>{const l=(e.dataset.location||'').toLowerCase();const mu=e.dataset.meetUrl||e.dataset.videoUrl||'';if(mu||l.includes('zoom')||l.includes('meet')||l.includes('teams')||l.includes('online')||l.includes('virtual'))online++;else inperson++;});
+  const out='online='+online+'\nin_person='+inperson+'\ntotal='+ev.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='on '+online+'/'+inperson;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

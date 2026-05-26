@@ -6951,5 +6951,17 @@ window.copyThreadFlaggedMsgs=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadCcBccCounts=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  let cc=0,bcc=0,total=0;
+  msgs.forEach(m=>{const c=(m.dataset.cc||'').split(/[,;]/).filter(x=>x.trim()&&x.includes('@')).length;const b=(m.dataset.bcc||'').split(/[,;]/).filter(x=>x.trim()&&x.includes('@')).length;cc+=c;bcc+=b;total+=c+b;});
+  const out='messages='+msgs.length+'\ntotal_cc='+cc+'\ntotal_bcc='+bcc+'\ngrand_total='+total;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cb '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

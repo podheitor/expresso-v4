@@ -7299,5 +7299,18 @@ window.copyMonthLocationHist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthRecurringSeries=function(){
+  const ev=document.querySelectorAll('[data-event]');
+  const groups={};
+  ev.forEach(e=>{const r=e.dataset.recurringId||e.dataset.seriesId;if(!r)return;(groups[r]=groups[r]||[]).push(e.dataset.title||'(no title)');});
+  const keys=Object.keys(groups);
+  const out=keys.map(k=>k+' ('+groups[k].length+'): '+groups[k][0]).join('\n')||'(no recurring series)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rs '+keys.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

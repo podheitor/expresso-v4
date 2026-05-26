@@ -7150,5 +7150,20 @@ window.copySettingsSessionStorageList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsTimezoneInfo=function(){
+  const d=new Date();
+  const offset=-d.getTimezoneOffset();
+  const sign=offset>=0?'+':'-';
+  const hh=String(Math.floor(Math.abs(offset)/60)).padStart(2,'0');
+  const mm=String(Math.abs(offset)%60).padStart(2,'0');
+  const tz=Intl.DateTimeFormat().resolvedOptions().timeZone||'unknown';
+  const out='timezone='+tz+'\noffset='+sign+hh+':'+mm+'\noffset_minutes='+offset+'\nlocal_iso='+d.toISOString()+'\nlocal_string='+d.toString();
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tz '+tz;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
