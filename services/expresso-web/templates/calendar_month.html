@@ -8443,5 +8443,17 @@ window.copyMonthQuietestWeekday=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthBusiestWeekday=function(){
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];const m=new Map();
+  document.querySelectorAll('[data-event]').forEach(e=>{const d=e.getAttribute('data-start')||'';if(d){const dow=days[new Date(d).getDay()];m.set(dow,(m.get(dow)||0)+1);}});
+  const arr=[...m.entries()].sort((a,b)=>b[1]-a[1]);
+  const best=arr.length?arr[0][0]+'\t'+arr[0][1]:'';
+  const ta=document.createElement('textarea');ta.value=best;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bw '+(arr[0]?.[1]||0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
