@@ -7104,5 +7104,17 @@ window.copyUsersByRegion=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersLockedOut=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const arr=[];
+  rows.forEach(r=>{const s=(r.dataset.status||'').toLowerCase();const l=r.dataset.locked==='1';if(s==='locked'||s==='suspended'||l)arr.push((r.dataset.username||'?')+'\t'+(s||'locked')+'\t'+(r.dataset.lockedAt||r.dataset.lastLogin||'?'));});
+  const out=arr.join('\n')||'(none locked)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lk2 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

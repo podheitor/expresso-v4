@@ -7088,5 +7088,17 @@ window.copyThreadInboxCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadCcBccList=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  const cc=new Set(),bcc=new Set();
+  msgs.forEach(m=>{(m.dataset.cc||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(a=>cc.add(a));(m.dataset.bcc||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(a=>bcc.add(a));});
+  const out='cc\n'+[...cc].sort().join('\n')+'\n--\nbcc\n'+[...bcc].sort().join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cb '+cc.size+'/'+bcc.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

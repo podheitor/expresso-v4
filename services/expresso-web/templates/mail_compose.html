@@ -6690,5 +6690,19 @@ window.composeSpellcheckLang=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeLinkExtract=function(){
+  const body=(document.querySelector('[data-compose-body]')||{value:'',textContent:''});
+  const txt=(body.value!==undefined?body.value:body.textContent)||'';
+  const re=/https?:\/\/[^\s<>"']+/g;
+  const links=txt.match(re)||[];
+  const uniq=[...new Set(links)];
+  const out=uniq.join('\n')||'(no links)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='le '+uniq.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

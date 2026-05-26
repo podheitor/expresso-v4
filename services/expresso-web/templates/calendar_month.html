@@ -7439,5 +7439,17 @@ window.copyMonthAttendeeRanking=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthLongestEvent=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let best=null,bestMs=0;
+  evs.forEach(e=>{const s=Date.parse(e.dataset.start||'');const en=Date.parse(e.dataset.end||'');if(isNaN(s)||isNaN(en))return;const ms=en-s;if(ms>bestMs){bestMs=ms;best=e;}});
+  const out=best?(best.dataset.title||'?')+'\n'+(best.dataset.start||'?')+' -> '+(best.dataset.end||'?')+'\nduration_h\t'+(bestMs/3600000).toFixed(2):'(no events)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lo2 '+(bestMs/3600000).toFixed(1)+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7154,5 +7154,18 @@ window.copyAuditByIp=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditAdminActions=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const arr=[];
+  rows.forEach(r=>{const a=(r.dataset.action||'').toLowerCase();if(a.includes('admin')||a.includes('grant')||a.includes('revoke')||a.includes('delete_user')||a.includes('create_user')||a.includes('quota'))arr.push((r.dataset.timestamp||'?').slice(0,19)+'\t'+a+'\t'+(r.dataset.actor||'?')+'\t'+(r.dataset.target||'?'));});
+  arr.sort().reverse();
+  const out=arr.slice(0,100).join('\n')||'(no admin actions)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='aa2 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
