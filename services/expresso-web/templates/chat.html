@@ -8956,5 +8956,17 @@ window.copyChatLastSeen=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatAvgMsgLen=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-id]'));
+  const lens=msgs.map(m=>(m.dataset.body||'').trim().length).filter(x=>x>0);
+  const avg=lens.length?Math.round(lens.reduce((a,b)=>a+b,0)/lens.length):0;
+  const out='count='+lens.length+'\navg_chars='+avg;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ac '+avg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
