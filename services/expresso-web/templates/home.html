@@ -6793,5 +6793,19 @@ window.copyHomeButtonInventory=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeFocusableCount=function(){
+  const sel='a[href],area[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled]),iframe,object,embed,[tabindex],[contenteditable]';
+  const els=document.querySelectorAll(sel);
+  const map={};
+  els.forEach(e=>{const tag=e.tagName.toLowerCase();map[tag]=(map[tag]||0)+1;});
+  const arr=Object.entries(map).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v);
+  const out='total\t'+els.length+'\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fc '+els.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
