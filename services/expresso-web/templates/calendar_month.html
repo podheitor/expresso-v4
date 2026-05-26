@@ -8762,5 +8762,16 @@ window.copyMonthTotalMinutes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthAvgEventMinutes=function(){
+  const arr=[...document.querySelectorAll('[data-event]')];
+  const durs=arr.map(e=>{const a=new Date(e.getAttribute('data-start')||'');const b=new Date(e.getAttribute('data-end')||'');return(!isNaN(a)&&!isNaN(b)&&b-a>0)?(b-a):0;}).filter(d=>d>0);
+  const avg=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length/60000):0;
+  const ta=document.createElement('textarea');ta.value=avg;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ae '+avg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
