@@ -7680,5 +7680,18 @@ window.copyTasksUpcoming7d=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDoneCount=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let done=0;let pending=0;
+  rows.forEach(r=>{if(r.dataset.done==='true')done++;else pending++;});
+  const pct=rows.length?Math.round(done*100/rows.length):0;
+  const out='total='+rows.length+'\ndone='+done+'\npending='+pending+'\ncompletion='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dc '+done+'/'+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

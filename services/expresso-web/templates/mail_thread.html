@@ -6684,5 +6684,19 @@ window.copyThreadAttachmentsAll=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadLatestMsg=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-thread-msg]'));
+  if(!msgs.length){return;}
+  let best=msgs[0];let bestT=Date.parse(best.dataset.date||'')||-Infinity;
+  msgs.forEach(m=>{const t=Date.parse(m.dataset.date||'');if(isFinite(t)&&t>bestT){bestT=t;best=m;}});
+  const body=best.querySelector('[data-msg-body]');
+  const out='date='+(best.dataset.date||'')+'\nfrom='+(best.dataset.from||'')+'\nsubject='+(best.dataset.subject||'')+'\n\n'+(body?body.textContent.trim():'');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lat '+(best.dataset.date||'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

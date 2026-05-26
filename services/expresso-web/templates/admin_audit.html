@@ -6755,5 +6755,18 @@ window.copyAuditHourly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditCsvExport=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const esc=v=>{const s=String(v||'');return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const lines=['timestamp,actor,action,ip,target'];
+  rows.forEach(r=>{lines.push([r.dataset.timestamp,r.dataset.actor,r.dataset.action,r.dataset.ip,r.dataset.target].map(esc).join(','));});
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='csv '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

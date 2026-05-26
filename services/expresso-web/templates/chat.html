@@ -7862,5 +7862,19 @@ window.copyChatPinnedMsg=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatChannelInfo=function(){
+  const ch=document.querySelector('[data-channel]');
+  const id=ch?(ch.dataset.channel||''):'';
+  const name=ch?(ch.dataset.channelName||''):'';
+  const topic=ch?(ch.dataset.channelTopic||''):'';
+  const members=ch?(ch.dataset.channelMembers||''):'';
+  const out='channel_id='+id+'\nname='+name+'\ntopic='+topic+'\nmembers='+members;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ch '+(name||id||'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

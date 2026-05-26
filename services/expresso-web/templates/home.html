@@ -6184,5 +6184,17 @@ window.copyHomeAnchorTargets=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeScriptCount=function(){
+  const ss=document.querySelectorAll('script');
+  let inline=0;let external=0;const srcs=[];
+  ss.forEach(s=>{if(s.src){external++;srcs.push(s.src);}else{inline++;}});
+  const out='scripts='+ss.length+'\nexternal='+external+'\ninline='+inline+'\n\nexternal_srcs:\n'+srcs.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sc '+ss.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

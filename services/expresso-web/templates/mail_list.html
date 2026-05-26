@@ -7208,5 +7208,18 @@ window.copyMailFlaggedList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSizeSum=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  let total=0;let withSize=0;
+  rows.forEach(r=>{const s=parseInt(r.dataset.size||'0',10);if(s>0){total+=s;withSize++;}});
+  const avg=withSize?Math.round(total/withSize):0;
+  const out='rows='+rows.length+'\nwith_size='+withSize+'\ntotal_bytes='+total+'\navg_bytes='+avg;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ss '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
