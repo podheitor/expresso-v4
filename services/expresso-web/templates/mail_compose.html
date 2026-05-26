@@ -6226,5 +6226,17 @@ window.composeSignatureCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBase64Encode=function(){
+  const body=document.querySelector('[data-compose-body]');
+  const v=body?(body.value||body.textContent||''):'';
+  let out='';
+  try{out=btoa(unescape(encodeURIComponent(v)));}catch(e){out='(encode failed: '+e.message+')';}
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='b64 '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6135,5 +6135,17 @@ window.copyHomePerfNavigation=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeFormCount=function(){
+  const fs=document.querySelectorAll('form');
+  const arr=[];
+  fs.forEach(f=>{arr.push((f.name||f.id||'(unnamed)')+'\t'+(f.action||'(no action)')+'\t'+(f.method||'GET'));});
+  const out='forms='+fs.length+'\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fm '+fs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

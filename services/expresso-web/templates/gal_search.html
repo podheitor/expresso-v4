@@ -6371,5 +6371,16 @@ window.copyGalNoEmail=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalCompactCsv=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const esc=v=>{const s=String(v||'');return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const out='name,email,phone\n'+Array.from(rows).map(r=>esc(r.dataset.name)+','+esc(r.dataset.email)+','+esc(r.dataset.phone)).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cmp '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
