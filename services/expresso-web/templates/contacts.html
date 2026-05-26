@@ -7461,5 +7461,18 @@ window.copyContactsPhoneList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsSocials=function(){
+  const rows=document.querySelectorAll('[data-contact]');
+  const arr=[];
+  const keys=['linkedin','twitter','facebook','github','website'];
+  rows.forEach(r=>{const vals=keys.map(k=>r.dataset[k]||'').filter(Boolean);if(vals.length)arr.push((r.dataset.name||'')+'\t'+vals.join(' | '));});
+  const out='with_social='+arr.length+' of '+rows.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='so '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

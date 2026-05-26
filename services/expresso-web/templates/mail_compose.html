@@ -6466,5 +6466,17 @@ window.composeEmailsInBody=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeRecipientCounts=function(){
+  const get=k=>(document.querySelector('[data-compose-'+k+']')||{}).value||'';
+  const cnt=v=>v.split(/[,;\s]+/).filter(x=>x.includes('@')).length;
+  const to=cnt(get('to'));const cc=cnt(get('cc'));const bcc=cnt(get('bcc'));
+  const out='to='+to+'\ncc='+cc+'\nbcc='+bcc+'\ntotal='+(to+cc+bcc);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rc '+(to+cc+bcc);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

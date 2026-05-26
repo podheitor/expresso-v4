@@ -7394,5 +7394,17 @@ window.copyMailWithFlags=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSizesHist=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const buckets={'<1k':0,'1-10k':0,'10-100k':0,'100k-1m':0,'>1m':0};
+  rows.forEach(r=>{const s=parseInt(r.dataset.size||'0',10);if(s<1024)buckets['<1k']++;else if(s<10240)buckets['1-10k']++;else if(s<102400)buckets['10-100k']++;else if(s<1048576)buckets['100k-1m']++;else buckets['>1m']++;});
+  const out=Object.entries(buckets).map(p=>p[0]+'\t'+p[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sh '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7083,5 +7083,19 @@ window.copySettingsScreenInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsFontList=function(){
+  const fonts=['Arial','Helvetica','Times New Roman','Georgia','Courier New','Verdana','Tahoma','Trebuchet MS','Impact','Comic Sans MS','Palatino','Garamond','Roboto','Inter','Segoe UI','Ubuntu','Cantarell','Fira Sans'];
+  const arr=[];
+  if(document.fonts&&document.fonts.check){
+    fonts.forEach(f=>{try{if(document.fonts.check('12px "'+f+'"'))arr.push(f);}catch(e){}});
+  }
+  const out='detected='+arr.length+' of '+fonts.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fn '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
