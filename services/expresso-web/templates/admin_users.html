@@ -7193,5 +7193,20 @@ window.copyUsersMfaEnrolled=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersStorageUsage=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const arr=[];
+  let tot=0;
+  rows.forEach(r=>{const s=parseInt(r.dataset.storageBytes||'0',10);tot+=s;arr.push((r.dataset.email||'?')+'\t'+(s/1048576).toFixed(1)+' MB');});
+  arr.sort((a,b)=>parseFloat(b.split('\t')[1])-parseFloat(a.split('\t')[1]));
+  arr.unshift('TOTAL\t'+(tot/1073741824).toFixed(2)+' GB');
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='su2 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

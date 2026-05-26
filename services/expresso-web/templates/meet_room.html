@@ -6720,5 +6720,15 @@ window.copyMeetBandwidthStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetHardwareConcurrency=function(){
+  const info=['hardwareConcurrency\t'+(navigator.hardwareConcurrency||'?'),'deviceMemory\t'+(navigator.deviceMemory||'?'),'maxTouchPoints\t'+(navigator.maxTouchPoints||0)];
+  const out=info.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hc '+info.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
