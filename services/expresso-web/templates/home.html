@@ -7019,5 +7019,17 @@ window.copyHomeAnchorCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeFormCount=function(){
+  const fs=document.querySelectorAll('form');
+  const arr=[];
+  fs.forEach(f=>{arr.push((f.id||f.name||'?')+'\t'+(f.method||'get').toUpperCase()+'\t'+(f.action||''));});
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fc '+fs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
