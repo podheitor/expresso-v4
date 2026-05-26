@@ -7453,5 +7453,17 @@ window.copyDayEveningEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayMeetingFreeSlots=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]')).map(e=>({s:Date.parse(e.dataset.start||''),e:Date.parse(e.dataset.end||'')})).filter(x=>x.s&&x.e).sort((a,b)=>a.s-b.s);
+  const slots=[];let prev=null;
+  evs.forEach(x=>{if(prev&&x.s>prev){slots.push(new Date(prev).toISOString()+'\t'+new Date(x.s).toISOString()+'\t'+Math.round((x.s-prev)/60000)+'min');}if(!prev||x.e>prev)prev=x.e;});
+  const out=slots.join('\n')||'(no gaps)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fs '+slots.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

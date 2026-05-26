@@ -7226,5 +7226,17 @@ window.copyThreadTimeline=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadByteSize=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  let tot=0;const arr=[];
+  msgs.forEach(m=>{const b=(m.dataset.body||m.textContent||'');const sz=new TextEncoder().encode(b).length;tot+=sz;arr.push((m.dataset.from||'?')+'\t'+sz+'b');});
+  const out=arr.join('\n')+'\n--\ntotal\t'+tot+'b\t'+(tot/1024).toFixed(1)+'KiB';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bs3 '+(tot/1024).toFixed(0)+'KiB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

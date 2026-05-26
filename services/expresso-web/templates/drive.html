@@ -7848,5 +7848,17 @@ window.copyDriveLockedItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTotalSize=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  let tot=0;let n=0;
+  items.forEach(i=>{const s=parseInt(i.dataset.size||'0',10);if(s>0){tot+=s;n++;}});
+  const out='files\t'+n+'\ntotal\t'+(tot/1073741824).toFixed(2)+' GB\navg\t'+(n?(tot/n/1048576).toFixed(2):'0')+' MB';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ts3 '+(tot/1073741824).toFixed(1)+'GB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

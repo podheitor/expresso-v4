@@ -6835,5 +6835,19 @@ window.composeBlockQuoteCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSignatureCheck=function(){
+  const body=document.querySelector('[data-compose-body]');
+  const txt=body?.value||body?.textContent||'';
+  const idx=txt.indexOf('\n-- \n');
+  const has=idx>=0;
+  const sig=has?txt.slice(idx+5).trim():'(no sig)';
+  const out='has_signature\t'+(has?'yes':'no')+'\nsignature_offset\t'+idx+'\nsignature_preview\t'+sig.slice(0,200);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sc2 '+(has?'yes':'no');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
