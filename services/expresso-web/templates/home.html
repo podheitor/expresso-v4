@@ -6487,5 +6487,17 @@ window.copyHomeHeadings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeInputTypes=function(){
+  const ins=document.querySelectorAll('input');
+  const hist={};
+  ins.forEach(i=>{const ty=i.type||'text';hist[ty]=(hist[ty]||0)+1;});
+  const out=Object.entries(hist).sort((a,b)=>b[1]-a[1]).map(([t,n])=>n+'\t'+t).join('\n')||'(no inputs)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='it '+Object.keys(hist).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

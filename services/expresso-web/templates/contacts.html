@@ -7607,5 +7607,17 @@ window.copyContactsTagHist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsNoteSummary=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  let withNotes=0,total=0,longest=0;
+  cs.forEach(c=>{const n=(c.dataset.note||c.dataset.notes||'').trim();if(n){withNotes++;total+=n.length;if(n.length>longest)longest=n.length;}});
+  const out='contacts='+cs.length+'\nwithNotes='+withNotes+'\ntotalChars='+total+'\nlongestChars='+longest+'\navgChars='+(withNotes?(total/withNotes).toFixed(0):'0');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ns '+withNotes;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

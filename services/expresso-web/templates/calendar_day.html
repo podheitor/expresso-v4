@@ -7251,5 +7251,17 @@ window.copyDayWorkHours=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayAttendeesList=function(){
+  const ev=document.querySelectorAll('[data-event]');
+  const set=new Set();
+  ev.forEach(e=>{const ats=(e.dataset.attendees||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);ats.forEach(a=>set.add(a));});
+  const out=Array.from(set).sort().join('\n')||'(no attendees)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='at '+set.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
