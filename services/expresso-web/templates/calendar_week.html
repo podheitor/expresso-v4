@@ -8593,5 +8593,18 @@ window.copyWeekLongestEvent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekShortestEvent=function(){
+  const arr=[...document.querySelectorAll('[data-event]')];
+  let mn=Infinity,top=null;arr.forEach(e=>{const s=e.getAttribute('data-start')||'';const f=e.getAttribute('data-end')||'';const a=new Date(s);const b=new Date(f);if(!isNaN(a)&&!isNaN(b)){const d=b-a;if(d>0&&d<mn){mn=d;top=e;}}});
+  if(mn===Infinity)mn=0;
+  const mins=Math.round(mn/60000);
+  const out=top?(top.getAttribute('data-title')||'')+': '+mins+'m':'';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='se '+mins;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

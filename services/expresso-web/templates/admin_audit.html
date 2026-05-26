@@ -8448,5 +8448,15 @@ window.copyAuditMonthFreq=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditYearFreq=function(){
+  const map={};[...document.querySelectorAll('[data-audit-row]')].forEach(r=>{const y=(r.getAttribute('data-timestamp')||'').slice(0,4);if(y)map[y]=(map[y]||0)+1;});
+  const out=Object.entries(map).sort().map(([k,v])=>k+': '+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='yf '+Object.keys(map).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
