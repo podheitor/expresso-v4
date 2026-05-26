@@ -7636,5 +7636,18 @@ window.composeBodyDigitCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSubjectUpperRatio=function(){
+  const s=document.querySelector('[data-compose-subject]');
+  const sub=s?(s.value||s.textContent||''):'';
+  const letters=sub.replace(/[^A-Za-z]/g,'');
+  const up=letters.replace(/[^A-Z]/g,'').length;
+  const ratio=letters.length?Math.round((up*100)/letters.length):0;
+  const ta=document.createElement('textarea');ta.value=String(ratio);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='su '+ratio;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
