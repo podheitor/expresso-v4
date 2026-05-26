@@ -8113,5 +8113,18 @@ window.copyMonthAfternoonRatio=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEveningRatio=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  let ev=0,total=0;
+  evs.forEach(e=>{const d=new Date(e.dataset.start||'');if(isNaN(d))return;total++;if(d.getHours()>=18)ev++;});
+  const pct=total?Math.round(ev*100/total):0;
+  const out='evening='+ev+'\ntotal='+total+'\npct='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='er '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
