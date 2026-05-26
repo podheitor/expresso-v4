@@ -8294,5 +8294,18 @@ window.copyDriveTotalSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveAvgFileSize=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  let total=0,n=0;
+  items.forEach(i=>{const s=parseInt(i.dataset.size||'0',10);if(s>0){total+=s;n++;}});
+  const avg=n?Math.round(total/n):0;
+  const out='files\t'+n+'\navg_bytes\t'+avg;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='af '+avg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

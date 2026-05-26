@@ -7684,5 +7684,18 @@ window.copyThreadAttachmentNames=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAttachmentTotalSize=function(){
+  const atts=document.querySelectorAll('[data-attachment]');
+  let total=0;
+  atts.forEach(a=>{const s=parseInt(a.dataset.size||'0',10);if(s>0){total+=s;}});
+  const mb=(total/1048576).toFixed(2);
+  const out='atts\t'+atts.length+'\nbytes\t'+total+'\nMB\t'+mb;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ts '+mb+'M';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7798,5 +7798,17 @@ window.copySettingsHeadingOutline=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsFieldsetSummary=function(){
+  const fs=document.querySelectorAll('fieldset');
+  const arr=[];
+  fs.forEach(f=>{const lg=f.querySelector('legend');const t=(lg?lg.textContent:'(no legend)').trim();const n=f.querySelectorAll('input,select,textarea').length;arr.push(t+'\t'+n);});
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fs '+fs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
