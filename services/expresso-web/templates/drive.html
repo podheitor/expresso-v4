@@ -7553,5 +7553,18 @@ window.copyDriveFolderTree=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveCreatedByMe=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const arr=[];
+  items.forEach(i=>{if(i.dataset.createdByMe==='true'||i.dataset.owner==='me')arr.push((i.dataset.created||'')+'\t'+(i.dataset.name||''));});
+  arr.sort().reverse();
+  const out='created_by_me='+arr.length+' of '+items.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cm '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

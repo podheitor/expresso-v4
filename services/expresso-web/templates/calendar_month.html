@@ -7275,5 +7275,17 @@ window.copyMonthMostBusyDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthRsvpStats=function(){
+  const ev=document.querySelectorAll('[data-event]');
+  const hist={accepted:0,declined:0,tentative:0,needsAction:0,other:0};
+  ev.forEach(e=>{const r=(e.dataset.myResponse||e.dataset.rsvp||'').toLowerCase();if(r==='accepted')hist.accepted++;else if(r==='declined')hist.declined++;else if(r==='tentative')hist.tentative++;else if(r==='needsaction'||r==='needs-action')hist.needsAction++;else hist.other++;});
+  const out=Object.entries(hist).map(p=>p[0]+'\t'+p[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rs '+ev.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

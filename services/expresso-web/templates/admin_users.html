@@ -6943,5 +6943,18 @@ window.copyUsersLockedOut=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAvgQuotaUsage=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  let usedSum=0,totalSum=0,counted=0;
+  rows.forEach(r=>{const u=parseFloat(r.dataset.quotaUsed||'0');const q=parseFloat(r.dataset.quotaTotal||'0');if(q>0){usedSum+=u;totalSum+=q;counted++;}});
+  const pct=totalSum>0?(usedSum/totalSum*100).toFixed(1):'0';
+  const out='users='+counted+'\ntotal_used_bytes='+usedSum+'\ntotal_quota_bytes='+totalSum+'\noverall_pct='+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='aq '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6517,5 +6517,20 @@ window.composeSubjectInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeUrlsInBody=function(){
+  const body=document.querySelector('[data-compose-body]');
+  if(!body)return;
+  const text=body.value||body.textContent||'';
+  const re=/https?:\/\/[^\s<>"']+/g;
+  const found=text.match(re)||[];
+  const uniq=Array.from(new Set(found));
+  const out='urls='+uniq.length+'\n\n'+uniq.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ub '+uniq.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
