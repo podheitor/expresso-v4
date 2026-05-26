@@ -7828,5 +7828,19 @@ window.copyDayMarkdownAgenda=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFirstFreeSlot=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]')).map(e=>({s:new Date(e.dataset.start||''),e:new Date(e.dataset.end||'')})).filter(o=>!isNaN(o.s)&&!isNaN(o.e)).sort((a,b)=>a.s-b.s);
+  let cursor=new Date();cursor.setHours(9,0,0,0);
+  let found=null;
+  for(const ev of evs){if(ev.s>=new Date(cursor.getTime()+30*60000)){found=cursor;break;}if(ev.e>cursor)cursor=new Date(ev.e);}
+  if(!found&&cursor.getHours()<18)found=cursor;
+  const out=found?'next 30min slot: '+found.toISOString():'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fs '+(found?'ok':'na');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

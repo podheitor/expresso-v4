@@ -7674,5 +7674,18 @@ window.copyAuditConfigChanges=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByWeek=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const map={};
+  rows.forEach(r=>{const d=new Date(r.dataset.ts||'');if(!isNaN(d)){const onejan=new Date(d.getFullYear(),0,1);const wk=Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);const k=d.getFullYear()+'-W'+String(wk).padStart(2,'0');map[k]=(map[k]||0)+1;}});
+  const arr=Object.keys(map).sort().map(k=>k+'\t'+map[k]);
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bw '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

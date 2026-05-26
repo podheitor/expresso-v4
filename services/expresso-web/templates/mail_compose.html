@@ -7227,5 +7227,18 @@ window.composeBodyUniqueWords=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAttachTotalSize=function(){
+  const at=document.querySelectorAll('[data-attachment]');
+  let total=0;
+  at.forEach(a=>{total+=parseInt(a.dataset.size||'0',10);});
+  const mb=(total/1048576).toFixed(2);
+  const out='count='+at.length+'\nbytes='+total+'\nMiB='+mb;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='at '+mb+'M';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
