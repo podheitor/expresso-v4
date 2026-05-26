@@ -6175,5 +6175,17 @@ window.copyMeetTimezones=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRecordingState=function(){
+  const r=document.querySelector('[data-recording-state]');
+  const state=r?r.dataset.recordingState:'(unknown)';
+  const started=r?(r.dataset.recordingStarted||''):'';
+  const out='recording_state='+state+'\nstarted='+started;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(state==='on'?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rec '+state;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

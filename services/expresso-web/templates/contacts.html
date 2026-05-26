@@ -7202,5 +7202,17 @@ window.copyContactsBdayUpcoming=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsEmptyFields=function(){
+  const list=document.querySelectorAll('[data-contact]');
+  const counters={name:0,email:0,phone:0,company:0};
+  list.forEach(c=>{Object.keys(counters).forEach(k=>{if(!c.dataset[k])counters[k]++;});});
+  const out=Object.entries(counters).map(p=>p[0]+'\t'+p[1]+'/'+list.length).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ef '+Object.values(counters).reduce((a,b)=>a+b,0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7601,5 +7601,17 @@ window.copyTasksTitleWordCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksJsonExport=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const arr=[];
+  rows.forEach(r=>{arr.push({id:r.dataset.taskId||'',title:r.dataset.title||'',due:r.dataset.due||'',done:r.dataset.done==='true',priority:r.dataset.priority||'',assignee:r.dataset.assignee||''});});
+  const out=JSON.stringify(arr,null,2);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='json '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

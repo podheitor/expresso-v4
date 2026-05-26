@@ -6680,5 +6680,17 @@ window.copyAuditRecentHour=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditCsv=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const arr=['timestamp,actor,action,resource,status,ip'];
+  rows.forEach(r=>{arr.push([r.dataset.timestamp||'',r.dataset.actor||'',r.dataset.action||'',r.dataset.resource||'',r.dataset.status||'',r.dataset.ip||''].map(s=>'"'+s.replace(/"/g,'""')+'"').join(','));});
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='csv '+(arr.length-1);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

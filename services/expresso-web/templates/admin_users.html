@@ -6632,5 +6632,23 @@ window.copyUsersWithoutPhone=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAlias2faSummary=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  let withAlias=0,with2fa=0,both=0;
+  rows.forEach(r=>{
+    const a=r.dataset.aliasCount&&parseInt(r.dataset.aliasCount,10)>0;
+    const f=r.dataset.twofa==='true'||r.dataset['2fa']==='true';
+    if(a)withAlias++;
+    if(f)with2fa++;
+    if(a&&f)both++;
+  });
+  const out='users='+rows.length+'\nwith_alias='+withAlias+'\nwith_2fa='+with2fa+'\nboth='+both;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='a2f '+both;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
