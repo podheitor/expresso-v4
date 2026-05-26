@@ -7480,5 +7480,20 @@ window.copyThreadAttachExtensions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadInternalParticipants=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  const me=(document.body.dataset.userEmail||'').toLowerCase();
+  const myDom=me.includes('@')?me.split('@')[1]:'';
+  const set=new Set();
+  msgs.forEach(m=>{[...((m.dataset.from||'').toLowerCase().split(/[,;]/)),...((m.dataset.to||'').toLowerCase().split(/[,;]/))].map(s=>s.trim()).filter(Boolean).forEach(e=>{if(myDom&&e.endsWith('@'+myDom))set.add(e);});});
+  const arr=[...set].sort();
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ip '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

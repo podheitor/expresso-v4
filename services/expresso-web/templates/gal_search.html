@@ -7211,5 +7211,17 @@ window.copyGalLinkedPersonsCsv=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalNamesByLength=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const arr=[...rows].map(r=>({n:(r.dataset.name||'?').trim(),l:(r.dataset.name||'').trim().length}));
+  arr.sort((a,b)=>b.l-a.l);
+  const out=arr.slice(0,15).map(x=>x.l+'\t'+x.n).join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nl '+Math.min(15,arr.length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
