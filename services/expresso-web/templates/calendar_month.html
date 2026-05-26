@@ -6850,5 +6850,25 @@ window.copyMonthLatestPerDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEventsByWeek=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const map={};
+  evs.forEach(e=>{
+    const d=(e.dataset.start||'').slice(0,10);
+    if(!d)return;
+    const day=new Date(d);
+    if(isNaN(day))return;
+    const onejan=new Date(day.getFullYear(),0,1);
+    const wk=Math.ceil(((day-onejan)/86400000+onejan.getDay()+1)/7);
+    map[wk]=(map[wk]||0)+1;
+  });
+  const out=Object.entries(map).sort((a,b)=>+a[0]-+b[0]).map(p=>'W'+p[0]+'\t'+p[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ew '+Object.keys(map).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
