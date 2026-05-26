@@ -7502,5 +7502,18 @@ window.copyDayAttendeeUnique=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayHourlyDensity=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const m={};
+  evs.forEach(e=>{const h=parseInt((e.dataset.start||'').slice(11,13),10);if(!isNaN(h))m[h]=(m[h]||0)+1;});
+  const arr=[];for(let h=0;h<24;h++)arr.push(String(h).padStart(2,'0')+':00\t'+(m[h]||0));
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hd3 '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

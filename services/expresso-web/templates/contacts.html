@@ -7860,5 +7860,17 @@ window.copyContactsWithWebsite=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsExportCsv=function(){
+  const rows=document.querySelectorAll('[data-contact]');
+  const arr=['name,email,phone,company,title'];
+  rows.forEach(r=>{const cells=[r.dataset.name,r.dataset.email,r.dataset.phone,r.dataset.company,r.dataset.title].map(c=>'"'+(c||'').replace(/"/g,'""')+'"');arr.push(cells.join(','));});
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cs3 '+(arr.length-1);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
