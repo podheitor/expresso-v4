@@ -8295,5 +8295,16 @@ window.copyAuditMonthDateRange=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditMaxActorEvents=function(){
+  const arr=[...document.querySelectorAll('[data-audit-row]')].map(r=>r.getAttribute('data-actor')||'').filter(Boolean);
+  const freq={};arr.forEach(x=>{freq[x]=(freq[x]||0)+1;});
+  const top=Object.entries(freq).sort((a,b)=>b[1]-a[1])[0];const out=top?(top[0]+'\t'+top[1]):'';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mx '+(top?top[1]:0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
