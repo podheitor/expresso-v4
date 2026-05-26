@@ -7821,5 +7821,17 @@ window.copySettingsTotalChars=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsListItems=function(){
+  const lis=document.querySelectorAll('li');
+  const arr=[];
+  lis.forEach(li=>{arr.push((li.textContent||'').trim().replace(/\s+/g,' ').slice(0,80));});
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='li '+lis.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

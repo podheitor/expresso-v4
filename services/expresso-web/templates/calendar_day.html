@@ -7927,5 +7927,19 @@ window.copyDayWithDescription=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayMaxConcurrent=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  const pts=[];
+  evs.forEach(e=>{const s=new Date(e.dataset.start||'');const en=new Date(e.dataset.end||'');if(!isNaN(s)&&!isNaN(en)){pts.push([s.getTime(),1]);pts.push([en.getTime(),-1]);}});
+  pts.sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+  let cur=0,max=0;pts.forEach(p=>{cur+=p[1];if(cur>max)max=cur;});
+  const out='events\t'+evs.length+'\nmax_concurrent\t'+max;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mc '+max;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
