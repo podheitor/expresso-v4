@@ -7880,5 +7880,17 @@ window.copyTasksTitlesBlank=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksEstimateSum=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let total=0,counted=0;
+  rows.forEach(r=>{const e=parseFloat(r.dataset.estimateHours||'0');if(!isNaN(e)&&e>0){total+=e;counted++;}});
+  const out='tasks_with_estimate='+counted+' of '+rows.length+'\ntotal_hours='+total.toFixed(1)+'\navg='+(counted?(total/counted).toFixed(2):'0');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='es '+total.toFixed(0)+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
