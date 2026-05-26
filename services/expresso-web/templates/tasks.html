@@ -8710,5 +8710,17 @@ window.copyTasksByStatus=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksWithUrls=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const arr=[];
+  rows.forEach(r=>{const notes=(r.dataset.notes||r.textContent||'');const m=notes.match(/https?:\/\/\S+/g)||[];if(m.length){arr.push((r.dataset.title||'').trim()+'\t'+m.length);}});
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wu '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

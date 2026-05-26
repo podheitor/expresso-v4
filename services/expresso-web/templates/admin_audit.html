@@ -7763,5 +7763,17 @@ window.copyAuditNightEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditWorkHours=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  let inh=0,outh=0;
+  rows.forEach(r=>{const d=new Date(r.dataset.ts||'');if(!isNaN(d)){const h=d.getHours();const dow=d.getDay();if(dow>=1&&dow<=5&&h>=9&&h<18){inh++;}else{outh++;}}});
+  const out='work_hours\t'+inh+'\nout_hours\t'+outh;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wh '+inh+'/'+(inh+outh);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
