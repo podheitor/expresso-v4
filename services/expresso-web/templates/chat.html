@@ -7991,5 +7991,17 @@ window.copyChatThreadDepth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatReactionTotal=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const hist={};let total=0;
+  msgs.forEach(m=>{const rxs=m.querySelectorAll('[data-reaction]');rxs.forEach(r=>{const e=r.dataset.reaction||'';if(e){hist[e]=(hist[e]||0)+1;total++;}});});
+  const out='total_reactions='+total+'\nunique='+Object.keys(hist).length+'\n\n'+Object.entries(hist).sort((a,b)=>b[1]-a[1]).map(p=>p[0]+'\t'+p[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rx '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

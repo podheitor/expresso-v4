@@ -7019,5 +7019,15 @@ window.copySettingsTouchPoints=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsNetworkInfo=function(){
+  const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+  const out=c?'effective_type='+(c.effectiveType||'')+'\ndownlink='+(c.downlink||'')+'\nrtt='+(c.rtt||'')+'\nsave_data='+(c.saveData?'true':'false'):'connection_unsupported';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ni '+(c?c.effectiveType||'ok':'none');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
