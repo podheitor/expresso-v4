@@ -6863,5 +6863,17 @@ window.composeBase64SnippetTotal=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeDuplicateRecipientCheck=function(){
+  const all=['to','cc','bcc'].flatMap(k=>(document.querySelector('[data-compose-'+k+']')?.value||'').split(/[,;]/).map(x=>x.trim().toLowerCase()).filter(Boolean));
+  const seen={};const dupes=[];
+  all.forEach(e=>{seen[e]=(seen[e]||0)+1;if(seen[e]===2)dupes.push(e);});
+  const out='total\t'+all.length+'\nunique\t'+Object.keys(seen).length+'\nduplicates\n'+dupes.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dr5 '+dupes.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
