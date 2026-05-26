@@ -7248,5 +7248,18 @@ window.copyMonthDaysOfWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthLongEvents=function(){
+  const ev=document.querySelectorAll('[data-event]');
+  const arr=[];
+  ev.forEach(e=>{const s=new Date(e.dataset.start||'').getTime();const en=new Date(e.dataset.end||'').getTime();if(isNaN(s)||isNaN(en))return;const h=(en-s)/3600000;if(h>=4)arr.push(h.toFixed(1)+' hr\t'+(e.dataset.title||''));});
+  arr.sort((a,b)=>parseFloat(b)-parseFloat(a));
+  const out='long_events_4hr_plus='+arr.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lo '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
