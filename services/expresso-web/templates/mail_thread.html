@@ -8348,5 +8348,15 @@ window.copyThreadDateRange=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadSpanDays=function(){
+  const arr=[...document.querySelectorAll('[data-thread-msg]')].map(m=>m.getAttribute('data-date')||'').filter(Boolean).sort();
+  let days=0;if(arr.length>=2){const a=new Date(arr[0]);const b=new Date(arr[arr.length-1]);if(!isNaN(a)&&!isNaN(b))days=Math.round((b-a)/86400000);}
+  const ta=document.createElement('textarea');ta.value=days;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sd '+days;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
