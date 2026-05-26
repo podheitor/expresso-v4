@@ -8023,5 +8023,14 @@ window.copyHomeAvgParaLen=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeUpperParaCount=function(){
+  const n=[...document.querySelectorAll('p')].filter(p=>{const s=(p.textContent||'').trim();return s.length>0 && s===s.toUpperCase();}).length;
+  const ta=document.createElement('textarea');ta.value=String(n);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='up '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
