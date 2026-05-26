@@ -8965,5 +8965,15 @@ window.copyContactsZipFreq=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsNameInitials=function(){
+  const arr=[...document.querySelectorAll('[data-contact]')].map(c=>{const n=(c.getAttribute('data-name')||'').trim();return n.split(/\s+/).map(w=>w.charAt(0).toUpperCase()).join('');}).filter(Boolean);
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ni '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

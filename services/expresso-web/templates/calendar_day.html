@@ -8595,5 +8595,15 @@ window.copyDayShortestEvent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayTotalMinutes=function(){
+  let total=0;[...document.querySelectorAll('[data-event]')].forEach(e=>{const a=new Date(e.getAttribute('data-start')||'');const b=new Date(e.getAttribute('data-end')||'');if(!isNaN(a)&&!isNaN(b)){const d=b-a;if(d>0)total+=d;}});
+  const mins=Math.round(total/60000);
+  const ta=document.createElement('textarea');ta.value=mins;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tm '+mins;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
