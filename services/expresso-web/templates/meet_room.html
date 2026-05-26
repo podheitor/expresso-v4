@@ -6683,5 +6683,18 @@ window.copyMeetScreenshareList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRecordingState=function(){
+  const room=document.querySelector('[data-meet-room]')||document.body;
+  const rec=room.dataset.recording||room.dataset.isRecording||document.querySelector('[data-recording]')?.dataset.state||'unknown';
+  const since=room.dataset.recordingSince||document.querySelector('[data-recording]')?.dataset.since||'';
+  const by=room.dataset.recordingBy||document.querySelector('[data-recording]')?.dataset.by||'';
+  const out='recording\t'+rec+'\nsince\t'+since+'\nby\t'+by+'\nroom\t'+(room.dataset.room||'?');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='re2 '+rec;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

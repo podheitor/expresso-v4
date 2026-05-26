@@ -7206,5 +7206,18 @@ window.copyAuditSelfActions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditDeleteActions=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const arr=[];
+  rows.forEach(r=>{const a=(r.dataset.action||'').toLowerCase();if(a.includes('delete')||a.includes('remove')||a.includes('purge')||a.includes('drop'))arr.push((r.dataset.timestamp||'?').slice(0,19)+'\t'+a+'\t'+(r.dataset.actor||'?')+'\t'+(r.dataset.target||'?'));});
+  arr.sort().reverse();
+  const out=arr.slice(0,100).join('\n')||'(no delete actions)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='da '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7651,5 +7651,17 @@ window.copyMailSizesHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailDateRange=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  let min=Infinity,max=-Infinity;
+  rows.forEach(r=>{const d=Date.parse(r.dataset.date||'');if(isNaN(d))return;if(d<min)min=d;if(d>max)max=d;});
+  const out=min===Infinity?'(no dates)':'oldest\t'+new Date(min).toISOString().slice(0,19)+'\nnewest\t'+new Date(max).toISOString().slice(0,19)+'\nspan_days\t'+((max-min)/86400000).toFixed(1)+'\ncount\t'+rows.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dr2 '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
