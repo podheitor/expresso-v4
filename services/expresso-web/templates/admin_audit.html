@@ -8284,5 +8284,16 @@ window.copyAuditWeekdayOnlyEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditMonthDateRange=function(){
+  const now=new Date();const start=new Date(now.getFullYear(),now.getMonth(),1);
+  const arr=[...document.querySelectorAll('[data-audit-row]')].map(r=>r.getAttribute('data-ts')||'').filter(d=>d&&new Date(d)>=start).sort();
+  const out=arr.length?(arr[0]+'..'+arr[arr.length-1]):'';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mr '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
