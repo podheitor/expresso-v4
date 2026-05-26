@@ -7565,5 +7565,17 @@ window.copyDayPrivateEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFreeBusyStrip=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]')).map(e=>({s:new Date(e.dataset.start||0),en:new Date(e.dataset.end||0)})).filter(e=>e.s>0&&e.en>e.s);
+  const cells=new Array(24).fill('.');
+  evs.forEach(e=>{const h1=e.s.getHours();const h2=e.en.getHours();for(let h=h1;h<=h2&&h<24;h++)cells[h]='#';});
+  const out=cells.map((c,i)=>String(i).padStart(2,'0')+' '+c).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fb '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

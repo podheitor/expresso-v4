@@ -6875,5 +6875,18 @@ window.copyMeetReactionTimeline=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetCaptionWords=function(){
+  const caps=document.querySelectorAll('[data-meet-caption]');
+  let total=0;
+  const arr=[];
+  caps.forEach(c=>{const txt=(c.textContent||'').trim();const w=(txt.match(/\b\w+\b/g)||[]).length;total+=w;arr.push((c.dataset.from||'?')+'\t'+w);});
+  const out='total\t'+total+'\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cw '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

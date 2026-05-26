@@ -8508,5 +8508,18 @@ window.copyChatEditedMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatActivityByHour=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const buckets=new Array(24).fill(0);
+  msgs.forEach(m=>{const ts=m.dataset.ts||'';if(!ts)return;const h=new Date(ts).getHours();if(h>=0&&h<24)buckets[h]++;});
+  const arr=buckets.map((v,i)=>String(i).padStart(2,'0')+':00\t'+v);
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ah '+msgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
