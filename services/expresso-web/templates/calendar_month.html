@@ -7084,5 +7084,23 @@ window.copyMonthCsvExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEmptyDays=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const has=new Set();
+  evs.forEach(e=>{const d=(e.dataset.start||'').slice(0,10);if(d)has.add(d);});
+  const root=document.querySelector('[data-month]');
+  const ym=root?root.dataset.month:'';
+  const m=ym.match(/^(\d{4})-(\d{2})$/);
+  const empty=[];
+  if(m){const y=+m[1],mo=+m[2];const dim=new Date(y,mo,0).getDate();
+    for(let d=1;d<=dim;d++){const k=ym+'-'+String(d).padStart(2,'0');if(!has.has(k))empty.push(k);}}
+  const out='month='+ym+'\nempty_days='+empty.length+'\n\n'+empty.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mt '+empty.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

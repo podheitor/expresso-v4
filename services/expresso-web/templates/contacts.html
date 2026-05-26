@@ -7326,5 +7326,17 @@ window.copyContactsBirthdaysSoon=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsLastNameSort=function(){
+  const rows=Array.from(document.querySelectorAll('[data-contact]'));
+  const arr=rows.map(r=>{const n=(r.dataset.name||'').trim();const parts=n.split(/\s+/);const last=parts.length>1?parts[parts.length-1]:n;return [last.toLowerCase(),last+'\t'+n+'\t'+(r.dataset.email||'')];});
+  arr.sort((a,b)=>a[0].localeCompare(b[0]));
+  const out=arr.map(p=>p[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ls '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
