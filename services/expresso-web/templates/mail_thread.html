@@ -7126,5 +7126,17 @@ window.copyThreadAuthorList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadHeaderSummary=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  const arr=[];
+  msgs.forEach(m=>{const hdrs=m.querySelectorAll('[data-header]');const h={};hdrs.forEach(x=>{h[x.dataset.header]=x.dataset.value||x.textContent;});arr.push('---\nFrom: '+(h.from||m.dataset.from||'?')+'\nTo: '+(h.to||m.dataset.to||'?')+'\nDate: '+(h.date||m.dataset.date||'?')+'\nMessage-Id: '+(h.messageId||m.dataset.messageId||'?'));});
+  const out=arr.join('\n')||'(no messages)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hs '+msgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

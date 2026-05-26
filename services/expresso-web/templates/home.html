@@ -6582,5 +6582,17 @@ window.copyHomeImgList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeIframeList=function(){
+  const ifs=document.querySelectorAll('iframe');
+  const arr=[];
+  ifs.forEach(f=>arr.push((f.src||f.name||'(unnamed)')+'\t'+(f.width||'?')+'x'+(f.height||'?')+'\t'+(f.sandbox?f.sandbox.toString():'')));
+  const out=arr.join('\n')||'(no iframes)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='if2 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

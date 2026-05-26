@@ -7478,5 +7478,18 @@ window.copyMonthFreeBusyExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthShortestEvents=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const arr=[];
+  evs.forEach(e=>{const s=Date.parse(e.dataset.start||'');const en=Date.parse(e.dataset.end||'');if(isNaN(s)||isNaN(en))return;const m=(en-s)/60000;if(m>0&&m<=15)arr.push(m.toFixed(0)+' min\t'+(e.dataset.title||'?')+'\t'+(e.dataset.start||'?').slice(0,16));});
+  arr.sort();
+  const out=arr.join('\n')||'(no short events)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='se2 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

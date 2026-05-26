@@ -8294,5 +8294,18 @@ window.copyChatReactionSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatThreadReplies=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const arr=[];
+  msgs.forEach(m=>{const n=parseInt(m.dataset.replyCount||m.dataset.replies||'0',10);if(n>0)arr.push((m.dataset.msgId||'?')+'\t'+(m.dataset.author||'?')+'\t'+n+' replies');});
+  arr.sort((a,b)=>parseInt(b.split('\t')[2])-parseInt(a.split('\t')[2]));
+  const out=arr.join('\n')||'(no threaded replies)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tr2 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
