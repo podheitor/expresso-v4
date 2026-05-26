@@ -8085,5 +8085,17 @@ window.copyDriveByOwnerCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTotalSize=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  let bytes=0;
+  items.forEach(i=>{bytes+=parseInt(i.dataset.size||'0',10);});
+  const out='items\t'+items.length+'\nbytes\t'+bytes+'\nMB\t'+(bytes/1048576).toFixed(2)+'\nGB\t'+(bytes/1073741824).toFixed(3);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ts '+(bytes/1048576).toFixed(0)+'MB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

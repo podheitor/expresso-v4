@@ -7691,5 +7691,18 @@ window.copyDayFreeBlocks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayPlainTextAgenda=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const arr=[];
+  evs.forEach(e=>{arr.push((e.dataset.start||'?').slice(11,16)+'  '+(e.dataset.title||'?')+(e.dataset.location?'  @ '+e.dataset.location:''));});
+  arr.sort();
+  const out=(document.body.dataset.dayDate||'today')+'\n'+'-'.repeat(30)+'\n'+(arr.join('\n')||'(no events)');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ag '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
