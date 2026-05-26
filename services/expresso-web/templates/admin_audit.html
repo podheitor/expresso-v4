@@ -7358,5 +7358,18 @@ window.copyAuditSelfActions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditTimeRange=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  let min='',max='';
+  rows.forEach(r=>{const ts=r.dataset.ts||'';if(!ts)return;if(!min||ts<min)min=ts;if(!max||ts>max)max=ts;});
+  const span=(min&&max)?((new Date(max)-new Date(min))/3600000).toFixed(1)+'h':'?';
+  const out='earliest\t'+(min||'?')+'\nlatest\t'+(max||'?')+'\nspan\t'+span+'\nrows\t'+rows.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tr '+span;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

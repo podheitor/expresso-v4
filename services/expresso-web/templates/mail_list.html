@@ -7804,5 +7804,19 @@ window.copyMailAgedUnread=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSizeStats=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  let total=0,max=0,min=Infinity,n=0;
+  rows.forEach(r=>{const s=parseInt(r.dataset.size||'0',10);if(s>0){total+=s;if(s>max)max=s;if(s<min)min=s;n++;}});
+  const avg=n?Math.round(total/n):0;
+  if(!n)min=0;
+  const out='count\t'+n+'\ntotal\t'+total+'\navg\t'+avg+'\nmin\t'+min+'\nmax\t'+max;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sz '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

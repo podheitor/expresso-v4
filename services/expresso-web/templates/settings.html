@@ -7442,5 +7442,16 @@ window.copySettingsCacheStorage=async function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsScreenInfo=function(){
+  const s=window.screen||{};
+  const lines=['width\t'+(s.width||'?'),'height\t'+(s.height||'?'),'availWidth\t'+(s.availWidth||'?'),'availHeight\t'+(s.availHeight||'?'),'colorDepth\t'+(s.colorDepth||'?'),'pixelDepth\t'+(s.pixelDepth||'?'),'orientation\t'+((s.orientation&&s.orientation.type)||'?'),'dpr\t'+(window.devicePixelRatio||1)];
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='si '+(s.width||'?')+'x'+(s.height||'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
