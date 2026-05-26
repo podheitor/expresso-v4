@@ -7171,5 +7171,18 @@ window.copyMailToTopN=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailDateRange=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  let min=Infinity,max=-Infinity,minS='',maxS='';
+  rows.forEach(r=>{const d=r.dataset.date||'';const t=Date.parse(d);if(isFinite(t)){if(t<min){min=t;minS=d;}if(t>max){max=t;maxS=d;}}});
+  const span=isFinite(min)&&isFinite(max)?Math.round((max-min)/86400000):0;
+  const out='oldest='+minS+'\nnewest='+maxS+'\nspan_days='+span+'\nrows='+rows.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dr '+span+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

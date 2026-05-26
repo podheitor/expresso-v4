@@ -6147,5 +6147,18 @@ window.copyHomeFormCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeMetaCharset=function(){
+  const metas=document.querySelectorAll('meta');
+  const arr=[];
+  metas.forEach(m=>{if(m.getAttribute('charset')){arr.push('charset='+m.getAttribute('charset'));}else if(m.getAttribute('http-equiv')==='Content-Type'){arr.push('content-type='+(m.getAttribute('content')||''));}});
+  const docCharset=document.characterSet||document.charset||'(unknown)';
+  const out='document.characterSet='+docCharset+'\ndocument.contentType='+(document.contentType||'(unknown)')+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cs '+docCharset;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

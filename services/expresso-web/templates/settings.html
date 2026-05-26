@@ -6872,5 +6872,20 @@ window.copySettingsResolutionInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsTimezone=function(){
+  const tz=Intl.DateTimeFormat().resolvedOptions().timeZone||'(unknown)';
+  const off=new Date().getTimezoneOffset();
+  const sign=off<=0?'+':'-';
+  const abs=Math.abs(off);
+  const hh=String(Math.floor(abs/60)).padStart(2,'0');
+  const mm=String(abs%60).padStart(2,'0');
+  const out='timezone='+tz+'\nutc_offset='+sign+hh+':'+mm+'\noffset_minutes='+(-off)+'\nlocale='+(navigator.language||'?');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tz '+tz;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

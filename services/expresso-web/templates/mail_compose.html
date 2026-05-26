@@ -6238,5 +6238,20 @@ window.composeBase64Encode=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeLineCount=function(){
+  const body=document.querySelector('[data-compose-body]');
+  const v=body?(body.value||body.textContent||''):'';
+  const lines=v.split('\n');
+  const blank=lines.filter(l=>!l.trim()).length;
+  const nonblank=lines.length-blank;
+  const longest=lines.reduce((a,l)=>Math.max(a,l.length),0);
+  const out='lines='+lines.length+'\nnon_blank='+nonblank+'\nblank='+blank+'\nlongest_line='+longest;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lc '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

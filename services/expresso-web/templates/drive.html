@@ -7278,5 +7278,17 @@ window.copyDriveJsonExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveLargestFile=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  let best=null;let bestSz=-1;
+  items.forEach(i=>{const sz=parseInt(i.dataset.size||'0',10);if(sz>bestSz){bestSz=sz;best=i;}});
+  const out=best?('name='+(best.dataset.name||'')+'\nsize='+bestSz+'\ntype='+(best.dataset.type||'')+'\nowner='+(best.dataset.owner||'')+'\nmodified='+(best.dataset.modified||'')):'(no files)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lg '+(bestSz>=0?bestSz:0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
