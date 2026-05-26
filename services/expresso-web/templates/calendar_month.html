@@ -6958,5 +6958,27 @@ window.copyMonthAttendeeCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthQuickStats=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let totalMin=0,maxMin=0;
+  const days=new Set();
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start||'');
+    const en=new Date(e.dataset.end||'');
+    if(!isNaN(s)&&!isNaN(en)){
+      const m=(en-s)/60000;
+      totalMin+=m;
+      if(m>maxMin)maxMin=m;
+      days.add((e.dataset.start||'').slice(0,10));
+    }
+  });
+  const out='events='+evs.length+'\ntotal_minutes='+totalMin+'\nlongest='+maxMin+'\nactive_days='+days.size;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qs '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

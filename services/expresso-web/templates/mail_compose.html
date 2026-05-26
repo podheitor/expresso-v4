@@ -6212,5 +6212,19 @@ window.composeRotEncode=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSignatureCheck=function(){
+  const body=document.querySelector('[data-compose-body]');
+  const v=body?(body.value||body.textContent||''):'';
+  const sigIdx=v.lastIndexOf('-- \n');
+  const hasSig=sigIdx>=0;
+  const sigLen=hasSig?(v.length-sigIdx-4):0;
+  const out='has_signature='+hasSig+'\nsig_offset='+(hasSig?sigIdx:-1)+'\nsig_length='+sigLen;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sig '+(hasSig?'y':'n');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

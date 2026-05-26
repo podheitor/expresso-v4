@@ -6114,5 +6114,26 @@ window.copyHomeImageList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomePerfNavigation=function(){
+  const nav=performance.getEntriesByType?performance.getEntriesByType('navigation')[0]:null;
+  if(!nav){
+    const tt=performance.timing||{};
+    const out='legacy domContentLoaded='+(tt.domContentLoadedEventEnd-tt.navigationStart||0)+' loadComplete='+(tt.loadEventEnd-tt.navigationStart||0);
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='pf legacy';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const out='type='+nav.type+'\ndomContentLoaded='+Math.round(nav.domContentLoadedEventEnd)+'\nloadEvent='+Math.round(nav.loadEventEnd)+'\nttfb='+Math.round(nav.responseStart);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pf '+Math.round(nav.loadEventEnd);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

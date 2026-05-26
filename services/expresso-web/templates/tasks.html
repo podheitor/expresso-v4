@@ -7613,5 +7613,19 @@ window.copyTasksJsonExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksRecent7Days=function(){
+  const cutoff=Date.now()-7*86400000;
+  const rows=document.querySelectorAll('[data-task-row]');
+  const arr=[];
+  rows.forEach(r=>{const c=new Date(r.dataset.created||'').getTime();if(c>cutoff)arr.push((r.dataset.created||'')+'\t'+(r.dataset.title||''));});
+  arr.sort();
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='r7 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
