@@ -6893,5 +6893,17 @@ window.copyWeekOrganizerCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTotalEvents=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let totalMin=0;
+  evs.forEach(e=>{const s=Date.parse(e.dataset.start||'');const en=Date.parse(e.dataset.end||'');if(isFinite(s)&&isFinite(en))totalMin+=Math.round((en-s)/60000);});
+  const out='events='+evs.length+'\ntotal_minutes='+totalMin+'\ntotal_hours='+(totalMin/60).toFixed(1);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='te '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

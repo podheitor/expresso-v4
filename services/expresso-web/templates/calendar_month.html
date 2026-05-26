@@ -7007,5 +7007,19 @@ window.copyMonthAttendeeUnique=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthICalExport=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Expresso v4//Month export//EN'];
+  const fmt=d=>{const t=Date.parse(d);if(!isFinite(t))return '';const z=new Date(t);return z.toISOString().replace(/[-:]/g,'').slice(0,15)+'Z';};
+  evs.forEach((e,i)=>{lines.push('BEGIN:VEVENT','UID:'+(e.dataset.uid||('ev'+i+'@expresso')),'DTSTART:'+fmt(e.dataset.start||''),'DTEND:'+fmt(e.dataset.end||''),'SUMMARY:'+(e.dataset.title||'').replace(/[\r\n,;]/g,' '),'END:VEVENT');});
+  lines.push('END:VCALENDAR');
+  const out=lines.join('\r\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ics '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

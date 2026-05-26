@@ -7651,5 +7651,19 @@ window.copyTasksByAssignee=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOverdue=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const today=new Date().toISOString().slice(0,10);
+  const arr=[];
+  rows.forEach(r=>{const due=(r.dataset.due||'').slice(0,10);const done=r.dataset.done==='true';if(due&&due<today&&!done)arr.push(due+'\t'+(r.dataset.title||'')+'\t'+(r.dataset.assignee||''));});
+  arr.sort();
+  const out='overdue='+arr.length+' as_of='+today+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ov '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

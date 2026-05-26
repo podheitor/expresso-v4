@@ -6660,5 +6660,17 @@ window.copyThreadParticipants=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadCountMsg=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  let withAtt=0;let totalChars=0;
+  msgs.forEach(m=>{if(m.querySelector('[data-attachment]'))withAtt++;const b=m.querySelector('[data-msg-body]');if(b)totalChars+=(b.textContent||'').length;});
+  const out='messages='+msgs.length+'\nwith_attachments='+withAtt+'\ntotal_body_chars='+totalChars;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nm '+msgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
