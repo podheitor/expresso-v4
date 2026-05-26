@@ -9104,5 +9104,15 @@ window.copyMailSubjectTotalChars=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSubjectRangeChars=function(){
+  const arr=[...document.querySelectorAll('[data-mail-row]')].map(r=>(r.dataset.subject||'').length);
+  const rng=arr.length?Math.max(...arr)-Math.min(...arr):0;
+  const ta=document.createElement('textarea');ta.value=String(rng);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rg '+rng;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
