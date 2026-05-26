@@ -8110,5 +8110,18 @@ window.copyDriveAvgSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveByCreatedYear=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const map={};
+  items.forEach(i=>{const y=(i.dataset.created||'').slice(0,4);if(y)map[y]=(map[y]||0)+1;});
+  const arr=Object.entries(map).sort().map(([k,v])=>k+'\t'+v);
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cy '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
