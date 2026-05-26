@@ -6769,5 +6769,17 @@ window.copyHomeStorageUsage=async function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeMetaCharset=function(){
+  const cs=document.querySelector('meta[charset]')?.getAttribute('charset')||document.characterSet||'?';
+  const cl=document.querySelector('meta[http-equiv="Content-Language"]')?.content||document.documentElement.lang||'?';
+  const ct=document.querySelector('meta[http-equiv="Content-Type"]')?.content||'?';
+  const out='charset\t'+cs+'\nlang\t'+cl+'\ncontent-type\t'+ct;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mc '+cs;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

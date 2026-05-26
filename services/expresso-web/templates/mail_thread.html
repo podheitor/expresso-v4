@@ -7329,5 +7329,18 @@ window.copyThreadHashtagList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadInternalExternal=function(){
+  const dom=(document.documentElement.dataset.tenantDomain||location.hostname||'').toLowerCase();
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  let inn=0,ext=0;
+  msgs.forEach(m=>{const s=(m.dataset.sender||'').toLowerCase();const at=s.lastIndexOf('@');const d=at>=0?s.slice(at+1):'';if(!d)return;if(d===dom)inn++;else ext++;});
+  const out='internal\t'+inn+'\nexternal\t'+ext+'\ntotal\t'+(inn+ext);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ie '+inn+'/'+ext;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
