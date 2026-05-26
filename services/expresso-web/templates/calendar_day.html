@@ -7239,5 +7239,17 @@ window.copyDayResponseStatus=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayWorkHours=function(){
+  const ev=document.querySelectorAll('[data-event]');
+  let work=0,outside=0;
+  ev.forEach(e=>{const s=Date.parse(e.dataset.start||'');if(isNaN(s))return;const h=new Date(s).getHours();if(h>=9&&h<18)work++;else outside++;});
+  const out='inWorkHours(9-18)='+work+'\noutsideWorkHours='+outside+'\ntotal='+ev.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wh '+work+'/'+outside;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

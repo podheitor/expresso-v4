@@ -8184,5 +8184,17 @@ window.copyChatReactionsSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatLongMessages=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const arr=[];
+  msgs.forEach(m=>{const text=(m.querySelector('[data-msg-body]')||m).textContent||'';if(text.length>500)arr.push((m.dataset.author||'?')+'\t'+text.length+' chars');});
+  const out=arr.join('\n')||'(no messages >500 chars)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lo '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

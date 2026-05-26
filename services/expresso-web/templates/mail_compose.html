@@ -6615,5 +6615,18 @@ window.composeAttachmentSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeReplaceTabs=function(){
+  const el=document.querySelector('[data-compose-body]');
+  if(!el)return;
+  const text=el.value||el.textContent||'';
+  const replaced=text.replace(/\t/g,'    ');
+  if(el.value!==undefined)el.value=replaced;else el.textContent=replaced;
+  const ta=document.createElement('textarea');ta.value=replaced;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rt '+(text.length-replaced.length<0?(replaced.length-text.length)/3:0)+' tabs';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

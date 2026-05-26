@@ -7030,5 +7030,17 @@ window.copyUsersLockedOut=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAvgQuotaUsage=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  let totUsed=0,totQuota=0,n=0;
+  rows.forEach(r=>{const u=parseInt(r.dataset.quotaUsed||'0',10);const q=parseInt(r.dataset.quotaLimit||r.dataset.quota||'0',10);if(!isNaN(u)&&!isNaN(q)&&q>0){totUsed+=u;totQuota+=q;n++;}});
+  const out='users='+n+'\ntotalUsedGB='+(totUsed/1073741824).toFixed(2)+'\ntotalQuotaGB='+(totQuota/1073741824).toFixed(2)+'\navgPct='+(totQuota?(totUsed*100/totQuota).toFixed(2):'0')+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qu '+(totQuota?(totUsed*100/totQuota).toFixed(0):'0')+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

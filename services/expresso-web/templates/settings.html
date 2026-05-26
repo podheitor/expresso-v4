@@ -7211,5 +7211,15 @@ window.copySettingsBatteryStatus=async function(){
     setTimeout(()=>t.remove(),1500);
   }catch(_){}
 };
+window.copySettingsClientHints=function(){
+  const uad=navigator.userAgentData;
+  const out='userAgentData='+JSON.stringify(uad||null)+'\nplatform='+navigator.platform+'\nlanguage='+navigator.language+'\nlanguages='+JSON.stringify(navigator.languages)+'\nvendor='+navigator.vendor+'\nproduct='+navigator.product;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ch '+((uad&&uad.platform)||navigator.platform||'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

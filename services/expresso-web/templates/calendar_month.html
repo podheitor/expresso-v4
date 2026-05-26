@@ -7362,5 +7362,19 @@ window.copyMonthByCalendar=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEarliestLatest=function(){
+  const ev=document.querySelectorAll('[data-event]');
+  const ts=[];
+  ev.forEach(e=>{const s=Date.parse(e.dataset.start||'');if(!isNaN(s))ts.push([s,e.dataset.title||'?']);});
+  if(ts.length===0){const ta=document.createElement('textarea');ta.value='(no events)';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return;}
+  ts.sort((a,b)=>a[0]-b[0]);
+  const out='earliest='+new Date(ts[0][0]).toISOString()+' — '+ts[0][1]+'\nlatest='+new Date(ts[ts.length-1][0]).toISOString()+' — '+ts[ts.length-1][1]+'\ncount='+ts.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='el '+ts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
