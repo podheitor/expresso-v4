@@ -6717,5 +6717,18 @@ window.composeEmailExtract=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeRecipientPreview=function(){
+  const to=(document.querySelector('[data-compose-to]')||{value:''}).value||'';
+  const cc=(document.querySelector('[data-compose-cc]')||{value:''}).value||'';
+  const bcc=(document.querySelector('[data-compose-bcc]')||{value:''}).value||'';
+  const splitN=s=>s.split(/[,;]/).map(x=>x.trim()).filter(Boolean);
+  const out='to ('+splitN(to).length+')\n'+splitN(to).join('\n')+'\n--\ncc ('+splitN(cc).length+')\n'+splitN(cc).join('\n')+'\n--\nbcc ('+splitN(bcc).length+')\n'+splitN(bcc).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rp '+(splitN(to).length+splitN(cc).length+splitN(bcc).length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

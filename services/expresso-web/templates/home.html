@@ -6570,5 +6570,17 @@ window.copyHomeFormControls=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeImgList=function(){
+  const is=document.querySelectorAll('img');
+  const arr=[];
+  is.forEach(i=>arr.push((i.src||'?')+'\t'+(i.naturalWidth||'?')+'x'+(i.naturalHeight||'?')+'\t'+(i.alt||'(no alt)')));
+  const out=arr.join('\n')||'(no images)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='im '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

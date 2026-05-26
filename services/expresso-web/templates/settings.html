@@ -7297,5 +7297,15 @@ window.copySettingsPermissions=async function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsScreenInfo=function(){
+  const s=screen||{};
+  const out='size\t'+(s.width||'?')+'x'+(s.height||'?')+'\navail\t'+(s.availWidth||'?')+'x'+(s.availHeight||'?')+'\ncolor_depth\t'+(s.colorDepth||'?')+'\npixel_depth\t'+(s.pixelDepth||'?')+'\norientation\t'+((s.orientation&&s.orientation.type)||'?')+'\ndpr\t'+(window.devicePixelRatio||'?')+'\ninner\t'+window.innerWidth+'x'+window.innerHeight+'\nouter\t'+window.outerWidth+'x'+window.outerHeight;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sz '+(s.width||'?')+'x'+(s.height||'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

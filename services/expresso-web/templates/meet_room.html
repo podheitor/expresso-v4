@@ -6659,5 +6659,17 @@ window.copyMeetHandRaised=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetMutedCount=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  let muted=0,unmuted=0,videoOff=0;
+  parts.forEach(p=>{if(p.dataset.audioMuted==='1'||p.dataset.muted==='1')muted++;else unmuted++;if(p.dataset.videoOff==='1'||p.dataset.cameraOff==='1')videoOff++;});
+  const out='total\t'+parts.length+'\nmuted\t'+muted+'\nunmuted\t'+unmuted+'\nvideo_off\t'+videoOff;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mc3 '+muted+'/'+parts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

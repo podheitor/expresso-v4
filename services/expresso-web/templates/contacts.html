@@ -7696,5 +7696,17 @@ window.copyContactsPhoneList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsWithPhoto=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  let wp=0,np=0;const arr=[];
+  cs.forEach(c=>{const has=c.dataset.photo==='1'||c.dataset.avatar||c.querySelector('img[data-avatar]');if(has){wp++;arr.push((c.dataset.name||'?')+'\t'+(c.dataset.email||'?'));}else np++;});
+  const out='with_photo\t'+wp+'\nno_photo\t'+np+'\n--\n'+arr.slice(0,50).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wp '+wp+'/'+cs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
