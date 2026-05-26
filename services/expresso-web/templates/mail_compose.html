@@ -8241,5 +8241,16 @@ window.composeBodyMaxWordLen=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBodyMinWordLen=function(){
+  const body=document.querySelector('[data-compose-body]');
+  const words=(body?.value||body?.textContent||'').trim().split(/\s+/).filter(Boolean);
+  const mn=words.length?Math.min(...words.map(w=>w.length)):0;
+  const ta=document.createElement('textarea');ta.value=String(mn);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mn '+mn;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
