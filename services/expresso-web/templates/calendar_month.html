@@ -6821,5 +6821,17 @@ window.copyMonthCsvExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEarliestPerDay=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const map={};
+  evs.forEach(e=>{const s=e.getAttribute('data-start')||'';const d=s.slice(0,10);if(!d)return;if(!map[d]||s<map[d].s)map[d]={s:s,title:e.getAttribute('data-title')||''};});
+  const out=Object.entries(map).sort().map(([k,v])=>k+'\t'+v.s.slice(11,16)+'\t'+v.title).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='eD '+Object.keys(map).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

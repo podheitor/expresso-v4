@@ -6085,5 +6085,17 @@ window.composeEmailValidation=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBodyDigest=async function(){
+  const body=(document.querySelector('[name=body]')||{}).value||'';
+  let hex='unavailable';
+  try{if(crypto&&crypto.subtle){const enc=new TextEncoder().encode(body);const h=await crypto.subtle.digest('SHA-256',enc);hex=Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,'0')).join('');}}catch(e){hex='err:'+e.message;}
+  const out='sha256='+hex+'\nlength='+body.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sha '+hex.slice(0,8);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
