@@ -6044,5 +6044,26 @@ window.copyHomeOriginInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeFontDetect=function(){
+  const fonts=['Arial','Helvetica','Times','Courier','Verdana','Georgia','Comic Sans MS','Tahoma','Trebuchet MS','Impact'];
+  const detected=[];
+  const span=document.createElement('span');
+  span.style.cssText='position:absolute;left:-9999px;font-size:72px;font-family:monospace';
+  span.textContent='mmmmmmmmmmlli';
+  document.body.appendChild(span);
+  const baseW=span.offsetWidth;
+  fonts.forEach(f=>{
+    span.style.fontFamily='"'+f+'",monospace';
+    if(span.offsetWidth!==baseW)detected.push(f);
+  });
+  span.remove();
+  const out=detected.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ft '+detected.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
