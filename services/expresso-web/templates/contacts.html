@@ -7099,5 +7099,20 @@ window.copyContactsRecentlyAdded=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsByCompany=function(){
+  const list=document.querySelectorAll('[data-contact]');
+  const map={};
+  list.forEach(c=>{
+    const co=c.dataset.company||'(none)';
+    (map[co]=map[co]||[]).push(c.dataset.name||'');
+  });
+  const out=Object.entries(map).sort((a,b)=>b[1].length-a[1].length).map(([co,a])=>co+' ('+a.length+')\n  '+a.join('\n  ')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cco '+Object.keys(map).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
