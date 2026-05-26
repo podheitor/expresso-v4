@@ -8730,5 +8730,18 @@ window.copyChatTopRepliedTo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMsgsByLength=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const buckets={'1-10':0,'11-50':0,'51-200':0,'201-1000':0,'>1000':0};
+  msgs.forEach(m=>{const l=(m.textContent||'').trim().length;if(l<=10)buckets['1-10']++;else if(l<=50)buckets['11-50']++;else if(l<=200)buckets['51-200']++;else if(l<=1000)buckets['201-1000']++;else buckets['>1000']++;});
+  const arr=Object.entries(buckets).map(([k,v])=>k+'\t'+v);
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bl '+msgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
