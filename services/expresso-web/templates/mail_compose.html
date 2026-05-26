@@ -6875,5 +6875,19 @@ window.composeDuplicateRecipientCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeLinebreakCheck=function(){
+  const body=document.querySelector('[data-compose-body]');
+  const txt=body?.value||body?.textContent||'';
+  const crlf=(txt.match(/\r\n/g)||[]).length;
+  const lf=(txt.match(/(?<!\r)\n/g)||[]).length;
+  const cr=(txt.match(/\r(?!\n)/g)||[]).length;
+  const out='CRLF\t'+crlf+'\nLF\t'+lf+'\nCR\t'+cr;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lb '+(crlf+lf+cr);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -8266,5 +8266,18 @@ window.copyTasksDueToday=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksByEstimate=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const buckets={'<=1h':0,'1-4h':0,'4-8h':0,'>8h':0,'(none)':0};
+  rows.forEach(r=>{const e=parseFloat(r.dataset.estimateHours||'0');if(!e)buckets['(none)']++;else if(e<=1)buckets['<=1h']++;else if(e<=4)buckets['1-4h']++;else if(e<=8)buckets['4-8h']++;else buckets['>8h']++;});
+  const arr=Object.entries(buckets).map(([k,v])=>k+'\t'+v);
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='be '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
