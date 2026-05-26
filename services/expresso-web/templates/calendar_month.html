@@ -7057,5 +7057,19 @@ window.copyMonthOrganizers=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthShortestEvent=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const arr=[];
+  evs.forEach(e=>{const s=Date.parse(e.dataset.start||'');const en=Date.parse(e.dataset.end||'');if(isFinite(s)&&isFinite(en)){const m=Math.round((en-s)/60000);if(m>0)arr.push([m,e]);}});
+  arr.sort((a,b)=>a[0]-b[0]);
+  const top=arr.slice(0,10);
+  const out=top.map(p=>p[0]+'m\t'+(p[1].dataset.start||'')+'\t'+(p[1].dataset.title||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sht '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

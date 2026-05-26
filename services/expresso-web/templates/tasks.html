@@ -7705,5 +7705,18 @@ window.copyTasksOldest=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksCreatedToday=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const today=new Date().toISOString().slice(0,10);
+  const arr=[];
+  rows.forEach(r=>{const c=(r.dataset.createdAt||'').slice(0,10);if(c===today)arr.push(c+'\t'+(r.dataset.title||'')+'\t'+(r.dataset.assignee||''));});
+  const out='today='+today+'\ncreated_today='+arr.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nt '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

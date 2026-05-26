@@ -6942,5 +6942,18 @@ window.copyWeekTitlesList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFreeSlots=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  const sorted=evs.map(e=>[Date.parse(e.dataset.start||''),Date.parse(e.dataset.end||'')]).filter(p=>isFinite(p[0])&&isFinite(p[1])).sort((a,b)=>a[0]-b[0]);
+  const gaps=[];
+  for(let i=1;i<sorted.length;i++){const gap=Math.round((sorted[i][0]-sorted[i-1][1])/60000);if(gap>0)gaps.push(new Date(sorted[i-1][1]).toISOString()+'\t'+gap+'m');}
+  const out='gaps='+gaps.length+'\n\n'+gaps.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fs '+gaps.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
