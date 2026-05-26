@@ -7375,5 +7375,21 @@ window.copyDriveSharedItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveSizeBuckets=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const buckets={'<1KB':0,'1KB-10KB':0,'10KB-100KB':0,'100KB-1MB':0,'1MB-10MB':0,'10MB-100MB':0,'>100MB':0};
+  items.forEach(i=>{const s=+(i.dataset.size||0);
+    if(s<1024)buckets['<1KB']++;else if(s<10240)buckets['1KB-10KB']++;
+    else if(s<102400)buckets['10KB-100KB']++;else if(s<1048576)buckets['100KB-1MB']++;
+    else if(s<10485760)buckets['1MB-10MB']++;else if(s<104857600)buckets['10MB-100MB']++;
+    else buckets['>100MB']++;});
+  const out=Object.entries(buckets).map(p=>p[0]+'\t'+p[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sb '+items.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

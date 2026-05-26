@@ -7271,5 +7271,18 @@ window.copyMailSelectedRows=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSubjectLengths=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const arr=[];let total=0,max=0;
+  rows.forEach(r=>{const s=r.dataset.subject||'';arr.push(s.length+'\t'+s);total+=s.length;if(s.length>max)max=s.length;});
+  const avg=rows.length?(total/rows.length).toFixed(1):'0';
+  const out='count='+rows.length+'\navg_len='+avg+'\nmax_len='+max+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sln '+avg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6975,5 +6975,25 @@ window.copyDayBusyMin=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFreeSlots=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const ints=[];
+  evs.forEach(e=>{const s=e.dataset.start,en=e.dataset.end;if(s&&en){const sd=new Date(s),ed=new Date(en);if(!isNaN(sd)&&!isNaN(ed))ints.push([sd.getTime(),ed.getTime()]);}});
+  ints.sort((a,b)=>a[0]-b[0]);
+  const merged=[];ints.forEach(i=>{if(merged.length&&i[0]<=merged[merged.length-1][1])merged[merged.length-1][1]=Math.max(merged[merged.length-1][1],i[1]);else merged.push(i.slice());});
+  const day=(document.querySelector('[data-day]')?.dataset.day)||new Date().toISOString().slice(0,10);
+  const dayStart=new Date(day+'T08:00:00').getTime();const dayEnd=new Date(day+'T18:00:00').getTime();
+  const free=[];let cur=dayStart;
+  merged.forEach(i=>{if(i[0]>cur)free.push([cur,Math.min(i[0],dayEnd)]);cur=Math.max(cur,i[1]);});
+  if(cur<dayEnd)free.push([cur,dayEnd]);
+  const fmt=t=>new Date(t).toTimeString().slice(0,5);
+  const out=free.map(s=>fmt(s[0])+'-'+fmt(s[1])+'\t'+Math.round((s[1]-s[0])/60000)+'min').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fs '+free.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
