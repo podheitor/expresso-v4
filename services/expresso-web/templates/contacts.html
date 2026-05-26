@@ -8414,5 +8414,18 @@ window.copyContactsUpdatedRecently=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsCreatedThisYear=function(){
+  const rows=Array.from(document.querySelectorAll('[data-contact]'));
+  const y=new Date().getFullYear();
+  const arr=[];
+  rows.forEach(r=>{const c=new Date(r.dataset.created||'');if(isNaN(c))return;if(c.getFullYear()===y)arr.push(c.toISOString().slice(0,10)+'\t'+(r.dataset.name||'').trim());});
+  const out=arr.sort().join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cy '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

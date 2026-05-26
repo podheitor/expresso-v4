@@ -7898,5 +7898,18 @@ window.copyAuditEventsLast30Days=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditActorIps=function(){
+  const rows=Array.from(document.querySelectorAll('[data-audit-row]'));
+  const m=new Map();
+  rows.forEach(r=>{const a=(r.dataset.actor||'').trim();const ip=(r.dataset.ip||'').trim();if(!a||!ip)return;if(!m.has(a))m.set(a,new Set());m.get(a).add(ip);});
+  const arr=Array.from(m.entries()).map(([a,s])=>a+'\t'+Array.from(s).join(','));
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ip '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

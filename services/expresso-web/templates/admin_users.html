@@ -7848,5 +7848,17 @@ window.copyUsersByQuotaUsedPct=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersNearQuota=function(){
+  const rows=Array.from(document.querySelectorAll('[data-user-row]'));
+  const arr=[];
+  rows.forEach(r=>{const u=Number(r.dataset.used||0),q=Number(r.dataset.quota||0);if(q<=0)return;const pct=u*100/q;if(pct>=90)arr.push(Math.round(pct)+'%\t'+(r.dataset.email||'').trim());});
+  const out=arr.sort((a,b)=>parseInt(b)-parseInt(a)).join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nq '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

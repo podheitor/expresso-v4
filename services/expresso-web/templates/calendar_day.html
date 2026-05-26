@@ -8046,5 +8046,16 @@ window.copyDayTotalAttendees=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayTotalMin=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]')).map(e=>({s:new Date(e.dataset.start||''),en:new Date(e.dataset.end||'')})).filter(x=>!isNaN(x.s)&&!isNaN(x.en));
+  const tot=evs.reduce((a,x)=>a+(x.en-x.s)/60000,0);
+  const out='events='+evs.length+'\ntotal_min='+Math.round(tot)+'\ntotal_h='+(tot/60).toFixed(1);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tm '+Math.round(tot);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
