@@ -8605,5 +8605,15 @@ window.copyDriveOwnerFreq=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveOldestItem=function(){
+  const arr=[...document.querySelectorAll('[data-drive-item]')].map(i=>({n:i.getAttribute('data-name')||'',d:i.getAttribute('data-created')||''})).filter(x=>x.d).sort((a,b)=>a.d.localeCompare(b.d));
+  const o=arr[0]?(arr[0].n+'\t'+arr[0].d):'';
+  const ta=document.createElement('textarea');ta.value=o;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ol '+(arr[0]?arr[0].d:'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
