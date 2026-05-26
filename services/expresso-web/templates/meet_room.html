@@ -8202,5 +8202,14 @@ window.copyMeetUpperNameCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetLowerNameCount=function(){
+  const n=[...document.querySelectorAll('[data-participant]')].filter(p=>{const s=(p.dataset.name||'').trim();return s.length>0 && s===s.toLowerCase() && /[a-z]/.test(s);}).length;
+  const ta=document.createElement('textarea');ta.value=String(n);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ln '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
