@@ -6515,5 +6515,17 @@ window.copyMeetCameraOff=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetMicMuted=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const muted=[];
+  parts.forEach(p=>{const m=(p.dataset.mic||p.dataset.micState||p.dataset.audio||'').toLowerCase();if(m==='off'||m==='muted'||m==='mute')muted.push(p.dataset.name||p.dataset.userId||'?');});
+  const out=muted.join('\n')||'(none muted)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mm '+muted.length+'/'+parts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

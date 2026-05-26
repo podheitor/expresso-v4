@@ -7957,5 +7957,18 @@ window.copyTasksByPriority=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDueSoon=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const cutoff=Date.now()+3*86400000;
+  const arr=[];
+  rows.forEach(r=>{if((r.dataset.status||'').toLowerCase()==='done')return;const d=r.dataset.dueDate||r.dataset.due;if(!d)return;const t=Date.parse(d);if(!isNaN(t)&&t<=cutoff&&t>=Date.now())arr.push((r.dataset.title||'?')+' — '+d.slice(0,10));});
+  const out=arr.join('\n')||'(none due in next 3 days)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(arr.length>0?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ds '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

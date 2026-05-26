@@ -6428,5 +6428,16 @@ window.copyHomeAriaLabels=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeMetaCharset=function(){
+  const m=document.querySelector('meta[charset]');
+  const ct=document.querySelector('meta[http-equiv="Content-Type" i]');
+  const out='charset='+(m?m.getAttribute('charset'):'(none)')+'\nhttp-equiv='+(ct?ct.getAttribute('content'):'(none)')+'\ncharacterSet='+document.characterSet;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cs '+document.characterSet;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
