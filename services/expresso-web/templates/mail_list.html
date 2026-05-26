@@ -8855,5 +8855,15 @@ window.copyMailSentFolderCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailFromDomains=function(){
+  const map={};[...document.querySelectorAll('[data-mail-row]')].forEach(r=>{const e=(r.getAttribute('data-from')||'').toLowerCase();const i=e.indexOf('@');if(i>=0){const d=e.slice(i+1);if(d)map[d]=(map[d]||0)+1;}});
+  const out=Object.entries(map).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+': '+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fd '+Object.keys(map).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
