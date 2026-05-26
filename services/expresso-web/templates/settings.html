@@ -7029,5 +7029,19 @@ window.copySettingsNetworkInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsBatteryStatus=async function(){
+  let out='battery=unsupported';
+  if(navigator.getBattery){
+    try{const b=await navigator.getBattery();
+      out='charging='+b.charging+'\nlevel='+(b.level*100).toFixed(0)+'%\ncharging_time='+b.chargingTime+'s\ndischarging_time='+b.dischargingTime+'s';
+    }catch(err){out='error='+err.message;}
+  }
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bt ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
