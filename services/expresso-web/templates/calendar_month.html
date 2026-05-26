@@ -8173,5 +8173,16 @@ window.copyMonthWithoutUrl=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthFirstAndLast=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]')).map(e=>({s:new Date(e.dataset.start||''),t:(e.dataset.title||'').trim()})).filter(x=>!isNaN(x.s)).sort((a,b)=>a.s-b.s);
+  const first=evs[0],last=evs[evs.length-1];
+  const out=first?'first='+first.s.toISOString()+'\t'+first.t+'\nlast='+last.s.toISOString()+'\t'+last.t:'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fl '+(first?Math.round((last.s-first.s)/86400000):0)+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

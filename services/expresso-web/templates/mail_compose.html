@@ -7441,5 +7441,19 @@ window.composeEmailsInBody=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeRecipientDomains=function(){
+  const to=(document.querySelector('[data-compose-to]')||{value:''}).value||'';
+  const cc=(document.querySelector('[data-compose-cc]')||{value:''}).value||'';
+  const bcc=(document.querySelector('[data-compose-bcc]')||{value:''}).value||'';
+  const addrs=(to+','+cc+','+bcc).split(/[,\s;]+/).filter(x=>x.includes('@'));
+  const doms=Array.from(new Set(addrs.map(a=>a.split('@')[1].toLowerCase()))).sort();
+  const out=doms.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rd '+doms.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -8329,5 +8329,17 @@ window.copyMailNightArrivals=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailWorkHours=function(){
+  const rows=Array.from(document.querySelectorAll('[data-mail-row]'));
+  const arr=[];
+  rows.forEach(r=>{const d=new Date(r.dataset.date||'');if(isNaN(d))return;const h=d.getHours(),wd=d.getDay();if(wd>=1&&wd<=5&&h>=9&&h<18)arr.push((r.dataset.from||'')+'\t'+(r.dataset.subject||''));});
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wh '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
