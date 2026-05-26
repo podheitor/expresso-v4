@@ -7965,5 +7965,16 @@ window.composeBodyUniqueWords=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBodyDuplicateWordCount=function(){
+  const b=document.querySelector('[data-compose-body]');const s=b?(b.value||b.textContent||''):'';
+  const w=s.toLowerCase().split(/\s+/).filter(Boolean);
+  const dup=w.length-new Set(w).size;
+  const ta=document.createElement('textarea');ta.value=dup;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dw '+dup;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
