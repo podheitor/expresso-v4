@@ -6551,5 +6551,18 @@ window.copyMeetHandRaised=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetSpeakingTime=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const arr=[];
+  parts.forEach(p=>{const s=parseInt(p.dataset.speakingMs||p.dataset.speakSeconds||'0',10);if(!isNaN(s)&&s>0)arr.push([s,p.dataset.name||p.dataset.userId||'?']);});
+  arr.sort((a,b)=>b[0]-a[0]);
+  const out=arr.map(([s,n])=>(s/1000).toFixed(1)+'s\t'+n).join('\n')||'(no speaking data)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='st '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

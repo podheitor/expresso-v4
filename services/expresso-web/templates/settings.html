@@ -7200,5 +7200,16 @@ window.copySettingsMemoryInfo=async function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsBatteryStatus=async function(){
+  if(!navigator.getBattery){const ta=document.createElement('textarea');ta.value='(battery API not supported)';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();return;}
+  try{const b=await navigator.getBattery();const out='charging='+b.charging+'\nlevel='+(b.level*100).toFixed(0)+'%'+'\nchargingTime='+b.chargingTime+'\ndischargingTime='+b.dischargingTime;
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='bs '+(b.level*100).toFixed(0)+'%';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }catch(_){}
+};
 </script>
 {% endblock %}
