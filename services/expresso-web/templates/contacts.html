@@ -7424,5 +7424,18 @@ window.copyContactsFavoriteList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsTagSet=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const set=new Set();
+  cs.forEach(c=>{(c.dataset.tags||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean).forEach(t=>set.add(t));});
+  const arr=Array.from(set).sort();
+  const out='unique_tags='+arr.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tg '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

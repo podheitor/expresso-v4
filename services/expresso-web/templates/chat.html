@@ -8015,5 +8015,17 @@ window.copyChatPinnedMsgs=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatTopMsgsByLen=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-id]'));
+  msgs.sort((a,b)=>(b.textContent||'').length-(a.textContent||'').length);
+  const top=msgs.slice(0,5).map(m=>(m.textContent||'').length+'\t'+(m.dataset.author||'')+'\t'+(m.textContent||'').slice(0,60));
+  const out='top5_longest\n\n'+top.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lng '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

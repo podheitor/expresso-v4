@@ -7068,5 +7068,17 @@ window.copyWeekDeclinedEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekPendingResponse=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const arr=[];
+  evs.forEach(e=>{const r=(e.dataset.myResponse||e.dataset.response||'').toLowerCase();if(!r||r==='pending'||r==='needsaction'||r==='tentative')arr.push((e.dataset.start||'')+'\t'+(e.dataset.title||'')+'\t'+(r||'none'));});
+  const out='pending='+arr.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pr '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

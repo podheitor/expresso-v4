@@ -6858,5 +6858,18 @@ window.copyUsersNoMfa=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersLastLoginAge=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const buckets={'<7d':0,'7-30d':0,'30-90d':0,'>90d':0,'never':0};
+  const now=Date.now();
+  rows.forEach(r=>{const last=r.dataset.lastLogin||'';if(!last||last==='never'){buckets.never++;return;}const t=new Date(last).getTime();if(isNaN(t)){buckets.never++;return;}const days=(now-t)/86400000;if(days<7)buckets['<7d']++;else if(days<30)buckets['7-30d']++;else if(days<90)buckets['30-90d']++;else buckets['>90d']++;});
+  const out=Object.entries(buckets).map(p=>p[0]+'\t'+p[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lla '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7043,5 +7043,20 @@ window.copySettingsBatteryStatus=async function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsPermissions=async function(){
+  const names=['camera','microphone','geolocation','notifications','clipboard-read','clipboard-write','persistent-storage'];
+  const arr=[];
+  for(const n of names){
+    if(!navigator.permissions){arr.push(n+'\tunsupported');continue;}
+    try{const r=await navigator.permissions.query({name:n});arr.push(n+'\t'+r.state);}catch(err){arr.push(n+'\terr:'+err.message);}
+  }
+  const out=arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pm '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

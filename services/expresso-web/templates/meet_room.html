@@ -6396,5 +6396,17 @@ window.copyMeetClockSkew=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetChatWordCount=function(){
+  const msgs=document.querySelectorAll('[data-meet-chat-msg]');
+  let words=0;
+  msgs.forEach(m=>{const t=(m.textContent||'').trim();if(t)words+=t.split(/\s+/).length;});
+  const out='messages='+msgs.length+'\nwords='+words+'\navg='+(msgs.length?(words/msgs.length).toFixed(1):'0');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wc '+words;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

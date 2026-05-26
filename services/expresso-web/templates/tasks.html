@@ -7832,5 +7832,17 @@ window.copyTasksEstimateSum=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksBlockedList=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const arr=[];
+  rows.forEach(r=>{if(r.dataset.blocked==='true'||r.dataset.status==='blocked'||r.dataset.blockedBy)arr.push((r.dataset.title||'')+'\tblocked_by='+(r.dataset.blockedBy||'-'));});
+  const out='blocked='+arr.length+' of '+rows.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(arr.length>0?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bk '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

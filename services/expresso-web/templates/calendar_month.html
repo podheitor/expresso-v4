@@ -7187,5 +7187,17 @@ window.copyMonthAttendeeFreq=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthCancelledList=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const arr=[];
+  evs.forEach(e=>{const s=(e.dataset.status||'').toLowerCase();if(s==='cancelled'||s==='canceled')arr.push((e.dataset.start||'').slice(0,10)+'\t'+(e.dataset.title||''));});
+  const out='cancelled='+arr.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cn '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
