@@ -7300,5 +7300,19 @@ window.copyDayUniqueLocations=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayBusiestHour=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const hist=new Array(24).fill(0);
+  evs.forEach(e=>{const s=Date.parse(e.dataset.start||'');const en=Date.parse(e.dataset.end||'');if(isNaN(s)||isNaN(en))return;const sh=new Date(s).getHours();const eh=new Date(en).getHours();for(let h=sh;h<=eh&&h<24;h++)hist[h]++;});
+  let max=0,mh=-1;hist.forEach((v,i)=>{if(v>max){max=v;mh=i;}});
+  const arr=hist.map((v,i)=>i.toString().padStart(2,'0')+':00\t'+v);
+  const out='busiest\t'+(mh<0?'(none)':mh+':00 ('+max+')')+'\n--\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bh '+(mh<0?'-':mh+'h')+'/'+max;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

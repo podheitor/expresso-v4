@@ -6622,5 +6622,17 @@ window.copyMeetVideoQuality=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetSubtitlesOn=function(){
+  const room=document.querySelector('[data-meet-room]')||document.body;
+  const subs=room.dataset.subtitles||document.querySelector('[data-subtitles]')?.dataset.enabled||'unknown';
+  const lang=room.dataset.subtitleLang||document.querySelector('[data-subtitles]')?.dataset.lang||'(unset)';
+  const out='subtitles\t'+subs+'\nlang\t'+lang+'\nroom\t'+(room.dataset.room||'?');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='so '+subs;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

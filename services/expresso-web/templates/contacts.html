@@ -7657,5 +7657,19 @@ window.copyContactsRecentlyAdded=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsBirthdayThisWeek=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const now=new Date();
+  const week=[];for(let i=0;i<7;i++){const d=new Date(now);d.setDate(d.getDate()+i);week.push((d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0'));}
+  const arr=[];
+  cs.forEach(c=>{const b=(c.dataset.birthday||'').slice(5,10);if(b&&week.includes(b))arr.push((c.dataset.name||'?')+'\t'+(c.dataset.birthday||'?')+'\t'+(c.dataset.email||'?'));});
+  const out=arr.join('\n')||'(none this week)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bw '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
