@@ -7142,5 +7142,17 @@ window.copyDayDescriptionLength=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFreeSlots=function(){
+  const ev=Array.from(document.querySelectorAll('[data-event]')).map(e=>({s:e.dataset.start||'',e:e.dataset.end||''})).filter(x=>x.s&&x.e).sort((a,b)=>a.s.localeCompare(b.s));
+  const slots=[];
+  for(let i=1;i<ev.length;i++){if(ev[i].s>ev[i-1].e)slots.push(ev[i-1].e+' .. '+ev[i].s);}
+  const out='free_slots='+slots.length+'\n\n'+slots.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fs '+slots.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

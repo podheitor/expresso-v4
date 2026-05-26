@@ -6981,5 +6981,17 @@ window.copyAuditTopActors=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditAdminActions=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const arr=[];
+  rows.forEach(r=>{const a=(r.dataset.action||'').toLowerCase();if(a.includes('admin')||a.includes('config')||a.includes('permission'))arr.push((r.dataset.timestamp||'')+'\t'+(r.dataset.actor||'')+'\t'+(r.dataset.action||''));});
+  const out='admin_actions='+arr.length+' of '+rows.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(arr.length>0?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='aa '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
