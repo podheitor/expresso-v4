@@ -7256,5 +7256,19 @@ window.copyUsersAliasList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersPasswordExpiring=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const now=Date.now();
+  const arr=[];
+  rows.forEach(r=>{const exp=Date.parse(r.dataset.passwordExpires||'');if(exp&&exp>now&&exp-now<14*86400000)arr.push((r.dataset.email||'?')+'\texpires '+r.dataset.passwordExpires);});
+  arr.sort();
+  const out=arr.join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='px '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

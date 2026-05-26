@@ -6849,5 +6849,19 @@ window.composeSignatureCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBase64SnippetTotal=function(){
+  const body=document.querySelector('[data-compose-body]');
+  const txt=body?.value||body?.textContent||'';
+  const re=/[A-Za-z0-9+/]{60,}={0,2}/g;
+  const hits=txt.match(re)||[];
+  const tot=hits.reduce((a,b)=>a+b.length,0);
+  const out='blobs\t'+hits.length+'\nchars\t'+tot;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='b64 '+hits.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

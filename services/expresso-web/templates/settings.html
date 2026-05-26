@@ -7403,5 +7403,14 @@ window.copySettingsGamepadStatus=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsClipboardCapability=async function(){
+  const out=['hasClipboard\t'+(navigator.clipboard?'yes':'no'),'hasWrite\t'+(navigator.clipboard?.write?'yes':'no'),'hasRead\t'+(navigator.clipboard?.read?'yes':'no'),'execCommand_copy\t'+(document.queryCommandSupported?.('copy')?'yes':'no')].join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cc3 ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
