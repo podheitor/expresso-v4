@@ -9865,5 +9865,15 @@ window.copyChatTotalMsgLen=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatAvgMsgLen=function(){
+  const ms=[...document.querySelectorAll('[data-msg-id]')];
+  const n=ms.length?Math.round(ms.reduce((s,e)=>s+(e.dataset.body||e.textContent||'').length,0)/ms.length):0;
+  const ta=document.createElement('textarea');ta.value=String(n);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avm '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
