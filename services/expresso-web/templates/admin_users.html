@@ -8160,5 +8160,16 @@ window.copyUsersUniqueDepts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersRoleFreq=function(){
+  const m=new Map();
+  document.querySelectorAll('[data-user-row]').forEach(r=>{const ro=r.getAttribute('data-role')||'';if(ro)m.set(ro,(m.get(ro)||0)+1);});
+  const arr=[...m.entries()].sort((a,b)=>b[1]-a[1]).map(([ro,c])=>c+'\t'+ro);
+  const ta=document.createElement('textarea');ta.value=arr.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rf '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
