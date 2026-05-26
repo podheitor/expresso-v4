@@ -8942,5 +8942,19 @@ window.copyChatThreadDepth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatLastSeen=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-id]'));
+  const sorted=msgs.map(m=>({d:new Date(m.dataset.ts||''),a:(m.dataset.author||'').trim()})).filter(x=>!isNaN(x.d)).sort((a,b)=>b.d-a.d);
+  const seen=new Map();
+  sorted.forEach(x=>{if(!seen.has(x.a))seen.set(x.a,x.d.toISOString());});
+  const arr=Array.from(seen.entries());
+  const out=arr.map(([a,d])=>d+'\t'+a).join('\n')||'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ls '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

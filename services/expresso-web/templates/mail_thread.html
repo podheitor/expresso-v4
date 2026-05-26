@@ -7784,5 +7784,17 @@ window.copyThreadShortestMsg=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadLongestMsg=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-thread-msg]'));
+  const arr=msgs.map(m=>({len:((m.dataset.body||'').trim().length),from:(m.dataset.from||'').trim()})).filter(x=>x.len>0).sort((a,b)=>b.len-a.len);
+  const max=arr[0];
+  const out=max?'from='+max.from+'\nlen='+max.len:'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lm '+(max?max.len:0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
