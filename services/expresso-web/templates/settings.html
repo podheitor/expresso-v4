@@ -7138,5 +7138,17 @@ window.copySettingsLocalStorageList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsSessionStorageList=function(){
+  const arr=[];
+  let total=0;
+  for(let i=0;i<sessionStorage.length;i++){const k=sessionStorage.key(i);const v=sessionStorage.getItem(k)||'';total+=k.length+v.length;arr.push(k+'\t'+v.length+' chars');}
+  const out='keys='+arr.length+'\ntotal_chars='+total+'\n\nname\tvalue_length\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ss '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

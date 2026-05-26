@@ -7166,5 +7166,19 @@ window.copyWeekEventsByType=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFullDayAvg=function(){
+  const ev=document.querySelectorAll('[data-event]');
+  const byDay={};
+  ev.forEach(e=>{const d=(e.dataset.start||'').slice(0,10);if(!d)return;const s=new Date(e.dataset.start||'').getTime();const en=new Date(e.dataset.end||'').getTime();if(isNaN(s)||isNaN(en))return;byDay[d]=(byDay[d]||0)+(en-s);});
+  const days=Object.keys(byDay).length;
+  const totalH=Object.values(byDay).reduce((a,b)=>a+b,0)/3600000;
+  const out='days='+days+'\ntotal_hours='+totalH.toFixed(1)+'\navg_per_day='+(days?(totalH/days).toFixed(2):'0');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='da '+totalH.toFixed(0)+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
