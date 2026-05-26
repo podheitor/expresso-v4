@@ -6704,5 +6704,18 @@ window.composeLinkExtract=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeEmailExtract=function(){
+  const body=(document.querySelector('[data-compose-body]')||{value:'',textContent:''});
+  const txt=(body.value!==undefined?body.value:body.textContent)||'';
+  const re=/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+  const emails=[...new Set(txt.match(re)||[])].sort();
+  const out=emails.join('\n')||'(no emails in body)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ee '+emails.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

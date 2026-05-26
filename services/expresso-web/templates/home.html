@@ -6558,5 +6558,17 @@ window.copyHomeLinkRels=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeFormControls=function(){
+  const fs=document.querySelectorAll('input,select,textarea,button');
+  const arr=[];
+  fs.forEach(f=>arr.push((f.tagName||'?').toLowerCase()+'\t'+(f.type||'')+'\t'+(f.name||f.id||'(unnamed)')+'\t'+(f.disabled?'disabled':'enabled')));
+  const out=arr.join('\n')||'(no form controls)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fc '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

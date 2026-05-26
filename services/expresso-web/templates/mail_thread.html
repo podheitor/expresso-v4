@@ -7100,5 +7100,18 @@ window.copyThreadCcBccList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAttachmentTotal=function(){
+  const atts=document.querySelectorAll('[data-attachment]');
+  let totalB=0;const byType={};
+  atts.forEach(a=>{const b=parseInt(a.dataset.size||'0',10);totalB+=b;const k=(a.dataset.type||a.dataset.mime||'?').split('/')[0]||'?';byType[k]=(byType[k]||0)+b;});
+  const arr=Object.entries(byType).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+(v/1048576).toFixed(2)+'MiB');
+  const out='count\t'+atts.length+'\ntotal\t'+(totalB/1048576).toFixed(2)+'MiB\n--\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='at2 '+atts.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

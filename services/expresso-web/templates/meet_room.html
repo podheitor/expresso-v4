@@ -6646,5 +6646,18 @@ window.copyMeetActiveSpeakers=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetHandRaised=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const arr=[];
+  parts.forEach(p=>{if(p.dataset.handRaised==='1'||p.classList.contains('hand-raised'))arr.push((p.dataset.name||'?')+'\t'+(p.dataset.handRaisedAt||'?'));});
+  arr.sort((a,b)=>a.split('\t')[1].localeCompare(b.split('\t')[1]));
+  const out=arr.join('\n')||'(nobody raised)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hr2 '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
