@@ -6178,5 +6178,26 @@ window.composeEmojiCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeQuoteToTop=function(){
+  const body=document.querySelector('[data-compose-body]');
+  if(!body)return;
+  const v=body.value||body.textContent||'';
+  const idx=v.indexOf('-----Original Message-----');
+  if(idx<=0){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='qt no-quote';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const newV=v.slice(idx)+'\n\n'+v.slice(0,idx);
+  if(body.value!==undefined)body.value=newV;else body.textContent=newV;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qt moved';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

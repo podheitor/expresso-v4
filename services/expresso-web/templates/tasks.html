@@ -7588,5 +7588,18 @@ window.copyTasksNoAssignee=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksTitleWordCount=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let totalWords=0;
+  rows.forEach(r=>{totalWords+=(r.dataset.title||'').trim().split(/\s+/).filter(Boolean).length;});
+  const avg=rows.length?(totalWords/rows.length).toFixed(1):'0';
+  const out='tasks='+rows.length+' total_words='+totalWords+' avg='+avg;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wc '+avg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

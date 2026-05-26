@@ -7178,5 +7178,29 @@ window.copyContactsPhoneFormatted=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsBdayUpcoming=function(){
+  const now=new Date();
+  const list=document.querySelectorAll('[data-contact]');
+  const arr=[];
+  list.forEach(c=>{
+    const b=c.dataset.birthday;
+    if(!b)return;
+    const m=parseInt(b.slice(5,7),10);
+    const d=parseInt(b.slice(8,10),10);
+    if(isNaN(m)||isNaN(d))return;
+    let next=new Date(now.getFullYear(),m-1,d);
+    if(next<now)next=new Date(now.getFullYear()+1,m-1,d);
+    const days=Math.ceil((next-now)/86400000);
+    if(days<=60)arr.push([days,(c.dataset.name||'')+'\t'+b]);
+  });
+  arr.sort((a,b)=>a[0]-b[0]);
+  const out=arr.map(p=>p[0]+'d\t'+p[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bu '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6811,5 +6811,26 @@ window.copySettingsMimeTypes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsCanvasFingerprint=function(){
+  const c=document.createElement('canvas');
+  c.width=200;c.height=50;
+  const ctx=c.getContext('2d');
+  ctx.textBaseline='top';
+  ctx.font='14px Arial';
+  ctx.fillStyle='#069';
+  ctx.fillRect(0,0,100,20);
+  ctx.fillStyle='#fff';
+  ctx.fillText('Expresso v4 😀',2,2);
+  const data=c.toDataURL();
+  let hash=0;
+  for(let i=0;i<data.length;i++){hash=((hash<<5)-hash)+data.charCodeAt(i);hash|=0;}
+  const out='canvas_hash='+(hash>>>0).toString(16);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cv '+(hash>>>0).toString(16).slice(0,6);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6578,5 +6578,21 @@ window.copyThreadAvgMsgGap=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadParticipantCount=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  const set=new Set();
+  msgs.forEach(m=>{
+    if(m.dataset.from)set.add(m.dataset.from);
+    (m.dataset.to||'').split(',').filter(Boolean).forEach(a=>set.add(a));
+    (m.dataset.cc||'').split(',').filter(Boolean).forEach(a=>set.add(a));
+  });
+  const out='unique_participants='+set.size+'\n'+Array.from(set).sort().join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pc '+set.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
