@@ -6730,5 +6730,18 @@ window.copyMeetHardwareConcurrency=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRoomLayout=function(){
+  const root=document.querySelector('[data-meet-room]');
+  const layout=root?.dataset.layout||'?';
+  const grid=root?.dataset.gridSize||'?';
+  const pinned=document.querySelector('[data-participant][data-pinned="1"]')?.dataset.name||'(none)';
+  const out='layout\t'+layout+'\ngrid\t'+grid+'\npinned\t'+pinned;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rl '+layout;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
