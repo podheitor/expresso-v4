@@ -8652,5 +8652,16 @@ window.copyContactsNotFavorite=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsEmailDomainFreq=function(){
+  const m=new Map();
+  document.querySelectorAll('[data-contact]').forEach(c=>{const e=c.getAttribute('data-email')||'';const d=e.split('@')[1]||'';if(d)m.set(d,(m.get(d)||0)+1);});
+  const arr=[...m.entries()].sort((a,b)=>b[1]-a[1]).map(([d,c])=>c+'\t'+d);
+  const ta=document.createElement('textarea');ta.value=arr.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ed '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
