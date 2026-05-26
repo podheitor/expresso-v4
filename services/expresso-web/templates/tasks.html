@@ -7564,5 +7564,17 @@ window.copyTasksByList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksMonthlyTrend=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const map={};
+  rows.forEach(r=>{const c=(r.dataset.created||'').slice(0,7);if(c)map[c]=(map[c]||0)+1;});
+  const out=Object.entries(map).sort().map(p=>p[0]+'\t'+p[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mth '+Object.keys(map).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

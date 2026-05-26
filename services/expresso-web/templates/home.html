@@ -6065,5 +6065,20 @@ window.copyHomeFontDetect=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeNetworkType=function(){
+  const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+  let out='unsupported';
+  let badge='n';
+  if(c){
+    out='type='+(c.type||'?')+'\neffectiveType='+(c.effectiveType||'?')+'\ndownlink='+(c.downlink||'?')+'\nrtt='+(c.rtt||'?')+'\nsaveData='+(c.saveData||false);
+    badge=c.effectiveType||'?';
+  }
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nt '+badge;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
