@@ -7382,5 +7382,17 @@ window.copyMailSubjectKeywords=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailWithFlags=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const arr=[];
+  rows.forEach(r=>{const flags=[];if(r.dataset.starred==='true')flags.push('star');if(r.dataset.flagged==='true')flags.push('flag');if(r.dataset.pinned==='true')flags.push('pin');if(flags.length)arr.push((r.dataset.from||'')+'\t'+(r.dataset.subject||'')+'\t'+flags.join(','));});
+  const out='flagged='+arr.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fl '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

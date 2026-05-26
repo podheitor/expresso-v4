@@ -6864,5 +6864,18 @@ window.copyThreadParticipants=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadDateRange=function(){
+  const msgs=document.querySelectorAll('[data-thread-msg]');
+  let min=null,max=null;
+  msgs.forEach(m=>{const d=m.dataset.date||'';if(!d)return;const t=new Date(d).getTime();if(isNaN(t))return;if(min===null||t<min)min=t;if(max===null||t>max)max=t;});
+  const span=(min!==null&&max!==null)?((max-min)/86400000).toFixed(2)+' days':'n/a';
+  const out='messages='+msgs.length+'\nfirst='+(min?new Date(min).toISOString():'n/a')+'\nlast='+(max?new Date(max).toISOString():'n/a')+'\nspan='+span;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dr '+msgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -8041,5 +8041,16 @@ window.copyChatLinkExtract=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatChannelList=function(){
+  const ch=document.querySelectorAll('[data-channel]');
+  const arr=Array.from(ch).map(c=>(c.dataset.channelName||c.dataset.channel||'')+'\t'+(c.dataset.memberCount||'0')+'\t'+(c.dataset.unread||'0'));
+  const out='channels='+ch.length+'\n\nname\tmembers\tunread\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ch '+ch.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

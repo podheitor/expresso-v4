@@ -6420,5 +6420,17 @@ window.copyMeetParticipantCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetSpeakingStats=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const arr=Array.from(parts).map(p=>({n:p.dataset.name||'',s:parseInt(p.dataset.speakingMs||'0',10)})).sort((a,b)=>b.s-a.s);
+  const total=arr.reduce((a,b)=>a+b.s,0);
+  const out='total_speaking_ms='+total+'\n\nname\tms\tpct\n'+arr.map(p=>p.n+'\t'+p.s+'\t'+(total?(p.s/total*100).toFixed(1)+'%':'0%')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sp '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

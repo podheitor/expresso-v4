@@ -7092,5 +7092,17 @@ window.copyWeekOrganizerStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekVideoEvents=function(){
+  const ev=document.querySelectorAll('[data-event]');
+  const arr=[];
+  ev.forEach(e=>{const url=e.dataset.meetUrl||e.dataset.videoUrl||'';if(url)arr.push((e.dataset.title||'')+'\t'+url);});
+  const out='video_events='+arr.length+' of '+ev.length+'\n\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vc '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

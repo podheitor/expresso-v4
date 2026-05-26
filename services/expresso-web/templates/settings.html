@@ -7073,5 +7073,15 @@ window.copySettingsMediaDevices=async function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsScreenInfo=function(){
+  const s=screen;
+  const out='width='+s.width+'\nheight='+s.height+'\navail_width='+s.availWidth+'\navail_height='+s.availHeight+'\ncolor_depth='+s.colorDepth+'\npixel_depth='+s.pixelDepth+'\norientation='+(s.orientation?s.orientation.type:'n/a')+'\ndpr='+window.devicePixelRatio;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sc '+s.width+'x'+s.height;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
