@@ -9422,5 +9422,14 @@ window.copyMailLowerEndSubjectCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSingleWordSubjectCount=function(){
+  const n=[...document.querySelectorAll('[data-mail-row]')].filter(r=>(r.dataset.subject||'').trim().split(/\s+/).filter(Boolean).length===1).length;
+  const ta=document.createElement('textarea');ta.value=n;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='w1s '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
