@@ -6598,5 +6598,17 @@ window.copyMeetEmojiReactions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetJoinLeaveLog=function(){
+  const events=document.querySelectorAll('[data-meet-event]');
+  const arr=[];
+  events.forEach(e=>{arr.push((e.dataset.timestamp||'?').slice(0,19)+'\t'+(e.dataset.type||e.dataset.action||'?')+'\t'+(e.dataset.userName||e.dataset.user||'?'));});
+  const out=arr.join('\n')||'(no join/leave events)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='jl '+events.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

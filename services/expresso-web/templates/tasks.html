@@ -8044,5 +8044,17 @@ window.copyTasksDescriptionLengths=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksSubtaskSummary=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let parents=0,subs=0,total=0;
+  rows.forEach(r=>{const n=parseInt(r.dataset.subtaskCount||'0',10);if(!isNaN(n)){if(n>0){parents++;subs+=n;}}if(r.dataset.parentId)total++;});
+  const out='tasks='+rows.length+'\nparentsWithSubs='+parents+'\nsubtaskCountTotal='+subs+'\nchildTasks='+total;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ss '+parents+'/'+subs;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

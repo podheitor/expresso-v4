@@ -7631,5 +7631,17 @@ window.copyContactsWithoutPhoto=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsCsvExport=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const rows=[['name','email','phone','company','title']];
+  cs.forEach(c=>{rows.push([c.dataset.name||'',c.dataset.email||'',c.dataset.phone||c.dataset.tel||'',c.dataset.company||c.dataset.org||'',c.dataset.title||c.dataset.jobTitle||''].map(v=>'"'+v.replace(/"/g,'""')+'"'));});
+  const out=rows.map(r=>r.join(',')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cv '+cs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

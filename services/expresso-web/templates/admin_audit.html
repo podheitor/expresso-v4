@@ -7115,5 +7115,17 @@ window.copyAuditDeletes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditAuthEvents=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const arr=[];
+  rows.forEach(r=>{const a=(r.dataset.action||'').toLowerCase();if(a.includes('login')||a.includes('logout')||a.includes('auth')||a.includes('signin')||a.includes('signout'))arr.push((r.dataset.timestamp||'?').slice(0,19)+'\t'+a+'\t'+(r.dataset.actor||'?')+'\t'+(r.dataset.ip||'?'));});
+  const out=arr.slice(0,100).join('\n')||'(no auth events)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ae '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6777,5 +6777,17 @@ window.copyGalSearchFiltersState=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalDistributionLists=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const arr=[];
+  rows.forEach(r=>{const ty=(r.dataset.type||r.dataset.category||'').toLowerCase();if(ty.includes('group')||ty.includes('distribution')||ty.includes('list')||ty.includes('dl'))arr.push((r.dataset.name||r.dataset.email||'?')+' ['+ty+']');});
+  const out=arr.join('\n')||'(no distribution lists)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dl '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

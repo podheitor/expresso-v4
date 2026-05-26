@@ -7241,5 +7241,17 @@ window.copySettingsFontList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsPlugins=function(){
+  const plugins=navigator.plugins;
+  const arr=[];
+  if(plugins){for(let i=0;i<plugins.length;i++){arr.push(plugins[i].name+'\t'+(plugins[i].filename||'?'));}}
+  const out=arr.join('\n')||'(no plugins or hidden)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pl '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

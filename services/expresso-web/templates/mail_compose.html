@@ -6653,5 +6653,18 @@ window.composeRemoveTrailingSpaces=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeQuoteStats=function(){
+  const el=document.querySelector('[data-compose-body]');
+  const text=el?(el.value||el.textContent||''):'';
+  const lines=text.split('\n');
+  const quoted=lines.filter(l=>/^\s*>/.test(l)).length;
+  const out='lines='+lines.length+'\nquotedLines='+quoted+'\nratio='+(lines.length?(quoted*100/lines.length).toFixed(1):'0')+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qs '+quoted+'/'+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
