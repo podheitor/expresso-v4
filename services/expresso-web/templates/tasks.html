@@ -12275,6 +12275,15 @@ window.copyTasksCl4TitleCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksSm4TitleCount=function(){
+  const n=[...document.querySelectorAll('.task-title')].filter(x=>/;/.test(x.textContent||'')).length;
+  const ta=document.createElement('textarea');ta.value=n;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Hsm4t '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 window.copyTasksNspaceTitleCount=function(){
   const n=[...document.querySelectorAll('.task-title')].filter(x=>/\S/.test(x.textContent||'')).length;
   const ta=document.createElement('textarea');ta.value=n;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
