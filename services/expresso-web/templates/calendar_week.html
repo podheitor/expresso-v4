@@ -14151,5 +14151,14 @@ window.copyWeekDice21TitleCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekChem21TitleCount=function(){
+  const n=[...document.querySelectorAll('.event-title')].filter(x=>/(𑅐|𑅑|𑅒|𑅓|𑅔|𑅕|𑅖)/.test(x.textContent||'')).length;
+  const ta=document.createElement('textarea');ta.value=n;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='WT '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
