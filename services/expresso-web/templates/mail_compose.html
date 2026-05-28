@@ -12416,6 +12416,16 @@ window.composeBodyCurrency6CharCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeBodyArrow6CharCount=function(){
+  const b=document.querySelector('.compose-body');
+  const n=((b&&b.textContent)||'').split('').filter(c=>/[←↑→↓↔↕↖↗↘↙]/.test(c)).length;
+  const ta=document.createElement('textarea');ta.value=n;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='CBarrow6 '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 window.composeBodyNspaceCharCount=function(){
   const b=document.querySelector('.compose-body');
   const n=((b&&b.textContent)||'').split('').filter(c=>/\S/.test(c)).length;
