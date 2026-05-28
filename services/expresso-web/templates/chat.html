@@ -15149,5 +15149,14 @@ window.copyChatTide21MsgsCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatStorm21MsgsCount=function(){
+  const n=[...document.querySelectorAll('.chat-msg')].filter(x=>/(𑰀|𑰁|𑰂|𑰃|𑰄|𑰅|𑰆)/.test(x.textContent||'')).length;
+  const ta=document.createElement('textarea');ta.value=n;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='CM '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
