@@ -12634,6 +12634,15 @@ window.copyThreadFrac9BodyCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadRoman10BodyCount=function(){
+  const n=[...document.querySelectorAll('.thread-msg-body')].filter(x=>/[ⅸⅹⅺⅻⅩⅪⅫ]/.test(x.textContent||'')).length;
+  const ta=document.createElement('textarea');ta.value=n;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='TBroman10 '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 window.copyThreadFrac10BodyCount=function(){
   const n=[...document.querySelectorAll('.thread-msg-body')].filter(x=>/[⅙⅚⅛⅜⅝⅞⅟↉]/.test(x.textContent||'')).length;
   const ta=document.createElement('textarea');ta.value=n;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
