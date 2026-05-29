@@ -4,10 +4,14 @@ use std::collections::HashMap;
 
 use expresso_auth_client::{AudClaim, AuthContext, AuthError, RawClaims, RolesBlock};
 
+// Realm-per-tenant: the realm segment of `iss` is the tenant UUID, which is
+// how `AuthContext::from_raw` derives tenant_id when no explicit claim is set.
+const ISS_REALM_TENANT: &str = "40894092-7ec5-4693-94f0-afb1c7fb51c4";
+
 fn base(sub: &str, tenant: Option<&str>) -> RawClaims {
     RawClaims {
         sub: sub.to_string(),
-        iss: "http://kc/realms/expresso".into(),
+        iss: format!("http://kc/realms/{ISS_REALM_TENANT}"),
         aud: AudClaim::One("expresso-web".into()),
         exp: 9_999_999_999,
         email: Some("alice@x".into()),
@@ -62,7 +66,9 @@ fn builds_normalized_context() {
 
 #[test]
 fn missing_tenant_id_fails() {
-    let r = base("c7ee7d76-2113-40bd-9f8c-a28cd6ca395f", None);
+    // Non-UUID iss realm AND no tenant_id claim → tenant can't be derived.
+    let mut r = base("c7ee7d76-2113-40bd-9f8c-a28cd6ca395f", None);
+    r.iss = "http://kc/realms/expresso".into();
     match AuthContext::from_raw(r, "expresso-web") {
         Err(AuthError::MissingClaim("tenant_id")) => {}
         other => panic!("expected MissingClaim, got {other:?}"),
@@ -122,11 +128,15 @@ fn roles_deduplicated_across_realm_and_resource() {
 
 #[test]
 fn malformed_tenant_uuid_fails() {
+    // Neither the iss realm nor the tenant_id claim parses as a UUID, so tenant
+    // derivation finds no valid tenant → MissingClaim (parse errors are swallowed
+    // to None in the derivation chain, not surfaced as MalformedClaim).
     let mut r = base("c7ee7d76-2113-40bd-9f8c-a28cd6ca395f", None);
+    r.iss = "http://kc/realms/not-a-uuid".into();
     r.tenant_id = Some("not-a-uuid".into());
     match AuthContext::from_raw(r, "expresso-web") {
-        Err(AuthError::MalformedClaim("tenant_id", _)) => {}
-        other => panic!("expected MalformedClaim(tenant_id), got {other:?}"),
+        Err(AuthError::MissingClaim("tenant_id")) => {}
+        other => panic!("expected MissingClaim(tenant_id), got {other:?}"),
     }
 }
 
@@ -139,11 +149,11 @@ fn nil_sub_uuid_is_valid() {
 
 #[test]
 fn tenant_id_derived_from_issuer_when_claim_absent() {
-    // No explicit tenant_id claim → tenant is derived from the realm in `iss`
-    // ("http://kc/realms/expresso"), so AuthContext.tenant_id is always set.
+    // No explicit tenant_id claim → tenant is derived from the UUID realm in
+    // `iss`, so AuthContext.tenant_id is always set.
     let r = base("c7ee7d76-2113-40bd-9f8c-a28cd6ca395f", None);
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
-    assert!(!ctx.tenant_id.is_nil());
+    assert_eq!(ctx.tenant_id.to_string(), ISS_REALM_TENANT);
 }
 
 #[test]
