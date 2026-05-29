@@ -36,11 +36,19 @@ and return `Ok(false)` on mid-handshake disconnect (caller `break`s), preserving
 the exact control flow. `handle_tls` 39 → **31**. Gate 39 → **38**.
 
 **Binding ceiling now = three functions at 38:** `handle`@smtp/session.rs,
-`handle`@lmtp.rs, `cmd_fetch`@imap/session.rs. The two SMTP `handle`s still have
-the STARTTLS-upgrade + verb chain inline; `cmd_fetch` has the per-row response
-loop. Further reduction means extracting STARTTLS handling and/or the cmd_fetch
-row builder (async, DB-coupled for the \Seen update) — doable but more involved
-than the branch lifts. Everything else ≤35.
+`handle`@lmtp.rs, `cmd_fetch`@imap/session.rs. All the clean *branch* lifts are
+done (DATA/EHLO/MAIL/RCPT/AUTH/dot-stuffing all extracted into shared helpers).
+What remains in these three is **structural, not branch-level**:
+- the two `handle`s: the STARTTLS-upgrade prelude (consumes the reader/writer to
+  build the TLS stream then delegates to `session_loop`) — coupled to the loop's
+  ownership of `lines`/`writer`; extracting needs threading those through.
+- `cmd_fetch`: the per-row FETCH response builder — async + DB-coupled (the
+  implicit `\Seen` UPDATE) over each row.
+Both are more involved than the lifts done so far (which is why the ratchet
+naturally pauses here at 38). To go lower, lift the row-builder into an async
+`build_fetch_row(state, row, &plan, …) -> Vec<MessageDataItem>` (DB write stays
+inline or returns a flag), and factor the STARTTLS prelude into a small
+`upgrade_to_tls(reader, writer, acceptor) -> (R, W)` helper. Everything else ≤35.
 
 
 **Calendar analytics (2026-05-29):** `overrides_stats` 49 → **32** by extracting
