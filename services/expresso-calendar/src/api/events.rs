@@ -6671,6 +6671,59 @@ struct OverridesStatsQuery {
 /// aparecem no objeto adjacente. Sem flag (None ou false) omite objeto.
 /// `include_kind_breakdown=true` mas `kept` vazio (e.g. todos filtraram-
 /// out) emite `{}` (semantics "flag aceita, sem dados").
+/// Retain only override items whose `compact` recurrence-id falls in the
+/// half-open window `[after, before)`. No-op when both bounds are None.
+fn retain_overrides_window(
+    items: &mut Vec<serde_json::Value>,
+    after: Option<OffsetDateTime>,
+    before: Option<OffsetDateTime>,
+) {
+    if after.is_none() && before.is_none() {
+        return;
+    }
+    items.retain(|item| {
+        let Some(compact) = item.get("compact").and_then(|v| v.as_str()) else {
+            return false;
+        };
+        let Some(parsed) = parse_one_exdate(compact) else {
+            return false;
+        };
+        if after.is_some_and(|a| parsed < a) {
+            return false;
+        }
+        if before.is_some_and(|b| parsed >= b) {
+            return false;
+        }
+        true
+    });
+}
+
+/// Retain only override items matching the requested field-presence flags
+/// (summary/dtstart/dtend). No-op when all three flags are None.
+fn retain_overrides_presence(
+    items: &mut Vec<serde_json::Value>,
+    has_summary: Option<bool>,
+    has_dtstart: Option<bool>,
+    has_dtend: Option<bool>,
+) {
+    if has_summary.is_none() && has_dtstart.is_none() && has_dtend.is_none() {
+        return;
+    }
+    items.retain(|item| {
+        let present = |key: &str| item.get(key).map(|v| !v.is_null()).unwrap_or(false);
+        if has_summary.is_some_and(|want| present("summary") != want) {
+            return false;
+        }
+        if has_dtstart.is_some_and(|want| present("dtstart") != want) {
+            return false;
+        }
+        if has_dtend.is_some_and(|want| present("dtend") != want) {
+            return false;
+        }
+        true
+    });
+}
+
 async fn overrides_stats(
     State(state): State<AppState>,
     ctx: RequestCtx,
@@ -6705,50 +6758,8 @@ async fn overrides_stats(
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
     let uid = extract_uid(&ev.ical_raw).unwrap_or_default();
     let mut items = list_recurrence_id_overrides(&ev.ical_raw, &uid, false);
-    if q.after.is_some() || q.before.is_some() {
-        items.retain(|item| {
-            let compact = match item.get("compact").and_then(|v| v.as_str()) {
-                Some(s) => s,
-                None => return false,
-            };
-            let parsed = match parse_one_exdate(compact) {
-                Some(t) => t,
-                None => return false,
-            };
-            if let Some(a) = q.after {
-                if parsed < a {
-                    return false;
-                }
-            }
-            if let Some(b) = q.before {
-                if parsed >= b {
-                    return false;
-                }
-            }
-            true
-        });
-    }
-    if q.has_summary.is_some() || q.has_dtstart.is_some() || q.has_dtend.is_some() {
-        items.retain(|item| {
-            let present = |key: &str| item.get(key).map(|v| !v.is_null()).unwrap_or(false);
-            if let Some(want) = q.has_summary {
-                if present("summary") != want {
-                    return false;
-                }
-            }
-            if let Some(want) = q.has_dtstart {
-                if present("dtstart") != want {
-                    return false;
-                }
-            }
-            if let Some(want) = q.has_dtend {
-                if present("dtend") != want {
-                    return false;
-                }
-            }
-            true
-        });
-    }
+    retain_overrides_window(&mut items, q.after, q.before);
+    retain_overrides_presence(&mut items, q.has_summary, q.has_dtstart, q.has_dtend);
     let total = items.len();
     let mut sum_p = 0usize;
     let mut sum_a = 0usize;

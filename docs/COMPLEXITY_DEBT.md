@@ -3,7 +3,15 @@
 The target is **CCN ≤ 25** (per `CLAUDE.md`). The debloat baseline restore left
 21 functions above that. Per the project policy for legacy code — *"start at the
 current max, tighten by 5 each refactor"* — the CI `lizard` gate is currently
-currently set to **`-C 49`** and should keep ratcheting down: 49 → 44 → … → 25.
+currently set to **`-C 48`** and should keep ratcheting down: 48 → 43 → … → 25.
+
+**Calendar analytics (2026-05-29):** `overrides_stats` 49 → **32** by extracting
+the window + presence `retain` filters into `retain_overrides_window()` /
+`retain_overrides_presence()` (567 calendar tests pass). Gate now 48 (max is
+`cmd_fetch` 48). Remaining cluster: `exdates_stats` (43), `exdates_preview_stats`
+(40) — same filter-extraction applies; and `cmd_fetch` (48) could shed its
+per-row response-builder loop next.
+
 
 **Progress (2026-05-29):** gate lowered 72 → 64 → 59 → 57 → 50 → 49. The entire
 mail SMTP/IMAP cluster is now decomposed:
