@@ -11,44 +11,44 @@ use sqlx::FromRow;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::error::{CalendarError, Result};
 use crate::domain::ical;
+use crate::error::{CalendarError, Result};
 
 /// Stored event row. Mirrors `calendar_events` columns.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Event {
-    pub id:              Uuid,
-    pub calendar_id:     Uuid,
-    pub tenant_id:       Uuid,
-    pub uid:             String,
-    pub etag:            String,
-    pub ical_raw:        String,
-    pub summary:         Option<String>,
-    pub description:     Option<String>,
-    pub location:        Option<String>,
+    pub id: Uuid,
+    pub calendar_id: Uuid,
+    pub tenant_id: Uuid,
+    pub uid: String,
+    pub etag: String,
+    pub ical_raw: String,
+    pub summary: Option<String>,
+    pub description: Option<String>,
+    pub location: Option<String>,
     #[serde(with = "time::serde::rfc3339::option")]
-    pub dtstart:         Option<OffsetDateTime>,
+    pub dtstart: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option")]
-    pub dtend:           Option<OffsetDateTime>,
-    pub rrule:           Option<String>,
-    pub status:          Option<String>,
-    pub class:           Option<String>,
-    pub transp:          Option<String>,
-    pub sequence:        i32,
+    pub dtend: Option<OffsetDateTime>,
+    pub rrule: Option<String>,
+    pub status: Option<String>,
+    pub class: Option<String>,
+    pub transp: Option<String>,
+    pub sequence: i32,
     pub organizer_email: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
-    pub created_at:      OffsetDateTime,
+    pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    pub updated_at:      OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 /// Time-range query parameters (matches CalDAV calendar-query REPORT).
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct EventQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    pub from:  Option<OffsetDateTime>,
+    pub from: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    pub to:    Option<OffsetDateTime>,
+    pub to: Option<OffsetDateTime>,
     #[serde(default)]
     pub limit: Option<i64>,
 }
@@ -64,17 +64,14 @@ impl<'a> EventRepo<'a> {
     }
 
     /// Expose pool for sibling repos in composite flows (e.g. CounterRepo).
-    pub fn pool(&self) -> &'a DbPool { self.pool }
+    pub fn pool(&self) -> &'a DbPool {
+        self.pool
+    }
 
     /// Insert an event parsed from raw iCalendar text.
-    pub async fn create(
-        &self,
-        tenant_id: Uuid,
-        calendar_id: Uuid,
-        raw: &str,
-    ) -> Result<Event> {
+    pub async fn create(&self, tenant_id: Uuid, calendar_id: Uuid, raw: &str) -> Result<Event> {
         let parsed = ical::parse_vevent(raw)?;
-        let etag   = ical::compute_etag(raw);
+        let etag = ical::compute_etag(raw);
 
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Event>(
@@ -111,7 +108,6 @@ impl<'a> EventRepo<'a> {
         Ok(row)
     }
 
-
     /// Fetch single event by id within tenant scope.
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<Event> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
@@ -132,7 +128,6 @@ impl<'a> EventRepo<'a> {
         tx.commit().await?;
         Ok(row)
     }
-
 
     /// List events in a calendar within optional time range, ordered by dtstart.
     pub async fn list(
@@ -169,14 +164,9 @@ impl<'a> EventRepo<'a> {
     }
 
     /// Update existing event by id, replacing ical_raw + derived fields.
-    pub async fn update(
-        &self,
-        tenant_id: Uuid,
-        id: Uuid,
-        raw: &str,
-    ) -> Result<Event> {
+    pub async fn update(&self, tenant_id: Uuid, id: Uuid, raw: &str) -> Result<Event> {
         let parsed = ical::parse_vevent(raw)?;
-        let etag   = ical::compute_etag(raw);
+        let etag = ical::compute_etag(raw);
 
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Event>(
@@ -257,14 +247,14 @@ impl<'a> EventRepo<'a> {
     /// any of summary/location/dtstart/dtend/status changes.
     pub async fn patch_fields(
         &self,
-        tenant_id:   Uuid,
-        id:          Uuid,
-        summary:     Option<Option<String>>,
-        location:    Option<Option<String>>,
+        tenant_id: Uuid,
+        id: Uuid,
+        summary: Option<Option<String>>,
+        location: Option<Option<String>>,
         description: Option<Option<String>>,
-        dtstart:     Option<Option<OffsetDateTime>>,
-        dtend:       Option<Option<OffsetDateTime>>,
-        status:      Option<Option<String>>,
+        dtstart: Option<Option<OffsetDateTime>>,
+        dtend: Option<Option<OffsetDateTime>>,
+        status: Option<Option<String>>,
     ) -> Result<Event> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
 
@@ -331,13 +321,11 @@ impl<'a> EventRepo<'a> {
     /// Delete event by id.
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
-        let res = sqlx::query(
-            r#"DELETE FROM calendar_events WHERE tenant_id = $1 AND id = $2"#,
-        )
-        .bind(tenant_id)
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
+        let res = sqlx::query(r#"DELETE FROM calendar_events WHERE tenant_id = $1 AND id = $2"#)
+            .bind(tenant_id)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
         if res.rows_affected() == 0 {
             return Err(CalendarError::EventNotFound(id));
         }
@@ -870,9 +858,9 @@ impl<'a> EventRepo<'a> {
         &self,
         tenant_id: Uuid,
         calendar_id: Uuid,
-        summary:        Option<Option<&str>>,
-        location:       Option<Option<&str>>,
-        description:    Option<Option<&str>>,
+        summary: Option<Option<&str>>,
+        location: Option<Option<&str>>,
+        description: Option<Option<&str>>,
         organizer_email: Option<Option<&str>>,
         from: Option<OffsetDateTime>,
         to: Option<OffsetDateTime>,
@@ -916,7 +904,7 @@ impl<'a> EventRepo<'a> {
         raw: &str,
     ) -> Result<Event> {
         let parsed = ical::parse_vevent(raw)?;
-        let etag   = ical::compute_etag(raw);
+        let etag = ical::compute_etag(raw);
 
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Event>(
@@ -980,12 +968,7 @@ impl<'a> EventRepo<'a> {
     }
 
     /// Fetch event by (calendar_id, uid) — CalDAV URI mapping.
-    pub async fn get_by_uid(
-        &self,
-        tenant_id: Uuid,
-        calendar_id: Uuid,
-        uid: &str,
-    ) -> Result<Event> {
+    pub async fn get_by_uid(&self, tenant_id: Uuid, calendar_id: Uuid, uid: &str) -> Result<Event> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Event>(
             r#"
@@ -1009,11 +992,7 @@ impl<'a> EventRepo<'a> {
     /// Locate an event by UID across ALL calendars in the tenant.
     /// Used by iMIP REPLY ingestion: the responder may belong to any
     /// calendar owned by the tenant; UID is globally unique per RFC 5545.
-    pub async fn find_by_uid_in_tenant(
-        &self,
-        tenant_id: Uuid,
-        uid: &str,
-    ) -> Result<Option<Event>> {
+    pub async fn find_by_uid_in_tenant(&self, tenant_id: Uuid, uid: &str) -> Result<Option<Event>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Event>(
             r#"
@@ -1063,12 +1042,7 @@ impl<'a> EventRepo<'a> {
     }
 
     /// Delete by (calendar_id, uid) — CalDAV DELETE on event URI.
-    pub async fn delete_by_uid(
-        &self,
-        tenant_id: Uuid,
-        calendar_id: Uuid,
-        uid: &str,
-    ) -> Result<()> {
+    pub async fn delete_by_uid(&self, tenant_id: Uuid, calendar_id: Uuid, uid: &str) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let res = sqlx::query(
             r#"DELETE FROM calendar_events
@@ -1080,12 +1054,13 @@ impl<'a> EventRepo<'a> {
         .execute(&mut *tx)
         .await?;
         if res.rows_affected() == 0 {
-            return Err(CalendarError::BadRequest(format!("event uid not found: {uid}")));
+            return Err(CalendarError::BadRequest(format!(
+                "event uid not found: {uid}"
+            )));
         }
         tx.commit().await?;
         Ok(())
     }
-
 }
 
 #[cfg(test)]
@@ -1095,25 +1070,25 @@ mod tests {
 
     fn sample() -> Event {
         Event {
-            id:              Uuid::nil(),
-            calendar_id:     Uuid::nil(),
-            tenant_id:       Uuid::nil(),
-            uid:             "uid-abc@example.com".into(),
-            etag:            "etag123".into(),
-            ical_raw:        "BEGIN:VCALENDAR\r\nEND:VCALENDAR".into(),
-            summary:         Some("Team Meeting".into()),
-            description:     None,
-            location:        None,
-            dtstart:         Some(datetime!(2026-06-01 09:00:00 UTC)),
-            dtend:           Some(datetime!(2026-06-01 10:00:00 UTC)),
-            rrule:           None,
-            status:          Some("CONFIRMED".into()),
-            class:           None,
-            transp:          None,
-            sequence:        0,
+            id: Uuid::nil(),
+            calendar_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            uid: "uid-abc@example.com".into(),
+            etag: "etag123".into(),
+            ical_raw: "BEGIN:VCALENDAR\r\nEND:VCALENDAR".into(),
+            summary: Some("Team Meeting".into()),
+            description: None,
+            location: None,
+            dtstart: Some(datetime!(2026-06-01 09:00:00 UTC)),
+            dtend: Some(datetime!(2026-06-01 10:00:00 UTC)),
+            rrule: None,
+            status: Some("CONFIRMED".into()),
+            class: None,
+            transp: None,
+            sequence: 0,
             organizer_email: Some("org@example.com".into()),
-            created_at:      datetime!(2026-05-22 08:00:00 UTC),
-            updated_at:      datetime!(2026-05-22 08:00:00 UTC),
+            created_at: datetime!(2026-05-22 08:00:00 UTC),
+            updated_at: datetime!(2026-05-22 08:00:00 UTC),
         }
     }
 
@@ -1136,7 +1111,8 @@ mod tests {
     #[test]
     fn event_optional_fields_null_when_none() {
         let e = sample();
-        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
         assert!(v["description"].is_null());
         assert!(v["rrule"].is_null());
     }

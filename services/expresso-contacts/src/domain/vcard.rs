@@ -8,13 +8,13 @@ use sha2::{Digest, Sha256};
 
 #[derive(Debug, Default)]
 pub struct ParsedVCard {
-    pub uid:          String,
-    pub full_name:    Option<String>,
-    pub family_name:  Option<String>,
-    pub given_name:   Option<String>,
+    pub uid: String,
+    pub full_name: Option<String>,
+    pub family_name: Option<String>,
+    pub given_name: Option<String>,
     pub organization: Option<String>,
-    pub email:        Option<String>,
-    pub phone:        Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
 }
 
 /// Parse a vCard (3.0 or 4.0). Returns `Err` if no UID or no BEGIN:VCARD.
@@ -25,9 +25,17 @@ pub fn parse(raw: &str) -> Result<ParsedVCard, String> {
     let mut inside = false;
     for line in unfolded.lines() {
         let trimmed = line.trim_end_matches('\r');
-        if trimmed.eq_ignore_ascii_case("BEGIN:VCARD") { inside = true; continue; }
-        if trimmed.eq_ignore_ascii_case("END:VCARD")   { inside = false; continue; }
-        if !inside { continue; }
+        if trimmed.eq_ignore_ascii_case("BEGIN:VCARD") {
+            inside = true;
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case("END:VCARD") {
+            inside = false;
+            continue;
+        }
+        if !inside {
+            continue;
+        }
 
         // Split "NAME;PARAMS:VALUE" → (name, params_and_value)
         let (head, value) = match trimmed.split_once(':') {
@@ -38,16 +46,24 @@ pub fn parse(raw: &str) -> Result<ParsedVCard, String> {
         let prop = head.split(';').next().unwrap_or(head).to_ascii_uppercase();
 
         match prop.as_str() {
-            "UID" if out.uid.is_empty()            => out.uid          = value.trim().to_owned(),
-            "FN"  if out.full_name.is_none()       => out.full_name    = Some(value.trim().to_owned()),
-            "ORG" if out.organization.is_none()    => out.organization = Some(value.trim().to_owned()),
-            "EMAIL" if out.email.is_none()         => out.email        = Some(value.trim().to_owned()),
-            "TEL"   if out.phone.is_none()         => out.phone        = Some(value.trim().to_owned()),
-            "N" if out.family_name.is_none()       => {
+            "UID" if out.uid.is_empty() => out.uid = value.trim().to_owned(),
+            "FN" if out.full_name.is_none() => out.full_name = Some(value.trim().to_owned()),
+            "ORG" if out.organization.is_none() => out.organization = Some(value.trim().to_owned()),
+            "EMAIL" if out.email.is_none() => out.email = Some(value.trim().to_owned()),
+            "TEL" if out.phone.is_none() => out.phone = Some(value.trim().to_owned()),
+            "N" if out.family_name.is_none() => {
                 // N = Family;Given;Additional;Prefix;Suffix
                 let parts: Vec<&str> = value.split(';').collect();
-                if let Some(f) = parts.first() { if !f.is_empty() { out.family_name = Some(f.trim().to_owned()); } }
-                if let Some(g) = parts.get(1)  { if !g.is_empty() { out.given_name  = Some(g.trim().to_owned()); } }
+                if let Some(f) = parts.first() {
+                    if !f.is_empty() {
+                        out.family_name = Some(f.trim().to_owned());
+                    }
+                }
+                if let Some(g) = parts.get(1) {
+                    if !g.is_empty() {
+                        out.given_name = Some(g.trim().to_owned());
+                    }
+                }
             }
             _ => {}
         }
@@ -79,12 +95,16 @@ fn unfold(raw: &str) -> String {
         if c == '\r' && iter.peek() == Some(&'\n') {
             iter.next();
             match iter.peek() {
-                Some(' ') | Some('\t') => { iter.next(); /* fold */ }
+                Some(' ') | Some('\t') => {
+                    iter.next(); /* fold */
+                }
                 _ => out.push('\n'),
             }
         } else if c == '\n' {
             match iter.peek() {
-                Some(' ') | Some('\t') => { iter.next(); /* fold */ }
+                Some(' ') | Some('\t') => {
+                    iter.next(); /* fold */
+                }
                 _ => out.push('\n'),
             }
         } else {
@@ -114,7 +134,9 @@ pub fn split_vcards(raw: &str) -> Vec<String> {
             }
             continue;
         }
-        if let Some(b) = buf.as_mut() { b.push(trimmed.to_owned()); }
+        if let Some(b) = buf.as_mut() {
+            b.push(trimmed.to_owned());
+        }
     }
     out
 }
@@ -125,7 +147,9 @@ pub fn concat_vcards(cards: &[String]) -> String {
     let mut s = String::with_capacity(cards.iter().map(|c| c.len()).sum::<usize>() + 64);
     for c in cards {
         s.push_str(c);
-        if !c.ends_with('\n') { s.push_str("\r\n"); }
+        if !c.ends_with('\n') {
+            s.push_str("\r\n");
+        }
     }
     s
 }
@@ -138,14 +162,14 @@ pub fn build_vcard(
     uid: &str,
     full_name: &str,
     family_name: Option<&str>,
-    given_name:  Option<&str>,
+    given_name: Option<&str>,
     email: Option<&str>,
     organization: Option<&str>,
 ) -> String {
     fn escape(v: &str) -> String {
         v.replace('\r', " ").replace('\n', " ").replace(';', ",")
     }
-    let fn_v  = escape(full_name);
+    let fn_v = escape(full_name);
     let uid_v = escape(uid);
     let n_v = format!(
         "{};{};;;",
@@ -158,8 +182,12 @@ pub fn build_vcard(
     s.push_str(&format!("UID:{uid_v}\r\n"));
     s.push_str(&format!("FN:{fn_v}\r\n"));
     s.push_str(&format!("N:{n_v}\r\n"));
-    if let Some(o) = organization { s.push_str(&format!("ORG:{}\r\n", escape(o))); }
-    if let Some(e) = email        { s.push_str(&format!("EMAIL;TYPE=INTERNET:{}\r\n", escape(e))); }
+    if let Some(o) = organization {
+        s.push_str(&format!("ORG:{}\r\n", escape(o)));
+    }
+    if let Some(e) = email {
+        s.push_str(&format!("EMAIL;TYPE=INTERNET:{}\r\n", escape(e)));
+    }
     s.push_str("END:VCARD\r\n");
     s
 }
@@ -276,7 +304,14 @@ mod tests {
 
     #[test]
     fn build_vcard_contains_uid_and_fn() {
-        let v = build_vcard("uid-1", "Alice Smith", Some("Smith"), Some("Alice"), None, None);
+        let v = build_vcard(
+            "uid-1",
+            "Alice Smith",
+            Some("Smith"),
+            Some("Alice"),
+            None,
+            None,
+        );
         assert!(v.contains("UID:uid-1"));
         assert!(v.contains("FN:Alice Smith"));
     }

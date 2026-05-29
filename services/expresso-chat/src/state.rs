@@ -11,7 +11,7 @@ use crate::matrix::MatrixClient;
 pub struct AppState(Arc<Inner>);
 
 struct Inner {
-    db:     Option<DbPool>,
+    db: Option<DbPool>,
     matrix: Option<MatrixClient>,
 }
 
@@ -20,7 +20,9 @@ impl AppState {
         Self(Arc::new(Inner { db, matrix }))
     }
 
-    pub fn db(&self) -> Option<&DbPool> { self.0.db.as_ref() }
+    pub fn db(&self) -> Option<&DbPool> {
+        self.0.db.as_ref()
+    }
 
     pub fn db_or_unavailable(&self) -> Result<&DbPool> {
         self.0.db.as_ref().ok_or(ChatError::DatabaseUnavailable)

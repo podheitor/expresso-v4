@@ -24,16 +24,18 @@ pub struct UserQuery {
 
 #[derive(Debug, Serialize)]
 pub struct UserOut {
-    pub id:    Uuid,
+    pub id: Uuid,
     pub email: String,
 }
 
 async fn lookup(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<UserQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<UserQuery>,
 ) -> Result<Json<UserOut>> {
-    let email = q.email.ok_or_else(|| CalendarError::BadRequest("email required".into()))?;
+    let email = q
+        .email
+        .ok_or_else(|| CalendarError::BadRequest("email required".into()))?;
     let email = email.trim().to_ascii_lowercase();
     if email.is_empty() {
         return Err(CalendarError::BadRequest("email empty".into()));
@@ -50,7 +52,9 @@ async fn lookup(
 
     match row {
         Some((id, email)) => Ok(Json(UserOut { id, email })),
-        None => Err(CalendarError::BadRequest(format!("user not found: {email}"))),
+        None => Err(CalendarError::BadRequest(format!(
+            "user not found: {email}"
+        ))),
     }
 }
 
@@ -84,7 +88,8 @@ mod tests {
 
     #[test]
     fn user_query_extra_field_ignored() {
-        let q: UserQuery = serde_json::from_str(r#"{"email":"a@x.com","extra":"ignored"}"#).unwrap();
+        let q: UserQuery =
+            serde_json::from_str(r#"{"email":"a@x.com","extra":"ignored"}"#).unwrap();
         assert_eq!(q.email.as_deref(), Some("a@x.com"));
     }
 
@@ -120,7 +125,8 @@ mod tests {
 
     #[test]
     fn user_query_email_with_subdomain_preserved() {
-        let q: UserQuery = serde_json::from_str(r#"{"email":"user@mail.corp.example.com"}"#).unwrap();
+        let q: UserQuery =
+            serde_json::from_str(r#"{"email":"user@mail.corp.example.com"}"#).unwrap();
         assert_eq!(q.email.as_deref(), Some("user@mail.corp.example.com"));
     }
 

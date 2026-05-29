@@ -16,18 +16,23 @@ const REALM_PLACEHOLDER: &str = "{realm}";
 /// Multi-tenant provider metadata cache.
 pub struct TenantProviderCache {
     template: String,
-    timeout:  Duration,
-    cache:    RwLock<HashMap<String, Arc<ProviderMetadata>>>,
+    timeout: Duration,
+    cache: RwLock<HashMap<String, Arc<ProviderMetadata>>>,
 }
 
 impl TenantProviderCache {
     pub fn new(template: String, timeout: Duration) -> Result<Self> {
         if !template.contains(REALM_PLACEHOLDER) {
             return Err(RpError::Config(format!(
-                "AUTH_RP__ISSUER_TEMPLATE missing '{}' placeholder", REALM_PLACEHOLDER
+                "AUTH_RP__ISSUER_TEMPLATE missing '{}' placeholder",
+                REALM_PLACEHOLDER
             )));
         }
-        Ok(Self { template, timeout, cache: RwLock::new(HashMap::new()) })
+        Ok(Self {
+            template,
+            timeout,
+            cache: RwLock::new(HashMap::new()),
+        })
     }
 
     /// Return cached provider or fetch+cache on miss.
@@ -38,7 +43,10 @@ impl TenantProviderCache {
         let issuer = self.template.replace(REALM_PLACEHOLDER, realm);
         let md = ProviderMetadata::fetch(&issuer, self.timeout).await?;
         let arc = Arc::new(md);
-        self.cache.write().await.insert(realm.to_string(), arc.clone());
+        self.cache
+            .write()
+            .await
+            .insert(realm.to_string(), arc.clone());
         Ok(arc)
     }
 }
@@ -79,7 +87,8 @@ mod tests {
 
     #[test]
     fn rejects_template_with_wrong_placeholder() {
-        let r = TenantProviderCache::new("http://kc/realms/{tenant}".into(), Duration::from_secs(1));
+        let r =
+            TenantProviderCache::new("http://kc/realms/{tenant}".into(), Duration::from_secs(1));
         assert!(r.is_err());
     }
 
@@ -91,25 +100,35 @@ mod tests {
 
     #[test]
     fn valid_template_accepted() {
-        let r = TenantProviderCache::new("https://auth.svc/realms/{realm}".into(), Duration::from_secs(60));
+        let r = TenantProviderCache::new(
+            "https://auth.svc/realms/{realm}".into(),
+            Duration::from_secs(60),
+        );
         assert!(r.is_ok());
     }
 
     #[test]
     fn rejects_template_without_realm_placeholder() {
-        let r = TenantProviderCache::new("https://auth.svc/realms/fixed".into(), Duration::from_secs(60));
+        let r = TenantProviderCache::new(
+            "https://auth.svc/realms/fixed".into(),
+            Duration::from_secs(60),
+        );
         assert!(r.is_err());
     }
 
     #[test]
     fn accepts_template_with_realm_placeholder() {
-        let r = TenantProviderCache::new("https://kc/realms/{realm}".into(), Duration::from_secs(60));
+        let r =
+            TenantProviderCache::new("https://kc/realms/{realm}".into(), Duration::from_secs(60));
         assert!(r.is_ok());
     }
 
     #[test]
     fn accepts_template_with_subdomain_and_placeholder() {
-        let r = TenantProviderCache::new("https://{realm}.auth.example.com".into(), Duration::from_secs(60));
+        let r = TenantProviderCache::new(
+            "https://{realm}.auth.example.com".into(),
+            Duration::from_secs(60),
+        );
         assert!(r.is_ok());
     }
 

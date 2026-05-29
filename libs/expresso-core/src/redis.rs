@@ -1,7 +1,10 @@
 //! Redis connection pool via deadpool-redis
 
+use crate::{
+    config::RedisConfig,
+    error::{CoreError, Result},
+};
 use deadpool_redis::{Config as RedisPoolConfig, Pool};
-use crate::{config::RedisConfig, error::{CoreError, Result}};
 
 pub type RedisPool = Pool;
 
@@ -16,4 +19,3 @@ pub fn create_pool(cfg: &RedisConfig) -> Result<RedisPool> {
 
     Ok(pool)
 }
-

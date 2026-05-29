@@ -10,11 +10,11 @@ use crate::error::{CalendarError, Result};
 /// Per-attendee snapshot parsed from a VEVENT block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attendee {
-    pub email:    String,
-    pub cn:       Option<String>,
-    pub role:     Option<String>,   // e.g. REQ-PARTICIPANT
-    pub partstat: Option<String>,   // NEEDS-ACTION | ACCEPTED | DECLINED | TENTATIVE
-    pub rsvp:     Option<bool>,
+    pub email: String,
+    pub cn: Option<String>,
+    pub role: Option<String>,     // e.g. REQ-PARTICIPANT
+    pub partstat: Option<String>, // NEEDS-ACTION | ACCEPTED | DECLINED | TENTATIVE
+    pub rsvp: Option<bool>,
 }
 
 /// Extract ATTENDEEs from the first VEVENT of a VCALENDAR.
@@ -25,9 +25,16 @@ pub fn parse_attendees(raw: &str) -> Vec<Attendee> {
     for line in lines {
         let trimmed = line.trim_end_matches('\r');
         let upper = trimmed.to_ascii_uppercase();
-        if upper == "BEGIN:VEVENT" { in_event = true; continue; }
-        if upper == "END:VEVENT"   { break; }
-        if !in_event { continue; }
+        if upper == "BEGIN:VEVENT" {
+            in_event = true;
+            continue;
+        }
+        if upper == "END:VEVENT" {
+            break;
+        }
+        if !in_event {
+            continue;
+        }
 
         let (head, value) = match trimmed.split_once(':') {
             Some(p) => p,
@@ -35,15 +42,23 @@ pub fn parse_attendees(raw: &str) -> Vec<Attendee> {
         };
         let (name, params) = match head.split_once(';') {
             Some((n, p)) => (n.to_ascii_uppercase(), Some(p)),
-            None         => (head.to_ascii_uppercase(), None),
+            None => (head.to_ascii_uppercase(), None),
         };
-        if name != "ATTENDEE" { continue; }
+        if name != "ATTENDEE" {
+            continue;
+        }
 
         let email = match extract_mailto(value) {
             Some(e) => e,
-            None    => continue,
+            None => continue,
         };
-        let mut a = Attendee { email, cn: None, role: None, partstat: None, rsvp: None };
+        let mut a = Attendee {
+            email,
+            cn: None,
+            role: None,
+            partstat: None,
+            rsvp: None,
+        };
         if let Some(p) = params {
             for part in p.split(';') {
                 let (k, v) = match part.split_once('=') {
@@ -51,10 +66,10 @@ pub fn parse_attendees(raw: &str) -> Vec<Attendee> {
                     None => continue,
                 };
                 match k.to_ascii_uppercase().as_str() {
-                    "CN"       => a.cn = Some(v.trim_matches('"').to_owned()),
-                    "ROLE"     => a.role = Some(v.to_ascii_uppercase()),
+                    "CN" => a.cn = Some(v.trim_matches('"').to_owned()),
+                    "ROLE" => a.role = Some(v.to_ascii_uppercase()),
                     "PARTSTAT" => a.partstat = Some(v.to_ascii_uppercase()),
-                    "RSVP"     => a.rsvp = Some(v.eq_ignore_ascii_case("TRUE")),
+                    "RSVP" => a.rsvp = Some(v.eq_ignore_ascii_case("TRUE")),
                     _ => {}
                 }
             }
@@ -76,17 +91,28 @@ pub fn parse_comment(raw: &str) -> Option<String> {
     for line in lines {
         let trimmed = line.trim_end_matches('\r');
         let upper = trimmed.to_ascii_uppercase();
-        if upper == "BEGIN:VEVENT" { in_event = true; continue; }
-        if upper == "END:VEVENT"   { break; }
-        if !in_event { continue; }
+        if upper == "BEGIN:VEVENT" {
+            in_event = true;
+            continue;
+        }
+        if upper == "END:VEVENT" {
+            break;
+        }
+        if !in_event {
+            continue;
+        }
 
         // COMMENT may carry params (LANGUAGE=en-US:hello). Match the property
         // name up to ';' or ':' and ignore params — we only want the value.
         let (head, value) = trimmed.split_once(':')?;
         let name = head.split(';').next()?.to_ascii_uppercase();
-        if name != "COMMENT" { continue; }
+        if name != "COMMENT" {
+            continue;
+        }
         let decoded = decode_text(value);
-        if decoded.is_empty() { return None; }
+        if decoded.is_empty() {
+            return None;
+        }
         return Some(decoded);
     }
     None
@@ -96,14 +122,20 @@ fn decode_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
-        if c != '\\' { out.push(c); continue; }
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
         match chars.next() {
             Some('n') | Some('N') => out.push('\n'),
-            Some(',')             => out.push(','),
-            Some(';')             => out.push(';'),
-            Some('\\')            => out.push('\\'),
-            Some(other)           => { out.push('\\'); out.push(other); }
-            None                  => out.push('\\'),
+            Some(',') => out.push(','),
+            Some(';') => out.push(';'),
+            Some('\\') => out.push('\\'),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
         }
     }
     out
@@ -124,7 +156,8 @@ pub fn build_request(raw: &str) -> Result<String> {
 /// chooses to in a later flow (not required for REPLY).
 pub fn build_reply(raw: &str, email: &str, partstat: &str) -> Result<String> {
     let parsed = ical::parse_vevent(raw)?;
-    let organizer = parsed.organizer_email
+    let organizer = parsed
+        .organizer_email
         .as_deref()
         .ok_or_else(|| CalendarError::BadRequest("event has no ORGANIZER — cannot REPLY".into()))?;
 
@@ -135,13 +168,24 @@ pub fn build_reply(raw: &str, email: &str, partstat: &str) -> Result<String> {
     s.push_str("METHOD:REPLY\r\n");
     s.push_str("BEGIN:VEVENT\r\n");
     s.push_str(&format!("UID:{}\r\n", parsed.uid));
-    if let Some(dt) = parsed.dtstart { let _ = write_dt(&mut s, "DTSTART", dt); }
-    if let Some(dt) = parsed.dtend   { let _ = write_dt(&mut s, "DTEND",   dt); }
+    if let Some(dt) = parsed.dtstart {
+        let _ = write_dt(&mut s, "DTSTART", dt);
+    }
+    if let Some(dt) = parsed.dtend {
+        let _ = write_dt(&mut s, "DTEND", dt);
+    }
     if let Some(summary) = &parsed.summary {
-        s.push_str(&format!("SUMMARY:{}\r\n", summary.replace('\r', " ").replace('\n', "\\n")));
+        s.push_str(&format!(
+            "SUMMARY:{}\r\n",
+            summary.replace('\r', " ").replace('\n', "\\n")
+        ));
     }
     s.push_str(&format!("ORGANIZER:mailto:{organizer}\r\n"));
-    s.push_str(&format!("ATTENDEE;PARTSTAT={}:mailto:{}\r\n", partstat.to_ascii_uppercase(), email));
+    s.push_str(&format!(
+        "ATTENDEE;PARTSTAT={}:mailto:{}\r\n",
+        partstat.to_ascii_uppercase(),
+        email
+    ));
     s.push_str("END:VEVENT\r\n");
     s.push_str("END:VCALENDAR\r\n");
     Ok(s)
@@ -153,12 +197,17 @@ pub fn build_reply(raw: &str, email: &str, partstat: &str) -> Result<String> {
 pub fn apply_rsvp(raw: &str, email: &str, partstat: &str) -> Result<String> {
     validate_partstat(partstat)?;
     // Operate on physical (folded) lines so we preserve original formatting.
-    let mut lines: Vec<String> = raw.split('\n').map(|s| s.trim_end_matches('\r').to_owned()).collect();
+    let mut lines: Vec<String> = raw
+        .split('\n')
+        .map(|s| s.trim_end_matches('\r').to_owned())
+        .collect();
     let mut updated = false;
     let target = email.to_ascii_lowercase();
 
     for line in lines.iter_mut() {
-        if !line.to_ascii_uppercase().starts_with("ATTENDEE") { continue; }
+        if !line.to_ascii_uppercase().starts_with("ATTENDEE") {
+            continue;
+        }
         let (head, value) = match line.split_once(':') {
             Some(p) => (p.0.to_owned(), p.1.to_owned()),
             None => continue,
@@ -167,7 +216,9 @@ pub fn apply_rsvp(raw: &str, email: &str, partstat: &str) -> Result<String> {
             Some(e) => e,
             None => continue,
         };
-        if line_email.to_ascii_lowercase() != target { continue; }
+        if line_email.to_ascii_lowercase() != target {
+            continue;
+        }
 
         // Replace PARTSTAT=… param (or add one) in `head`.
         let mut segs: Vec<String> = head.split(';').map(|s| s.to_owned()).collect();
@@ -194,7 +245,9 @@ pub fn apply_rsvp(raw: &str, email: &str, partstat: &str) -> Result<String> {
             partstat.to_ascii_uppercase(),
             email,
         );
-        let pos = lines.iter().position(|l| l.eq_ignore_ascii_case("END:VEVENT"))
+        let pos = lines
+            .iter()
+            .position(|l| l.eq_ignore_ascii_case("END:VEVENT"))
             .ok_or_else(|| CalendarError::InvalidICal("END:VEVENT not found".into()))?;
         lines.insert(pos, new_line);
     }
@@ -208,21 +261,33 @@ pub fn apply_rsvp(raw: &str, email: &str, partstat: &str) -> Result<String> {
 /// (`STATUS:CANCELLED` per RFC 5546 §3.2.5).
 pub fn set_status(raw: &str, status: &str) -> Result<String> {
     let status = status.to_ascii_uppercase();
-    let mut lines: Vec<String> = raw.split('\n').map(|s| s.trim_end_matches('\r').to_owned()).collect();
+    let mut lines: Vec<String> = raw
+        .split('\n')
+        .map(|s| s.trim_end_matches('\r').to_owned())
+        .collect();
     let mut in_event = false;
     let mut replaced = false;
     for line in lines.iter_mut() {
         let upper = line.to_ascii_uppercase();
-        if upper == "BEGIN:VEVENT" { in_event = true; continue; }
-        if upper == "END:VEVENT"   { break; }
-        if !in_event { continue; }
+        if upper == "BEGIN:VEVENT" {
+            in_event = true;
+            continue;
+        }
+        if upper == "END:VEVENT" {
+            break;
+        }
+        if !in_event {
+            continue;
+        }
         if upper.starts_with("STATUS:") || upper.starts_with("STATUS;") {
             *line = format!("STATUS:{status}");
             replaced = true;
         }
     }
     if !replaced {
-        let pos = lines.iter().position(|l| l.eq_ignore_ascii_case("END:VEVENT"))
+        let pos = lines
+            .iter()
+            .position(|l| l.eq_ignore_ascii_case("END:VEVENT"))
             .ok_or_else(|| CalendarError::InvalidICal("END:VEVENT not found".into()))?;
         lines.insert(pos, format!("STATUS:{status}"));
     }
@@ -235,49 +300,75 @@ pub fn set_status(raw: &str, status: &str) -> Result<String> {
 /// Only replaces if the proposal has a value; None keeps the original.
 /// Used by the counter-accept flow (RFC 5546 §3.2.7).
 pub fn apply_proposed_times(
-    raw:             &str,
+    raw: &str,
     proposed_dtstart: Option<time::OffsetDateTime>,
-    proposed_dtend:   Option<time::OffsetDateTime>,
+    proposed_dtend: Option<time::OffsetDateTime>,
 ) -> Result<String> {
     let fmt_dt = |dt: time::OffsetDateTime| -> String {
         // iCalendar UTC format: YYYYMMDDTHHmmssZ
         let utc = dt.to_offset(time::UtcOffset::UTC);
         format!(
             "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-            utc.year(), utc.month() as u8, utc.day(),
-            utc.hour(), utc.minute(), utc.second()
+            utc.year(),
+            utc.month() as u8,
+            utc.day(),
+            utc.hour(),
+            utc.minute(),
+            utc.second()
         )
     };
     let new_start = proposed_dtstart.map(fmt_dt);
-    let new_end   = proposed_dtend.map(fmt_dt);
+    let new_end = proposed_dtend.map(fmt_dt);
 
-    let mut lines: Vec<String> = raw.split('\n').map(|s| s.trim_end_matches('\r').to_owned()).collect();
-    let mut in_event   = false;
+    let mut lines: Vec<String> = raw
+        .split('\n')
+        .map(|s| s.trim_end_matches('\r').to_owned())
+        .collect();
+    let mut in_event = false;
     let mut found_start = false;
-    let mut found_end   = false;
+    let mut found_end = false;
 
     for line in lines.iter_mut() {
         let upper = line.to_ascii_uppercase();
-        if upper == "BEGIN:VEVENT" { in_event = true; continue; }
-        if upper == "END:VEVENT"   { break; }
-        if !in_event { continue; }
+        if upper == "BEGIN:VEVENT" {
+            in_event = true;
+            continue;
+        }
+        if upper == "END:VEVENT" {
+            break;
+        }
+        if !in_event {
+            continue;
+        }
         if upper.starts_with("DTSTART") {
-            if let Some(ref v) = new_start { *line = format!("DTSTART:{v}"); }
+            if let Some(ref v) = new_start {
+                *line = format!("DTSTART:{v}");
+            }
             found_start = true;
         } else if upper.starts_with("DTEND") {
-            if let Some(ref v) = new_end { *line = format!("DTEND:{v}"); }
+            if let Some(ref v) = new_end {
+                *line = format!("DTEND:{v}");
+            }
             found_end = true;
         }
     }
-    let end_pos = lines.iter().position(|l| l.to_ascii_uppercase() == "END:VEVENT")
+    let end_pos = lines
+        .iter()
+        .position(|l| l.to_ascii_uppercase() == "END:VEVENT")
         .ok_or_else(|| CalendarError::InvalidICal("END:VEVENT not found".into()))?;
     if !found_start {
-        if let Some(ref v) = new_start { lines.insert(end_pos, format!("DTSTART:{v}")); }
+        if let Some(ref v) = new_start {
+            lines.insert(end_pos, format!("DTSTART:{v}"));
+        }
     }
-    let end_pos2 = lines.iter().position(|l| l.to_ascii_uppercase() == "END:VEVENT")
+    let end_pos2 = lines
+        .iter()
+        .position(|l| l.to_ascii_uppercase() == "END:VEVENT")
         .unwrap_or(end_pos);
     if !found_end {
-        if let Some(ref v) = new_end { lines.insert(end_pos2, format!("DTEND:{v}")); }
+        if let Some(ref v) = new_end {
+            lines.insert(end_pos2, format!("DTEND:{v}"));
+        }
     }
     Ok(lines.join("\r\n"))
 }
@@ -308,7 +399,11 @@ fn extract_mailto(v: &str) -> Option<String> {
     let lower = v.to_ascii_lowercase();
     let rest = lower.strip_prefix("mailto:").unwrap_or(&lower);
     let cleaned = rest.trim();
-    if cleaned.contains('@') { Some(cleaned.to_owned()) } else { None }
+    if cleaned.contains('@') {
+        Some(cleaned.to_owned())
+    } else {
+        None
+    }
 }
 
 fn validate_partstat(p: &str) -> Result<()> {
@@ -335,8 +430,12 @@ fn unfold(raw: &str) -> Vec<String> {
 
 fn write_dt(s: &mut String, name: &str, dt: time::OffsetDateTime) -> std::fmt::Result {
     use std::fmt::Write;
-    let fmt = time::format_description::parse("[year][month][day]T[hour][minute][second]Z").unwrap();
-    let out = dt.to_offset(time::UtcOffset::UTC).format(&fmt).unwrap_or_default();
+    let fmt =
+        time::format_description::parse("[year][month][day]T[hour][minute][second]Z").unwrap();
+    let out = dt
+        .to_offset(time::UtcOffset::UTC)
+        .format(&fmt)
+        .unwrap_or_default();
     writeln!(s, "{}:{}\r", name, out)
 }
 
@@ -405,7 +504,9 @@ END:VCALENDAR\r\n";
     fn apply_rsvp_appends_when_missing() {
         let updated = apply_rsvp(SAMPLE, "new@example.org", "TENTATIVE").unwrap();
         let atts = parse_attendees(&updated);
-        assert!(atts.iter().any(|a| a.email == "new@example.org" && a.partstat.as_deref() == Some("TENTATIVE")));
+        assert!(atts
+            .iter()
+            .any(|a| a.email == "new@example.org" && a.partstat.as_deref() == Some("TENTATIVE")));
     }
 
     #[test]
@@ -434,7 +535,10 @@ END:VCALENDAR\r\n";
         let raw = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u1\r\n\
                    COMMENT:Could we shift 30min?\\n-- thx\\, Bob\r\n\
                    END:VEVENT\r\nEND:VCALENDAR\r\n";
-        assert_eq!(parse_comment(raw).as_deref(), Some("Could we shift 30min?\n-- thx, Bob"));
+        assert_eq!(
+            parse_comment(raw).as_deref(),
+            Some("Could we shift 30min?\n-- thx, Bob")
+        );
     }
 
     #[test]
@@ -469,11 +573,11 @@ END:VCALENDAR\r\n";
     #[test]
     fn attendee_default_fields_are_none() {
         let a = Attendee {
-            email:    "a@b.com".into(),
-            cn:       None,
-            role:     None,
+            email: "a@b.com".into(),
+            cn: None,
+            role: None,
             partstat: None,
-            rsvp:     None,
+            rsvp: None,
         };
         assert!(a.cn.is_none() && a.role.is_none() && a.partstat.is_none() && a.rsvp.is_none());
     }
@@ -481,11 +585,11 @@ END:VCALENDAR\r\n";
     #[test]
     fn attendee_email_field_preserved() {
         let a = Attendee {
-            email:    "bob@example.com".into(),
-            cn:       Some("Bob".into()),
-            role:     None,
+            email: "bob@example.com".into(),
+            cn: Some("Bob".into()),
+            role: None,
             partstat: None,
-            rsvp:     None,
+            rsvp: None,
         };
         assert_eq!(a.email, "bob@example.com");
     }
@@ -493,11 +597,11 @@ END:VCALENDAR\r\n";
     #[test]
     fn attendee_cn_preserved_when_set() {
         let a = Attendee {
-            email:    "alice@example.com".into(),
-            cn:       Some("Alice Smith".into()),
-            role:     None,
+            email: "alice@example.com".into(),
+            cn: Some("Alice Smith".into()),
+            role: None,
             partstat: None,
-            rsvp:     None,
+            rsvp: None,
         };
         assert_eq!(a.cn.as_deref(), Some("Alice Smith"));
     }
@@ -505,11 +609,11 @@ END:VCALENDAR\r\n";
     #[test]
     fn attendee_rsvp_true_preserved() {
         let a = Attendee {
-            email:    "carol@example.com".into(),
-            cn:       None,
-            role:     Some("OPT-PARTICIPANT".into()),
+            email: "carol@example.com".into(),
+            cn: None,
+            role: Some("OPT-PARTICIPANT".into()),
             partstat: Some("NEEDS-ACTION".into()),
-            rsvp:     Some(true),
+            rsvp: Some(true),
         };
         assert_eq!(a.rsvp, Some(true));
         assert_eq!(a.role.as_deref(), Some("OPT-PARTICIPANT"));
@@ -518,11 +622,11 @@ END:VCALENDAR\r\n";
     #[test]
     fn attendee_rsvp_false_preserved() {
         let a = Attendee {
-            email:    "dave@example.com".into(),
-            cn:       None,
-            role:     None,
+            email: "dave@example.com".into(),
+            cn: None,
+            role: None,
             partstat: Some("ACCEPTED".into()),
-            rsvp:     Some(false),
+            rsvp: Some(false),
         };
         assert_eq!(a.rsvp, Some(false));
     }
@@ -530,11 +634,11 @@ END:VCALENDAR\r\n";
     #[test]
     fn attendee_partstat_none_by_default() {
         let a = Attendee {
-            email:    "x@example.com".into(),
-            cn:       None,
-            role:     None,
+            email: "x@example.com".into(),
+            cn: None,
+            role: None,
             partstat: None,
-            rsvp:     None,
+            rsvp: None,
         };
         assert!(a.partstat.is_none());
     }
@@ -542,11 +646,11 @@ END:VCALENDAR\r\n";
     #[test]
     fn attendee_role_preserved_when_set() {
         let a = Attendee {
-            email:    "r@example.com".into(),
-            cn:       None,
-            role:     Some("REQ-PARTICIPANT".into()),
+            email: "r@example.com".into(),
+            cn: None,
+            role: Some("REQ-PARTICIPANT".into()),
             partstat: None,
-            rsvp:     None,
+            rsvp: None,
         };
         assert_eq!(a.role.as_deref(), Some("REQ-PARTICIPANT"));
     }
@@ -554,11 +658,11 @@ END:VCALENDAR\r\n";
     #[test]
     fn attendee_partstat_accepted_preserved() {
         let a = Attendee {
-            email:    "u@example.com".into(),
-            cn:       None,
-            role:     None,
+            email: "u@example.com".into(),
+            cn: None,
+            role: None,
             partstat: Some("ACCEPTED".into()),
-            rsvp:     None,
+            rsvp: None,
         };
         assert_eq!(a.partstat.as_deref(), Some("ACCEPTED"));
     }
@@ -566,11 +670,11 @@ END:VCALENDAR\r\n";
     #[test]
     fn attendee_email_not_empty_after_construction() {
         let a = Attendee {
-            email:    "org@example.com".into(),
-            cn:       None,
-            role:     None,
+            email: "org@example.com".into(),
+            cn: None,
+            role: None,
             partstat: None,
-            rsvp:     None,
+            rsvp: None,
         };
         assert!(!a.email.is_empty());
     }
@@ -578,11 +682,11 @@ END:VCALENDAR\r\n";
     #[test]
     fn attendee_cn_none_by_default() {
         let a = Attendee {
-            email:    "user@example.com".into(),
-            cn:       None,
-            role:     None,
+            email: "user@example.com".into(),
+            cn: None,
+            role: None,
             partstat: None,
-            rsvp:     None,
+            rsvp: None,
         };
         assert!(a.cn.is_none());
     }

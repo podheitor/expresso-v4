@@ -58,30 +58,89 @@ pub const MAX_INVITE_LEN: usize = 100;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/meetings", post(create).get(list))
-        .route("/api/v1/meetings/:id", get(get_one).patch(update).delete(archive))
+        .route(
+            "/api/v1/meetings/:id",
+            get(get_one).patch(update).delete(archive),
+        )
         .route("/api/v1/meetings/:id/restore", post(restore))
         .route("/api/v1/meetings/:id/tokens", post(mint_token))
-        .route("/api/v1/meetings/:id/participants", post(add_participant).get(list_participants))
-        .route("/api/v1/meetings/:id/participants-invite", post(invite_participant))
-        .route("/api/v1/meetings/:id/participants-invite-mail", post(invite_participant_mail))
-        .route("/api/v1/meetings/:id/participants/count", get(count_participants))
-        .route("/api/v1/meetings/:id/participants/:user_id", get(get_participant).delete(remove_participant).patch(update_participant_role))
-        .route("/api/v1/meetings/:id/recording/start", post(recording_start))
-        .route("/api/v1/meetings/:id/recording/stop",  post(recording_stop))
-        .route("/api/v1/meetings/:id/chat",            get(get_chat))
-        .route("/api/v1/meetings/:id/lobby",           get(list_lobby).post(join_lobby))
-        .route("/api/v1/meetings/:id/lobby/approve/:user_id", post(approve_lobby))
-        .route("/api/v1/meetings/:id/lobby/:user_id",  delete(remove_from_lobby))
-        .route("/api/v1/meetings/:id/polls",           post(create_poll).get(list_polls))
-        .route("/api/v1/meetings/:id/polls/:poll_id",  get(get_poll).delete(close_poll))
+        .route(
+            "/api/v1/meetings/:id/participants",
+            post(add_participant).get(list_participants),
+        )
+        .route(
+            "/api/v1/meetings/:id/participants-invite",
+            post(invite_participant),
+        )
+        .route(
+            "/api/v1/meetings/:id/participants-invite-mail",
+            post(invite_participant_mail),
+        )
+        .route(
+            "/api/v1/meetings/:id/participants/count",
+            get(count_participants),
+        )
+        .route(
+            "/api/v1/meetings/:id/participants/:user_id",
+            get(get_participant)
+                .delete(remove_participant)
+                .patch(update_participant_role),
+        )
+        .route(
+            "/api/v1/meetings/:id/recording/start",
+            post(recording_start),
+        )
+        .route("/api/v1/meetings/:id/recording/stop", post(recording_stop))
+        .route("/api/v1/meetings/:id/chat", get(get_chat))
+        .route(
+            "/api/v1/meetings/:id/lobby",
+            get(list_lobby).post(join_lobby),
+        )
+        .route(
+            "/api/v1/meetings/:id/lobby/approve/:user_id",
+            post(approve_lobby),
+        )
+        .route(
+            "/api/v1/meetings/:id/lobby/:user_id",
+            delete(remove_from_lobby),
+        )
+        .route(
+            "/api/v1/meetings/:id/polls",
+            post(create_poll).get(list_polls),
+        )
+        .route(
+            "/api/v1/meetings/:id/polls/:poll_id",
+            get(get_poll).delete(close_poll),
+        )
         .route("/api/v1/meetings/:id/polls/:poll_id/vote", post(cast_vote))
-        .route("/api/v1/meetings/:id/breakouts",            post(create_breakout).get(list_breakouts))
-        .route("/api/v1/meetings/:id/breakouts/:room_id",   get(get_breakout).delete(delete_breakout))
-        .route("/api/v1/meetings/:id/breakouts/:room_id/participants", post(assign_breakout_participant).delete(remove_breakout_participant))
-        .route("/api/v1/meetings/:id/transcript",           post(create_transcript).get(list_transcripts))
-        .route("/api/v1/meetings/:id/transcript/search",   get(search_transcripts))
-        .route("/api/v1/meetings/:id/recordings",          post(create_recording).get(list_recordings))
-        .route("/api/v1/meetings/:id/recordings/:rec_id",  get(get_recording).delete(delete_recording))
+        .route(
+            "/api/v1/meetings/:id/breakouts",
+            post(create_breakout).get(list_breakouts),
+        )
+        .route(
+            "/api/v1/meetings/:id/breakouts/:room_id",
+            get(get_breakout).delete(delete_breakout),
+        )
+        .route(
+            "/api/v1/meetings/:id/breakouts/:room_id/participants",
+            post(assign_breakout_participant).delete(remove_breakout_participant),
+        )
+        .route(
+            "/api/v1/meetings/:id/transcript",
+            post(create_transcript).get(list_transcripts),
+        )
+        .route(
+            "/api/v1/meetings/:id/transcript/search",
+            get(search_transcripts),
+        )
+        .route(
+            "/api/v1/meetings/:id/recordings",
+            post(create_recording).get(list_recordings),
+        )
+        .route(
+            "/api/v1/meetings/:id/recordings/:rec_id",
+            get(get_recording).delete(delete_recording),
+        )
 }
 
 /// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
@@ -91,37 +150,38 @@ pub fn routes() -> Router<AppState> {
 fn valid_room_name(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= MAX_ROOM_NAME_BYTES
-        && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CreateBody {
-    pub title:         String,
-    pub channel_id:    Option<Uuid>,
-    pub room_name:     Option<String>,            // let client override slug
+    pub title: String,
+    pub channel_id: Option<Uuid>,
+    pub room_name: Option<String>, // let client override slug
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub scheduled_for: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    pub ends_at:       Option<OffsetDateTime>,
-    pub is_recurring:  Option<bool>,
+    pub ends_at: Option<OffsetDateTime>,
+    pub is_recurring: Option<bool>,
     pub lobby_enabled: Option<bool>,
-    pub password:      Option<String>,
+    pub password: Option<String>,
     /// Extra participants (beyond the creator) to pre-add as participants.
     #[serde(default)]
-    pub invite:        Vec<Uuid>,
+    pub invite: Vec<Uuid>,
     /// Request moderator JWT in the response body (default true).
-    pub return_token:  Option<bool>,
+    pub return_token: Option<bool>,
     /// Whether the moderator may start a recording (default false).
     pub allow_recording: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CreateResponse {
-    pub meeting:  Meeting,
+    pub meeting: Meeting,
     pub join_url: Option<String>,
-    pub token:    Option<String>,
+    pub token: Option<String>,
     pub expires_at_epoch: Option<i64>,
-    pub domain:   String,
+    pub domain: String,
 }
 
 async fn create(
@@ -134,48 +194,63 @@ async fn create(
     }
     if body.title.len() > MAX_TITLE_BYTES {
         return Err(MeetError::BadRequest(format!(
-            "title too long: {} bytes (max {})", body.title.len(), MAX_TITLE_BYTES
+            "title too long: {} bytes (max {})",
+            body.title.len(),
+            MAX_TITLE_BYTES
         )));
     }
     if let Some(p) = body.password.as_ref() {
         if p.len() > MAX_PASSWORD_BYTES {
             return Err(MeetError::BadRequest(format!(
-                "password too long: {} bytes (max {})", p.len(), MAX_PASSWORD_BYTES
+                "password too long: {} bytes (max {})",
+                p.len(),
+                MAX_PASSWORD_BYTES
             )));
         }
     }
     if body.invite.len() > MAX_INVITE_LEN {
         return Err(MeetError::BadRequest(format!(
-            "too many invitees: {} (max {})", body.invite.len(), MAX_INVITE_LEN
+            "too many invitees: {} (max {})",
+            body.invite.len(),
+            MAX_INVITE_LEN
         )));
     }
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let jitsi = state.jitsi_or_unavailable()?;
 
-    let room_name = body.room_name.clone()
+    let room_name = body
+        .room_name
+        .clone()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| jitsi.generate_room_name());
     if !valid_room_name(&room_name) {
         return Err(MeetError::BadRequest(
-            "invalid room_name: ASCII alphanumeric + '-' '_' only, max 64 bytes".into()
+            "invalid room_name: ASCII alphanumeric + '-' '_' only, max 64 bytes".into(),
         ));
     }
 
     let repo = MeetingRepo::new(pool);
-    let meeting = repo.create(ctx.tenant_id, ctx.user_id, NewMeeting {
-        room_name:     room_name.clone(),
-        title:         body.title,
-        channel_id:    body.channel_id,
-        scheduled_for: body.scheduled_for,
-        ends_at:       body.ends_at,
-        is_recurring:  body.is_recurring,
-        lobby_enabled: body.lobby_enabled,
-        password:      body.password,
-    }).await?;
+    let meeting = repo
+        .create(
+            ctx.tenant_id,
+            ctx.user_id,
+            NewMeeting {
+                room_name: room_name.clone(),
+                title: body.title,
+                channel_id: body.channel_id,
+                scheduled_for: body.scheduled_for,
+                ends_at: body.ends_at,
+                is_recurring: body.is_recurring,
+                lobby_enabled: body.lobby_enabled,
+                password: body.password,
+            },
+        )
+        .await?;
 
     for u in body.invite {
-        repo.add_participant(ctx.tenant_id, meeting.id, u, ParticipantRole::Participant).await?;
+        repo.add_participant(ctx.tenant_id, meeting.id, u, ParticipantRole::Participant)
+            .await?;
     }
 
     webhook::dispatch(
@@ -188,21 +263,21 @@ async fn create(
     let mut resp = CreateResponse {
         meeting,
         join_url: None,
-        token:    None,
+        token: None,
         expires_at_epoch: None,
-        domain:   jitsi.domain().to_string(),
+        domain: jitsi.domain().to_string(),
     };
     if body.return_token.unwrap_or(true) {
         let t = jitsi.mint(&IssueRequest {
-            room:           &room_name,
-            user_id:        ctx.user_id,
-            display_name:   &ctx.display_name,
-            email:          &ctx.email,
-            moderator:      true,
+            room: &room_name,
+            user_id: ctx.user_id,
+            display_name: &ctx.display_name,
+            email: &ctx.email,
+            moderator: true,
             allow_recording: body.allow_recording.unwrap_or(false),
         })?;
         resp.join_url = Some(t.join_url);
-        resp.token    = Some(t.token);
+        resp.token = Some(t.token);
         resp.expires_at_epoch = Some(t.expires_at_epoch);
     }
     Ok((StatusCode::CREATED, Json(resp)))
@@ -214,17 +289,17 @@ struct ListQuery {
     archived: bool,
     /// Only meetings with scheduled_for >= after (RFC 3339).
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:    Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     /// Only meetings with scheduled_for <= before (RFC 3339).
     #[serde(default, with = "time::serde::rfc3339::option")]
-    before:   Option<OffsetDateTime>,
+    before: Option<OffsetDateTime>,
 }
 
 async fn list(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<ListQuery>,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    Query(q): Query<ListQuery>,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let archived_flag = if q.archived { "TRUE" } else { "FALSE" };
@@ -241,7 +316,9 @@ async fn list(
     if let Some(ts) = max_updated {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -251,35 +328,49 @@ async fn list(
     }
     let repo = MeetingRepo::new(pool);
     let rows = if q.archived {
-        repo.list_archived_for_user(ctx.tenant_id, ctx.user_id).await?
+        repo.list_archived_for_user(ctx.tenant_id, ctx.user_id)
+            .await?
     } else if q.after.is_some() || q.before.is_some() {
-        repo.list_for_user_filtered(ctx.tenant_id, ctx.user_id, q.after, q.before).await?
+        repo.list_for_user_filtered(ctx.tenant_id, ctx.user_id, q.after, q.before)
+            .await?
     } else {
         repo.list_for_user(ctx.tenant_id, ctx.user_id).await?
     };
     let mut resp = Json(rows).into_response();
     if let Some(ts) = max_updated {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
 
 async fn get_one(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    if repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?.is_none() {
+    if repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+        .is_none()
+    {
         return Err(MeetError::NotParticipant);
     }
-    let m = repo.get(ctx.tenant_id, id).await
+    let m = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| MeetError::MeetingNotFound(id))?;
     let etag = format!("\"{}-{}\"", m.updated_at.unix_timestamp(), m.id);
-    let lm   = m.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = m
+        .updated_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
     if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
         if inm.as_bytes() == etag.as_bytes() {
             return Ok(StatusCode::NOT_MODIFIED.into_response());
@@ -287,7 +378,9 @@ async fn get_one(
     }
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if m.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -295,31 +388,33 @@ async fn get_one(
         }
     }
     let mut resp = Json(m).into_response();
-    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateBody {
-    pub title:         Option<String>,
+    pub title: Option<String>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub scheduled_for: Option<OffsetDateTime>,
     pub clear_scheduled_for: Option<bool>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    pub ends_at:       Option<OffsetDateTime>,
+    pub ends_at: Option<OffsetDateTime>,
     pub clear_ends_at: Option<bool>,
     pub lobby_enabled: Option<bool>,
-    pub password:      Option<String>,
+    pub password: Option<String>,
     pub clear_password: Option<bool>,
-    pub is_recurring:  Option<bool>,
+    pub is_recurring: Option<bool>,
 }
 
 async fn update(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<UpdateBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateBody>,
 ) -> Result<Json<Meeting>> {
     if let Some(ref t) = body.title {
         if t.trim().is_empty() {
@@ -327,7 +422,9 @@ async fn update(
         }
         if t.len() > MAX_TITLE_BYTES {
             return Err(MeetError::BadRequest(format!(
-                "title too long: {} bytes (max {})", t.len(), MAX_TITLE_BYTES
+                "title too long: {} bytes (max {})",
+                t.len(),
+                MAX_TITLE_BYTES
             )));
         }
     }
@@ -336,7 +433,10 @@ async fn update(
     let repo = MeetingRepo::new(pool);
 
     // Only moderators may update meeting details.
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         _ => return Err(MeetError::Forbidden),
     }
@@ -357,34 +457,42 @@ async fn update(
         body.password.map(Some)
     };
 
-    let updated = repo.update(
-        ctx.tenant_id, id,
-        body.title,
-        scheduled_for,
-        ends_at,
-        body.lobby_enabled,
-        password,
-        body.is_recurring,
-    ).await?;
+    let updated = repo
+        .update(
+            ctx.tenant_id,
+            id,
+            body.title,
+            scheduled_for,
+            ends_at,
+            body.lobby_enabled,
+            password,
+            body.is_recurring,
+        )
+        .await?;
 
     match updated {
         Some(m) => Ok(Json(m)),
-        None    => Err(MeetError::MeetingNotFound(id)),
+        None => Err(MeetError::MeetingNotFound(id)),
     }
 }
 
 /// POST /api/v1/meetings/:id/restore — reativa reunião arquivada (creator ou moderador).
 async fn restore(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<Meeting>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    let m = repo.get(ctx.tenant_id, id).await
+    let m = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| MeetError::MeetingNotFound(id))?;
     if m.created_by != ctx.user_id {
-        match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        match repo
+            .participant_role(ctx.tenant_id, id, ctx.user_id)
+            .await?
+        {
             Some(ParticipantRole::Moderator) => {}
             _ => return Err(MeetError::Forbidden),
         }
@@ -410,11 +518,16 @@ async fn archive(
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    let m    = repo.get(ctx.tenant_id, id).await
+    let m = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| MeetError::MeetingNotFound(id))?;
     // Allowed: original creator OR any moderator participant.
     if m.created_by != ctx.user_id {
-        match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        match repo
+            .participant_role(ctx.tenant_id, id, ctx.user_id)
+            .await?
+        {
             Some(ParticipantRole::Moderator) => {}
             _ => return Err(MeetError::Forbidden),
         }
@@ -432,21 +545,21 @@ async fn archive(
 #[derive(Debug, Deserialize)]
 pub struct TokenBody {
     /// When set (moderator-only), mint for another user in the tenant.
-    pub user_id:       Option<Uuid>,
+    pub user_id: Option<Uuid>,
     /// Override moderator flag. Only a moderator may set this to true.
-    pub as_moderator:  Option<bool>,
+    pub as_moderator: Option<bool>,
     /// Recording flag (moderator-only).
     pub allow_recording: Option<bool>,
     /// Override display name (e.g. guest tokens). Defaults to caller's.
-    pub display_name:  Option<String>,
-    pub email:         Option<String>,
+    pub display_name: Option<String>,
+    pub email: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
-    pub room:     String,
-    pub domain:   String,
-    pub token:    String,
+    pub room: String,
+    pub domain: String,
+    pub token: String,
     pub join_url: String,
     pub expires_at_epoch: i64,
     pub moderator: bool,
@@ -458,11 +571,13 @@ async fn mint_token(
     Path(id): Path<Uuid>,
     Json(body): Json<TokenBody>,
 ) -> Result<Json<TokenResponse>> {
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let jitsi = state.jitsi_or_unavailable()?;
-    let repo  = MeetingRepo::new(pool);
+    let repo = MeetingRepo::new(pool);
 
-    let caller_role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+    let caller_role = repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
         .ok_or(MeetError::NotParticipant)?;
     let caller_is_mod = matches!(caller_role, ParticipantRole::Moderator);
 
@@ -472,7 +587,9 @@ async fn mint_token(
     if target != ctx.user_id && !caller_is_mod {
         return Err(MeetError::Forbidden);
     }
-    let want_moderator = body.as_moderator.unwrap_or(target == ctx.user_id && caller_is_mod);
+    let want_moderator = body
+        .as_moderator
+        .unwrap_or(target == ctx.user_id && caller_is_mod);
     if want_moderator && !caller_is_mod {
         return Err(MeetError::Forbidden);
     }
@@ -484,7 +601,10 @@ async fn mint_token(
     // When minting for another user, they must already be a participant
     // (moderator must add them first). Keeps the ACL surface tight.
     if target != ctx.user_id
-        && repo.participant_role(ctx.tenant_id, id, target).await?.is_none()
+        && repo
+            .participant_role(ctx.tenant_id, id, target)
+            .await?
+            .is_none()
     {
         return Err(MeetError::BadRequest("target is not a participant".into()));
     }
@@ -492,38 +612,44 @@ async fn mint_token(
     if let Some(d) = body.display_name.as_deref() {
         if d.len() > MAX_DISPLAY_NAME_BYTES {
             return Err(MeetError::BadRequest(format!(
-                "display_name too long: {} bytes (max {})", d.len(), MAX_DISPLAY_NAME_BYTES
+                "display_name too long: {} bytes (max {})",
+                d.len(),
+                MAX_DISPLAY_NAME_BYTES
             )));
         }
     }
     if let Some(e) = body.email.as_deref() {
         if e.len() > MAX_EMAIL_BYTES {
             return Err(MeetError::BadRequest(format!(
-                "email too long: {} bytes (max {})", e.len(), MAX_EMAIL_BYTES
+                "email too long: {} bytes (max {})",
+                e.len(),
+                MAX_EMAIL_BYTES
             )));
         }
     }
 
-    let m = repo.get(ctx.tenant_id, id).await
+    let m = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| MeetError::MeetingNotFound(id))?;
 
     let display_name = body.display_name.as_deref().unwrap_or(&ctx.display_name);
-    let email        = body.email.as_deref().unwrap_or(&ctx.email);
+    let email = body.email.as_deref().unwrap_or(&ctx.email);
 
     let issued = jitsi.mint(&IssueRequest {
-        room:            &m.room_name,
-        user_id:         target,
+        room: &m.room_name,
+        user_id: target,
         display_name,
         email,
-        moderator:       want_moderator,
+        moderator: want_moderator,
         allow_recording: want_recording,
     })?;
 
     Ok(Json(TokenResponse {
-        room:      issued.room,
-        domain:    issued.domain,
-        token:     issued.token,
-        join_url:  issued.join_url,
+        room: issued.room,
+        domain: issued.domain,
+        token: issued.token,
+        join_url: issued.join_url,
         expires_at_epoch: issued.expires_at_epoch,
         moderator: want_moderator,
     }))
@@ -532,7 +658,7 @@ async fn mint_token(
 #[derive(Debug, Deserialize)]
 pub struct AddParticipantBody {
     pub user_id: Uuid,
-    pub role:    Option<ParticipantRole>,
+    pub role: Option<ParticipantRole>,
 }
 
 async fn add_participant(
@@ -543,34 +669,40 @@ async fn add_participant(
 ) -> Result<(StatusCode, Json<Value>)> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         Some(_) => return Err(MeetError::Forbidden),
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
     // Ensure meeting exists (and is tenant-scoped).
-    let _ = repo.get(ctx.tenant_id, id).await
+    let _ = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| MeetError::MeetingNotFound(id))?;
 
     let role = body.role.unwrap_or(ParticipantRole::Participant);
-    repo.add_participant(ctx.tenant_id, id, body.user_id, role).await?;
+    repo.add_participant(ctx.tenant_id, id, body.user_id, role)
+        .await?;
     Ok((StatusCode::CREATED, Json(json!({"added": body.user_id}))))
 }
 
 #[derive(Debug, Deserialize)]
 pub struct InviteParticipantBody {
-    pub user_id:      Uuid,
-    pub role:         Option<ParticipantRole>,
+    pub user_id: Uuid,
+    pub role: Option<ParticipantRole>,
     /// Display name pra estampar no JWT do convidado (default: "Guest").
     pub display_name: Option<String>,
-    pub email:        Option<String>,
+    pub email: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct InviteParticipantResponse {
-    pub user_id:          Uuid,
-    pub role:             ParticipantRole,
-    pub join_url:         String,
+    pub user_id: Uuid,
+    pub role: ParticipantRole,
+    pub join_url: String,
     pub expires_at_epoch: i64,
 }
 
@@ -585,64 +717,77 @@ async fn invite_participant(
     Path(id): Path<Uuid>,
     Json(body): Json<InviteParticipantBody>,
 ) -> Result<(StatusCode, Json<InviteParticipantResponse>)> {
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let jitsi = state.jitsi_or_unavailable()?;
-    let repo  = MeetingRepo::new(pool);
+    let repo = MeetingRepo::new(pool);
 
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         Some(_) => return Err(MeetError::Forbidden),
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
-    let m = repo.get(ctx.tenant_id, id).await
+    let m = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| MeetError::MeetingNotFound(id))?;
 
     if let Some(d) = body.display_name.as_deref() {
         if d.len() > MAX_DISPLAY_NAME_BYTES {
             return Err(MeetError::BadRequest(format!(
-                "display_name too long: {} bytes (max {})", d.len(), MAX_DISPLAY_NAME_BYTES
+                "display_name too long: {} bytes (max {})",
+                d.len(),
+                MAX_DISPLAY_NAME_BYTES
             )));
         }
     }
     if let Some(e) = body.email.as_deref() {
         if e.len() > MAX_EMAIL_BYTES {
             return Err(MeetError::BadRequest(format!(
-                "email too long: {} bytes (max {})", e.len(), MAX_EMAIL_BYTES
+                "email too long: {} bytes (max {})",
+                e.len(),
+                MAX_EMAIL_BYTES
             )));
         }
     }
 
     let role = body.role.unwrap_or(ParticipantRole::Participant);
-    repo.add_participant(ctx.tenant_id, id, body.user_id, role.clone()).await?;
+    repo.add_participant(ctx.tenant_id, id, body.user_id, role.clone())
+        .await?;
 
     let display_name = body.display_name.as_deref().unwrap_or("Guest");
-    let email        = body.email.as_deref().unwrap_or("");
+    let email = body.email.as_deref().unwrap_or("");
 
     let issued = jitsi.mint(&IssueRequest {
-        room:            &m.room_name,
-        user_id:         body.user_id,
+        room: &m.room_name,
+        user_id: body.user_id,
         display_name,
         email,
-        moderator:       matches!(role, ParticipantRole::Moderator),
+        moderator: matches!(role, ParticipantRole::Moderator),
         allow_recording: false,
     })?;
 
-    Ok((StatusCode::CREATED, Json(InviteParticipantResponse {
-        user_id:          body.user_id,
-        role,
-        join_url:         issued.join_url,
-        expires_at_epoch: issued.expires_at_epoch,
-    })))
+    Ok((
+        StatusCode::CREATED,
+        Json(InviteParticipantResponse {
+            user_id: body.user_id,
+            role,
+            join_url: issued.join_url,
+            expires_at_epoch: issued.expires_at_epoch,
+        }),
+    ))
 }
 
 #[derive(Debug, Serialize)]
 pub struct InviteParticipantMailResponse {
-    pub user_id:          Uuid,
-    pub role:             ParticipantRole,
-    pub join_url:         String,
+    pub user_id: Uuid,
+    pub role: ParticipantRole,
+    pub join_url: String,
     pub expires_at_epoch: i64,
     /// true when MEET__SMTP_HOST is configured and the email was delivered.
-    pub email_sent:       bool,
+    pub email_sent: bool,
 }
 
 /// POST /api/v1/meetings/:id/participants-invite-mail — como participants-invite mas
@@ -655,48 +800,60 @@ async fn invite_participant_mail(
     Path(id): Path<Uuid>,
     Json(body): Json<InviteParticipantBody>,
 ) -> Result<(StatusCode, Json<InviteParticipantMailResponse>)> {
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let jitsi = state.jitsi_or_unavailable()?;
-    let repo  = MeetingRepo::new(pool);
+    let repo = MeetingRepo::new(pool);
 
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         Some(_) => return Err(MeetError::Forbidden),
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
 
     if let Some(d) = body.display_name.as_deref() {
         if d.len() > MAX_DISPLAY_NAME_BYTES {
             return Err(MeetError::BadRequest(format!(
-                "display_name too long: {} bytes (max {})", d.len(), MAX_DISPLAY_NAME_BYTES
+                "display_name too long: {} bytes (max {})",
+                d.len(),
+                MAX_DISPLAY_NAME_BYTES
             )));
         }
     }
     if let Some(e) = body.email.as_deref() {
         if e.len() > MAX_EMAIL_BYTES {
             return Err(MeetError::BadRequest(format!(
-                "email too long: {} bytes (max {})", e.len(), MAX_EMAIL_BYTES
+                "email too long: {} bytes (max {})",
+                e.len(),
+                MAX_EMAIL_BYTES
             )));
         }
     } else {
-        return Err(MeetError::BadRequest("email is required for invite-mail".into()));
+        return Err(MeetError::BadRequest(
+            "email is required for invite-mail".into(),
+        ));
     }
 
-    let m = repo.get(ctx.tenant_id, id).await
+    let m = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| MeetError::MeetingNotFound(id))?;
 
     let role = body.role.unwrap_or(ParticipantRole::Participant);
-    repo.add_participant(ctx.tenant_id, id, body.user_id, role.clone()).await?;
+    repo.add_participant(ctx.tenant_id, id, body.user_id, role.clone())
+        .await?;
 
     let display_name = body.display_name.as_deref().unwrap_or("Guest");
-    let email        = body.email.as_deref().unwrap_or("");
+    let email = body.email.as_deref().unwrap_or("");
 
     let issued = jitsi.mint(&IssueRequest {
-        room:            &m.room_name,
-        user_id:         body.user_id,
+        room: &m.room_name,
+        user_id: body.user_id,
         display_name,
         email,
-        moderator:       matches!(role, ParticipantRole::Moderator),
+        moderator: matches!(role, ParticipantRole::Moderator),
         allow_recording: false,
     })?;
 
@@ -707,24 +864,31 @@ async fn invite_participant_mail(
         false
     };
 
-    Ok((StatusCode::CREATED, Json(InviteParticipantMailResponse {
-        user_id:          body.user_id,
-        role,
-        join_url:         issued.join_url,
-        expires_at_epoch: issued.expires_at_epoch,
-        email_sent,
-    })))
+    Ok((
+        StatusCode::CREATED,
+        Json(InviteParticipantMailResponse {
+            user_id: body.user_id,
+            role,
+            join_url: issued.join_url,
+            expires_at_epoch: issued.expires_at_epoch,
+            email_sent,
+        }),
+    ))
 }
 
 /// GET /api/v1/meetings/:id/participants/count — total participant count (caller must be participant).
 async fn count_participants(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    if repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?.is_none() {
+    if repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+        .is_none()
+    {
         return Err(MeetError::NotParticipant);
     }
     let n = repo.count_participants(ctx.tenant_id, id).await?;
@@ -733,20 +897,29 @@ async fn count_participants(
 
 /// GET /api/v1/meetings/:id/participants/:user_id — detail of one participant (must be a participant).
 async fn get_participant(
-    State(state):        State<AppState>,
-    ctx:                 RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Path((id, user_id)): Path<(Uuid, Uuid)>,
-    req_headers:         HeaderMap,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    if repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?.is_none() {
+    if repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+        .is_none()
+    {
         return Err(MeetError::NotParticipant);
     }
-    let p = repo.get_participant(ctx.tenant_id, id, user_id).await?
+    let p = repo
+        .get_participant(ctx.tenant_id, id, user_id)
+        .await?
         .ok_or(MeetError::BadRequest("participant not found".into()))?;
     let etag = format!("\"{}-{}\"", p.invited_at.unix_timestamp(), p.user_id);
-    let lm   = p.invited_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = p
+        .invited_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
     if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
         if inm.as_bytes() == etag.as_bytes() {
             return Ok(StatusCode::NOT_MODIFIED.into_response());
@@ -754,7 +927,9 @@ async fn get_participant(
     }
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if p.invited_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -762,30 +937,39 @@ async fn get_participant(
         }
     }
     let mut resp = Json(p).into_response();
-    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
 /// DELETE /api/v1/meetings/:id/participants/:user_id — moderator-only; creator cannot be removed.
 async fn remove_participant(
-    State(state):        State<AppState>,
-    ctx:                 RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Path((id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
 
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         Some(_) => return Err(MeetError::Forbidden),
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
 
-    let m = repo.get(ctx.tenant_id, id).await
+    let m = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| MeetError::MeetingNotFound(id))?;
     if m.created_by == user_id {
-        return Err(MeetError::BadRequest("cannot remove the meeting creator".into()));
+        return Err(MeetError::BadRequest(
+            "cannot remove the meeting creator".into(),
+        ));
     }
 
     repo.remove_participant(ctx.tenant_id, id, user_id).await?;
@@ -800,28 +984,37 @@ struct UpdateRoleBody {
 /// PATCH /api/v1/meetings/:id/participants/:user_id — promote or demote a participant (moderator-only).
 /// The meeting creator's role cannot be demoted below moderator.
 async fn update_participant_role(
-    State(state):        State<AppState>,
-    ctx:                 RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Path((id, user_id)): Path<(Uuid, Uuid)>,
-    Json(body):          Json<UpdateRoleBody>,
+    Json(body): Json<UpdateRoleBody>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
 
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         Some(_) => return Err(MeetError::Forbidden),
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
 
     // Creator must always remain a moderator.
-    let m = repo.get(ctx.tenant_id, id).await
+    let m = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| MeetError::MeetingNotFound(id))?;
     if m.created_by == user_id && body.role != ParticipantRole::Moderator {
-        return Err(MeetError::BadRequest("cannot demote the meeting creator".into()));
+        return Err(MeetError::BadRequest(
+            "cannot demote the meeting creator".into(),
+        ));
     }
 
-    let found = repo.set_participant_role(ctx.tenant_id, id, user_id, body.role).await?;
+    let found = repo
+        .set_participant_role(ctx.tenant_id, id, user_id, body.role)
+        .await?;
     if !found {
         return Err(MeetError::BadRequest("participant not found".into()));
     }
@@ -831,22 +1024,28 @@ async fn update_participant_role(
 #[derive(Debug, Deserialize)]
 struct ListParticipantsQuery {
     #[serde(default = "default_participants_limit")]
-    limit:  i64,
+    limit: i64,
     #[serde(default)]
     offset: i64,
 }
-fn default_participants_limit() -> i64 { 50 }
+fn default_participants_limit() -> i64 {
+    50
+}
 
 async fn list_participants(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Query(q):     Query<ListParticipantsQuery>,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Query(q): Query<ListParticipantsQuery>,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    if repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?.is_none() {
+    if repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+        .is_none()
+    {
         return Err(MeetError::NotParticipant);
     }
     let max_invited: Option<OffsetDateTime> = sqlx::query_scalar(
@@ -860,7 +1059,9 @@ async fn list_participants(
     if let Some(ts) = max_invited {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -868,13 +1069,18 @@ async fn list_participants(
             }
         }
     }
-    let limit  = q.limit.clamp(1, 200);
+    let limit = q.limit.clamp(1, 200);
     let offset = q.offset.max(0);
-    let rows = repo.list_participants_paged(ctx.tenant_id, id, limit, offset).await?;
+    let rows = repo
+        .list_participants_paged(ctx.tenant_id, id, limit, offset)
+        .await?;
     let mut resp = Json(rows).into_response();
     if let Some(ts) = max_invited {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -883,17 +1089,24 @@ async fn list_participants(
 /// Returns 409 if already recording, 404 if meeting not found or archived.
 async fn recording_start(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<crate::domain::Meeting>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         _ => return Err(MeetError::Forbidden),
     }
-    let m = repo.start_recording(ctx.tenant_id, id).await?
-        .ok_or(MeetError::Conflict("meeting is already recording or not found".into()))?;
+    let m = repo
+        .start_recording(ctx.tenant_id, id)
+        .await?
+        .ok_or(MeetError::Conflict(
+            "meeting is already recording or not found".into(),
+        ))?;
     tracing::info!(target: "audit",
         event = "meet.recording.started",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, meeting_id = %id);
@@ -904,17 +1117,24 @@ async fn recording_start(
 /// Returns 409 if not currently recording, 404 if meeting not found or archived.
 async fn recording_stop(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<crate::domain::Meeting>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         _ => return Err(MeetError::Forbidden),
     }
-    let m = repo.stop_recording(ctx.tenant_id, id).await?
-        .ok_or(MeetError::Conflict("meeting is not recording or not found".into()))?;
+    let m = repo
+        .stop_recording(ctx.tenant_id, id)
+        .await?
+        .ok_or(MeetError::Conflict(
+            "meeting is not recording or not found".into(),
+        ))?;
     tracing::info!(target: "audit",
         event = "meet.recording.stopped",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, meeting_id = %id);
@@ -927,19 +1147,20 @@ async fn recording_stop(
 /// to expresso-chat for message history. 404 when the meeting has no channel.
 async fn get_chat(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
     // Must be a participant to access chat.
-    repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+    repo.participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
         .ok_or(MeetError::NotParticipant)?;
 
     let meeting = repo.get(ctx.tenant_id, id).await?;
-    let channel_id = meeting.channel_id.ok_or_else(|| MeetError::BadRequest(
-        "this meeting has no linked chat channel".into(),
-    ))?;
+    let channel_id = meeting
+        .channel_id
+        .ok_or_else(|| MeetError::BadRequest("this meeting has no linked chat channel".into()))?;
 
     let row: Option<(Uuid, String, String, Option<String>)> = sqlx::query_as(
         "SELECT id, matrix_room_id, name, topic \
@@ -966,12 +1187,14 @@ async fn get_chat(
 /// Requires moderator role. Returns waiting users ordered by `joined_at`.
 async fn list_lobby(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    let role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+    let role = repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
         .ok_or(MeetError::NotParticipant)?;
     if role != ParticipantRole::Moderator {
         return Err(MeetError::Forbidden);
@@ -979,12 +1202,14 @@ async fn list_lobby(
     // Verify meeting exists and lobby is enabled.
     let meeting = repo.get(ctx.tenant_id, id).await?;
     if !meeting.lobby_enabled {
-        return Err(MeetError::BadRequest("lobby is not enabled for this meeting".into()));
+        return Err(MeetError::BadRequest(
+            "lobby is not enabled for this meeting".into(),
+        ));
     }
 
     #[derive(sqlx::FromRow, Serialize)]
     struct LobbyEntry {
-        user_id:   Uuid,
+        user_id: Uuid,
         #[serde(with = "time::serde::rfc3339")]
         joined_at: OffsetDateTime,
     }
@@ -1008,14 +1233,16 @@ async fn list_lobby(
 /// Idempotent: inserting twice just updates joined_at via ON CONFLICT DO NOTHING.
 async fn join_lobby(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<(StatusCode, Json<Value>)> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
     let meeting = repo.get(ctx.tenant_id, id).await?;
     if !meeting.lobby_enabled {
-        return Err(MeetError::BadRequest("lobby is not enabled for this meeting".into()));
+        return Err(MeetError::BadRequest(
+            "lobby is not enabled for this meeting".into(),
+        ));
     }
     sqlx::query(
         "INSERT INTO meeting_lobby (meeting_id, tenant_id, user_id) \
@@ -1031,7 +1258,10 @@ async fn join_lobby(
     tracing::info!(target: "audit",
         event = "meet.lobby.join",
         tenant_id = %ctx.tenant_id, meeting_id = %id, user_id = %ctx.user_id);
-    Ok((StatusCode::CREATED, Json(json!({ "meeting_id": id, "status": "waiting" }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "meeting_id": id, "status": "waiting" })),
+    ))
 }
 
 /// POST /api/v1/meetings/:id/lobby/approve/:user_id — admit a user from the waiting room.
@@ -1039,12 +1269,14 @@ async fn join_lobby(
 /// Moderator-only. Removes the user from lobby and adds them as a participant.
 async fn approve_lobby(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Value>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    let role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+    let role = repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
         .ok_or(MeetError::NotParticipant)?;
     if role != ParticipantRole::Moderator {
         return Err(MeetError::Forbidden);
@@ -1061,7 +1293,9 @@ async fn approve_lobby(
     .map_err(MeetError::Database)?;
 
     if r.rows_affected() == 0 {
-        return Err(MeetError::BadRequest("user is not in the waiting room".into()));
+        return Err(MeetError::BadRequest(
+            "user is not in the waiting room".into(),
+        ));
     }
     // Add as participant (idempotent — skip if already a participant).
     sqlx::query(
@@ -1079,7 +1313,9 @@ async fn approve_lobby(
         event = "meet.lobby.approve",
         tenant_id = %ctx.tenant_id, meeting_id = %id,
         moderator_id = %ctx.user_id, approved_user_id = %user_id);
-    Ok(Json(json!({ "meeting_id": id, "user_id": user_id, "status": "admitted" })))
+    Ok(Json(
+        json!({ "meeting_id": id, "user_id": user_id, "status": "admitted" }),
+    ))
 }
 
 /// DELETE /api/v1/meetings/:id/lobby/:user_id — dismiss a user from the waiting room.
@@ -1087,12 +1323,14 @@ async fn approve_lobby(
 /// Moderator-only. Removes the user from lobby without admitting them.
 async fn remove_from_lobby(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    let role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+    let role = repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
         .ok_or(MeetError::NotParticipant)?;
     if role != ParticipantRole::Moderator {
         return Err(MeetError::Forbidden);
@@ -1116,17 +1354,17 @@ async fn remove_from_lobby(
 struct CreatePollBody {
     question: String,
     /// List of option labels, min 2.
-    options:  Vec<String>,
+    options: Vec<String>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 struct Poll {
-    id:         Uuid,
+    id: Uuid,
     meeting_id: Uuid,
     created_by: Uuid,
-    question:   String,
-    options:    SqlxJson<Vec<String>>,
-    is_closed:  bool,
+    question: String,
+    options: SqlxJson<Vec<String>>,
+    is_closed: bool,
     #[serde(with = "time::serde::rfc3339")]
     created_at: OffsetDateTime,
 }
@@ -1140,22 +1378,28 @@ struct CastVoteBody {
 /// POST /api/v1/meetings/:id/polls — create a poll (moderator-only).
 async fn create_poll(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<CreatePollBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<CreatePollBody>,
 ) -> Result<(StatusCode, Json<Poll>)> {
     if body.question.trim().is_empty() {
         return Err(MeetError::BadRequest("question must not be empty".into()));
     }
     if body.options.len() < 2 {
-        return Err(MeetError::BadRequest("polls require at least 2 options".into()));
+        return Err(MeetError::BadRequest(
+            "polls require at least 2 options".into(),
+        ));
     }
     if body.options.len() > 20 {
-        return Err(MeetError::BadRequest("polls allow at most 20 options".into()));
+        return Err(MeetError::BadRequest(
+            "polls allow at most 20 options".into(),
+        ));
     }
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    let role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+    let role = repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
         .ok_or(MeetError::NotParticipant)?;
     if role != ParticipantRole::Moderator {
         return Err(MeetError::Forbidden);
@@ -1163,10 +1407,12 @@ async fn create_poll(
     // Ensure meeting exists and is not archived.
     let meeting = repo.get(ctx.tenant_id, id).await?;
     if meeting.is_archived {
-        return Err(MeetError::BadRequest("cannot create poll in an archived meeting".into()));
+        return Err(MeetError::BadRequest(
+            "cannot create poll in an archived meeting".into(),
+        ));
     }
-    let opts_json = serde_json::to_value(&body.options)
-        .map_err(|e| MeetError::BadRequest(e.to_string()))?;
+    let opts_json =
+        serde_json::to_value(&body.options).map_err(|e| MeetError::BadRequest(e.to_string()))?;
     let row: Poll = sqlx::query_as(
         "INSERT INTO meeting_polls (meeting_id, tenant_id, created_by, question, options) \
          VALUES ($1, $2, $3, $4, $5) \
@@ -1190,12 +1436,13 @@ async fn create_poll(
 /// GET /api/v1/meetings/:id/polls — list all polls for this meeting (participant-only).
 async fn list_polls(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+    repo.participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
         .ok_or(MeetError::NotParticipant)?;
 
     let polls: Vec<Poll> = sqlx::query_as(
@@ -1215,12 +1462,13 @@ async fn list_polls(
 /// GET /api/v1/meetings/:id/polls/:poll_id — poll detail with vote tallies (participant-only).
 async fn get_poll(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, poll_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Value>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+    repo.participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
         .ok_or(MeetError::NotParticipant)?;
 
     let poll: Option<Poll> = sqlx::query_as(
@@ -1237,7 +1485,10 @@ async fn get_poll(
 
     // Tally votes per option.
     #[derive(sqlx::FromRow)]
-    struct Tally { option_idx: i32, cnt: i64 }
+    struct Tally {
+        option_idx: i32,
+        cnt: i64,
+    }
     let tallies: Vec<Tally> = sqlx::query_as(
         "SELECT option_idx, COUNT(*)::BIGINT AS cnt \
          FROM meeting_poll_votes WHERE poll_id = $1 \
@@ -1251,7 +1502,9 @@ async fn get_poll(
     let mut tally_map: Vec<i64> = vec![0; poll.options.0.len()];
     for t in &tallies {
         let idx = t.option_idx as usize;
-        if idx < tally_map.len() { tally_map[idx] = t.cnt; }
+        if idx < tally_map.len() {
+            tally_map[idx] = t.cnt;
+        }
     }
 
     // Caller's own vote if any.
@@ -1277,12 +1530,14 @@ async fn get_poll(
 /// Closing prevents further votes but retains results.
 async fn close_poll(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, poll_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    let role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+    let role = repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
         .ok_or(MeetError::NotParticipant)?;
     if role != ParticipantRole::Moderator {
         return Err(MeetError::Forbidden);
@@ -1309,13 +1564,14 @@ async fn close_poll(
 /// Uses UPSERT: voting again with a different option_idx replaces the previous vote.
 async fn cast_vote(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, poll_id)): Path<(Uuid, Uuid)>,
-    Json(body):   Json<CastVoteBody>,
+    Json(body): Json<CastVoteBody>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+    repo.participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
         .ok_or(MeetError::NotParticipant)?;
 
     // Load poll — verify it's open and option is valid.
@@ -1373,11 +1629,11 @@ mod tests {
     #[test]
     fn room_name_rejects_special_chars() {
         assert!(!valid_room_name(""));
-        assert!(!valid_room_name("a/b"));        // path traversal
-        assert!(!valid_room_name(".."));         // path traversal
-        assert!(!valid_room_name("a b"));        // space
-        assert!(!valid_room_name("café"));       // unicode (would need URL-encode)
-        assert!(!valid_room_name("a\nb"));       // newline injection
+        assert!(!valid_room_name("a/b")); // path traversal
+        assert!(!valid_room_name("..")); // path traversal
+        assert!(!valid_room_name("a b")); // space
+        assert!(!valid_room_name("café")); // unicode (would need URL-encode)
+        assert!(!valid_room_name("a\nb")); // newline injection
     }
 
     #[test]
@@ -1395,8 +1651,8 @@ mod tests {
     #[test]
     fn caps_are_sane() {
         assert!(MAX_TITLE_BYTES >= 50);
-        assert!(MAX_INVITE_LEN  >= 10);
-        assert!(MAX_EMAIL_BYTES >= 254);  // RFC 5321 baseline
+        assert!(MAX_INVITE_LEN >= 10);
+        assert!(MAX_EMAIL_BYTES >= 254); // RFC 5321 baseline
     }
 
     #[test]
@@ -1499,10 +1755,10 @@ mod tests {
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 struct BreakoutRoom {
-    id:         Uuid,
+    id: Uuid,
     meeting_id: Uuid,
-    tenant_id:  Uuid,
-    name:       String,
+    tenant_id: Uuid,
+    name: String,
     created_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
     created_at: OffsetDateTime,
@@ -1511,9 +1767,9 @@ struct BreakoutRoom {
 #[derive(Debug, Serialize, sqlx::FromRow)]
 #[allow(dead_code)] // breakout-room participant DTO; feature not yet wired
 struct BreakoutParticipant {
-    room_id:    Uuid,
-    user_id:    Uuid,
-    tenant_id:  Uuid,
+    room_id: Uuid,
+    user_id: Uuid,
+    tenant_id: Uuid,
     #[serde(with = "time::serde::rfc3339")]
     assigned_at: OffsetDateTime,
 }
@@ -1531,36 +1787,44 @@ struct BreakoutParticipantBody {
 #[derive(Debug, Serialize)]
 struct BreakoutRoomDetail {
     #[serde(flatten)]
-    room:         BreakoutRoom,
+    room: BreakoutRoom,
     participants: Vec<Uuid>,
 }
 
 /// POST /api/v1/meetings/:id/breakouts — create sub-room (moderator-only)
 async fn create_breakout(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<BreakoutBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<BreakoutBody>,
 ) -> Result<(StatusCode, Json<BreakoutRoom>)> {
     if body.name.trim().is_empty() {
         return Err(MeetError::BadRequest("name must not be empty".into()));
     }
     if body.name.len() > 100 {
-        return Err(MeetError::BadRequest("name must be <= 100 characters".into()));
+        return Err(MeetError::BadRequest(
+            "name must be <= 100 characters".into(),
+        ));
     }
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         Some(_) => return Err(MeetError::Forbidden),
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
     let room: BreakoutRoom = sqlx::query_as(
         "INSERT INTO meeting_breakout_rooms (meeting_id, tenant_id, name, created_by) \
          VALUES ($1, $2, $3, $4) \
          RETURNING id, meeting_id, tenant_id, name, created_by, created_at",
     )
-    .bind(id).bind(ctx.tenant_id).bind(&body.name).bind(ctx.user_id)
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(&body.name)
+    .bind(ctx.user_id)
     .fetch_one(pool)
     .await?;
     Ok((StatusCode::CREATED, Json(room)))
@@ -1569,18 +1833,22 @@ async fn create_breakout(
 /// GET /api/v1/meetings/:id/breakouts — list breakout rooms with participants
 async fn list_breakouts(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<BreakoutRoomDetail>>> {
     let pool = state.db_or_unavailable()?;
-    let _ = MeetingRepo::new(pool).get(ctx.tenant_id, id).await.map_err(|_| MeetError::MeetingNotFound(id))?;
+    let _ = MeetingRepo::new(pool)
+        .get(ctx.tenant_id, id)
+        .await
+        .map_err(|_| MeetError::MeetingNotFound(id))?;
     let rooms: Vec<BreakoutRoom> = sqlx::query_as(
         "SELECT id, meeting_id, tenant_id, name, created_by, created_at \
          FROM meeting_breakout_rooms \
          WHERE meeting_id = $1 AND tenant_id = $2 \
          ORDER BY created_at ASC",
     )
-    .bind(id).bind(ctx.tenant_id)
+    .bind(id)
+    .bind(ctx.tenant_id)
     .fetch_all(pool)
     .await?;
 
@@ -1590,7 +1858,8 @@ async fn list_breakouts(
             "SELECT user_id FROM meeting_breakout_participants \
              WHERE room_id = $1 AND tenant_id = $2",
         )
-        .bind(room.id).bind(ctx.tenant_id)
+        .bind(room.id)
+        .bind(ctx.tenant_id)
         .fetch_all(pool)
         .await?;
         result.push(BreakoutRoomDetail {
@@ -1604,7 +1873,7 @@ async fn list_breakouts(
 /// GET /api/v1/meetings/:id/breakouts/:room_id
 async fn get_breakout(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, room_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<BreakoutRoomDetail>> {
     let pool = state.db_or_unavailable()?;
@@ -1613,7 +1882,9 @@ async fn get_breakout(
          FROM meeting_breakout_rooms \
          WHERE id = $1 AND meeting_id = $2 AND tenant_id = $3",
     )
-    .bind(room_id).bind(id).bind(ctx.tenant_id)
+    .bind(room_id)
+    .bind(id)
+    .bind(ctx.tenant_id)
     .fetch_optional(pool)
     .await?;
     let room = room.ok_or(MeetError::NotFound)?;
@@ -1621,7 +1892,8 @@ async fn get_breakout(
         "SELECT user_id FROM meeting_breakout_participants \
          WHERE room_id = $1 AND tenant_id = $2",
     )
-    .bind(room.id).bind(ctx.tenant_id)
+    .bind(room.id)
+    .bind(ctx.tenant_id)
     .fetch_all(pool)
     .await?;
     Ok(Json(BreakoutRoomDetail {
@@ -1633,21 +1905,26 @@ async fn get_breakout(
 /// DELETE /api/v1/meetings/:id/breakouts/:room_id (moderator-only)
 async fn delete_breakout(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, room_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         Some(_) => return Err(MeetError::Forbidden),
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
     let r = sqlx::query(
         "DELETE FROM meeting_breakout_rooms \
          WHERE id = $1 AND meeting_id = $2 AND tenant_id = $3",
     )
-    .bind(room_id).bind(id).bind(ctx.tenant_id)
+    .bind(room_id)
+    .bind(id)
+    .bind(ctx.tenant_id)
     .execute(pool)
     .await?;
     if r.rows_affected() == 0 {
@@ -1659,22 +1936,28 @@ async fn delete_breakout(
 /// POST /api/v1/meetings/:id/breakouts/:room_id/participants — assign participant (moderator-only)
 async fn assign_breakout_participant(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, room_id)): Path<(Uuid, Uuid)>,
-    Json(body):   Json<BreakoutParticipantBody>,
+    Json(body): Json<BreakoutParticipantBody>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         Some(_) => return Err(MeetError::Forbidden),
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
     sqlx::query(
         "INSERT INTO meeting_breakout_participants (room_id, meeting_id, tenant_id, user_id) \
          VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
     )
-    .bind(room_id).bind(id).bind(ctx.tenant_id).bind(body.user_id)
+    .bind(room_id)
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(body.user_id)
     .execute(pool)
     .await?;
     Ok(StatusCode::NO_CONTENT)
@@ -1683,22 +1966,28 @@ async fn assign_breakout_participant(
 /// DELETE /api/v1/meetings/:id/breakouts/:room_id/participants — remove participant (moderator-only)
 async fn remove_breakout_participant(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, room_id)): Path<(Uuid, Uuid)>,
-    Json(body):   Json<BreakoutParticipantBody>,
+    Json(body): Json<BreakoutParticipantBody>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         Some(_) => return Err(MeetError::Forbidden),
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
     sqlx::query(
         "DELETE FROM meeting_breakout_participants \
          WHERE room_id = $1 AND meeting_id = $2 AND tenant_id = $3 AND user_id = $4",
     )
-    .bind(room_id).bind(id).bind(ctx.tenant_id).bind(body.user_id)
+    .bind(room_id)
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(body.user_id)
     .execute(pool)
     .await?;
     Ok(StatusCode::NO_CONTENT)
@@ -1708,15 +1997,15 @@ async fn remove_breakout_participant(
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 struct Transcript {
-    pub id:         Uuid,
+    pub id: Uuid,
     pub meeting_id: Uuid,
-    pub tenant_id:  Uuid,
-    pub url:        String,
-    pub language:   Option<String>,
+    pub tenant_id: Uuid,
+    pub url: String,
+    pub language: Option<String>,
     #[serde(with = "time::serde::rfc3339::option")]
-    pub starts_at:  Option<OffsetDateTime>,
+    pub starts_at: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option")]
-    pub ends_at:    Option<OffsetDateTime>,
+    pub ends_at: Option<OffsetDateTime>,
     pub created_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
@@ -1724,23 +2013,26 @@ struct Transcript {
 
 #[derive(Debug, Deserialize)]
 struct CreateTranscriptBody {
-    url:       String,
-    language:  Option<String>,
+    url: String,
+    language: Option<String>,
     starts_at: Option<OffsetDateTime>,
-    ends_at:   Option<OffsetDateTime>,
+    ends_at: Option<OffsetDateTime>,
 }
 
 /// GET /api/v1/meetings/:id/transcript — list transcripts (participant-only).
 async fn list_transcripts(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<Transcript>>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(_) => {}
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
     let rows: Vec<Transcript> = sqlx::query_as(
         "SELECT id, meeting_id, tenant_id, url, language, starts_at, ends_at, created_by, created_at \
@@ -1757,19 +2049,22 @@ async fn list_transcripts(
 /// POST /api/v1/meetings/:id/transcript — attach transcript metadata (moderator-only).
 async fn create_transcript(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<CreateTranscriptBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<CreateTranscriptBody>,
 ) -> Result<(StatusCode, Json<Transcript>)> {
     if body.url.is_empty() {
         return Err(MeetError::BadRequest("url is required".into()));
     }
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         Some(_) => return Err(MeetError::Forbidden),
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
     let row: Transcript = sqlx::query_as(
         "INSERT INTO meeting_transcripts \
@@ -1800,15 +2095,18 @@ struct TranscriptSearchQuery {
 /// Returns the same `Transcript` rows as the listing endpoint, filtered by `q`.
 async fn search_transcripts(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Query(qs):    Query<TranscriptSearchQuery>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Query(qs): Query<TranscriptSearchQuery>,
 ) -> Result<Json<Vec<Transcript>>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(_) => {}
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
 
     let pattern = qs.q.as_deref().unwrap_or("").trim().to_string();
@@ -1847,17 +2145,17 @@ async fn search_transcripts(
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 struct Recording {
-    id:         Uuid,
+    id: Uuid,
     meeting_id: Uuid,
-    tenant_id:  Uuid,
-    url:        String,
+    tenant_id: Uuid,
+    url: String,
     duration_s: Option<i32>,
     size_bytes: Option<i64>,
-    format:     Option<String>,
+    format: Option<String>,
     #[serde(with = "time::serde::rfc3339::option")]
-    starts_at:  Option<OffsetDateTime>,
+    starts_at: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option")]
-    ends_at:    Option<OffsetDateTime>,
+    ends_at: Option<OffsetDateTime>,
     created_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
     created_at: OffsetDateTime,
@@ -1865,14 +2163,14 @@ struct Recording {
 
 #[derive(Debug, Deserialize)]
 struct CreateRecordingBody {
-    url:        String,
+    url: String,
     duration_s: Option<i32>,
     size_bytes: Option<i64>,
-    format:     Option<String>,
+    format: Option<String>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    starts_at:  Option<OffsetDateTime>,
+    starts_at: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    ends_at:    Option<OffsetDateTime>,
+    ends_at: Option<OffsetDateTime>,
 }
 
 const RECORDING_COLS: &str =
@@ -1881,20 +2179,24 @@ const RECORDING_COLS: &str =
 /// GET /api/v1/meetings/:id/recordings — list recording metadata (participant-only).
 async fn list_recordings(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<Recording>>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(_) => {}
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
-    let rows: Vec<Recording> = sqlx::query_as(
-        &format!("SELECT {RECORDING_COLS} FROM meeting_recordings \
-                  WHERE tenant_id = $1 AND meeting_id = $2 ORDER BY created_at ASC"),
-    )
-    .bind(ctx.tenant_id).bind(id)
+    let rows: Vec<Recording> = sqlx::query_as(&format!(
+        "SELECT {RECORDING_COLS} FROM meeting_recordings \
+                  WHERE tenant_id = $1 AND meeting_id = $2 ORDER BY created_at ASC"
+    ))
+    .bind(ctx.tenant_id)
+    .bind(id)
     .fetch_all(pool)
     .await?;
     Ok(Json(rows))
@@ -1903,19 +2205,22 @@ async fn list_recordings(
 /// POST /api/v1/meetings/:id/recordings — attach recording metadata (moderator-only).
 async fn create_recording(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<CreateRecordingBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<CreateRecordingBody>,
 ) -> Result<(StatusCode, Json<Recording>)> {
     if body.url.is_empty() {
         return Err(MeetError::BadRequest("url is required".into()));
     }
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(ParticipantRole::Moderator) => {}
         Some(_) => return Err(MeetError::Forbidden),
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
     let row: Recording = sqlx::query_as(
         &format!("INSERT INTO meeting_recordings \
@@ -1940,25 +2245,30 @@ async fn create_recording(
 /// GET /api/v1/meetings/:id/recordings/:rec_id — get a specific recording (participant-only).
 async fn get_recording(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, rec_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<Recording>> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+    match repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+    {
         Some(_) => {}
-        None    => return Err(MeetError::NotParticipant),
+        None => return Err(MeetError::NotParticipant),
     }
-    let row: Option<Recording> = sqlx::query_as(
-        &format!("SELECT {RECORDING_COLS} FROM meeting_recordings \
-                  WHERE tenant_id = $1 AND meeting_id = $2 AND id = $3"),
-    )
-    .bind(ctx.tenant_id).bind(id).bind(rec_id)
+    let row: Option<Recording> = sqlx::query_as(&format!(
+        "SELECT {RECORDING_COLS} FROM meeting_recordings \
+                  WHERE tenant_id = $1 AND meeting_id = $2 AND id = $3"
+    ))
+    .bind(ctx.tenant_id)
+    .bind(id)
+    .bind(rec_id)
     .fetch_optional(pool)
     .await?;
     match row {
         Some(r) => Ok(Json(r)),
-        None    => Err(MeetError::NotFound),
+        None => Err(MeetError::NotFound),
     }
 }
 
@@ -1966,12 +2276,14 @@ async fn get_recording(
 /// Permitido para moderador OU para o usuário que criou o recording (sprint #417).
 async fn delete_recording(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, rec_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    let role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+    let role = repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
         .ok_or(MeetError::NotParticipant)?;
 
     if !matches!(role, ParticipantRole::Moderator) {
@@ -1979,20 +2291,24 @@ async fn delete_recording(
             "SELECT created_by FROM meeting_recordings \
              WHERE tenant_id = $1 AND meeting_id = $2 AND id = $3",
         )
-        .bind(ctx.tenant_id).bind(id).bind(rec_id)
+        .bind(ctx.tenant_id)
+        .bind(id)
+        .bind(rec_id)
         .fetch_optional(pool)
         .await?;
         match creator {
             Some((cb,)) if cb == ctx.user_id => {}
             Some(_) => return Err(MeetError::Forbidden),
-            None    => return Err(MeetError::NotFound),
+            None => return Err(MeetError::NotFound),
         }
     }
 
     let r = sqlx::query(
         "DELETE FROM meeting_recordings WHERE tenant_id = $1 AND meeting_id = $2 AND id = $3",
     )
-    .bind(ctx.tenant_id).bind(id).bind(rec_id)
+    .bind(ctx.tenant_id)
+    .bind(id)
+    .bind(rec_id)
     .execute(pool)
     .await?;
     if r.rows_affected() == 0 {

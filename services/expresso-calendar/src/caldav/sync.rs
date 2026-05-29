@@ -26,10 +26,10 @@ use crate::state::AppState;
 const TOKEN_PREFIX: &str = "urn:expresso:ctag:";
 
 pub async fn handle(
-    state:       AppState,
-    principal:   &CalDavPrincipal,
+    state: AppState,
+    principal: &CalDavPrincipal,
     calendar_id: Uuid,
-    body:        &str,
+    body: &str,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let current_ctag = CalendarRepo::new(pool)
@@ -37,7 +37,9 @@ pub async fn handle(
         .await?;
     let new_token = format!("{TOKEN_PREFIX}{current_ctag}");
 
-    let client_ctag = xml::parse_sync_token(body).as_deref().and_then(parse_token_value);
+    let client_ctag = xml::parse_sync_token(body)
+        .as_deref()
+        .and_then(parse_token_value);
 
     let mut out = String::with_capacity(1024);
     out.push_str(XML_PROLOG);
@@ -88,11 +90,11 @@ pub async fn handle(
 }
 
 async fn write_changed_since(
-    out:         &mut String,
-    pool:        &DbPool,
-    principal:   &CalDavPrincipal,
+    out: &mut String,
+    pool: &DbPool,
+    principal: &CalDavPrincipal,
     calendar_id: Uuid,
-    from_ctag:   i64,
+    from_ctag: i64,
 ) -> Result<()> {
     let mut tx = begin_tenant_tx(pool, principal.tenant_id).await?;
     let rows = sqlx::query(
@@ -113,7 +115,7 @@ async fn write_changed_since(
     tx.commit().await?;
 
     for r in rows {
-        let uid:  String = r.get("uid");
+        let uid: String = r.get("uid");
         let etag: String = r.get("etag");
         push_member(out, principal.user_id, calendar_id, &uid, &etag);
     }
@@ -121,11 +123,11 @@ async fn write_changed_since(
 }
 
 async fn write_tombstones_since(
-    out:         &mut String,
-    pool:        &DbPool,
-    principal:   &CalDavPrincipal,
+    out: &mut String,
+    pool: &DbPool,
+    principal: &CalDavPrincipal,
     calendar_id: Uuid,
-    from_ctag:   i64,
+    from_ctag: i64,
 ) -> Result<()> {
     let mut tx = begin_tenant_tx(pool, principal.tenant_id).await?;
     let rows = sqlx::query(
@@ -180,7 +182,8 @@ fn push_token(out: &mut String, token: &str) {
 }
 
 fn parse_token_value(tok: &str) -> Option<i64> {
-    tok.strip_prefix(TOKEN_PREFIX).and_then(|n| n.parse::<i64>().ok())
+    tok.strip_prefix(TOKEN_PREFIX)
+        .and_then(|n| n.parse::<i64>().ok())
 }
 
 fn ok_207(body: String) -> Response {
@@ -211,7 +214,10 @@ mod tests {
 
     #[test]
     fn parse_token_value_large() {
-        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}99999")), Some(99999));
+        assert_eq!(
+            parse_token_value(&format!("{TOKEN_PREFIX}99999")),
+            Some(99999)
+        );
     }
 
     #[test]
@@ -230,7 +236,7 @@ mod tests {
     #[test]
     fn push_member_contains_ics_href_and_etag() {
         let user = Uuid::nil();
-        let cal  = Uuid::nil();
+        let cal = Uuid::nil();
         let mut out = String::new();
         push_member(&mut out, user, cal, "evt-uid", "etag42");
         assert!(out.contains(".ics"));
@@ -241,7 +247,7 @@ mod tests {
     #[test]
     fn push_member_contains_uid_in_href() {
         let user = Uuid::nil();
-        let cal  = Uuid::nil();
+        let cal = Uuid::nil();
         let mut out = String::new();
         push_member(&mut out, user, cal, "my-unique-uid", "e1");
         assert!(out.contains("my-unique-uid"));
@@ -264,7 +270,10 @@ mod tests {
 
     #[test]
     fn parse_token_large_value_parsed() {
-        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}999999")), Some(999_999));
+        assert_eq!(
+            parse_token_value(&format!("{TOKEN_PREFIX}999999")),
+            Some(999_999)
+        );
     }
 
     #[test]

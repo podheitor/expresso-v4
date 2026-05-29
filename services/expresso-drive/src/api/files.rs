@@ -8,112 +8,240 @@ use axum::{
     routing::{delete, get, patch, post},
     Json, Router,
 };
-use std::io::Write as IoWrite;
-use time::OffsetDateTime;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::io::Write as IoWrite;
 use std::path::PathBuf;
+use time::OffsetDateTime;
 use tokio::{fs, io::AsyncWriteExt};
 use uuid::Uuid;
 
 use crate::{
     api::context::RequestCtx,
-    domain::{DriveFile, FileRepo, FolderQuota, FolderQuotaRepo, NewFile, NewVersion, QuotaRepo, TagRepo, VersionRepo},
+    domain::{
+        DriveFile, FileRepo, FolderQuota, FolderQuotaRepo, NewFile, NewVersion, QuotaRepo, TagRepo,
+        VersionRepo,
+    },
     error::{DriveError, Result},
     state::AppState,
 };
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/drive/files",                       get(list).post(upload))
-        .route("/api/v1/drive/files/mkdir",                 post(mkdir))
-        .route("/api/v1/drive/files/:id",                   get(download).delete(delete_file).head(head_file))
-        .route("/api/v1/drive/files/:id/preview",           get(preview))
-        .route("/api/v1/drive/files/:id/metadata",          get(metadata).patch(rename))
-        .route("/api/v1/drive/files/search",                 get(search))
-        .route("/api/v1/drive/files/bulk-trash",             post(bulk_trash))
-        .route("/api/v1/drive/files/bulk-move",              post(bulk_move))
-        .route("/api/v1/drive/files/bulk-copy",              post(bulk_copy))
-        .route("/api/v1/drive/files/bulk-restore",           post(bulk_restore))
-        .route("/api/v1/drive/files/:id/copy",               post(copy_file))
-        .route("/api/v1/drive/files/:id/move",              post(move_file))
-        .route("/api/v1/drive/files/:id/restore",           post(restore))
-        .route("/api/v1/drive/files/:id/tags",              get(list_tags).post(add_tag))
-        .route("/api/v1/drive/files/:id/tags/:tag",         delete(remove_tag))
-        .route("/api/v1/drive/files/:id/versions",          get(list_versions))
-        .route("/api/v1/drive/files/:id/versions/:v",          get(download_version).delete(delete_version))
-        .route("/api/v1/drive/files/:id/versions/:v/metadata", get(version_metadata))
-        .route("/api/v1/drive/files/:id/versions/:v/restore",  post(restore_version))
-        .route("/api/v1/drive/files/:id/versions/:v/diff-content", get(diff_version_content))
-        .route("/api/v1/drive/files/:id/expiry",              patch(set_expiry))
-        .route("/api/v1/drive/files/:id/lock",               post(lock_file).delete(unlock_file))
-        .route("/api/v1/drive/files/:id/star",               post(star_file).delete(unstar_file))
-        .route("/api/v1/drive/starred",                      get(list_starred))
-        .route("/api/v1/drive/starred/count",                get(count_starred))
-        .route("/api/v1/drive/folders/:id/download",         get(download_folder))
-        .route("/api/v1/drive/folders/:id/quota",           get(folder_quota).put(set_folder_quota).delete(delete_folder_quota))
-        .route("/api/v1/drive/trash",                       get(trash).delete(purge_trash))
-        .route("/api/v1/drive/quota",                       get(quota))
-        .route("/api/v1/drive/files/stats",                 get(file_stats))
-        .route("/api/v1/drive/files/stats/users",           get(file_stats_users))
-        .route("/api/v1/drive/files/stats/folders",         get(file_stats_folders))
-        .route("/api/v1/drive/files/stats/extensions",      get(file_stats_extensions))
-        .route("/api/v1/drive/files/stats/activity",       get(file_stats_activity))
-        .route("/api/v1/drive/files/stats/age",            get(file_stats_age))
-        .route("/api/v1/drive/files/stats/owners",        get(file_stats_owners))
-        .route("/api/v1/drive/files/stats/size-buckets", get(file_stats_size_buckets))
-        .route("/api/v1/drive/files/stats/deleted",         get(file_stats_deleted))
-        .route("/api/v1/drive/files/stats/by-owner-and-ext", get(file_stats_by_owner_and_ext))
-        .route("/api/v1/drive/files/stats/recent",           get(file_stats_recent))
-        .route("/api/v1/drive/files/stats/mime-by-folder",  get(file_stats_mime_by_folder))
-        .route("/api/v1/drive/files/stats/top-files",        get(file_stats_top_files))
-        .route("/api/v1/drive/files/stats/created-by-day",  get(file_stats_created_by_day))
-        .route("/api/v1/drive/files/stats/by-size-bucket",  get(file_stats_by_size_bucket))
-        .route("/api/v1/drive/files/stats/updated-by-day",  get(file_stats_updated_by_day))
-        .route("/api/v1/drive/files/stats/folder-depth",    get(file_stats_folder_depth))
-        .route("/api/v1/drive/files/stats/version-count",   get(file_stats_version_count))
-        .route("/api/v1/drive/files/stats/tag-count",        get(file_stats_tag_count))
-        .route("/api/v1/drive/files/stats/ext-by-folder",    get(file_stats_ext_by_folder))
-        .route("/api/v1/drive/files/stats/lock-count",       get(file_stats_lock_count))
-        .route("/api/v1/drive/files/stats/starred-count",    get(file_stats_starred_count))
-        .route("/api/v1/drive/files/stats/expiry-count",    get(file_stats_expiry_count))
-        .route("/api/v1/drive/files/stats/mime-top-n",       get(file_stats_mime_top_n))
-        .route("/api/v1/drive/files/stats/orphan-versions",  get(file_stats_orphan_versions))
-        .route("/api/v1/drive/files/stats/empty-files",      get(file_stats_empty_files))
-        .route("/api/v1/drive/files/stats/deleted-by-day",   get(file_stats_deleted_by_day))
-        .route("/api/v1/drive/files/stats/name-length",       get(file_stats_name_length))
-        .route("/api/v1/drive/files/stats/ext-top-n",         get(file_stats_ext_top_n))
-        .route("/api/v1/drive/files/stats/storage-by-user",   get(file_stats_storage_by_user))
-        .route("/api/v1/drive/files/stats/quota-usage",        get(file_stats_quota_usage))
-        .route("/api/v1/drive/files/stats/folder-file-count",  get(file_stats_folder_file_count))
-        .route("/api/v1/drive/files/stats/deep-files",         get(file_stats_deep_files))
-        .route("/api/v1/drive/files/stats/mime-entropy",        get(file_stats_mime_entropy))
-        .route("/api/v1/drive/files/stats/avg-versions",         get(file_stats_avg_versions))
-        .route("/api/v1/drive/files/stats/ext-entropy",           get(file_stats_ext_entropy))
-        .route("/api/v1/drive/files/stats/checksum-coverage",      get(file_stats_checksum_coverage))
-        .route("/api/v1/drive/files/stats/storage-key-coverage",   get(file_stats_storage_key_coverage))
-        .route("/api/v1/drive/files/stats/locked-by-user",         get(file_stats_locked_by_user))
-        .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
+        .route("/api/v1/drive/files", get(list).post(upload))
+        .route("/api/v1/drive/files/mkdir", post(mkdir))
+        .route(
+            "/api/v1/drive/files/:id",
+            get(download).delete(delete_file).head(head_file),
+        )
+        .route("/api/v1/drive/files/:id/preview", get(preview))
+        .route(
+            "/api/v1/drive/files/:id/metadata",
+            get(metadata).patch(rename),
+        )
+        .route("/api/v1/drive/files/search", get(search))
+        .route("/api/v1/drive/files/bulk-trash", post(bulk_trash))
+        .route("/api/v1/drive/files/bulk-move", post(bulk_move))
+        .route("/api/v1/drive/files/bulk-copy", post(bulk_copy))
+        .route("/api/v1/drive/files/bulk-restore", post(bulk_restore))
+        .route("/api/v1/drive/files/:id/copy", post(copy_file))
+        .route("/api/v1/drive/files/:id/move", post(move_file))
+        .route("/api/v1/drive/files/:id/restore", post(restore))
+        .route("/api/v1/drive/files/:id/tags", get(list_tags).post(add_tag))
+        .route("/api/v1/drive/files/:id/tags/:tag", delete(remove_tag))
+        .route("/api/v1/drive/files/:id/versions", get(list_versions))
+        .route(
+            "/api/v1/drive/files/:id/versions/:v",
+            get(download_version).delete(delete_version),
+        )
+        .route(
+            "/api/v1/drive/files/:id/versions/:v/metadata",
+            get(version_metadata),
+        )
+        .route(
+            "/api/v1/drive/files/:id/versions/:v/restore",
+            post(restore_version),
+        )
+        .route(
+            "/api/v1/drive/files/:id/versions/:v/diff-content",
+            get(diff_version_content),
+        )
+        .route("/api/v1/drive/files/:id/expiry", patch(set_expiry))
+        .route(
+            "/api/v1/drive/files/:id/lock",
+            post(lock_file).delete(unlock_file),
+        )
+        .route(
+            "/api/v1/drive/files/:id/star",
+            post(star_file).delete(unstar_file),
+        )
+        .route("/api/v1/drive/starred", get(list_starred))
+        .route("/api/v1/drive/starred/count", get(count_starred))
+        .route("/api/v1/drive/folders/:id/download", get(download_folder))
+        .route(
+            "/api/v1/drive/folders/:id/quota",
+            get(folder_quota)
+                .put(set_folder_quota)
+                .delete(delete_folder_quota),
+        )
+        .route("/api/v1/drive/trash", get(trash).delete(purge_trash))
+        .route("/api/v1/drive/quota", get(quota))
+        .route("/api/v1/drive/files/stats", get(file_stats))
+        .route("/api/v1/drive/files/stats/users", get(file_stats_users))
+        .route("/api/v1/drive/files/stats/folders", get(file_stats_folders))
+        .route(
+            "/api/v1/drive/files/stats/extensions",
+            get(file_stats_extensions),
+        )
+        .route(
+            "/api/v1/drive/files/stats/activity",
+            get(file_stats_activity),
+        )
+        .route("/api/v1/drive/files/stats/age", get(file_stats_age))
+        .route("/api/v1/drive/files/stats/owners", get(file_stats_owners))
+        .route(
+            "/api/v1/drive/files/stats/size-buckets",
+            get(file_stats_size_buckets),
+        )
+        .route("/api/v1/drive/files/stats/deleted", get(file_stats_deleted))
+        .route(
+            "/api/v1/drive/files/stats/by-owner-and-ext",
+            get(file_stats_by_owner_and_ext),
+        )
+        .route("/api/v1/drive/files/stats/recent", get(file_stats_recent))
+        .route(
+            "/api/v1/drive/files/stats/mime-by-folder",
+            get(file_stats_mime_by_folder),
+        )
+        .route(
+            "/api/v1/drive/files/stats/top-files",
+            get(file_stats_top_files),
+        )
+        .route(
+            "/api/v1/drive/files/stats/created-by-day",
+            get(file_stats_created_by_day),
+        )
+        .route(
+            "/api/v1/drive/files/stats/by-size-bucket",
+            get(file_stats_by_size_bucket),
+        )
+        .route(
+            "/api/v1/drive/files/stats/updated-by-day",
+            get(file_stats_updated_by_day),
+        )
+        .route(
+            "/api/v1/drive/files/stats/folder-depth",
+            get(file_stats_folder_depth),
+        )
+        .route(
+            "/api/v1/drive/files/stats/version-count",
+            get(file_stats_version_count),
+        )
+        .route(
+            "/api/v1/drive/files/stats/tag-count",
+            get(file_stats_tag_count),
+        )
+        .route(
+            "/api/v1/drive/files/stats/ext-by-folder",
+            get(file_stats_ext_by_folder),
+        )
+        .route(
+            "/api/v1/drive/files/stats/lock-count",
+            get(file_stats_lock_count),
+        )
+        .route(
+            "/api/v1/drive/files/stats/starred-count",
+            get(file_stats_starred_count),
+        )
+        .route(
+            "/api/v1/drive/files/stats/expiry-count",
+            get(file_stats_expiry_count),
+        )
+        .route(
+            "/api/v1/drive/files/stats/mime-top-n",
+            get(file_stats_mime_top_n),
+        )
+        .route(
+            "/api/v1/drive/files/stats/orphan-versions",
+            get(file_stats_orphan_versions),
+        )
+        .route(
+            "/api/v1/drive/files/stats/empty-files",
+            get(file_stats_empty_files),
+        )
+        .route(
+            "/api/v1/drive/files/stats/deleted-by-day",
+            get(file_stats_deleted_by_day),
+        )
+        .route(
+            "/api/v1/drive/files/stats/name-length",
+            get(file_stats_name_length),
+        )
+        .route(
+            "/api/v1/drive/files/stats/ext-top-n",
+            get(file_stats_ext_top_n),
+        )
+        .route(
+            "/api/v1/drive/files/stats/storage-by-user",
+            get(file_stats_storage_by_user),
+        )
+        .route(
+            "/api/v1/drive/files/stats/quota-usage",
+            get(file_stats_quota_usage),
+        )
+        .route(
+            "/api/v1/drive/files/stats/folder-file-count",
+            get(file_stats_folder_file_count),
+        )
+        .route(
+            "/api/v1/drive/files/stats/deep-files",
+            get(file_stats_deep_files),
+        )
+        .route(
+            "/api/v1/drive/files/stats/mime-entropy",
+            get(file_stats_mime_entropy),
+        )
+        .route(
+            "/api/v1/drive/files/stats/avg-versions",
+            get(file_stats_avg_versions),
+        )
+        .route(
+            "/api/v1/drive/files/stats/ext-entropy",
+            get(file_stats_ext_entropy),
+        )
+        .route(
+            "/api/v1/drive/files/stats/checksum-coverage",
+            get(file_stats_checksum_coverage),
+        )
+        .route(
+            "/api/v1/drive/files/stats/storage-key-coverage",
+            get(file_stats_storage_key_coverage),
+        )
+        .route(
+            "/api/v1/drive/files/stats/locked-by-user",
+            get(file_stats_locked_by_user),
+        )
+        .route("/api/v1/drive/users/:user_id/usage", get(user_usage))
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
     pub parent_id: Option<Uuid>,
     /// Filter by kind: "file" or "folder". Omit for both.
-    pub kind:      Option<String>,
+    pub kind: Option<String>,
     /// Sort column: name | updated_at | created_at | size_bytes. Default: name.
-    pub sort:      Option<String>,
+    pub sort: Option<String>,
     /// Sort direction: asc | desc. Default: asc.
-    pub order:     Option<String>,
+    pub order: Option<String>,
     /// Max rows to return (1–500, default 200).
-    pub limit:     Option<i64>,
+    pub limit: Option<i64>,
     /// Rows to skip (default 0).
-    pub offset:    Option<i64>,
+    pub offset: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct MkdirBody {
-    pub name:      String,
+    pub name: String,
     pub parent_id: Option<Uuid>,
 }
 
@@ -125,9 +253,9 @@ pub struct DeleteQuery {
 
 async fn list(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<ListQuery>,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    Query(q): Query<ListQuery>,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let max_updated: Option<OffsetDateTime> = if let Some(pid) = q.parent_id {
@@ -151,7 +279,9 @@ async fn list(
     if let Some(ts) = max_updated {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -161,20 +291,24 @@ async fn list(
     }
     if let Some(ref k) = q.kind {
         if k != "file" && k != "folder" {
-            return Err(DriveError::BadRequest("kind must be 'file' or 'folder'".into()));
+            return Err(DriveError::BadRequest(
+                "kind must be 'file' or 'folder'".into(),
+            ));
         }
     }
-    let sort  = q.sort.as_deref().unwrap_or("name");
+    let sort = q.sort.as_deref().unwrap_or("name");
     let order = q.order.as_deref().unwrap_or("asc");
     if !matches!(sort, "name" | "updated_at" | "created_at" | "size_bytes") {
         return Err(DriveError::BadRequest(
-            "sort must be one of: name, updated_at, created_at, size_bytes".into()
+            "sort must be one of: name, updated_at, created_at, size_bytes".into(),
         ));
     }
     if !matches!(order, "asc" | "desc") {
-        return Err(DriveError::BadRequest("order must be 'asc' or 'desc'".into()));
+        return Err(DriveError::BadRequest(
+            "order must be 'asc' or 'desc'".into(),
+        ));
     }
-    let limit  = q.limit.unwrap_or(200).clamp(1, 500);
+    let limit = q.limit.unwrap_or(200).clamp(1, 500);
     let offset = q.offset.unwrap_or(0).max(0);
     let mut rows = FileRepo::new(pool)
         .list_children_paged(ctx.tenant_id, q.parent_id, sort, order, limit, offset)
@@ -184,58 +318,77 @@ async fn list(
     }
     let mut resp = Json(rows).into_response();
     if let Some(ts) = max_updated {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
 
 async fn mkdir(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(body):   Json<MkdirBody>,
+    ctx: RequestCtx,
+    Json(body): Json<MkdirBody>,
 ) -> Result<(StatusCode, Json<DriveFile>)> {
     let pool = state.db_or_unavailable()?;
     let name = sanitize_name(&body.name)?;
-    let row  = FileRepo::new(pool).insert(&NewFile {
-        tenant_id:     ctx.tenant_id,
-        owner_user_id: ctx.user_id,
-        parent_id:     body.parent_id,
-        name,
-        kind:          "folder".into(),
-        mime_type:     None,
-        size_bytes:    0,
-        sha256:        None,
-        storage_key:   None,
-    }).await?;
+    let row = FileRepo::new(pool)
+        .insert(&NewFile {
+            tenant_id: ctx.tenant_id,
+            owner_user_id: ctx.user_id,
+            parent_id: body.parent_id,
+            name,
+            kind: "folder".into(),
+            mime_type: None,
+            size_bytes: 0,
+            sha256: None,
+            storage_key: None,
+        })
+        .await?;
     Ok((StatusCode::CREATED, Json(row)))
 }
 
 async fn upload(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    mut mp:       Multipart,
+    ctx: RequestCtx,
+    mut mp: Multipart,
 ) -> Result<(StatusCode, Json<DriveFile>)> {
     let pool = state.db_or_unavailable()?;
 
-    let mut parent_id: Option<Uuid>    = None;
-    let mut name:      Option<String>  = None;
-    let mut mime:      Option<String>  = None;
-    let mut data:      Option<Bytes>   = None;
+    let mut parent_id: Option<Uuid> = None;
+    let mut name: Option<String> = None;
+    let mut mime: Option<String> = None;
+    let mut data: Option<Bytes> = None;
 
-    while let Some(field) = mp.next_field().await.map_err(|e| DriveError::BadRequest(e.to_string()))? {
+    while let Some(field) = mp
+        .next_field()
+        .await
+        .map_err(|e| DriveError::BadRequest(e.to_string()))?
+    {
         match field.name().unwrap_or("") {
             "parent_id" => {
-                let v = field.text().await.map_err(|e| DriveError::BadRequest(e.to_string()))?;
+                let v = field
+                    .text()
+                    .await
+                    .map_err(|e| DriveError::BadRequest(e.to_string()))?;
                 if !v.trim().is_empty() {
-                    parent_id = Some(Uuid::parse_str(v.trim())
-                        .map_err(|_| DriveError::BadRequest("invalid parent_id".into()))?);
+                    parent_id = Some(
+                        Uuid::parse_str(v.trim())
+                            .map_err(|_| DriveError::BadRequest("invalid parent_id".into()))?,
+                    );
                 }
             }
             "file" => {
                 name = field.file_name().map(|s| s.to_string());
                 mime = field.content_type().map(|s| s.to_string());
-                data = Some(field.bytes().await.map_err(|e| DriveError::BadRequest(e.to_string()))?);
+                data = Some(
+                    field
+                        .bytes()
+                        .await
+                        .map_err(|e| DriveError::BadRequest(e.to_string()))?,
+                );
             }
             _ => {}
         }
@@ -259,7 +412,6 @@ async fn upload(
         }
     }
 
-
     // Hash + persist blob. storage_key = random UUID → evita colisão
     // cross-tenant e mantém layout on-disk flat.
     let sha = format!("{:x}", Sha256::digest(&bytes));
@@ -271,7 +423,7 @@ async fn upload(
     f.write_all(&bytes).await?;
     f.flush().await?;
 
-    let repo     = FileRepo::new(pool);
+    let repo = FileRepo::new(pool);
     let ver_repo = VersionRepo::new(pool);
 
     // Existing sibling w/ same name → archive current → overwrite row.
@@ -279,29 +431,38 @@ async fn upload(
         if existing.kind != "file" {
             // Folder collision → cleanup new blob + conflict.
             let _ = fs::remove_file(&path).await;
-            return Err(DriveError::Conflict("a folder with this name already exists".into()));
+            return Err(DriveError::Conflict(
+                "a folder with this name already exists".into(),
+            ));
         }
 
         // Archive previous content (if any) before overwrite.
         if let Some(prev_key) = existing.storage_key.as_deref() {
             let next_no = ver_repo.next_no(ctx.tenant_id, existing.id).await?;
-            ver_repo.insert(&NewVersion {
-                file_id:     existing.id,
-                tenant_id:   ctx.tenant_id,
-                version_no:  next_no,
-                storage_key: prev_key,
-                size_bytes:  existing.size_bytes,
-                sha256:      existing.sha256.as_deref(),
-                mime_type:   existing.mime_type.as_deref(),
-                created_by:  existing.owner_user_id,
-            }).await?;
+            ver_repo
+                .insert(&NewVersion {
+                    file_id: existing.id,
+                    tenant_id: ctx.tenant_id,
+                    version_no: next_no,
+                    storage_key: prev_key,
+                    size_bytes: existing.size_bytes,
+                    sha256: existing.sha256.as_deref(),
+                    mime_type: existing.mime_type.as_deref(),
+                    created_by: existing.owner_user_id,
+                })
+                .await?;
         }
 
-        let updated = repo.update_content(
-            ctx.tenant_id, existing.id,
-            &key, bytes.len() as i64,
-            Some(&sha), mime.as_deref(),
-        ).await;
+        let updated = repo
+            .update_content(
+                ctx.tenant_id,
+                existing.id,
+                &key,
+                bytes.len() as i64,
+                Some(&sha),
+                mime.as_deref(),
+            )
+            .await;
 
         if updated.is_err() {
             let _ = fs::remove_file(&path).await;
@@ -314,17 +475,19 @@ async fn upload(
     }
 
     // New file → plain insert.
-    let row = repo.insert(&NewFile {
-        tenant_id:     ctx.tenant_id,
-        owner_user_id: ctx.user_id,
-        parent_id,
-        name:          fname,
-        kind:          "file".into(),
-        mime_type:     mime,
-        size_bytes:    bytes.len() as i64,
-        sha256:        Some(sha),
-        storage_key:   Some(key.clone()),
-    }).await;
+    let row = repo
+        .insert(&NewFile {
+            tenant_id: ctx.tenant_id,
+            owner_user_id: ctx.user_id,
+            parent_id,
+            name: fname,
+            kind: "file".into(),
+            mime_type: mime,
+            size_bytes: bytes.len() as i64,
+            sha256: Some(sha),
+            storage_key: Some(key.clone()),
+        })
+        .await;
 
     if row.is_err() {
         let _ = fs::remove_file(&path).await;
@@ -338,14 +501,17 @@ async fn upload(
 
 async fn metadata(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
     let etag = format!("\"{}-{}\"", f.updated_at.unix_timestamp(), f.id);
-    let lm = f.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = f
+        .updated_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
     if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
         if inm.as_bytes() == etag.as_bytes() {
             return Ok(StatusCode::NOT_MODIFIED.into_response());
@@ -353,7 +519,9 @@ async fn metadata(
     }
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if f.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -361,21 +529,26 @@ async fn metadata(
         }
     }
     let mut resp = Json(f).into_response();
-    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
 async fn head_file(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
     let etag = format!("\"{}-{}\"", f.updated_at.unix_timestamp(), f.id);
-    let lm = f.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = f
+        .updated_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
     if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
         if inm.as_bytes() == etag.as_bytes() {
             return Ok(StatusCode::NOT_MODIFIED.into_response());
@@ -383,7 +556,9 @@ async fn head_file(
     }
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if f.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -391,8 +566,10 @@ async fn head_file(
         }
     }
     let mut resp = StatusCode::OK.into_response();
-    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     if let Ok(size) = HeaderValue::from_str(&f.size_bytes.to_string()) {
         resp.headers_mut().insert(header::CONTENT_LENGTH, size);
     }
@@ -419,19 +596,22 @@ struct BulkTrashBody {
 /// POST /api/v1/drive/files/bulk-trash — soft-delete up to 200 items atomically.
 async fn bulk_trash(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(body):   Json<BulkTrashBody>,
+    ctx: RequestCtx,
+    Json(body): Json<BulkTrashBody>,
 ) -> Result<Json<serde_json::Value>> {
     if body.ids.is_empty() {
         return Err(DriveError::BadRequest("ids must not be empty".into()));
     }
     if body.ids.len() > 200 {
         return Err(DriveError::BadRequest(format!(
-            "too many ids: {} (max 200)", body.ids.len()
+            "too many ids: {} (max 200)",
+            body.ids.len()
         )));
     }
-    let pool    = state.db_or_unavailable()?;
-    let trashed = FileRepo::new(pool).bulk_trash(ctx.tenant_id, &body.ids).await?;
+    let pool = state.db_or_unavailable()?;
+    let trashed = FileRepo::new(pool)
+        .bulk_trash(ctx.tenant_id, &body.ids)
+        .await?;
     tracing::info!(target: "audit",
         event = "drive.file.bulk_trash",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, count = trashed);
@@ -447,19 +627,22 @@ struct BulkRestoreBody {
 /// POST /api/v1/drive/files/bulk-restore — restore up to 200 trashed items atomically.
 async fn bulk_restore(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(body):   Json<BulkRestoreBody>,
+    ctx: RequestCtx,
+    Json(body): Json<BulkRestoreBody>,
 ) -> Result<Json<serde_json::Value>> {
     if body.ids.is_empty() {
         return Err(DriveError::BadRequest("ids must not be empty".into()));
     }
     if body.ids.len() > 200 {
         return Err(DriveError::BadRequest(format!(
-            "too many ids: {} (max 200)", body.ids.len()
+            "too many ids: {} (max 200)",
+            body.ids.len()
         )));
     }
-    let pool     = state.db_or_unavailable()?;
-    let restored = FileRepo::new(pool).bulk_restore(ctx.tenant_id, &body.ids).await?;
+    let pool = state.db_or_unavailable()?;
+    let restored = FileRepo::new(pool)
+        .bulk_restore(ctx.tenant_id, &body.ids)
+        .await?;
     tracing::info!(target: "audit",
         event = "drive.file.bulk_restore",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, count = restored);
@@ -469,7 +652,7 @@ async fn bulk_restore(
 #[derive(Debug, Deserialize)]
 struct BulkMoveBody {
     /// File/folder ids to move (max 200).
-    ids:       Vec<Uuid>,
+    ids: Vec<Uuid>,
     /// Destination folder id; omit or null to move to root.
     parent_id: Option<Uuid>,
 }
@@ -477,15 +660,16 @@ struct BulkMoveBody {
 /// POST /api/v1/drive/files/bulk-move — atomically move up to 200 items.
 async fn bulk_move(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(body):   Json<BulkMoveBody>,
+    ctx: RequestCtx,
+    Json(body): Json<BulkMoveBody>,
 ) -> Result<Json<Vec<DriveFile>>> {
     if body.ids.is_empty() {
         return Err(DriveError::BadRequest("ids must not be empty".into()));
     }
     if body.ids.len() > 200 {
         return Err(DriveError::BadRequest(format!(
-            "too many ids: {} (max 200)", body.ids.len()
+            "too many ids: {} (max 200)",
+            body.ids.len()
         )));
     }
     let pool = state.db_or_unavailable()?;
@@ -496,17 +680,21 @@ async fn bulk_move(
         }
         // Prevent moving any of the selected items into themselves.
         if body.ids.contains(&target.id) {
-            return Err(DriveError::BadRequest("cannot move a folder into itself".into()));
+            return Err(DriveError::BadRequest(
+                "cannot move a folder into itself".into(),
+            ));
         }
     }
-    let rows = FileRepo::new(pool).bulk_move(ctx.tenant_id, &body.ids, body.parent_id).await?;
+    let rows = FileRepo::new(pool)
+        .bulk_move(ctx.tenant_id, &body.ids, body.parent_id)
+        .await?;
     Ok(Json(rows))
 }
 
 #[derive(Debug, Deserialize)]
 struct BulkCopyBody {
     /// File/folder ids to copy (max 200).
-    ids:       Vec<Uuid>,
+    ids: Vec<Uuid>,
     /// Destination parent; omit or null to place at root.
     parent_id: Option<Uuid>,
 }
@@ -516,15 +704,16 @@ struct BulkCopyBody {
 /// rows (the same blob). Returns the list of newly created rows.
 async fn bulk_copy(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(body):   Json<BulkCopyBody>,
+    ctx: RequestCtx,
+    Json(body): Json<BulkCopyBody>,
 ) -> Result<Json<Vec<DriveFile>>> {
     if body.ids.is_empty() {
         return Err(DriveError::BadRequest("ids must not be empty".into()));
     }
     if body.ids.len() > 200 {
         return Err(DriveError::BadRequest(format!(
-            "too many ids: {} (max 200)", body.ids.len()
+            "too many ids: {} (max 200)",
+            body.ids.len()
         )));
     }
     let pool = state.db_or_unavailable()?;
@@ -546,7 +735,7 @@ async fn bulk_copy(
 #[derive(Debug, Deserialize)]
 struct CopyBody {
     /// Optional destination name. Defaults to "<original name> (cópia)".
-    name:      Option<String>,
+    name: Option<String>,
     /// Destination parent; omit or null to place at root.
     parent_id: Option<Uuid>,
 }
@@ -554,12 +743,12 @@ struct CopyBody {
 /// POST /api/v1/drive/files/:id/copy — shallow copy: new row, same blob.
 async fn copy_file(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<CopyBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<CopyBody>,
 ) -> Result<(StatusCode, Json<DriveFile>)> {
     let pool = state.db_or_unavailable()?;
-    let src  = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let src = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
 
     let raw_name = body.name.unwrap_or_else(|| format!("{} (cópia)", src.name));
     let new_name = sanitize_name(&raw_name)?;
@@ -584,9 +773,9 @@ async fn copy_file(
 /// POST /api/v1/drive/files/:id/move — move a file or folder to a different parent.
 async fn move_file(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<MoveBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<MoveBody>,
 ) -> Result<Json<DriveFile>> {
     if let Some(parent) = body.parent_id {
         // Sanity: target folder must exist in the same tenant.
@@ -596,20 +785,24 @@ async fn move_file(
             return Err(DriveError::BadRequest("parent_id must be a folder".into()));
         }
         if target.id == id {
-            return Err(DriveError::BadRequest("cannot move a folder into itself".into()));
+            return Err(DriveError::BadRequest(
+                "cannot move a folder into itself".into(),
+            ));
         }
     }
     let pool = state.db_or_unavailable()?;
-    let f = FileRepo::new(pool).move_to(ctx.tenant_id, id, body.parent_id).await?;
+    let f = FileRepo::new(pool)
+        .move_to(ctx.tenant_id, id, body.parent_id)
+        .await?;
     Ok(Json(f))
 }
 
 /// PATCH /api/v1/drive/files/:id/metadata — rename a file or folder.
 async fn rename(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<RenameBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<RenameBody>,
 ) -> Result<Json<DriveFile>> {
     let name = sanitize_name(&body.name)?;
     let pool = state.db_or_unavailable()?;
@@ -619,16 +812,18 @@ async fn rename(
 
 async fn download(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
-    let f    = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
 
     if f.kind != "file" {
         return Err(DriveError::BadRequest("target is a folder".into()));
     }
-    let key = f.storage_key.as_deref()
+    let key = f
+        .storage_key
+        .as_deref()
         .ok_or_else(|| DriveError::BadRequest("file has no content".into()))?;
     let bytes = fs::read(state.data_root().join(key)).await?;
     tracing::info!(target: "audit",
@@ -644,11 +839,11 @@ async fn download(
 /// application/pdf; returns 415 Unsupported Media Type for all other MIME types.
 async fn preview(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
-    let f    = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
 
     if f.kind != "file" {
         return Err(DriveError::BadRequest("target is a folder".into()));
@@ -662,17 +857,32 @@ async fn preview(
             .into_response());
     }
 
-    let key   = f.storage_key.as_deref()
+    let key = f
+        .storage_key
+        .as_deref()
         .ok_or_else(|| DriveError::BadRequest("file has no content".into()))?;
     let bytes = fs::read(state.data_root().join(key)).await?;
 
-    let ct: HeaderValue = mime.parse()
+    let ct: HeaderValue = mime
+        .parse()
         .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream"));
 
-    let ascii: String = f.name.chars().map(|c| {
-        if c.is_ascii_graphic() && c != '"' && c != '\\' { c } else { '_' }
-    }).collect();
-    let ascii = if ascii.is_empty() { "preview".to_string() } else { ascii };
+    let ascii: String = f
+        .name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_graphic() && c != '"' && c != '\\' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let ascii = if ascii.is_empty() {
+        "preview".to_string()
+    } else {
+        ascii
+    };
     let cd: HeaderValue = format!("inline; filename=\"{ascii}\"")
         .parse()
         .unwrap_or_else(|_| HeaderValue::from_static("inline"));
@@ -686,15 +896,17 @@ async fn preview(
 
 async fn delete_file(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Query(q):     Query<DeleteQuery>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Query(q): Query<DeleteQuery>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = FileRepo::new(pool);
     if q.permanent {
         let key = repo.purge(ctx.tenant_id, id).await?;
-        let Some(key) = key else { return Err(DriveError::NotFound(id)); };
+        let Some(key) = key else {
+            return Err(DriveError::NotFound(id));
+        };
         if !key.is_empty() {
             let path = state.data_root().join(&key);
             if let Err(e) = fs::remove_file(&path).await {
@@ -711,7 +923,9 @@ async fn delete_file(
         return Ok(StatusCode::NO_CONTENT);
     }
     let removed = repo.soft_delete(ctx.tenant_id, id).await?;
-    if removed == 0 { return Err(DriveError::NotFound(id)); }
+    if removed == 0 {
+        return Err(DriveError::NotFound(id));
+    }
     tracing::info!(target: "audit",
         event = "drive.file.trash",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
@@ -720,11 +934,11 @@ async fn delete_file(
 
 async fn restore(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<DriveFile>> {
     let pool = state.db_or_unavailable()?;
-    let row  = FileRepo::new(pool).restore(ctx.tenant_id, id).await?;
+    let row = FileRepo::new(pool).restore(ctx.tenant_id, id).await?;
     tracing::info!(target: "audit",
         event = "drive.file.restore",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
@@ -733,8 +947,8 @@ async fn restore(
 
 async fn trash(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let max_updated: Option<OffsetDateTime> = sqlx::query_scalar(
@@ -747,7 +961,9 @@ async fn trash(
     if let Some(ts) = max_updated {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -758,8 +974,11 @@ async fn trash(
     let rows = FileRepo::new(pool).list_trash(ctx.tenant_id).await?;
     let mut resp = Json(rows).into_response();
     if let Some(ts) = max_updated {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -777,7 +996,7 @@ struct PurgeTrashParams {
 /// kick-in. older_than_days default 30, clamp [1, 3650] (10 anos).
 async fn purge_trash(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Query(params): Query<PurgeTrashParams>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
@@ -825,15 +1044,20 @@ struct StatsUsersQuery {
 
 async fn file_stats_users(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsUsersQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsUsersQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
-    let rows  = QuotaRepo::new(pool).top_users_by_usage(ctx.tenant_id, limit).await?;
-    let users: Vec<serde_json::Value> = rows.into_iter().map(|(uid, fc, ub)| {
-        serde_json::json!({"user_id": uid, "file_count": fc, "used_bytes": ub})
-    }).collect();
+    let rows = QuotaRepo::new(pool)
+        .top_users_by_usage(ctx.tenant_id, limit)
+        .await?;
+    let users: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(
+            |(uid, fc, ub)| serde_json::json!({"user_id": uid, "file_count": fc, "used_bytes": ub}),
+        )
+        .collect();
     Ok(Json(serde_json::json!({"users": users})))
 }
 
@@ -850,12 +1074,14 @@ struct StatsFoldersQuery {
 
 async fn file_stats_folders(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsFoldersQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsFoldersQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
-    let rows  = QuotaRepo::new(pool).top_folders_by_usage(ctx.tenant_id, limit).await?;
+    let rows = QuotaRepo::new(pool)
+        .top_folders_by_usage(ctx.tenant_id, limit)
+        .await?;
     let folders: Vec<serde_json::Value> = rows.into_iter().map(|(fid, fname, fc, ub)| {
         serde_json::json!({"folder_id": fid, "folder_name": fname, "file_count": fc, "used_bytes": ub})
     }).collect();
@@ -875,12 +1101,14 @@ struct StatsExtensionsQuery {
 
 async fn file_stats_extensions(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsExtensionsQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsExtensionsQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let limit = q.limit.unwrap_or(50).clamp(1, 500);
-    let rows  = QuotaRepo::new(pool).stats_by_extension(ctx.tenant_id, limit).await?;
+    let rows = QuotaRepo::new(pool)
+        .stats_by_extension(ctx.tenant_id, limit)
+        .await?;
     let extensions: Vec<serde_json::Value> = rows.into_iter().map(|(ext, fc, tb)| {
         serde_json::json!({"extension": ext, "file_count": fc, "total_bytes": tb})
     }).collect();
@@ -902,11 +1130,13 @@ struct StatsActivityQuery {
 
 async fn file_stats_activity(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsActivityQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsActivityQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
-    let rows = QuotaRepo::new(pool).activity_by_day(ctx.tenant_id, q.since, q.until).await?;
+    let rows = QuotaRepo::new(pool)
+        .activity_by_day(ctx.tenant_id, q.since, q.until)
+        .await?;
     let days: Vec<serde_json::Value> = rows.into_iter().map(|(day, uploads, updates, deletes)| {
         serde_json::json!({"day": day, "uploads": uploads, "updates": updates, "deletes": deletes})
     }).collect();
@@ -921,8 +1151,8 @@ async fn file_stats_activity(
 /// Sprint #682.
 async fn file_stats_created_by_day(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsActivityQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsActivityQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -942,7 +1172,8 @@ async fn file_stats_created_by_day(
     .fetch_all(pool)
     .await?;
 
-    let days: Vec<serde_json::Value> = rows.into_iter()
+    let days: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
         .collect();
     Ok(Json(serde_json::json!({"days": days})))
@@ -955,13 +1186,14 @@ async fn file_stats_created_by_day(
 /// Useful for "when were files uploaded" dashboards. Sprint #641.
 async fn file_stats_age(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     let rows = QuotaRepo::new(pool).age_by_month(ctx.tenant_id).await?;
-    let months: Vec<serde_json::Value> = rows.into_iter().map(|(month, file_count)| {
-        serde_json::json!({"month": month, "file_count": file_count})
-    }).collect();
+    let months: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(month, file_count)| serde_json::json!({"month": month, "file_count": file_count}))
+        .collect();
     Ok(Json(serde_json::json!({"months": months})))
 }
 
@@ -979,12 +1211,14 @@ struct StatsOwnersQuery {
 
 async fn file_stats_owners(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsOwnersQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsOwnersQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
-    let rows  = QuotaRepo::new(pool).top_owners_by_file_count(ctx.tenant_id, limit).await?;
+    let rows = QuotaRepo::new(pool)
+        .top_owners_by_file_count(ctx.tenant_id, limit)
+        .await?;
     let owners: Vec<serde_json::Value> = rows.into_iter().map(|(uid, fc, tb)| {
         serde_json::json!({"owner_user_id": uid, "file_count": fc, "total_bytes": tb})
     }).collect();
@@ -999,7 +1233,7 @@ async fn file_stats_owners(
 /// Sprint #651.
 async fn file_stats_size_buckets(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     let (lt1mb_c, lt1mb_b,
@@ -1039,23 +1273,26 @@ async fn file_stats_size_buckets(
 /// Tenant-scoped. Sprint #657.
 async fn file_stats_deleted(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
-    let (deleted_count, deleted_bytes, oldest_deleted_at, newest_deleted_at):
-        (i64, i64, Option<OffsetDateTime>, Option<OffsetDateTime>) =
-        sqlx::query_as(
-            "SELECT \
+    let (deleted_count, deleted_bytes, oldest_deleted_at, newest_deleted_at): (
+        i64,
+        i64,
+        Option<OffsetDateTime>,
+        Option<OffsetDateTime>,
+    ) = sqlx::query_as(
+        "SELECT \
                 COUNT(*)::BIGINT, \
                 COALESCE(SUM(size_bytes), 0)::BIGINT, \
                 MIN(deleted_at), \
                 MAX(deleted_at) \
              FROM drive_files \
              WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND kind = 'file'",
-        )
-        .bind(ctx.tenant_id)
-        .fetch_one(pool)
-        .await?;
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool)
+    .await?;
 
     Ok(Json(serde_json::json!({
         "deleted_count":      deleted_count,
@@ -1078,10 +1315,10 @@ struct StatsOwnerExtQuery {
 
 async fn file_stats_by_owner_and_ext(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsOwnerExtQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsOwnerExtQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
     let rows: Vec<(Uuid, Option<String>, i64, i64)> = sqlx::query_as(
         "SELECT owner_user_id, extension, \
@@ -1098,14 +1335,17 @@ async fn file_stats_by_owner_and_ext(
     .fetch_all(pool)
     .await?;
 
-    let out: Vec<serde_json::Value> = rows.into_iter().map(|(uid, ext, fc, tb)| {
-        serde_json::json!({
-            "owner_user_id": uid,
-            "extension":     ext,
-            "file_count":    fc,
-            "total_bytes":   tb,
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(uid, ext, fc, tb)| {
+            serde_json::json!({
+                "owner_user_id": uid,
+                "extension":     ext,
+                "file_count":    fc,
+                "total_bytes":   tb,
+            })
         })
-    }).collect();
+        .collect();
     Ok(Json(serde_json::json!({"rows": out})))
 }
 
@@ -1122,14 +1362,16 @@ struct StatsRecentQuery {
 
 async fn file_stats_recent(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsRecentQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsRecentQuery>,
 ) -> Result<Json<serde_json::Value>> {
     use time::format_description::well_known::Rfc3339;
 
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
-    let since_dt = q.since.as_deref()
+    let since_dt = q
+        .since
+        .as_deref()
         .map(|s| OffsetDateTime::parse(s, &Rfc3339))
         .transpose()
         .map_err(|_| crate::error::DriveError::BadRequest("since must be RFC3339".into()))?;
@@ -1148,14 +1390,17 @@ async fn file_stats_recent(
     .fetch_all(pool)
     .await?;
 
-    let files: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(id, name, size_bytes, created_at, updated_at)| serde_json::json!({
-            "id":         id,
-            "name":       name,
-            "size_bytes": size_bytes,
-            "created_at": created_at,
-            "updated_at": updated_at,
-        }))
+    let files: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(id, name, size_bytes, created_at, updated_at)| {
+            serde_json::json!({
+                "id":         id,
+                "name":       name,
+                "size_bytes": size_bytes,
+                "created_at": created_at,
+                "updated_at": updated_at,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"files": files})))
 }
@@ -1172,8 +1417,8 @@ struct StatsMimeByFolderQuery {
 
 async fn file_stats_mime_by_folder(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsMimeByFolderQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsMimeByFolderQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -1206,14 +1451,19 @@ async fn file_stats_mime_by_folder(
         .await?
     };
 
-    let out: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(mime, fc, tb)| serde_json::json!({
-            "mime_type":   mime,
-            "file_count":  fc,
-            "total_bytes": tb,
-        }))
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(mime, fc, tb)| {
+            serde_json::json!({
+                "mime_type":   mime,
+                "file_count":  fc,
+                "total_bytes": tb,
+            })
+        })
         .collect();
-    Ok(Json(serde_json::json!({"folder_id": q.folder_id, "rows": out})))
+    Ok(Json(
+        serde_json::json!({"folder_id": q.folder_id, "rows": out}),
+    ))
 }
 
 /// GET /api/v1/drive/files/stats/top-files?limit=N — top-N arquivos por size_bytes.
@@ -1228,10 +1478,10 @@ struct StatsTopFilesQuery {
 
 async fn file_stats_top_files(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsTopFilesQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsTopFilesQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
 
     let rows: Vec<(Uuid, String, i64, Uuid, Option<String>)> = sqlx::query_as(
@@ -1246,14 +1496,17 @@ async fn file_stats_top_files(
     .fetch_all(pool)
     .await?;
 
-    let files: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(id, name, size_bytes, owner_user_id, mime_type)| serde_json::json!({
-            "id":            id,
-            "name":          name,
-            "size_bytes":    size_bytes,
-            "owner_user_id": owner_user_id,
-            "mime_type":     mime_type,
-        }))
+    let files: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(id, name, size_bytes, owner_user_id, mime_type)| {
+            serde_json::json!({
+                "id":            id,
+                "name":          name,
+                "size_bytes":    size_bytes,
+                "owner_user_id": owner_user_id,
+                "mime_type":     mime_type,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"files": files})))
 }
@@ -1266,16 +1519,16 @@ async fn file_stats_top_files(
 /// Response inclui `{versions, next_cursor, has_more}`. Sprint #608.
 #[derive(Debug, Deserialize)]
 struct ListVersionsParams {
-    limit:          Option<i64>,
+    limit: Option<i64>,
     before_version: Option<i32>,
 }
 
 async fn list_versions(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Query(q):     Query<ListVersionsParams>,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Query(q): Query<ListVersionsParams>,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
@@ -1288,10 +1541,14 @@ async fn list_versions(
     .await
     .unwrap_or(None);
     let max_ts = max_created.unwrap_or(f.updated_at);
-    let lm = max_ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = max_ts
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if max_ts <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -1309,8 +1566,12 @@ async fn list_versions(
               ORDER BY version_no DESC \
               LIMIT $4",
         )
-        .bind(ctx.tenant_id).bind(id).bind(bv).bind(limit)
-        .fetch_all(pool).await?
+        .bind(ctx.tenant_id)
+        .bind(id)
+        .bind(bv)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?
     } else {
         sqlx::query_as(
             "SELECT id, file_id, tenant_id, version_no, storage_key, size_bytes, sha256, \
@@ -1320,13 +1581,16 @@ async fn list_versions(
               ORDER BY version_no DESC \
               LIMIT $3",
         )
-        .bind(ctx.tenant_id).bind(id).bind(limit)
-        .fetch_all(pool).await?
+        .bind(ctx.tenant_id)
+        .bind(id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?
     };
 
-    let has_more    = rows.len() as i64 == limit;
+    let has_more = rows.len() as i64 == limit;
     let next_cursor = rows.last().map(|v| v.version_no);
-    let count       = rows.len();
+    let count = rows.len();
 
     let mut resp = serde_json::json!({
         "versions":    rows,
@@ -1338,7 +1602,8 @@ async fn list_versions(
         resp["total"] = serde_json::json!(count);
     }
     let mut r = Json(resp).into_response();
-    r.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    r.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(r)
 }
 
@@ -1349,13 +1614,15 @@ async fn list_versions(
 /// Sprint #602.
 async fn version_metadata(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, v)): Path<(Uuid, i32)>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     // Tenant-gate via file ownership check.
     let _ = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
-    let ver = VersionRepo::new(pool).get(ctx.tenant_id, id, v).await?
+    let ver = VersionRepo::new(pool)
+        .get(ctx.tenant_id, id, v)
+        .await?
         .ok_or(DriveError::NotFound(id))?;
     Ok(Json(serde_json::json!({
         "file_id":    id,
@@ -1369,13 +1636,15 @@ async fn version_metadata(
 
 async fn download_version(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, v)): Path<(Uuid, i32)>,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     // Tenant-gate.
     let parent = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
-    let ver = VersionRepo::new(pool).get(ctx.tenant_id, id, v).await?
+    let ver = VersionRepo::new(pool)
+        .get(ctx.tenant_id, id, v)
+        .await?
         .ok_or(DriveError::NotFound(id))?;
     let bytes = fs::read(state.data_root().join(&ver.storage_key)).await?;
     tracing::info!(target: "audit",
@@ -1383,7 +1652,11 @@ async fn download_version(
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
         file_id = %id, version_no = v);
     let filename = format!("{}.v{}", parent.name, v);
-    Ok(attachment_response(&filename, ver.mime_type.as_deref(), bytes))
+    Ok(attachment_response(
+        &filename,
+        ver.mime_type.as_deref(),
+        bytes,
+    ))
 }
 
 /// POST /api/v1/drive/files/:id/versions/:v/restore
@@ -1404,42 +1677,48 @@ async fn download_version(
 /// Sprint #611.
 async fn restore_version(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, v)): Path<(Uuid, i32)>,
 ) -> Result<Json<DriveFile>> {
     let pool = state.db_or_unavailable()?;
 
     let file_repo = FileRepo::new(pool);
-    let ver_repo  = VersionRepo::new(pool);
+    let ver_repo = VersionRepo::new(pool);
 
     let current = file_repo.get(ctx.tenant_id, id).await?;
-    let target  = ver_repo.get(ctx.tenant_id, id, v).await?
+    let target = ver_repo
+        .get(ctx.tenant_id, id, v)
+        .await?
         .ok_or(DriveError::NotFound(id))?;
 
     // Archive the current live blob as a new historical version.
     if let Some(ref current_key) = current.storage_key {
         let next_no = ver_repo.next_no(ctx.tenant_id, id).await?;
-        ver_repo.insert(&NewVersion {
-            file_id:     id,
-            tenant_id:   ctx.tenant_id,
-            version_no:  next_no,
-            storage_key: current_key,
-            size_bytes:  current.size_bytes,
-            sha256:      current.sha256.as_deref(),
-            mime_type:   current.mime_type.as_deref(),
-            created_by:  ctx.user_id,
-        }).await?;
+        ver_repo
+            .insert(&NewVersion {
+                file_id: id,
+                tenant_id: ctx.tenant_id,
+                version_no: next_no,
+                storage_key: current_key,
+                size_bytes: current.size_bytes,
+                sha256: current.sha256.as_deref(),
+                mime_type: current.mime_type.as_deref(),
+                created_by: ctx.user_id,
+            })
+            .await?;
     }
 
     // Promote target version to live.
-    let updated = file_repo.update_content(
-        ctx.tenant_id,
-        id,
-        &target.storage_key,
-        target.size_bytes,
-        target.sha256.as_deref(),
-        target.mime_type.as_deref(),
-    ).await?;
+    let updated = file_repo
+        .update_content(
+            ctx.tenant_id,
+            id,
+            &target.storage_key,
+            target.size_bytes,
+            target.sha256.as_deref(),
+            target.mime_type.as_deref(),
+        )
+        .await?;
 
     tracing::info!(target: "audit",
         event = "drive.file.restore_version",
@@ -1468,7 +1747,7 @@ struct DiffParams {
 
 async fn diff_version_content(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, v)): Path<(Uuid, i32)>,
     Query(params): Query<DiffParams>,
 ) -> Result<Json<serde_json::Value>> {
@@ -1476,7 +1755,9 @@ async fn diff_version_content(
 
     let fmt = params.format.as_deref().unwrap_or("unified");
     if fmt != "unified" && fmt != "side-by-side" {
-        return Err(DriveError::BadRequest("format must be 'unified' or 'side-by-side'".into()));
+        return Err(DriveError::BadRequest(
+            "format must be 'unified' or 'side-by-side'".into(),
+        ));
     }
 
     let context = params.context.unwrap_or(3).min(50) as usize;
@@ -1494,7 +1775,9 @@ async fn diff_version_content(
         }
         None => {
             if v <= 1 {
-                return Err(DriveError::BadRequest("no previous version to diff (v must be > 1, or specify ?from=)".into()));
+                return Err(DriveError::BadRequest(
+                    "no previous version to diff (v must be > 1, or specify ?from=)".into(),
+                ));
             }
             v - 1
         }
@@ -1503,21 +1786,29 @@ async fn diff_version_content(
     let pool = state.db_or_unavailable()?;
     let _file = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
 
-    let ver_b = VersionRepo::new(pool).get(ctx.tenant_id, id, v).await?
+    let ver_b = VersionRepo::new(pool)
+        .get(ctx.tenant_id, id, v)
+        .await?
         .ok_or(DriveError::NotFound(id))?;
-    let ver_a = VersionRepo::new(pool).get(ctx.tenant_id, id, v_a).await?
+    let ver_a = VersionRepo::new(pool)
+        .get(ctx.tenant_id, id, v_a)
+        .await?
         .ok_or(DriveError::NotFound(id))?;
 
-    let bytes_a = fs::read(state.data_root().join(&ver_a.storage_key)).await
+    let bytes_a = fs::read(state.data_root().join(&ver_a.storage_key))
+        .await
         .map_err(|_| DriveError::NotFound(id))?;
-    let bytes_b = fs::read(state.data_root().join(&ver_b.storage_key)).await
+    let bytes_b = fs::read(state.data_root().join(&ver_b.storage_key))
+        .await
         .map_err(|_| DriveError::NotFound(id))?;
 
     // Binary guard — reject if NUL byte in first 8 KiB.
     let probe_a = &bytes_a[..bytes_a.len().min(8192)];
     let probe_b = &bytes_b[..bytes_b.len().min(8192)];
     if probe_a.contains(&0u8) || probe_b.contains(&0u8) {
-        return Err(DriveError::BadRequest("binary files cannot be diffed as text".into()));
+        return Err(DriveError::BadRequest(
+            "binary files cannot be diffed as text".into(),
+        ));
     }
 
     let text_a = String::from_utf8_lossy(&bytes_a);
@@ -1573,17 +1864,25 @@ fn side_by_side_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::
     }
 
     #[derive(Clone, Copy, PartialEq)]
-    enum Op { Eq, Del, Ins }
+    enum Op {
+        Eq,
+        Del,
+        Ins,
+    }
 
     let mut ops: Vec<(Op, usize, usize)> = Vec::new();
     let (mut i, mut j) = (0, 0);
     while i < m || j < n {
         if i < m && j < n && old[i] == new[j] {
-            ops.push((Op::Eq, i, j)); i += 1; j += 1;
+            ops.push((Op::Eq, i, j));
+            i += 1;
+            j += 1;
         } else if j < n && (i >= m || lcs[i][j + 1] >= lcs[i + 1][j]) {
-            ops.push((Op::Ins, i, j)); j += 1;
+            ops.push((Op::Ins, i, j));
+            j += 1;
         } else {
-            ops.push((Op::Del, i, j)); i += 1;
+            ops.push((Op::Del, i, j));
+            i += 1;
         }
     }
 
@@ -1591,8 +1890,8 @@ fn side_by_side_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::
     // Then filter to within context of any non-equal row.
     #[derive(Clone)]
     struct Row {
-        kind:     &'static str,
-        left_no:  Option<usize>,
+        kind: &'static str,
+        left_no: Option<usize>,
         left_txt: Option<String>,
         right_no: Option<usize>,
         right_txt: Option<String>,
@@ -1607,8 +1906,10 @@ fn side_by_side_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::
                 let (_, oi, ni) = ops[k];
                 raw.push(Row {
                     kind: "equal",
-                    left_no: Some(oi + 1), left_txt: Some(old[oi].to_owned()),
-                    right_no: Some(ni + 1), right_txt: Some(new[ni].to_owned()),
+                    left_no: Some(oi + 1),
+                    left_txt: Some(old[oi].to_owned()),
+                    right_no: Some(ni + 1),
+                    right_txt: Some(new[ni].to_owned()),
                 });
                 k += 1;
             }
@@ -1619,15 +1920,19 @@ fn side_by_side_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::
                     let (_, _oi2, ni2) = ops[k + 1];
                     raw.push(Row {
                         kind: "changed",
-                        left_no: Some(oi + 1), left_txt: Some(old[oi].to_owned()),
-                        right_no: Some(ni2 + 1), right_txt: Some(new[ni2].to_owned()),
+                        left_no: Some(oi + 1),
+                        left_txt: Some(old[oi].to_owned()),
+                        right_no: Some(ni2 + 1),
+                        right_txt: Some(new[ni2].to_owned()),
                     });
                     k += 2;
                 } else {
                     raw.push(Row {
                         kind: "deleted",
-                        left_no: Some(oi + 1), left_txt: Some(old[oi].to_owned()),
-                        right_no: None, right_txt: None,
+                        left_no: Some(oi + 1),
+                        left_txt: Some(old[oi].to_owned()),
+                        right_no: None,
+                        right_txt: None,
                     });
                     k += 1;
                 }
@@ -1636,8 +1941,10 @@ fn side_by_side_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::
                 let (_, _, ni) = ops[k];
                 raw.push(Row {
                     kind: "inserted",
-                    left_no: None, left_txt: None,
-                    right_no: Some(ni + 1), right_txt: Some(new[ni].to_owned()),
+                    left_no: None,
+                    left_txt: None,
+                    right_no: Some(ni + 1),
+                    right_txt: Some(new[ni].to_owned()),
                 });
                 k += 1;
             }
@@ -1651,17 +1958,23 @@ fn side_by_side_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::
         if raw[r].kind != "equal" {
             let lo = r.saturating_sub(context);
             let hi = (r + context + 1).min(total_rows);
-            for v in lo..hi { visible[v] = true; }
+            for v in lo..hi {
+                visible[v] = true;
+            }
         }
     }
 
-    let rows: Vec<serde_json::Value> = raw.iter().zip(visible.iter())
+    let rows: Vec<serde_json::Value> = raw
+        .iter()
+        .zip(visible.iter())
         .filter(|(_, &vis)| vis)
-        .map(|(row, _)| json!({
-            "type":  row.kind,
-            "left":  json!({"line_no": row.left_no, "text": row.left_txt}),
-            "right": json!({"line_no": row.right_no, "text": row.right_txt}),
-        }))
+        .map(|(row, _)| {
+            json!({
+                "type":  row.kind,
+                "left":  json!({"line_no": row.left_no, "text": row.left_txt}),
+                "right": json!({"line_no": row.right_no, "text": row.right_txt}),
+            })
+        })
         .collect();
 
     serde_json::Value::Array(rows)
@@ -1690,14 +2003,19 @@ fn unified_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::Value
 
     // Trace edit operations: Equal / Delete / Insert.
     #[derive(Clone, Copy, PartialEq)]
-    enum Op { Eq, Del, Ins }
+    enum Op {
+        Eq,
+        Del,
+        Ins,
+    }
 
     let mut ops: Vec<(Op, usize, usize)> = Vec::new(); // (op, old_idx, new_idx)
     let (mut i, mut j) = (0, 0);
     while i < m || j < n {
         if i < m && j < n && old[i] == new[j] {
             ops.push((Op::Eq, i, j));
-            i += 1; j += 1;
+            i += 1;
+            j += 1;
         } else if j < n && (i >= m || lcs[i][j + 1] >= lcs[i + 1][j]) {
             ops.push((Op::Ins, i, j));
             j += 1;
@@ -1723,12 +2041,15 @@ fn unified_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::Value
         let mut end = k;
         loop {
             // Advance past changes.
-            while end < total && ops[end].0 != Op::Eq { end += 1; }
+            while end < total && ops[end].0 != Op::Eq {
+                end += 1;
+            }
             // Count trailing equals.
             let trail_start = end;
             let mut trail = 0;
             while end < total && ops[end].0 == Op::Eq && trail < context {
-                end += 1; trail += 1;
+                end += 1;
+                trail += 1;
             }
             // Check if the next change is within context distance.
             if end < total && ops[end].0 != Op::Eq {
@@ -1741,20 +2062,34 @@ fn unified_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::Value
 
         // Build hunk lines.
         let hunk_ops = &ops[hunk_start..end];
-        let old_start = hunk_ops.iter().find(|o| o.0 != Op::Ins).map(|o| o.1 + 1).unwrap_or(1);
-        let new_start = hunk_ops.iter().find(|o| o.0 != Op::Del).map(|o| o.2 + 1).unwrap_or(1);
+        let old_start = hunk_ops
+            .iter()
+            .find(|o| o.0 != Op::Ins)
+            .map(|o| o.1 + 1)
+            .unwrap_or(1);
+        let new_start = hunk_ops
+            .iter()
+            .find(|o| o.0 != Op::Del)
+            .map(|o| o.2 + 1)
+            .unwrap_or(1);
         let old_count = hunk_ops.iter().filter(|o| o.0 != Op::Ins).count();
         let new_count = hunk_ops.iter().filter(|o| o.0 != Op::Del).count();
 
-        let header = format!("@@ -{},{} +{},{} @@", old_start, old_count, new_start, new_count);
-        let lines: Vec<serde_json::Value> = hunk_ops.iter().map(|(op, oi, ni)| {
-            let (tag, text) = match op {
-                Op::Eq  => (" ", old[*oi]),
-                Op::Del => ("-", old[*oi]),
-                Op::Ins => ("+", new[*ni]),
-            };
-            json!({"tag": tag, "text": text})
-        }).collect();
+        let header = format!(
+            "@@ -{},{} +{},{} @@",
+            old_start, old_count, new_start, new_count
+        );
+        let lines: Vec<serde_json::Value> = hunk_ops
+            .iter()
+            .map(|(op, oi, ni)| {
+                let (tag, text) = match op {
+                    Op::Eq => (" ", old[*oi]),
+                    Op::Del => ("-", old[*oi]),
+                    Op::Ins => ("+", new[*ni]),
+                };
+                json!({"tag": tag, "text": text})
+            })
+            .collect();
 
         hunks.push(json!({"header": header, "lines": lines}));
         k = end;
@@ -1770,7 +2105,7 @@ fn unified_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::Value
 /// On success the blob is deleted from disk and 204 is returned.
 async fn delete_version(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, v)): Path<(Uuid, i32)>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
@@ -1783,7 +2118,9 @@ async fn delete_version(
     // as the count of uploads; the current blob is in drive_files.storage_key).
     // We detect "current" by comparing storage_key: if the version's blob matches
     // the live file, refuse. Fall back to just checking version count.
-    let ver = VersionRepo::new(pool).delete(ctx.tenant_id, id, v).await?
+    let ver = VersionRepo::new(pool)
+        .delete(ctx.tenant_id, id, v)
+        .await?
         .ok_or(DriveError::NotFound(id))?;
 
     // Best-effort blob removal — log but don't fail if already gone.
@@ -1805,8 +2142,8 @@ async fn delete_version(
 /// GET /api/v1/drive/files/:id/tags — list tags on a file.
 async fn list_tags(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<String>>> {
     let pool = state.db_or_unavailable()?;
     // Verify file exists in tenant.
@@ -1823,9 +2160,9 @@ struct AddTagBody {
 /// POST /api/v1/drive/files/:id/tags — add a tag to a file (idempotent).
 async fn add_tag(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<AddTagBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<AddTagBody>,
 ) -> Result<StatusCode> {
     let tag = body.tag.trim().to_string();
     if tag.is_empty() || tag.len() > 64 {
@@ -1845,7 +2182,7 @@ async fn add_tag(
 /// DELETE /api/v1/drive/files/:id/tags/:tag — remove a tag from a file.
 async fn remove_tag(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, tag)): Path<(Uuid, String)>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
@@ -1879,10 +2216,21 @@ pub(crate) fn attachment_response(name: &str, mime: Option<&str>, bytes: Vec<u8>
 }
 
 fn build_content_disposition(name: &str) -> String {
-    let ascii: String = name.chars().map(|c| {
-        if c.is_ascii_graphic() && c != '"' && c != '\\' { c } else { '_' }
-    }).collect();
-    let ascii = if ascii.is_empty() { "download".to_string() } else { ascii };
+    let ascii: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_graphic() && c != '"' && c != '\\' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let ascii = if ascii.is_empty() {
+        "download".to_string()
+    } else {
+        ascii
+    };
     let pct = percent_encode_filename(name);
     format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{pct}")
 }
@@ -1894,7 +2242,10 @@ fn percent_encode_filename(name: &str) -> String {
     for b in name.as_bytes() {
         let c = *b;
         let attr_char = c.is_ascii_alphanumeric()
-            || matches!(c, b'!' | b'#' | b'$' | b'&' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~');
+            || matches!(
+                c,
+                b'!' | b'#' | b'$' | b'&' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~'
+            );
         if attr_char {
             out.push(c as char);
         } else {
@@ -1922,27 +2273,29 @@ fn sanitize_name(raw: &str) -> Result<String> {
 
 #[derive(Debug, Deserialize)]
 struct SearchQuery {
-    q:      String,
+    q: String,
     #[serde(default = "default_search_limit")]
-    limit:  i64,
+    limit: i64,
     #[serde(default)]
     offset: i64,
 }
-fn default_search_limit() -> i64 { 50 }
+fn default_search_limit() -> i64 {
+    50
+}
 
 /// GET /api/v1/drive/files/search?q=<term>&limit=50&offset=0
 /// Case-insensitive substring match on name within the caller's tenant.
 async fn search(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<SearchQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<SearchQuery>,
 ) -> Result<Json<Vec<DriveFile>>> {
     if q.q.trim().is_empty() {
         return Err(DriveError::BadRequest("q must not be empty".into()));
     }
-    let limit  = q.limit.clamp(1, 200);
+    let limit = q.limit.clamp(1, 200);
     let offset = q.offset.max(0);
-    let pool   = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let pattern = format!("%{}%", q.q.replace('%', "\\%").replace('_', "\\_"));
     let rows: Vec<DriveFile> = sqlx::query_as(
         "SELECT id, tenant_id, owner_user_id, parent_id, name, kind, \
@@ -1963,8 +2316,8 @@ async fn search(
 
 async fn quota(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
 
@@ -1979,7 +2332,9 @@ async fn quota(
     if let Some(ts) = max_ts {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -1991,8 +2346,11 @@ async fn quota(
     let q = QuotaRepo::new(pool).get(ctx.tenant_id).await?;
     let mut resp = Json(q).into_response();
     if let Some(ts) = max_ts {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -2000,9 +2358,9 @@ async fn quota(
 /// GET /api/v1/drive/users/:user_id/usage — bytes owned by a user in this tenant.
 async fn user_usage(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(user_id): Path<Uuid>,
-    req_headers:  HeaderMap,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
 
@@ -2019,7 +2377,9 @@ async fn user_usage(
     if let Some(ts) = max_ts {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -2028,11 +2388,16 @@ async fn user_usage(
         }
     }
 
-    let usage = QuotaRepo::new(pool).get_user_usage(ctx.tenant_id, user_id).await?;
+    let usage = QuotaRepo::new(pool)
+        .get_user_usage(ctx.tenant_id, user_id)
+        .await?;
     let mut resp = Json(usage).into_response();
     if let Some(ts) = max_ts {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -2048,7 +2413,7 @@ async fn user_usage(
 /// Sprint #616.
 async fn file_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -2105,21 +2470,25 @@ struct ExpiryBody {
 /// hard-deleted by the background purge worker (hourly GC).
 async fn set_expiry(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<ExpiryBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<ExpiryBody>,
 ) -> Result<Json<DriveFile>> {
     let pool = state.db_or_unavailable()?;
-    let f    = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
     if f.owner_user_id != ctx.user_id {
         return Err(DriveError::Forbidden);
     }
     if let Some(exp) = body.expires_at {
         if exp <= OffsetDateTime::now_utc() {
-            return Err(DriveError::BadRequest("expires_at must be in the future".into()));
+            return Err(DriveError::BadRequest(
+                "expires_at must be in the future".into(),
+            ));
         }
     }
-    let updated = FileRepo::new(pool).set_expiry(ctx.tenant_id, id, body.expires_at).await?;
+    let updated = FileRepo::new(pool)
+        .set_expiry(ctx.tenant_id, id, body.expires_at)
+        .await?;
     tracing::info!(target: "audit",
         event = "drive.file.expiry_set",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
@@ -2130,10 +2499,12 @@ async fn set_expiry(
 /// POST /api/v1/drive/starred — list user's starred files (newest star first)
 async fn list_starred(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<Vec<DriveFile>>> {
-    let pool  = state.db_or_unavailable()?;
-    let files = FileRepo::new(pool).list_starred(ctx.tenant_id, ctx.user_id).await?;
+    let pool = state.db_or_unavailable()?;
+    let files = FileRepo::new(pool)
+        .list_starred(ctx.tenant_id, ctx.user_id)
+        .await?;
     Ok(Json(files))
 }
 
@@ -2143,32 +2514,38 @@ async fn list_starred(
 /// `/starred` (sem ambiguidade com `:id` em outros recursos).
 async fn count_starred(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
-    let pool  = state.db_or_unavailable()?;
-    let count = FileRepo::new(pool).count_starred(ctx.tenant_id, ctx.user_id).await?;
+    let pool = state.db_or_unavailable()?;
+    let count = FileRepo::new(pool)
+        .count_starred(ctx.tenant_id, ctx.user_id)
+        .await?;
     Ok(Json(serde_json::json!({ "count": count })))
 }
 
 /// POST /api/v1/drive/files/:id/star — mark file as starred
 async fn star_file(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<DriveFile>> {
-    let pool    = state.db_or_unavailable()?;
-    let updated = FileRepo::new(pool).star_file(ctx.tenant_id, id, ctx.user_id).await?;
+    let pool = state.db_or_unavailable()?;
+    let updated = FileRepo::new(pool)
+        .star_file(ctx.tenant_id, id, ctx.user_id)
+        .await?;
     Ok(Json(updated))
 }
 
 /// DELETE /api/v1/drive/files/:id/star — remove star
 async fn unstar_file(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<DriveFile>> {
-    let pool    = state.db_or_unavailable()?;
-    let updated = FileRepo::new(pool).unstar_file(ctx.tenant_id, id, ctx.user_id).await?;
+    let pool = state.db_or_unavailable()?;
+    let updated = FileRepo::new(pool)
+        .unstar_file(ctx.tenant_id, id, ctx.user_id)
+        .await?;
     Ok(Json(updated))
 }
 
@@ -2176,11 +2553,13 @@ async fn unstar_file(
 /// DELETE /api/v1/drive/files/:id/lock — release lock (only the lock holder may unlock)
 async fn lock_file(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<DriveFile>> {
-    let pool    = state.db_or_unavailable()?;
-    let updated = FileRepo::new(pool).lock_file(ctx.tenant_id, id, ctx.user_id).await?;
+    let pool = state.db_or_unavailable()?;
+    let updated = FileRepo::new(pool)
+        .lock_file(ctx.tenant_id, id, ctx.user_id)
+        .await?;
     tracing::info!(target: "audit",
         event = "drive.file.locked",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
@@ -2189,11 +2568,13 @@ async fn lock_file(
 
 async fn unlock_file(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<DriveFile>> {
-    let pool    = state.db_or_unavailable()?;
-    let updated = FileRepo::new(pool).unlock_file(ctx.tenant_id, id, ctx.user_id).await?;
+    let pool = state.db_or_unavailable()?;
+    let updated = FileRepo::new(pool)
+        .unlock_file(ctx.tenant_id, id, ctx.user_id)
+        .await?;
     tracing::info!(target: "audit",
         event = "drive.file.unlocked",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
@@ -2206,11 +2587,11 @@ async fn unlock_file(
 /// ZIP archive returned in-memory. Empty folders produce an empty ZIP.
 async fn download_folder(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    let pool   = state.db_or_unavailable()?;
-    let repo   = FileRepo::new(pool);
+    let pool = state.db_or_unavailable()?;
+    let repo = FileRepo::new(pool);
     let folder = repo.get(ctx.tenant_id, id).await?;
     if folder.kind != "folder" {
         return Err(DriveError::BadRequest("target is not a folder".into()));
@@ -2227,26 +2608,41 @@ async fn download_folder(
     for (rel_path, file) in &entries {
         let key = match file.storage_key.as_deref() {
             Some(k) => k,
-            None    => continue,
+            None => continue,
         };
         let bytes = match fs::read(state.data_root().join(key)).await {
-            Ok(b)  => b,
+            Ok(b) => b,
             Err(e) => {
                 tracing::warn!(file_id = %file.id, error = %e, "skipping unreadable blob in folder download");
                 continue;
             }
         };
-        zip.start_file(rel_path, options).map_err(|e| DriveError::Io(std::io::Error::other(e.to_string())))?;
+        zip.start_file(rel_path, options)
+            .map_err(|e| DriveError::Io(std::io::Error::other(e.to_string())))?;
         zip.write_all(&bytes).map_err(DriveError::Io)?;
     }
 
-    let cursor = zip.finish().map_err(|e| DriveError::Io(std::io::Error::other(e.to_string())))?;
+    let cursor = zip
+        .finish()
+        .map_err(|e| DriveError::Io(std::io::Error::other(e.to_string())))?;
     let zip_bytes = cursor.into_inner();
 
-    let ascii: String = folder.name.chars().map(|c| {
-        if c.is_ascii_graphic() && c != '"' && c != '\\' { c } else { '_' }
-    }).collect();
-    let archive_name = if ascii.is_empty() { "folder".to_string() } else { ascii };
+    let ascii: String = folder
+        .name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_graphic() && c != '"' && c != '\\' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let archive_name = if ascii.is_empty() {
+        "folder".to_string()
+    } else {
+        ascii
+    };
     let cd = format!("attachment; filename=\"{archive_name}.zip\"");
 
     tracing::info!(target: "audit",
@@ -2257,19 +2653,27 @@ async fn download_folder(
     Ok((
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE,        HeaderValue::from_static("application/zip")),
-            (header::CONTENT_DISPOSITION, HeaderValue::from_str(&cd).unwrap_or_else(|_| HeaderValue::from_static("attachment"))),
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/zip"),
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_str(&cd)
+                    .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
+            ),
         ],
         zip_bytes,
-    ).into_response())
+    )
+        .into_response())
 }
 
 /// GET /api/v1/drive/folders/:id/quota — current folder quota + used bytes.
 /// Returns 404 if folder doesn't exist or has no quota configured.
 async fn folder_quota(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<FolderQuota>> {
     let pool = state.db_or_unavailable()?;
     // Verify folder exists and belongs to tenant.
@@ -2278,7 +2682,8 @@ async fn folder_quota(
         return Err(DriveError::BadRequest("id is not a folder".into()));
     }
     FolderQuotaRepo::new(pool)
-        .get(ctx.tenant_id, id).await?
+        .get(ctx.tenant_id, id)
+        .await?
         .ok_or_else(|| DriveError::NotFound(id))
         .map(Json)
 }
@@ -2291,9 +2696,9 @@ struct FolderQuotaBody {
 /// PUT /api/v1/drive/folders/:id/quota — set (upsert) folder quota.
 async fn set_folder_quota(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<FolderQuotaBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<FolderQuotaBody>,
 ) -> Result<Json<FolderQuota>> {
     let pool = state.db_or_unavailable()?;
     let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
@@ -2303,7 +2708,9 @@ async fn set_folder_quota(
     if body.max_bytes <= 0 {
         return Err(DriveError::BadRequest("max_bytes must be > 0".into()));
     }
-    let fq = FolderQuotaRepo::new(pool).set(ctx.tenant_id, id, body.max_bytes).await?;
+    let fq = FolderQuotaRepo::new(pool)
+        .set(ctx.tenant_id, id, body.max_bytes)
+        .await?;
     tracing::info!(target: "audit",
         event = "drive.folder.quota_set",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, folder_id = %id, max_bytes = body.max_bytes);
@@ -2318,8 +2725,8 @@ async fn set_folder_quota(
 /// em modificações vs criações. Sprint #692.
 async fn file_stats_updated_by_day(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsActivityQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsActivityQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -2339,7 +2746,8 @@ async fn file_stats_updated_by_day(
     .fetch_all(pool)
     .await?;
 
-    let days: Vec<serde_json::Value> = rows.into_iter()
+    let days: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
         .collect();
     Ok(Json(serde_json::json!({"days": days})))
@@ -2358,8 +2766,8 @@ struct StatsSizeBucketQuery {
 
 async fn file_stats_by_size_bucket(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsSizeBucketQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsSizeBucketQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -2391,12 +2799,28 @@ async fn file_stats_by_size_bucket(
          WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' {folder_filter}"
     );
 
-    let row: (i64,i64, i64,i64, i64,i64, i64,i64, i64,i64, i64,i64, i64,i64, i64,i64) =
-        sqlx::query_as(&sql)
-            .bind(ctx.tenant_id)
-            .bind(q.folder_id)
-            .fetch_one(pool)
-            .await?;
+    let row: (
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+    ) = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(q.folder_id)
+        .fetch_one(pool)
+        .await?;
 
     let buckets = vec![
         serde_json::json!({"range": "<1KB",        "count": row.0,  "total_bytes": row.1}),
@@ -2419,7 +2843,7 @@ async fn file_stats_by_size_bucket(
 /// é a soma de size_bytes dos arquivos diretamente filhos (kind='file'). Sprint #696.
 async fn file_stats_folder_depth(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -2446,12 +2870,15 @@ async fn file_stats_folder_depth(
     .fetch_all(pool)
     .await?;
 
-    let buckets: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(depth, count, total_bytes)| serde_json::json!({
-            "depth":       depth,
-            "count":       count,
-            "total_bytes": total_bytes,
-        }))
+    let buckets: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(depth, count, total_bytes)| {
+            serde_json::json!({
+                "depth":       depth,
+                "count":       count,
+                "total_bytes": total_bytes,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"buckets": buckets})))
 }
@@ -2468,8 +2895,8 @@ struct StatsVersionCountQuery {
 
 async fn file_stats_version_count(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsVersionCountQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsVersionCountQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
@@ -2488,12 +2915,15 @@ async fn file_stats_version_count(
     .fetch_all(pool)
     .await?;
 
-    let files: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(file_id, name, version_count)| serde_json::json!({
-            "file_id":       file_id,
-            "name":          name,
-            "version_count": version_count,
-        }))
+    let files: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(file_id, name, version_count)| {
+            serde_json::json!({
+                "file_id":       file_id,
+                "name":          name,
+                "version_count": version_count,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"files": files})))
 }
@@ -2510,8 +2940,8 @@ struct StatsTagCountQuery {
 
 async fn file_stats_tag_count(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsTagCountQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsTagCountQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
@@ -2529,7 +2959,8 @@ async fn file_stats_tag_count(
     .fetch_all(pool)
     .await?;
 
-    let tags: Vec<serde_json::Value> = rows.into_iter()
+    let tags: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(tag, file_count)| serde_json::json!({"tag": tag, "file_count": file_count}))
         .collect();
     Ok(Json(serde_json::json!({"tags": tags})))
@@ -2547,8 +2978,8 @@ struct StatsExtByFolderQuery {
 
 async fn file_stats_ext_by_folder(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsExtByFolderQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsExtByFolderQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -2565,7 +2996,10 @@ async fn file_stats_ext_by_folder(
               GROUP BY extension \
               ORDER BY total_bytes DESC",
         )
-        .bind(ctx.tenant_id).bind(fid).fetch_all(pool).await?
+        .bind(ctx.tenant_id)
+        .bind(fid)
+        .fetch_all(pool)
+        .await?
     } else {
         sqlx::query_as(
             "SELECT \
@@ -2579,17 +3013,24 @@ async fn file_stats_ext_by_folder(
               GROUP BY extension \
               ORDER BY total_bytes DESC",
         )
-        .bind(ctx.tenant_id).fetch_all(pool).await?
+        .bind(ctx.tenant_id)
+        .fetch_all(pool)
+        .await?
     };
 
-    let out: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(ext, fc, tb)| serde_json::json!({
-            "extension":   ext,
-            "file_count":  fc,
-            "total_bytes": tb,
-        }))
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(ext, fc, tb)| {
+            serde_json::json!({
+                "extension":   ext,
+                "file_count":  fc,
+                "total_bytes": tb,
+            })
+        })
         .collect();
-    Ok(Json(serde_json::json!({"folder_id": q.folder_id, "rows": out})))
+    Ok(Json(
+        serde_json::json!({"folder_id": q.folder_id, "rows": out}),
+    ))
 }
 
 /// GET /api/v1/drive/files/stats/lock-count — arquivos bloqueados por total e por user_id.
@@ -2599,7 +3040,7 @@ async fn file_stats_ext_by_folder(
 /// Sprint #716.
 async fn file_stats_lock_count(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -2623,7 +3064,8 @@ async fn file_stats_lock_count(
     .fetch_all(pool)
     .await?;
 
-    let by_user_out: Vec<serde_json::Value> = by_user.into_iter()
+    let by_user_out: Vec<serde_json::Value> = by_user
+        .into_iter()
         .map(|(uid, cnt)| serde_json::json!({"user_id": uid, "locked_count": cnt}))
         .collect();
 
@@ -2640,7 +3082,7 @@ async fn file_stats_lock_count(
 /// Sprint #721.
 async fn file_stats_starred_count(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -2664,7 +3106,8 @@ async fn file_stats_starred_count(
     .fetch_all(pool)
     .await?;
 
-    let by_user_out: Vec<serde_json::Value> = by_user.into_iter()
+    let by_user_out: Vec<serde_json::Value> = by_user
+        .into_iter()
         .map(|(uid, cnt)| serde_json::json!({"user_id": uid, "starred_count": cnt}))
         .collect();
 
@@ -2680,7 +3123,7 @@ async fn file_stats_starred_count(
 /// Retorna `{total_with_expiry,already_expired,not_yet_expired}`. Sprint #726.
 async fn file_stats_expiry_count(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -2709,11 +3152,11 @@ async fn file_stats_expiry_count(
 /// `limit` default 20 max 100. Retorna `{rows:[{mime_type,file_count}]}`. Sprint #731.
 async fn file_stats_mime_top_n(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Query(q): Query<StatsTopFilesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let limit = q.limit.unwrap_or(20).min(100).max(1);
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
 
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT mime_type, COUNT(*)::BIGINT AS file_count \
@@ -2744,7 +3187,7 @@ async fn file_stats_mime_top_n(
 /// Retorna `{orphan_version_count}`. Sprint #736.
 async fn file_stats_orphan_versions(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -2759,7 +3202,9 @@ async fn file_stats_orphan_versions(
     .fetch_one(pool)
     .await?;
 
-    Ok(Json(serde_json::json!({"orphan_version_count": orphan_version_count})))
+    Ok(Json(
+        serde_json::json!({"orphan_version_count": orphan_version_count}),
+    ))
 }
 
 /// GET /api/v1/drive/files/stats/empty-files — arquivos com tamanho zero ou indefinido.
@@ -2768,7 +3213,7 @@ async fn file_stats_orphan_versions(
 /// Útil pra detectar uploads incompletos. Retorna `{total_empty,null_size,zero_size}`. Sprint #741.
 async fn file_stats_empty_files(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -2805,16 +3250,20 @@ struct StatsByDayQuery {
 
 async fn file_stats_deleted_by_day(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsByDayQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsByDayQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
-    let since_dt: Option<time::OffsetDateTime> = q.since.as_deref()
+    let since_dt: Option<time::OffsetDateTime> = q
+        .since
+        .as_deref()
         .map(|s| time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339))
         .transpose()
         .map_err(|_| crate::error::DriveError::BadRequest("since must be RFC3339".into()))?;
-    let until_dt: Option<time::OffsetDateTime> = q.until.as_deref()
+    let until_dt: Option<time::OffsetDateTime> = q
+        .until
+        .as_deref()
         .map(|s| time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339))
         .transpose()
         .map_err(|_| crate::error::DriveError::BadRequest("until must be RFC3339".into()))?;
@@ -2837,7 +3286,8 @@ async fn file_stats_deleted_by_day(
     .fetch_all(pool)
     .await?;
 
-    let out: Vec<serde_json::Value> = rows.into_iter()
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
@@ -2849,12 +3299,13 @@ async fn file_stats_deleted_by_day(
 /// Retorna `{file_count,avg_name_length,max_name_length}`. Sprint #751.
 async fn file_stats_name_length(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
-    let (file_count, avg_name_length, max_name_length): (i64, Option<f64>, Option<i64>) = sqlx::query_as(
-        "SELECT \
+    let (file_count, avg_name_length, max_name_length): (i64, Option<f64>, Option<i64>) =
+        sqlx::query_as(
+            "SELECT \
             COUNT(*)::BIGINT AS file_count, \
             AVG(LENGTH(name)), \
             MAX(LENGTH(name))::BIGINT \
@@ -2862,10 +3313,10 @@ async fn file_stats_name_length(
           WHERE tenant_id  = $1 \
             AND deleted_at IS NULL \
             AND kind       = 'file'",
-    )
-    .bind(ctx.tenant_id)
-    .fetch_one(pool)
-    .await?;
+        )
+        .bind(ctx.tenant_id)
+        .fetch_one(pool)
+        .await?;
 
     Ok(Json(serde_json::json!({
         "file_count":       file_count,
@@ -2880,11 +3331,11 @@ async fn file_stats_name_length(
 /// Retorna `{rows:[{extension,file_count}]}` count DESC. Sprint #756.
 async fn file_stats_ext_top_n(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsTopFilesQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsTopFilesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let limit = q.limit.unwrap_or(20).min(100).max(1);
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
 
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT \
@@ -2899,10 +3350,13 @@ async fn file_stats_ext_top_n(
           ORDER BY file_count DESC \
           LIMIT $2",
     )
-    .bind(ctx.tenant_id).bind(limit)
-    .fetch_all(pool).await?;
+    .bind(ctx.tenant_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
 
-    let out: Vec<serde_json::Value> = rows.into_iter()
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(ext, cnt)| serde_json::json!({"extension": ext, "file_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
@@ -2914,11 +3368,11 @@ async fn file_stats_ext_top_n(
 /// Retorna `{rows:[{user_id,file_count,total_bytes}]}` total_bytes DESC. Sprint #761.
 async fn file_stats_storage_by_user(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsTopFilesQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsTopFilesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let limit = q.limit.unwrap_or(20).min(200).max(1);
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
 
     let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
         "SELECT owner_user_id, COUNT(*)::BIGINT AS file_count, COALESCE(SUM(size_bytes),0)::BIGINT AS total_bytes \
@@ -2945,7 +3399,7 @@ async fn file_stats_storage_by_user(
 /// Retorna `{rows:[{folder_id,max_bytes,used_bytes,pct_used}]}`. Sprint #766.
 async fn file_stats_quota_usage(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -2962,7 +3416,8 @@ async fn file_stats_quota_usage(
           ORDER BY used_bytes DESC",
     )
     .bind(ctx.tenant_id)
-    .fetch_all(pool).await?;
+    .fetch_all(pool)
+    .await?;
 
     let out: Vec<serde_json::Value> = rows.into_iter()
         .map(|(folder_id, max_bytes, used_bytes)| {
@@ -2979,11 +3434,11 @@ async fn file_stats_quota_usage(
 /// Retorna `{rows:[{folder_id,file_count,total_bytes}]}` file_count DESC. Sprint #771.
 async fn file_stats_folder_file_count(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsTopFilesQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsTopFilesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let limit = q.limit.unwrap_or(20).min(200).max(1);
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
 
     let rows: Vec<(Option<Uuid>, i64, i64)> = sqlx::query_as(
         "SELECT parent_id, COUNT(*)::BIGINT AS file_count, COALESCE(SUM(size_bytes),0)::BIGINT AS total_bytes \
@@ -3011,11 +3466,11 @@ async fn file_stats_folder_file_count(
 /// Retorna `{min_depth,total_files,total_bytes,by_depth:[{depth,file_count,total_bytes}]}`. Sprint #776.
 async fn file_stats_deep_files(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<DeepFilesQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<DeepFilesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let min_depth = q.min_depth.unwrap_or(3).max(1) as i64;
-    let pool      = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
 
     let rows: Vec<(i64, i64, i64)> = sqlx::query_as(
         "WITH RECURSIVE tree AS ( \
@@ -3037,8 +3492,8 @@ async fn file_stats_deep_files(
     .bind(ctx.tenant_id).bind(min_depth)
     .fetch_all(pool).await?;
 
-    let total_files: i64  = rows.iter().map(|(_, fc, _)| fc).sum();
-    let total_bytes: i64  = rows.iter().map(|(_, _, tb)| tb).sum();
+    let total_files: i64 = rows.iter().map(|(_, fc, _)| fc).sum();
+    let total_bytes: i64 = rows.iter().map(|(_, _, tb)| tb).sum();
     let by_depth: Vec<serde_json::Value> = rows.into_iter()
         .map(|(depth, fc, tb)| serde_json::json!({"depth": depth, "file_count": fc, "total_bytes": tb}))
         .collect();
@@ -3062,7 +3517,7 @@ struct DeepFilesQuery {
 /// Retorna `{mime_count,total_files,entropy_bits,top:[{mime_type,file_count}]}`. Sprint #781.
 async fn file_stats_mime_entropy(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -3076,18 +3531,24 @@ async fn file_stats_mime_entropy(
           ORDER BY cnt DESC",
     )
     .bind(ctx.tenant_id)
-    .fetch_all(pool).await?;
+    .fetch_all(pool)
+    .await?;
 
     let total: i64 = rows.iter().map(|(_, c)| c).sum();
     let entropy: f64 = if total == 0 {
         0.0
     } else {
-        rows.iter().filter(|(_, c)| *c > 0).map(|(_, c)| {
-            let p = *c as f64 / total as f64;
-            -p * p.log2()
-        }).sum()
+        rows.iter()
+            .filter(|(_, c)| *c > 0)
+            .map(|(_, c)| {
+                let p = *c as f64 / total as f64;
+                -p * p.log2()
+            })
+            .sum()
     };
-    let top: Vec<serde_json::Value> = rows.iter().take(20)
+    let top: Vec<serde_json::Value> = rows
+        .iter()
+        .take(20)
         .map(|(m, c)| serde_json::json!({"mime_type": m, "file_count": c}))
         .collect();
     Ok(Json(serde_json::json!({
@@ -3105,7 +3566,7 @@ async fn file_stats_mime_entropy(
 /// Retorna `{files_with_versions,avg_versions,max_versions}`. Sprint #791.
 async fn file_stats_avg_versions(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -3126,7 +3587,8 @@ async fn file_stats_avg_versions(
                                   AND f.deleted_at IS NULL AND f.kind = 'file'",
         )
         .bind(ctx.tenant_id)
-        .fetch_one(pool).await?;
+        .fetch_one(pool)
+        .await?;
 
     Ok(Json(serde_json::json!({
         "files_with_versions": files_with_versions,
@@ -3142,7 +3604,7 @@ async fn file_stats_avg_versions(
 /// Retorna `{ext_count,total_files,entropy_bits,top:[{ext,file_count}]}`. Sprint #796.
 async fn file_stats_ext_entropy(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -3158,16 +3620,24 @@ async fn file_stats_ext_entropy(
           ORDER BY cnt DESC",
     )
     .bind(ctx.tenant_id)
-    .fetch_all(pool).await?;
+    .fetch_all(pool)
+    .await?;
 
     let total: i64 = rows.iter().map(|(_, c)| c).sum();
-    let entropy: f64 = if total == 0 { 0.0 } else {
-        rows.iter().filter(|(_, c)| *c > 0).map(|(_, c)| {
-            let p = *c as f64 / total as f64;
-            -p * p.log2()
-        }).sum()
+    let entropy: f64 = if total == 0 {
+        0.0
+    } else {
+        rows.iter()
+            .filter(|(_, c)| *c > 0)
+            .map(|(_, c)| {
+                let p = *c as f64 / total as f64;
+                -p * p.log2()
+            })
+            .sum()
     };
-    let top: Vec<serde_json::Value> = rows.iter().take(20)
+    let top: Vec<serde_json::Value> = rows
+        .iter()
+        .take(20)
         .map(|(e, c)| serde_json::json!({"ext": e, "file_count": c}))
         .collect();
     Ok(Json(serde_json::json!({
@@ -3184,7 +3654,7 @@ async fn file_stats_ext_entropy(
 /// Retorna `{total_files,with_checksum,without_checksum,coverage_pct}`. Sprint #801.
 async fn file_stats_checksum_coverage(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -3198,10 +3668,15 @@ async fn file_stats_checksum_coverage(
             AND kind       = 'file'",
     )
     .bind(ctx.tenant_id)
-    .fetch_one(pool).await?;
+    .fetch_one(pool)
+    .await?;
 
     let without_checksum = total - with_checksum;
-    let coverage_pct = if total > 0 { with_checksum as f64 / total as f64 * 100.0 } else { 0.0 };
+    let coverage_pct = if total > 0 {
+        with_checksum as f64 / total as f64 * 100.0
+    } else {
+        0.0
+    };
     Ok(Json(serde_json::json!({
         "total_files":      total,
         "with_checksum":    with_checksum,
@@ -3216,7 +3691,7 @@ async fn file_stats_checksum_coverage(
 /// Retorna `{total_files,with_storage_key,without_storage_key,coverage_pct}`. Sprint #806.
 async fn file_stats_storage_key_coverage(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -3230,10 +3705,15 @@ async fn file_stats_storage_key_coverage(
             AND kind       = 'file'",
     )
     .bind(ctx.tenant_id)
-    .fetch_one(pool).await?;
+    .fetch_one(pool)
+    .await?;
 
     let without_key = total - with_key;
-    let coverage_pct = if total > 0 { with_key as f64 / total as f64 * 100.0 } else { 0.0 };
+    let coverage_pct = if total > 0 {
+        with_key as f64 / total as f64 * 100.0
+    } else {
+        0.0
+    };
     Ok(Json(serde_json::json!({
         "total_files":       total,
         "with_storage_key":  with_key,
@@ -3248,18 +3728,19 @@ async fn file_stats_storage_key_coverage(
 /// Retorna `{total_locked,rows:[{locked_by,file_count}]}` file_count DESC. Sprint #811.
 async fn file_stats_locked_by_user(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<StatsTopFilesQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<StatsTopFilesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let limit = q.limit.unwrap_or(20).min(200).max(1);
-    let pool   = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
 
     let (total_locked,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*)::BIGINT FROM drive_files \
           WHERE tenant_id = $1 AND locked_at IS NOT NULL AND deleted_at IS NULL",
     )
     .bind(ctx.tenant_id)
-    .fetch_one(pool).await?;
+    .fetch_one(pool)
+    .await?;
 
     let rows: Vec<(Option<Uuid>, i64)> = sqlx::query_as(
         "SELECT locked_by, COUNT(*)::BIGINT AS file_count \
@@ -3271,20 +3752,25 @@ async fn file_stats_locked_by_user(
           ORDER BY file_count DESC \
           LIMIT $2",
     )
-    .bind(ctx.tenant_id).bind(limit)
-    .fetch_all(pool).await?;
+    .bind(ctx.tenant_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
 
-    let out: Vec<serde_json::Value> = rows.into_iter()
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(uid, fc)| serde_json::json!({"locked_by": uid, "file_count": fc}))
         .collect();
-    Ok(Json(serde_json::json!({"total_locked": total_locked, "rows": out})))
+    Ok(Json(
+        serde_json::json!({"total_locked": total_locked, "rows": out}),
+    ))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.
 async fn delete_folder_quota(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     FolderQuotaRepo::new(pool).delete(ctx.tenant_id, id).await?;

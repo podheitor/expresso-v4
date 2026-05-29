@@ -8,11 +8,7 @@
 
 use std::sync::Arc;
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, Json};
 use serde::Deserialize;
 use tracing::{info, warn};
 
@@ -27,10 +23,7 @@ pub struct ForgotReq {
 
 const ACTION_LIFESPAN_SECS: u32 = 3600; // 1h
 
-pub async fn forgot(
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<ForgotReq>,
-) -> StatusCode {
+pub async fn forgot(State(state): State<Arc<AppState>>, Json(req): Json<ForgotReq>) -> StatusCode {
     let email = req.email.trim().to_lowercase();
     if email.is_empty() || !email.contains('@') {
         // Still return 204 to avoid probing.
@@ -45,14 +38,17 @@ pub async fn forgot(
 
     match kc.user_id_by_email(&email).await {
         Ok(Some(uid)) => {
-            match kc.execute_actions_email(&uid, &["UPDATE_PASSWORD"], ACTION_LIFESPAN_SECS).await {
+            match kc
+                .execute_actions_email(&uid, &["UPDATE_PASSWORD"], ACTION_LIFESPAN_SECS)
+                .await
+            {
                 Ok(()) => {
                     info!(user_id = %uid, "password reset email dispatched");
                     if let Some(pool) = state.pool.as_ref() {
                         let mut e = AuditEntry::new("auth.password_reset.requested");
                         e.actor_email = Some(email.clone());
                         e.target_type = Some("kc_user".into());
-                        e.target_id   = Some(uid);
+                        e.target_id = Some(uid);
                         record_async(pool.clone(), e);
                     }
                 }

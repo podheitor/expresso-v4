@@ -32,7 +32,9 @@ mod tests {
     fn verifier_is_urlsafe_and_correct_length() {
         let v = generate_verifier();
         assert_eq!(v.len(), 43, "32B base64url-no-pad → 43 chars");
-        assert!(v.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+        assert!(v
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
     }
 
     #[test]
@@ -41,7 +43,9 @@ mod tests {
         let c1 = challenge_s256(v);
         let c2 = challenge_s256(v);
         assert_eq!(c1, c2);
-        assert!(c1.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+        assert!(c1
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
     }
 
     #[test]
@@ -63,7 +67,9 @@ mod tests {
     fn random_token_is_urlsafe_43_chars() {
         let t = random_token();
         assert_eq!(t.len(), 43);
-        assert!(t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+        assert!(t
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
     }
 
     #[test]

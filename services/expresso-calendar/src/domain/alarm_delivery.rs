@@ -29,8 +29,8 @@ pub fn spawn(pool: DbPool, interval_secs: u64) {
             tick.tick().await;
             match deliver_once(&pool).await {
                 Ok(n) if n > 0 => info!(delivered = n, "alarm delivery cycle completed"),
-                Ok(_)          => {}
-                Err(e)         => warn!(error = %e, "alarm delivery failed"),
+                Ok(_) => {}
+                Err(e) => warn!(error = %e, "alarm delivery failed"),
             }
         }
     });

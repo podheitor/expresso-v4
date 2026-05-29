@@ -31,8 +31,7 @@ pub const MAX_LIST_LIMIT: u32 = 200;
 pub const DEFAULT_LIST_LIMIT: u32 = 50;
 
 pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/api/v1/channels/:id/messages", post(send).get(list))
+    Router::new().route("/api/v1/channels/:id/messages", post(send).get(list))
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,7 +45,9 @@ pub struct ListQuery {
     pub limit: u32,
 }
 
-fn default_limit() -> u32 { DEFAULT_LIST_LIMIT }
+fn default_limit() -> u32 {
+    DEFAULT_LIST_LIMIT
+}
 
 async fn send(
     State(state): State<AppState>,
@@ -55,17 +56,21 @@ async fn send(
     Json(body): Json<SendBody>,
 ) -> Result<(StatusCode, Json<Value>)> {
     validate_message_body(&body.body)?;
-    let pool   = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let matrix = state.matrix_or_unavailable()?;
-    let repo   = ChannelRepo::new(pool);
+    let repo = ChannelRepo::new(pool);
     if !repo.is_member(ctx.tenant_id, id, ctx.user_id).await? {
         return Err(ChatError::NotMember);
     }
-    let ch = repo.get(ctx.tenant_id, id).await
+    let ch = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| ChatError::ChannelNotFound(id))?;
 
     let acting_as = matrix.mxid_for(ctx.user_id);
-    let event_id = matrix.send_text(&acting_as, &ch.matrix_room_id, &body.body).await?;
+    let event_id = matrix
+        .send_text(&acting_as, &ch.matrix_room_id, &body.body)
+        .await?;
     Ok((StatusCode::CREATED, Json(json!({ "event_id": event_id }))))
 }
 
@@ -78,17 +83,21 @@ async fn list(
     if q.limit == 0 || q.limit > MAX_LIST_LIMIT {
         q.limit = q.limit.clamp(1, MAX_LIST_LIMIT);
     }
-    let pool   = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let matrix = state.matrix_or_unavailable()?;
-    let repo   = ChannelRepo::new(pool);
+    let repo = ChannelRepo::new(pool);
     if !repo.is_member(ctx.tenant_id, id, ctx.user_id).await? {
         return Err(ChatError::NotMember);
     }
-    let ch = repo.get(ctx.tenant_id, id).await
+    let ch = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| ChatError::ChannelNotFound(id))?;
 
     let acting_as = matrix.mxid_for(ctx.user_id);
-    let value = matrix.list_messages(&acting_as, &ch.matrix_room_id, q.limit).await?;
+    let value = matrix
+        .list_messages(&acting_as, &ch.matrix_room_id, q.limit)
+        .await?;
     Ok(Json(value))
 }
 
@@ -101,7 +110,8 @@ fn validate_message_body(body: &str) -> Result<()> {
     if body.len() > MAX_MESSAGE_BODY_BYTES {
         return Err(ChatError::BadRequest(format!(
             "message body too large: {} bytes (max {})",
-            body.len(), MAX_MESSAGE_BODY_BYTES
+            body.len(),
+            MAX_MESSAGE_BODY_BYTES
         )));
     }
     Ok(())

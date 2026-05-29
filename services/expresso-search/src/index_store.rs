@@ -8,17 +8,15 @@
 //! then snippet will be None for old documents.
 
 use std::path::Path;
-use tantivy::schema::Value as TantivyValue;
 use std::sync::Arc;
+use tantivy::schema::Value as TantivyValue;
 
 use tantivy::{
     collector::TopDocs,
     directory::{Directory, MmapDirectory},
     doc,
     query::{BooleanQuery, Occur, Query, QueryParser, RangeQuery, TermQuery},
-    schema::{
-        Field, IndexRecordOption, NumericOptions, Schema, STORED, STRING, TEXT,
-    },
+    schema::{Field, IndexRecordOption, NumericOptions, Schema, STORED, STRING, TEXT},
     snippet::SnippetGenerator,
     Index, IndexReader, IndexWriter, ReloadPolicy, SegmentId,
 };
@@ -170,7 +168,10 @@ impl IndexStore {
         for doc_data in docs {
             let tenant_uuid = match Uuid::parse_str(doc_data.tenant_id.trim()) {
                 Ok(u) => u,
-                Err(_) => { rejected.push(doc_data.document_id.clone()); continue; }
+                Err(_) => {
+                    rejected.push(doc_data.document_id.clone());
+                    continue;
+                }
             };
             if doc_data.document_id.trim().is_empty() {
                 rejected.push(doc_data.document_id.clone());
@@ -234,14 +235,23 @@ impl IndexStore {
         let i = &self.inner;
         let writer_busy = i.writer.try_lock().is_err();
         let searcher = i.reader.searcher();
-        let num_docs: u64 = searcher.segment_readers().iter()
-            .map(|sr| sr.num_docs() as u64).sum();
+        let num_docs: u64 = searcher
+            .segment_readers()
+            .iter()
+            .map(|sr| sr.num_docs() as u64)
+            .sum();
         let num_segments = searcher.segment_readers().len();
         (50_000_000u64, writer_busy, num_docs, num_segments)
     }
 
     /// Full-text search filtered by tenant.
-    pub fn search(&self, query_str: &str, tenant_id: &str, limit: usize, offset: usize) -> anyhow::Result<Vec<SearchHit>> {
+    pub fn search(
+        &self,
+        query_str: &str,
+        tenant_id: &str,
+        limit: usize,
+        offset: usize,
+    ) -> anyhow::Result<Vec<SearchHit>> {
         // Validação rígida: tenant_id precisa ser UUID. A versão antiga
         // injetava o valor cru no QueryParser via `format!`, escapando só
         // aspas — um tenant_id como `*` ou vazio puxaria docs de outros
@@ -272,58 +282,88 @@ impl IndexStore {
             Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic));
 
         // Keep user_query separate so we can build a SnippetGenerator from it.
-        let (final_query, user_query_for_snippet): (Box<dyn Query>, Option<Box<dyn Query>>) = if trimmed.is_empty() {
-            (tenant_query, None)
-        } else {
-            let parser = QueryParser::for_index(
-                &i.index,
-                vec![i.f_subject, i.f_body, i.f_from_addr],
-            );
-            // Tag QueryParserError como bad_query — erros de sintaxe são input
-            // do usuário (400), não falha interna (500); sem tag, o handler
-            // vaza nomes de campos do schema via e.to_string().
-            let user_query = parser
-                .parse_query(trimmed)
-                .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
-            // Clone via Box<dyn Query> is not available; re-parse for snippet generator.
-            let user_query2 = parser
-                .parse_query(trimmed)
-                .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
-            let combined = Box::new(BooleanQuery::new(vec![
-                (Occur::Must, tenant_query),
-                (Occur::Must, user_query),
-            ]));
-            (combined, Some(user_query2))
-        };
+        let (final_query, user_query_for_snippet): (Box<dyn Query>, Option<Box<dyn Query>>) =
+            if trimmed.is_empty() {
+                (tenant_query, None)
+            } else {
+                let parser =
+                    QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+                // Tag QueryParserError como bad_query — erros de sintaxe são input
+                // do usuário (400), não falha interna (500); sem tag, o handler
+                // vaza nomes de campos do schema via e.to_string().
+                let user_query = parser
+                    .parse_query(trimmed)
+                    .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
+                // Clone via Box<dyn Query> is not available; re-parse for snippet generator.
+                let user_query2 = parser
+                    .parse_query(trimmed)
+                    .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
+                let combined = Box::new(BooleanQuery::new(vec![
+                    (Occur::Must, tenant_query),
+                    (Occur::Must, user_query),
+                ]));
+                (combined, Some(user_query2))
+            };
 
         // Build snippet generator once (expensive) outside the per-doc loop.
-        let snippet_gen = user_query_for_snippet.as_ref().and_then(|q| {
-            SnippetGenerator::create(&searcher, q.as_ref(), i.f_body).ok()
-        }).map(|mut gen| { gen.set_max_num_chars(200); gen });
+        let snippet_gen = user_query_for_snippet
+            .as_ref()
+            .and_then(|q| SnippetGenerator::create(&searcher, q.as_ref(), i.f_body).ok())
+            .map(|mut gen| {
+                gen.set_max_num_chars(200);
+                gen
+            });
 
-        let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(limit).and_offset(offset))?;
+        let top_docs = searcher.search(
+            &*final_query,
+            &TopDocs::with_limit(limit).and_offset(offset),
+        )?;
 
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_addr) in top_docs {
             let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
-            let doc_id = match doc.get_first(i.f_doc_id).and_then(|v| TantivyValue::as_str(&v)) {
+            let doc_id = match doc
+                .get_first(i.f_doc_id)
+                .and_then(|v| TantivyValue::as_str(&v))
+            {
                 Some(id) => id.to_owned(),
                 None => continue,
             };
-            let subject   = doc.get_first(i.f_subject).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
-            let from_addr = doc.get_first(i.f_from_addr).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
-            let kind      = doc.get_first(i.f_kind).and_then(|v| TantivyValue::as_str(&v))
-                               .filter(|s| !s.is_empty()).map(str::to_owned);
-            let received_at = doc.get_first(i.f_received_at)
+            let subject = doc
+                .get_first(i.f_subject)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .map(str::to_owned);
+            let from_addr = doc
+                .get_first(i.f_from_addr)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .map(str::to_owned);
+            let kind = doc
+                .get_first(i.f_kind)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned);
+            let received_at = doc
+                .get_first(i.f_received_at)
                 .and_then(|v| TantivyValue::as_u64(&v))
                 .filter(|&ts| ts > 0);
-            let snippet = snippet_gen.as_ref().map(|gen| {
-                let s = gen.snippet_from_doc(&doc);
-                let text = s.to_html();
-                // Strip tantivy's <b>…</b> highlight tags — return plain text.
-                text.replace("<b>", "").replace("</b>", "")
-            }).filter(|s| !s.is_empty());
-            results.push(SearchHit { document_id: doc_id, score, subject, from_addr, snippet, kind, received_at });
+            let snippet = snippet_gen
+                .as_ref()
+                .map(|gen| {
+                    let s = gen.snippet_from_doc(&doc);
+                    let text = s.to_html();
+                    // Strip tantivy's <b>…</b> highlight tags — return plain text.
+                    text.replace("<b>", "").replace("</b>", "")
+                })
+                .filter(|s| !s.is_empty());
+            results.push(SearchHit {
+                document_id: doc_id,
+                score,
+                subject,
+                from_addr,
+                snippet,
+                kind,
+                received_at,
+            });
         }
 
         Ok(results)
@@ -358,8 +398,10 @@ impl IndexStore {
         let final_query: Box<dyn Query> = if trimmed.is_empty() {
             tenant_query
         } else {
-            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
-            let user_query = parser.parse_query(trimmed)
+            let parser =
+                QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser
+                .parse_query(trimmed)
                 .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
             Box::new(BooleanQuery::new(vec![
                 (Occur::Must, tenant_query),
@@ -374,7 +416,8 @@ impl IndexStore {
         let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
         for doc_addr in doc_set {
             let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
-            let kind = doc.get_first(i.f_kind)
+            let kind = doc
+                .get_first(i.f_kind)
                 .and_then(|v| TantivyValue::as_str(&v))
                 .filter(|s| !s.is_empty())
                 .unwrap_or("unknown")
@@ -420,8 +463,10 @@ impl IndexStore {
         let final_query: Box<dyn Query> = if trimmed.is_empty() {
             tenant_query
         } else {
-            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
-            let user_query = parser.parse_query(trimmed)
+            let parser =
+                QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser
+                .parse_query(trimmed)
                 .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
             Box::new(BooleanQuery::new(vec![
                 (Occur::Must, tenant_query),
@@ -434,23 +479,29 @@ impl IndexStore {
 
         // Stop-words mínimas PT+EN. Ampliar se viramos múltiplos idiomas reais.
         const STOP: &[&str] = &[
-            "the", "and", "for", "you", "from", "with", "this", "that", "are",
-            "was", "but", "not", "your", "have", "has", "all",
-            "que", "com", "para", "sem", "por", "uma", "dos", "das",
+            "the", "and", "for", "you", "from", "with", "this", "that", "are", "was", "but", "not",
+            "your", "have", "has", "all", "que", "com", "para", "sem", "por", "uma", "dos", "das",
             "como", "mas", "seu", "sua", "está", "ser", "fwd", "re",
         ];
 
         let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
         for doc_addr in doc_set {
             let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
-            let subject = match doc.get_first(i.f_subject).and_then(|v| TantivyValue::as_str(&v)) {
+            let subject = match doc
+                .get_first(i.f_subject)
+                .and_then(|v| TantivyValue::as_str(&v))
+            {
                 Some(s) => s,
-                None    => continue,
+                None => continue,
             };
             for raw in subject.split(|c: char| !c.is_alphanumeric()) {
                 let t = raw.to_lowercase();
-                if t.chars().count() < 3 { continue; }
-                if STOP.contains(&t.as_str()) { continue; }
+                if t.chars().count() < 3 {
+                    continue;
+                }
+                if STOP.contains(&t.as_str()) {
+                    continue;
+                }
                 *counts.entry(t).or_insert(0) += 1;
             }
         }
@@ -496,8 +547,10 @@ impl IndexStore {
         let final_query: Box<dyn Query> = if trimmed.is_empty() {
             tenant_query
         } else {
-            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
-            let user_query = parser.parse_query(trimmed)
+            let parser =
+                QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser
+                .parse_query(trimmed)
                 .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
             Box::new(BooleanQuery::new(vec![
                 (Occur::Must, tenant_query),
@@ -508,15 +561,18 @@ impl IndexStore {
         use tantivy::collector::DocSetCollector;
         let doc_set = searcher.search(&*final_query, &DocSetCollector)?;
 
-        let mut counts: std::collections::HashMap<(String, String), u64> = std::collections::HashMap::new();
+        let mut counts: std::collections::HashMap<(String, String), u64> =
+            std::collections::HashMap::new();
         for doc_addr in doc_set {
             let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
-            let kind = doc.get_first(i.f_kind)
+            let kind = doc
+                .get_first(i.f_kind)
                 .and_then(|v| TantivyValue::as_str(&v))
                 .filter(|s| !s.is_empty())
                 .unwrap_or("(unknown)")
                 .to_owned();
-            let from = doc.get_first(i.f_from_addr)
+            let from = doc
+                .get_first(i.f_from_addr)
                 .and_then(|v| TantivyValue::as_str(&v))
                 .filter(|s| !s.is_empty())
                 .unwrap_or("(unknown)")
@@ -524,14 +580,9 @@ impl IndexStore {
             *counts.entry((kind, from)).or_insert(0) += 1;
         }
 
-        let mut sorted: Vec<(String, String, u64)> = counts.into_iter()
-            .map(|((k, f), c)| (k, f, c))
-            .collect();
-        sorted.sort_by(|a, b| {
-            b.2.cmp(&a.2)
-                .then(a.0.cmp(&b.0))
-                .then(a.1.cmp(&b.1))
-        });
+        let mut sorted: Vec<(String, String, u64)> =
+            counts.into_iter().map(|((k, f), c)| (k, f, c)).collect();
+        sorted.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(&b.0)).then(a.1.cmp(&b.1)));
         sorted.truncate(top_n);
         Ok(sorted)
     }
@@ -568,8 +619,10 @@ impl IndexStore {
         let final_query: Box<dyn Query> = if trimmed.is_empty() {
             tenant_query
         } else {
-            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
-            let user_query = parser.parse_query(trimmed)
+            let parser =
+                QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser
+                .parse_query(trimmed)
                 .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
             Box::new(BooleanQuery::new(vec![
                 (Occur::Must, tenant_query),
@@ -580,15 +633,18 @@ impl IndexStore {
         use tantivy::collector::DocSetCollector;
         let doc_set = searcher.search(&*final_query, &DocSetCollector)?;
 
-        let mut counts: std::collections::HashMap<(String, String), u64> = std::collections::HashMap::new();
+        let mut counts: std::collections::HashMap<(String, String), u64> =
+            std::collections::HashMap::new();
         for doc_addr in doc_set {
             let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
-            let domain = doc.get_first(i.f_from_addr)
+            let domain = doc
+                .get_first(i.f_from_addr)
                 .and_then(|v| TantivyValue::as_str(&v))
                 .filter(|s| !s.is_empty())
                 .and_then(|s| s.rsplit_once('@').map(|(_, d)| d.to_ascii_lowercase()))
                 .unwrap_or_else(|| "(unknown)".to_owned());
-            let kind = doc.get_first(i.f_kind)
+            let kind = doc
+                .get_first(i.f_kind)
                 .and_then(|v| TantivyValue::as_str(&v))
                 .filter(|s| !s.is_empty())
                 .unwrap_or("(unknown)")
@@ -596,14 +652,9 @@ impl IndexStore {
             *counts.entry((domain, kind)).or_insert(0) += 1;
         }
 
-        let mut sorted: Vec<(String, String, u64)> = counts.into_iter()
-            .map(|((d, k), c)| (d, k, c))
-            .collect();
-        sorted.sort_by(|a, b| {
-            b.2.cmp(&a.2)
-                .then(a.0.cmp(&b.0))
-                .then(a.1.cmp(&b.1))
-        });
+        let mut sorted: Vec<(String, String, u64)> =
+            counts.into_iter().map(|((d, k), c)| (d, k, c)).collect();
+        sorted.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(&b.0)).then(a.1.cmp(&b.1)));
         sorted.truncate(top_n);
         Ok(sorted)
     }
@@ -639,8 +690,10 @@ impl IndexStore {
         let final_query: Box<dyn Query> = if trimmed.is_empty() {
             tenant_query
         } else {
-            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
-            let user_query = parser.parse_query(trimmed)
+            let parser =
+                QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser
+                .parse_query(trimmed)
                 .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
             Box::new(BooleanQuery::new(vec![
                 (Occur::Must, tenant_query),
@@ -654,7 +707,8 @@ impl IndexStore {
         let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
         for doc_addr in doc_set {
             let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
-            let domain = doc.get_first(i.f_from_addr)
+            let domain = doc
+                .get_first(i.f_from_addr)
                 .and_then(|v| TantivyValue::as_str(&v))
                 .filter(|s| !s.is_empty())
                 .and_then(|s| s.rsplit_once('@').map(|(_, d)| d.to_ascii_lowercase()))
@@ -700,8 +754,10 @@ impl IndexStore {
         let final_query: Box<dyn Query> = if trimmed.is_empty() {
             tenant_query
         } else {
-            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
-            let user_query = parser.parse_query(trimmed)
+            let parser =
+                QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser
+                .parse_query(trimmed)
                 .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
             Box::new(BooleanQuery::new(vec![
                 (Occur::Must, tenant_query),
@@ -715,7 +771,10 @@ impl IndexStore {
         let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
         for doc_addr in doc_set {
             let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
-            let ts = match doc.get_first(i.f_received_at).and_then(|v| TantivyValue::as_u64(&v)) {
+            let ts = match doc
+                .get_first(i.f_received_at)
+                .and_then(|v| TantivyValue::as_u64(&v))
+            {
                 Some(t) if t > 0 => t,
                 _ => continue,
             };
@@ -764,8 +823,10 @@ impl IndexStore {
         let mut clauses: Vec<(Occur, Box<dyn Query>)> = vec![(Occur::Must, tenant_query)];
 
         if !trimmed.is_empty() {
-            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
-            let user_query = parser.parse_query(trimmed)
+            let parser =
+                QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser
+                .parse_query(trimmed)
                 .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
             clauses.push((Occur::Must, user_query));
         }
@@ -776,45 +837,78 @@ impl IndexStore {
         let range_query: Box<dyn Query> = Box::new(RangeQuery::new_u64_bounds(
             "received_at".to_owned(),
             std::ops::Bound::Included(lo),
-            hi.map(std::ops::Bound::Excluded).unwrap_or(std::ops::Bound::Unbounded),
+            hi.map(std::ops::Bound::Excluded)
+                .unwrap_or(std::ops::Bound::Unbounded),
         ));
         clauses.push((Occur::Must, range_query));
 
         let final_query = Box::new(BooleanQuery::new(clauses));
 
         let user_query_for_snippet = if !trimmed.is_empty() {
-            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let parser =
+                QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
             parser.parse_query(trimmed).ok()
         } else {
             None
         };
 
-        let snippet_gen = user_query_for_snippet.as_ref().and_then(|q| {
-            SnippetGenerator::create(&searcher, q.as_ref(), i.f_body).ok()
-        }).map(|mut gen| { gen.set_max_num_chars(200); gen });
+        let snippet_gen = user_query_for_snippet
+            .as_ref()
+            .and_then(|q| SnippetGenerator::create(&searcher, q.as_ref(), i.f_body).ok())
+            .map(|mut gen| {
+                gen.set_max_num_chars(200);
+                gen
+            });
 
-        let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(limit).and_offset(offset))?;
+        let top_docs = searcher.search(
+            &*final_query,
+            &TopDocs::with_limit(limit).and_offset(offset),
+        )?;
 
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_addr) in top_docs {
             let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
-            let doc_id = match doc.get_first(i.f_doc_id).and_then(|v| TantivyValue::as_str(&v)) {
+            let doc_id = match doc
+                .get_first(i.f_doc_id)
+                .and_then(|v| TantivyValue::as_str(&v))
+            {
                 Some(id) => id.to_owned(),
                 None => continue,
             };
-            let subject   = doc.get_first(i.f_subject).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
-            let from_addr = doc.get_first(i.f_from_addr).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
-            let kind      = doc.get_first(i.f_kind).and_then(|v| TantivyValue::as_str(&v))
-                               .filter(|s| !s.is_empty()).map(str::to_owned);
-            let received_at = doc.get_first(i.f_received_at)
+            let subject = doc
+                .get_first(i.f_subject)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .map(str::to_owned);
+            let from_addr = doc
+                .get_first(i.f_from_addr)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .map(str::to_owned);
+            let kind = doc
+                .get_first(i.f_kind)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned);
+            let received_at = doc
+                .get_first(i.f_received_at)
                 .and_then(|v| TantivyValue::as_u64(&v))
                 .filter(|&ts| ts > 0);
-            let snippet = snippet_gen.as_ref().map(|gen| {
-                let s = gen.snippet_from_doc(&doc);
-                let text = s.to_html();
-                text.replace("<b>", "").replace("</b>", "")
-            }).filter(|s| !s.is_empty());
-            results.push(SearchHit { document_id: doc_id, score, subject, from_addr, snippet, kind, received_at });
+            let snippet = snippet_gen
+                .as_ref()
+                .map(|gen| {
+                    let s = gen.snippet_from_doc(&doc);
+                    let text = s.to_html();
+                    text.replace("<b>", "").replace("</b>", "")
+                })
+                .filter(|s| !s.is_empty());
+            results.push(SearchHit {
+                document_id: doc_id,
+                score,
+                subject,
+                from_addr,
+                snippet,
+                kind,
+                received_at,
+            });
         }
 
         Ok(results)
@@ -848,8 +942,10 @@ impl IndexStore {
         let final_query: Box<dyn Query> = if trimmed.is_empty() {
             tenant_query
         } else {
-            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
-            let user_query = parser.parse_query(trimmed)
+            let parser =
+                QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser
+                .parse_query(trimmed)
                 .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
             Box::new(BooleanQuery::new(vec![
                 (Occur::Must, tenant_query),
@@ -863,7 +959,8 @@ impl IndexStore {
         let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
         for doc_addr in doc_set {
             let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
-            let from = doc.get_first(i.f_from_addr)
+            let from = doc
+                .get_first(i.f_from_addr)
                 .and_then(|v| TantivyValue::as_str(&v))
                 .filter(|s| !s.is_empty())
                 .unwrap_or("(unknown)")
@@ -880,7 +977,10 @@ impl IndexStore {
     /// Force-merge all segments into one. Returns (merged_from, status).
     /// No-op when already 0–1 segments. Sprint #595.
     pub async fn force_merge_segments(&self) -> anyhow::Result<(usize, &'static str)> {
-        let segment_ids: Vec<SegmentId> = self.inner.index.searchable_segment_ids()
+        let segment_ids: Vec<SegmentId> = self
+            .inner
+            .index
+            .searchable_segment_ids()
             .map_err(|e| anyhow::anyhow!("segment list failed: {:?}", e))?;
         let merged_from = segment_ids.len();
         if merged_from <= 1 {
@@ -890,7 +990,9 @@ impl IndexStore {
             let mut writer = self.inner.writer.lock().await;
             writer.merge(&segment_ids)
         };
-        future.await.map_err(|e| anyhow::anyhow!("merge failed: {:?}", e))?;
+        future
+            .await
+            .map_err(|e| anyhow::anyhow!("merge failed: {:?}", e))?;
         Ok((merged_from, "merged"))
     }
 
@@ -901,7 +1003,8 @@ impl IndexStore {
             let writer = self.inner.writer.lock().await;
             writer.garbage_collect_files()
         };
-        let result = future.await
+        let result = future
+            .await
             .map_err(|e| anyhow::anyhow!("vacuum failed: {:?}", e))?;
         Ok(result.deleted_files.len())
     }
@@ -913,14 +1016,17 @@ impl IndexStore {
         let i = &self.inner;
         let searcher = i.reader.searcher();
 
-        let num_docs: u64 = searcher.segment_readers().iter()
+        let num_docs: u64 = searcher
+            .segment_readers()
+            .iter()
             .map(|sr| sr.num_docs() as u64)
             .sum();
         let num_segments = searcher.segment_readers().len();
 
         // Disk size: sum sizes of all files in the index directory.
         let meta = i.index.directory();
-        let disk_bytes: u64 = meta.list_managed_files()
+        let disk_bytes: u64 = meta
+            .list_managed_files()
             .iter()
             .filter_map(|path| meta.get_file_handle(path).ok())
             .map(|fh| fh.len() as u64)
@@ -934,20 +1040,19 @@ impl IndexStore {
     pub fn list_segments(&self) -> anyhow::Result<Vec<(String, u64, u64)>> {
         let i = &self.inner;
         let searcher = i.reader.searcher();
-        let dir      = i.index.directory();
+        let dir = i.index.directory();
 
         let segments: Vec<(String, u64, u64)> = searcher
             .segment_readers()
             .iter()
             .map(|sr| {
-                let seg_id    = sr.segment_id().uuid_string();
-                let num_docs  = sr.num_docs() as u64;
+                let seg_id = sr.segment_id().uuid_string();
+                let num_docs = sr.num_docs() as u64;
                 // Sum file sizes for files belonging to this segment (prefix match).
-                let seg_bytes: u64 = dir.list_managed_files()
+                let seg_bytes: u64 = dir
+                    .list_managed_files()
                     .iter()
-                    .filter(|p| {
-                        p.to_string_lossy().starts_with(&seg_id)
-                    })
+                    .filter(|p| p.to_string_lossy().starts_with(&seg_id))
                     .filter_map(|p| dir.get_file_handle(p).ok())
                     .map(|fh| fh.len() as u64)
                     .sum();
@@ -961,7 +1066,7 @@ impl IndexStore {
     /// Returns metadata for a single segment by its UUID string. Returns `None`
     /// if no segment with that ID is visible to the current reader. Sprint #618.
     pub fn get_segment(&self, id: &str) -> anyhow::Result<Option<(String, u64, u64)>> {
-        let i   = &self.inner;
+        let i = &self.inner;
         let dir = i.index.directory();
         let searcher = i.reader.searcher();
 
@@ -970,9 +1075,10 @@ impl IndexStore {
             .iter()
             .find(|sr| sr.segment_id().uuid_string() == id)
             .map(|sr| {
-                let seg_id   = sr.segment_id().uuid_string();
+                let seg_id = sr.segment_id().uuid_string();
                 let num_docs = sr.num_docs() as u64;
-                let seg_bytes: u64 = dir.list_managed_files()
+                let seg_bytes: u64 = dir
+                    .list_managed_files()
                     .iter()
                     .filter(|p| p.to_string_lossy().starts_with(&seg_id))
                     .filter_map(|p| dir.get_file_handle(p).ok())
@@ -997,8 +1103,7 @@ impl IndexStore {
         let searcher = i.reader.searcher();
 
         let tenant_term = tantivy::Term::from_field_text(i.f_tenant_id, &tenant_canonical);
-        let query: Box<dyn Query> =
-            Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic));
+        let query: Box<dyn Query> = Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic));
 
         let doc_set = searcher.search(&*query, &DocSetCollector)?;
 
@@ -1006,7 +1111,8 @@ impl IndexStore {
             std::collections::HashMap::new();
         for doc_addr in doc_set {
             let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
-            let kind = doc.get_first(i.f_kind)
+            let kind = doc
+                .get_first(i.f_kind)
                 .and_then(|v| TantivyValue::as_str(&v))
                 .filter(|s| !s.is_empty())
                 .unwrap_or("unknown")
@@ -1025,8 +1131,8 @@ impl IndexStore {
     /// Scans all docs (MatchAllDocs) and accumulates counts by the `tenant_id` stored field.
     /// Sprint #684.
     pub fn docs_count_by_tenant(&self, limit: usize) -> anyhow::Result<Vec<(String, u64)>> {
-        use tantivy::query::AllQuery;
         use tantivy::collector::DocSetCollector;
+        use tantivy::query::AllQuery;
 
         let i = &self.inner;
         let searcher = i.reader.searcher();
@@ -1035,7 +1141,8 @@ impl IndexStore {
         let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
         for doc_addr in doc_set {
             let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
-            let tid = doc.get_first(i.f_tenant_id)
+            let tid = doc
+                .get_first(i.f_tenant_id)
                 .and_then(|v| TantivyValue::as_str(&v))
                 .unwrap_or("unknown")
                 .to_owned();
@@ -1061,7 +1168,7 @@ fn unix_secs_to_bucket(ts: u64, granularity: &str) -> String {
         "week" => {
             // ISO week: use the Thursday-anchor rule. Compute day-of-week (Mon=0).
             let dow = ((days + 3) % 7) as i32; // Mon=0 … Sun=6 (1970-01-01 was Thu=3)
-            // Thursday of the same ISO week
+                                               // Thursday of the same ISO week
             let thursday_days = days + (3 - dow) as i64;
             let (ty, _, _) = days_to_ymd(thursday_days);
             // Week number = ceil((thursday_days - first_thursday_of_year) / 7) + 1
@@ -1095,7 +1202,8 @@ fn ymd_to_days(y: i32, m: u32, d: u32) -> i64 {
     let jd = (1461 * (y as i64 + 4800 + (m as i64 - 14) / 12)) / 4
         + (367 * (m as i64 - 2 - 12 * ((m as i64 - 14) / 12))) / 12
         - (3 * ((y as i64 + 4900 + (m as i64 - 14) / 12) / 100)) / 4
-        + d as i64 - 32075;
+        + d as i64
+        - 32075;
     jd - 2440588
 }
 
@@ -1132,7 +1240,10 @@ mod tests {
         assert_eq!(hits[0].from_addr.as_deref(), Some("alice@example.com"));
         // snippet should contain the body text around the match term
         let snip = hits[0].snippet.as_deref().unwrap_or("");
-        assert!(snip.contains("meeting"), "snippet missing match term, got: {snip:?}");
+        assert!(
+            snip.contains("meeting"),
+            "snippet missing match term, got: {snip:?}"
+        );
 
         // Different tenant → no results
         let hits2 = store.search("meeting", TENANT_B, 10, 0).unwrap();
@@ -1244,7 +1355,10 @@ mod tests {
     #[test]
     fn bucket_unknown_granularity_falls_back_to_day() {
         let ts: u64 = 1779408000;
-        assert_eq!(unix_secs_to_bucket(ts, "quarter"), unix_secs_to_bucket(ts, "day"));
+        assert_eq!(
+            unix_secs_to_bucket(ts, "quarter"),
+            unix_secs_to_bucket(ts, "day")
+        );
     }
 
     #[test]
@@ -1279,7 +1393,11 @@ mod tests {
         for (ey, em, ed) in cases {
             let days = ymd_to_days(ey, em, ed);
             let (y, m, d) = days_to_ymd(days);
-            assert_eq!((y, m, d), (ey as i32, em, ed), "roundtrip failed for {ey}-{em:02}-{ed:02}");
+            assert_eq!(
+                (y, m, d),
+                (ey as i32, em, ed),
+                "roundtrip failed for {ey}-{em:02}-{ed:02}"
+            );
         }
     }
 
@@ -1290,16 +1408,30 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = IndexStore::open(dir.path()).unwrap();
 
-        store.index_document(&IndexDoc {
-            document_id: "d1".into(), tenant_id: TENANT_A.into(),
-            subject: None, from_addr: None, body: None,
-            kind: Some("mail".into()), received_at: None,
-        }).await.unwrap();
-        store.index_document(&IndexDoc {
-            document_id: "d2".into(), tenant_id: TENANT_B.into(),
-            subject: None, from_addr: None, body: None,
-            kind: Some("drive".into()), received_at: None,
-        }).await.unwrap();
+        store
+            .index_document(&IndexDoc {
+                document_id: "d1".into(),
+                tenant_id: TENANT_A.into(),
+                subject: None,
+                from_addr: None,
+                body: None,
+                kind: Some("mail".into()),
+                received_at: None,
+            })
+            .await
+            .unwrap();
+        store
+            .index_document(&IndexDoc {
+                document_id: "d2".into(),
+                tenant_id: TENANT_B.into(),
+                subject: None,
+                from_addr: None,
+                body: None,
+                kind: Some("drive".into()),
+                received_at: None,
+            })
+            .await
+            .unwrap();
         store.reload().unwrap();
 
         let fa = store.facet_counts_by_kind("", TENANT_A).unwrap();
@@ -1323,11 +1455,18 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = IndexStore::open(dir.path()).unwrap();
         for (id, kind) in [("a", "mail"), ("b", "mail"), ("c", "drive")] {
-            store.index_document(&IndexDoc {
-                document_id: id.into(), tenant_id: TENANT_A.into(),
-                subject: None, from_addr: None, body: None,
-                kind: Some(kind.into()), received_at: None,
-            }).await.unwrap();
+            store
+                .index_document(&IndexDoc {
+                    document_id: id.into(),
+                    tenant_id: TENANT_A.into(),
+                    subject: None,
+                    from_addr: None,
+                    body: None,
+                    kind: Some(kind.into()),
+                    received_at: None,
+                })
+                .await
+                .unwrap();
         }
         store.reload().unwrap();
         let (total, by_kind) = store.doc_stats(TENANT_A).unwrap();
@@ -1341,10 +1480,24 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = IndexStore::open(dir.path()).unwrap();
         let docs = vec![
-            IndexDoc { document_id: "ok1".into(), tenant_id: TENANT_A.into(),
-                       subject: None, from_addr: None, body: None, kind: None, received_at: None },
-            IndexDoc { document_id: "bad".into(), tenant_id: "not-a-uuid".into(),
-                       subject: None, from_addr: None, body: None, kind: None, received_at: None },
+            IndexDoc {
+                document_id: "ok1".into(),
+                tenant_id: TENANT_A.into(),
+                subject: None,
+                from_addr: None,
+                body: None,
+                kind: None,
+                received_at: None,
+            },
+            IndexDoc {
+                document_id: "bad".into(),
+                tenant_id: "not-a-uuid".into(),
+                subject: None,
+                from_addr: None,
+                body: None,
+                kind: None,
+                received_at: None,
+            },
         ];
         let rejected = store.index_documents(&docs).await.unwrap();
         assert_eq!(rejected, vec!["bad".to_string()]);
@@ -1539,7 +1692,10 @@ mod tests {
     #[test]
     fn bucket_week_and_bucket_day_differ_for_known_ts() {
         let ts: u64 = 1779408000;
-        assert_ne!(unix_secs_to_bucket(ts, "week"), unix_secs_to_bucket(ts, "day"));
+        assert_ne!(
+            unix_secs_to_bucket(ts, "week"),
+            unix_secs_to_bucket(ts, "day")
+        );
     }
 
     #[test]

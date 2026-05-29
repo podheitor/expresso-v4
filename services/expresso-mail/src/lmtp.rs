@@ -18,8 +18,8 @@ use tokio::{
 };
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::{ingest, state::AppState};
 use crate::smtp::metrics::{command_label, SMTP_COMMANDS_TOTAL, SMTP_SESSIONS_TOTAL};
+use crate::{ingest, state::AppState};
 
 const MAX_MSG_BYTES: usize = 50 * 1024 * 1024; // 50 MiB
 const MAX_RCPTS: usize = 100;
@@ -57,7 +57,9 @@ pub async fn serve(state: AppState, addr: SocketAddr) -> anyhow::Result<()> {
 
 #[instrument(skip(stream, state), fields(peer = %peer))]
 async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow::Result<()> {
-    SMTP_SESSIONS_TOTAL.with_label_values(&["lmtp", "accepted"]).inc();
+    SMTP_SESSIONS_TOTAL
+        .with_label_values(&["lmtp", "accepted"])
+        .inc();
 
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
@@ -190,8 +192,12 @@ async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow:
     }.await;
 
     match &result {
-        Ok(()) => SMTP_SESSIONS_TOTAL.with_label_values(&["lmtp", "closed"]).inc(),
-        Err(_) => SMTP_SESSIONS_TOTAL.with_label_values(&["lmtp", "error"]).inc(),
+        Ok(()) => SMTP_SESSIONS_TOTAL
+            .with_label_values(&["lmtp", "closed"])
+            .inc(),
+        Err(_) => SMTP_SESSIONS_TOTAL
+            .with_label_values(&["lmtp", "error"])
+            .inc(),
     }
     result
 }
@@ -244,7 +250,10 @@ mod tests {
 
     #[test]
     fn angle_no_brackets_with_params() {
-        assert_eq!(extract_angle("user@example.com BODY=8BITMIME"), "user@example.com");
+        assert_eq!(
+            extract_angle("user@example.com BODY=8BITMIME"),
+            "user@example.com"
+        );
     }
 
     #[test]
@@ -325,7 +334,10 @@ mod tests {
 
     #[test]
     fn size_param_with_other_params_still_parsed() {
-        assert_eq!(extract_size_param("<a@b> BODY=7BIT SIZE=4096 RET=HDRS"), Some(4096));
+        assert_eq!(
+            extract_size_param("<a@b> BODY=7BIT SIZE=4096 RET=HDRS"),
+            Some(4096)
+        );
     }
 
     #[test]

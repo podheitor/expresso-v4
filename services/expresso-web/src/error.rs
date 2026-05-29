@@ -1,6 +1,9 @@
 //! Error type for expresso-web. Always render HTML error page on failure.
 
-use axum::{http::StatusCode, response::{IntoResponse, Response}};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum WebError {
@@ -11,13 +14,19 @@ pub enum WebError {
 }
 
 impl From<reqwest::Error> for WebError {
-    fn from(e: reqwest::Error) -> Self { WebError::Upstream(e.to_string()) }
+    fn from(e: reqwest::Error) -> Self {
+        WebError::Upstream(e.to_string())
+    }
 }
 impl From<serde_json::Error> for WebError {
-    fn from(e: serde_json::Error) -> Self { WebError::Internal(e.to_string()) }
+    fn from(e: serde_json::Error) -> Self {
+        WebError::Internal(e.to_string())
+    }
 }
 impl From<anyhow::Error> for WebError {
-    fn from(e: anyhow::Error) -> Self { WebError::Internal(e.to_string()) }
+    fn from(e: anyhow::Error) -> Self {
+        WebError::Internal(e.to_string())
+    }
 }
 
 impl IntoResponse for WebError {
@@ -29,9 +38,12 @@ impl IntoResponse for WebError {
              <p><a href=\"/\">Voltar</a></p></body>",
             html_escape::encode_text(&self.to_string())
         );
-        (StatusCode::INTERNAL_SERVER_ERROR,
-         [("content-type", "text/html; charset=utf-8")],
-         body).into_response()
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            [("content-type", "text/html; charset=utf-8")],
+            body,
+        )
+            .into_response()
     }
 }
 
@@ -87,7 +99,12 @@ mod tests {
     fn response_content_type_is_html() {
         use axum::response::IntoResponse;
         let resp = WebError::Internal("x".into()).into_response();
-        let ct = resp.headers().get("content-type").unwrap().to_str().unwrap();
+        let ct = resp
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(ct.contains("text/html"));
     }
 
@@ -175,20 +192,38 @@ mod tests {
 
     #[test]
     fn upstream_error_is_not_internal_variant() {
-        assert!(matches!(WebError::Upstream("x".into()), WebError::Upstream(_)));
-        assert!(!matches!(WebError::Upstream("x".into()), WebError::Internal(_)));
+        assert!(matches!(
+            WebError::Upstream("x".into()),
+            WebError::Upstream(_)
+        ));
+        assert!(!matches!(
+            WebError::Upstream("x".into()),
+            WebError::Internal(_)
+        ));
     }
 
     #[test]
     fn internal_error_is_not_upstream_variant() {
-        assert!(matches!(WebError::Internal("y".into()), WebError::Internal(_)));
-        assert!(!matches!(WebError::Internal("y".into()), WebError::Upstream(_)));
+        assert!(matches!(
+            WebError::Internal("y".into()),
+            WebError::Internal(_)
+        ));
+        assert!(!matches!(
+            WebError::Internal("y".into()),
+            WebError::Upstream(_)
+        ));
     }
 
     #[test]
     fn upstream_error_is_upstream_variant() {
-        assert!(matches!(WebError::Upstream("z".into()), WebError::Upstream(_)));
-        assert!(!matches!(WebError::Upstream("z".into()), WebError::Internal(_)));
+        assert!(matches!(
+            WebError::Upstream("z".into()),
+            WebError::Upstream(_)
+        ));
+        assert!(!matches!(
+            WebError::Upstream("z".into()),
+            WebError::Internal(_)
+        ));
     }
 
     #[test]

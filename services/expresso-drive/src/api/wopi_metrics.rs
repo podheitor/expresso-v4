@@ -68,13 +68,13 @@ pub fn record(op: &'static str, outcome: &'static str) {
 /// Map a `DriveError` to the canonical outcome label.
 pub fn outcome_for_err(e: &DriveError) -> &'static str {
     match e {
-        DriveError::Unauthorized   => "unauthorized",
-        DriveError::BadRequest(_)  => "bad_request",
-        DriveError::Conflict(_)    => "conflict",
-        DriveError::QuotaExceeded  => "quota_exceeded",
-        DriveError::NotFound(_)    => "not_found",
-        DriveError::Forbidden      => "forbidden",
-        _                          => "error",
+        DriveError::Unauthorized => "unauthorized",
+        DriveError::BadRequest(_) => "bad_request",
+        DriveError::Conflict(_) => "conflict",
+        DriveError::QuotaExceeded => "quota_exceeded",
+        DriveError::NotFound(_) => "not_found",
+        DriveError::Forbidden => "forbidden",
+        _ => "error",
     }
 }
 
@@ -85,13 +85,25 @@ mod tests {
 
     #[test]
     fn err_outcome_mapping() {
-        assert_eq!(outcome_for_err(&DriveError::Unauthorized),         "unauthorized");
-        assert_eq!(outcome_for_err(&DriveError::BadRequest("x".into())), "bad_request");
-        assert_eq!(outcome_for_err(&DriveError::Conflict("x".into())),   "conflict");
-        assert_eq!(outcome_for_err(&DriveError::QuotaExceeded),         "quota_exceeded");
-        assert_eq!(outcome_for_err(&DriveError::NotFound(Uuid::nil())), "not_found");
-        assert_eq!(outcome_for_err(&DriveError::Forbidden),             "forbidden");
-        assert_eq!(outcome_for_err(&DriveError::DatabaseUnavailable),   "error");
+        assert_eq!(outcome_for_err(&DriveError::Unauthorized), "unauthorized");
+        assert_eq!(
+            outcome_for_err(&DriveError::BadRequest("x".into())),
+            "bad_request"
+        );
+        assert_eq!(
+            outcome_for_err(&DriveError::Conflict("x".into())),
+            "conflict"
+        );
+        assert_eq!(
+            outcome_for_err(&DriveError::QuotaExceeded),
+            "quota_exceeded"
+        );
+        assert_eq!(
+            outcome_for_err(&DriveError::NotFound(Uuid::nil())),
+            "not_found"
+        );
+        assert_eq!(outcome_for_err(&DriveError::Forbidden), "forbidden");
+        assert_eq!(outcome_for_err(&DriveError::DatabaseUnavailable), "error");
     }
 
     #[test]
@@ -115,7 +127,10 @@ mod tests {
 
     #[test]
     fn io_error_maps_to_error() {
-        let e = DriveError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file missing"));
+        let e = DriveError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "file missing",
+        ));
         assert_eq!(outcome_for_err(&e), "error");
     }
 

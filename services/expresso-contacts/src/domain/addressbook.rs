@@ -16,36 +16,36 @@ use crate::error::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Addressbook {
-    pub id:            Uuid,
-    pub tenant_id:     Uuid,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
     pub owner_user_id: Uuid,
-    pub name:          String,
-    pub description:   Option<String>,
-    pub ctag:          i64,
-    pub is_default:    bool,
+    pub name: String,
+    pub description: Option<String>,
+    pub ctag: i64,
+    pub is_default: bool,
     #[serde(with = "time::serde::rfc3339")]
-    pub created_at:    OffsetDateTime,
+    pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    pub updated_at:    OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct NewAddressbook {
-    pub name:        String,
+    pub name: String,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
-    pub is_default:  bool,
+    pub is_default: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct UpdateAddressbook {
     #[serde(default)]
-    pub name:        Option<String>,
+    pub name: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
-    pub is_default:  Option<bool>,
+    pub is_default: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -54,7 +54,9 @@ pub struct AddressbookRepo<'a> {
 }
 
 impl<'a> AddressbookRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     pub async fn create(
         &self,
@@ -80,7 +82,6 @@ impl<'a> AddressbookRepo<'a> {
         tx.commit().await?;
         Ok(row)
     }
-
 
     /// Insere addressbook honrando UUID fornecido (CardDAV MKCOL).
     pub async fn create_with_id(
@@ -179,19 +180,22 @@ impl<'a> AddressbookRepo<'a> {
 
     pub async fn ctag(&self, tenant_id: Uuid, id: Uuid) -> Result<i64> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
-        let (ctag,): (i64,) = sqlx::query_as(
-            r#"SELECT ctag FROM addressbooks WHERE tenant_id = $1 AND id = $2"#,
-        )
-        .bind(tenant_id)
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let (ctag,): (i64,) =
+            sqlx::query_as(r#"SELECT ctag FROM addressbooks WHERE tenant_id = $1 AND id = $2"#)
+                .bind(tenant_id)
+                .bind(id)
+                .fetch_one(&mut *tx)
+                .await?;
         tx.commit().await?;
         Ok(ctag)
     }
 
     /// Owned + shared via addressbook_acl.
-    pub async fn list_accessible(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<Addressbook>> {
+    pub async fn list_accessible(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<Addressbook>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query_as::<_, Addressbook>(
             r#"SELECT * FROM addressbooks
@@ -253,7 +257,6 @@ impl<'a> AddressbookRepo<'a> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,15 +264,15 @@ mod tests {
 
     fn sample() -> Addressbook {
         Addressbook {
-            id:            Uuid::nil(),
-            tenant_id:     Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             owner_user_id: Uuid::nil(),
-            name:          "Contacts".into(),
-            description:   Some("Main addressbook".into()),
-            ctag:          7,
-            is_default:    true,
-            created_at:    datetime!(2026-05-22 08:00:00 UTC),
-            updated_at:    datetime!(2026-05-22 09:00:00 UTC),
+            name: "Contacts".into(),
+            description: Some("Main addressbook".into()),
+            ctag: 7,
+            is_default: true,
+            created_at: datetime!(2026-05-22 08:00:00 UTC),
+            updated_at: datetime!(2026-05-22 09:00:00 UTC),
         }
     }
 
@@ -406,19 +409,31 @@ mod tests {
 
     #[test]
     fn update_addressbook_is_default_some_true() {
-        let u = UpdateAddressbook { name: None, description: None, is_default: Some(true) };
+        let u = UpdateAddressbook {
+            name: None,
+            description: None,
+            is_default: Some(true),
+        };
         assert_eq!(u.is_default, Some(true));
     }
 
     #[test]
     fn update_addressbook_is_default_some_false() {
-        let u = UpdateAddressbook { name: None, description: None, is_default: Some(false) };
+        let u = UpdateAddressbook {
+            name: None,
+            description: None,
+            is_default: Some(false),
+        };
         assert_eq!(u.is_default, Some(false));
     }
 
     #[test]
     fn new_addressbook_is_default_true_when_set() {
-        let n = NewAddressbook { name: "Default".into(), description: None, is_default: true };
+        let n = NewAddressbook {
+            name: "Default".into(),
+            description: None,
+            is_default: true,
+        };
         assert!(n.is_default);
     }
 

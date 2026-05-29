@@ -17,21 +17,22 @@ use crate::{api::context::RequestCtx, state::AppState};
 
 pub async fn stream(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Sse<impl Stream<Item = Result<SseEvent, Infallible>>> {
     let rx = state.events().subscribe();
     let tenant_id = ctx.tenant_id;
 
-    let s = BroadcastStream::new(rx)
-        .filter_map(move |msg| async move {
-            match msg {
-                Ok(ev) if ev.tenant_id() == tenant_id => {
-                    let json = serde_json::to_string(&ev).unwrap_or_else(|_| "{}".into());
-                    Some(Ok::<_, Infallible>(SseEvent::default().event("calendar").data(json)))
-                }
-                _ => None, // lagged / other tenants
+    let s = BroadcastStream::new(rx).filter_map(move |msg| async move {
+        match msg {
+            Ok(ev) if ev.tenant_id() == tenant_id => {
+                let json = serde_json::to_string(&ev).unwrap_or_else(|_| "{}".into());
+                Some(Ok::<_, Infallible>(
+                    SseEvent::default().event("calendar").data(json),
+                ))
             }
-        });
+            _ => None, // lagged / other tenants
+        }
+    });
 
     Sse::new(s).keep_alive(
         KeepAlive::new()

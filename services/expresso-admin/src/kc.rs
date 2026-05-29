@@ -18,8 +18,8 @@ const TOKEN_MAX_TTL: Duration = Duration::from_secs(300);
 
 #[derive(Debug, Clone)]
 pub struct KcConfig {
-    pub base_url:   String,
-    pub realm:      String,
+    pub base_url: String,
+    pub realm: String,
     pub admin_user: String,
     pub admin_pass: String,
 }
@@ -27,8 +27,9 @@ pub struct KcConfig {
 impl KcConfig {
     pub fn from_env() -> Self {
         Self {
-            base_url:   std::env::var("KC_URL").unwrap_or_else(|_| "http://expresso-keycloak:8080".into()),
-            realm:      std::env::var("KC_REALM").unwrap_or_else(|_| "expresso".into()),
+            base_url: std::env::var("KC_URL")
+                .unwrap_or_else(|_| "http://expresso-keycloak:8080".into()),
+            realm: std::env::var("KC_REALM").unwrap_or_else(|_| "expresso".into()),
             admin_user: std::env::var("KC_ADMIN_USER").unwrap_or_else(|_| "admin".into()),
             admin_pass: std::env::var("KC_ADMIN_PASS").unwrap_or_default(),
         }
@@ -39,40 +40,47 @@ impl KcConfig {
 struct TokenResp {
     access_token: String,
     #[serde(default)]
-    expires_in:   u64,
+    expires_in: u64,
 }
 
 #[derive(Clone)]
-struct CachedToken { value: String, expires_at: Instant }
+struct CachedToken {
+    value: String,
+    expires_at: Instant,
+}
 
 pub struct KcClient {
-    cfg:   KcConfig,
-    http:  reqwest::Client,
+    cfg: KcConfig,
+    http: reqwest::Client,
     cache: Mutex<Option<CachedToken>>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct NewUser {
-    pub username:   String,
-    pub email:      String,
+    pub username: String,
+    pub email: String,
     pub first_name: String,
-    pub last_name:  String,
-    pub enabled:    bool,
-    pub password:   String,
-    pub temporary:  bool,
+    pub last_name: String,
+    pub enabled: bool,
+    pub password: String,
+    pub temporary: bool,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateUser {
-    pub email:      Option<String>,
+    pub email: Option<String>,
     pub first_name: Option<String>,
-    pub last_name:  Option<String>,
-    pub enabled:    Option<bool>,
+    pub last_name: Option<String>,
+    pub enabled: Option<bool>,
 }
 
 impl KcClient {
     pub fn new(cfg: KcConfig) -> Self {
-        Self { cfg, http: reqwest::Client::new(), cache: Mutex::new(None) }
+        Self {
+            cfg,
+            http: reqwest::Client::new(),
+            cache: Mutex::new(None),
+        }
     }
 
     /// Token cacheado em memória — KC default `expires_in`=60s no admin-cli.
@@ -87,22 +95,35 @@ impl KcClient {
             }
         }
 
-        let url = format!("{}/realms/master/protocol/openid-connect/token", self.cfg.base_url);
-        let r: TokenResp = self.http.post(&url)
+        let url = format!(
+            "{}/realms/master/protocol/openid-connect/token",
+            self.cfg.base_url
+        );
+        let r: TokenResp = self
+            .http
+            .post(&url)
             .form(&[
                 ("grant_type", "password"),
-                ("client_id",  "admin-cli"),
-                ("username",   &self.cfg.admin_user),
-                ("password",   &self.cfg.admin_pass),
+                ("client_id", "admin-cli"),
+                ("username", &self.cfg.admin_user),
+                ("password", &self.cfg.admin_pass),
             ])
-            .send().await.context("kc token req")?
-            .error_for_status().context("kc token status")?
-            .json().await.context("kc token json")?;
+            .send()
+            .await
+            .context("kc token req")?
+            .error_for_status()
+            .context("kc token status")?
+            .json()
+            .await
+            .context("kc token json")?;
 
         let ttl = Duration::from_secs(r.expires_in.max(1)).min(TOKEN_MAX_TTL);
         let expires_at = now + ttl.saturating_sub(TOKEN_REFRESH_SKEW);
         let value = r.access_token;
-        *guard = Some(CachedToken { value: value.clone(), expires_at });
+        *guard = Some(CachedToken {
+            value: value.clone(),
+            expires_at,
+        });
         Ok(value)
     }
 
@@ -114,26 +135,59 @@ impl KcClient {
 
     pub async fn users(&self) -> Result<Vec<KcUser>> {
         let tok = self.token().await?;
-        let url = format!("{}/admin/realms/{}/users?max=500", self.cfg.base_url, self.cfg.realm);
-        Ok(self.http.get(&url).bearer_auth(&tok).send().await?.error_for_status()?.json().await?)
+        let url = format!(
+            "{}/admin/realms/{}/users?max=500",
+            self.cfg.base_url, self.cfg.realm
+        );
+        Ok(self
+            .http
+            .get(&url)
+            .bearer_auth(&tok)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 
     pub async fn user(&self, id: &str) -> Result<KcUser> {
         let tok = self.token().await?;
-        let url = format!("{}/admin/realms/{}/users/{}", self.cfg.base_url, self.cfg.realm, id);
-        Ok(self.http.get(&url).bearer_auth(&tok).send().await?.error_for_status()?.json().await?)
+        let url = format!(
+            "{}/admin/realms/{}/users/{}",
+            self.cfg.base_url, self.cfg.realm, id
+        );
+        Ok(self
+            .http
+            .get(&url)
+            .bearer_auth(&tok)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 
     pub async fn realm(&self) -> Result<KcRealm> {
         let tok = self.token().await?;
         let url = format!("{}/admin/realms/{}", self.cfg.base_url, self.cfg.realm);
-        Ok(self.http.get(&url).bearer_auth(&tok).send().await?.error_for_status()?.json().await?)
+        Ok(self
+            .http
+            .get(&url)
+            .bearer_auth(&tok)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
     }
 
     /// Create user. Returns created user id (from Location header) when password set.
     pub async fn create_user(&self, u: &NewUser) -> Result<String> {
         let tok = self.token().await?;
-        let url = format!("{}/admin/realms/{}/users", self.cfg.base_url, self.cfg.realm);
+        let url = format!(
+            "{}/admin/realms/{}/users",
+            self.cfg.base_url, self.cfg.realm
+        );
         let body = json!({
             "username":  u.username,
             "email":     u.email,
@@ -142,10 +196,19 @@ impl KcClient {
             "enabled":   u.enabled,
             "emailVerified": true,
         });
-        let resp = self.http.post(&url).bearer_auth(&tok).json(&body)
-            .send().await.context("kc create_user req")?
-            .error_for_status().context("kc create_user status")?;
-        let id = resp.headers().get("location")
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(&tok)
+            .json(&body)
+            .send()
+            .await
+            .context("kc create_user req")?
+            .error_for_status()
+            .context("kc create_user status")?;
+        let id = resp
+            .headers()
+            .get("location")
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.rsplit('/').next().map(String::from))
             .context("kc create_user: missing Location header")?;
@@ -157,25 +220,51 @@ impl KcClient {
 
     pub async fn update_user(&self, id: &str, patch: &UpdateUser) -> Result<()> {
         let tok = self.token().await?;
-        let url = format!("{}/admin/realms/{}/users/{}", self.cfg.base_url, self.cfg.realm, id);
+        let url = format!(
+            "{}/admin/realms/{}/users/{}",
+            self.cfg.base_url, self.cfg.realm, id
+        );
         let mut body = serde_json::Map::new();
-        if let Some(v) = &patch.email      { body.insert("email".into(),     json!(v)); }
-        if let Some(v) = &patch.first_name { body.insert("firstName".into(), json!(v)); }
-        if let Some(v) = &patch.last_name  { body.insert("lastName".into(),  json!(v)); }
-        if let Some(v) =  patch.enabled    { body.insert("enabled".into(),   json!(v)); }
-        self.http.put(&url).bearer_auth(&tok).json(&body)
-            .send().await.context("kc update_user req")?
-            .error_for_status().context("kc update_user status")?;
+        if let Some(v) = &patch.email {
+            body.insert("email".into(), json!(v));
+        }
+        if let Some(v) = &patch.first_name {
+            body.insert("firstName".into(), json!(v));
+        }
+        if let Some(v) = &patch.last_name {
+            body.insert("lastName".into(), json!(v));
+        }
+        if let Some(v) = patch.enabled {
+            body.insert("enabled".into(), json!(v));
+        }
+        self.http
+            .put(&url)
+            .bearer_auth(&tok)
+            .json(&body)
+            .send()
+            .await
+            .context("kc update_user req")?
+            .error_for_status()
+            .context("kc update_user status")?;
         Ok(())
     }
 
     pub async fn set_password(&self, id: &str, password: &str, temporary: bool) -> Result<()> {
         let tok = self.token().await?;
-        let url = format!("{}/admin/realms/{}/users/{}/reset-password", self.cfg.base_url, self.cfg.realm, id);
+        let url = format!(
+            "{}/admin/realms/{}/users/{}/reset-password",
+            self.cfg.base_url, self.cfg.realm, id
+        );
         let body = json!({ "type": "password", "value": password, "temporary": temporary });
-        self.http.put(&url).bearer_auth(&tok).json(&body)
-            .send().await.context("kc set_password req")?
-            .error_for_status().context("kc set_password status")?;
+        self.http
+            .put(&url)
+            .bearer_auth(&tok)
+            .json(&body)
+            .send()
+            .await
+            .context("kc set_password req")?
+            .error_for_status()
+            .context("kc set_password status")?;
         Ok(())
     }
 
@@ -187,10 +276,15 @@ impl KcClient {
             "{}/admin/realms/{}/users/{}/execute-actions-email?lifespan=3600",
             self.cfg.base_url, self.cfg.realm, id
         );
-        self.http.put(&url).bearer_auth(&tok)
+        self.http
+            .put(&url)
+            .bearer_auth(&tok)
             .json(&["CONFIGURE_TOTP"])
-            .send().await.context("kc enroll_totp req")?
-            .error_for_status().context("kc enroll_totp status")?;
+            .send()
+            .await
+            .context("kc enroll_totp req")?
+            .error_for_status()
+            .context("kc enroll_totp status")?;
         Ok(())
     }
 
@@ -202,11 +296,21 @@ impl KcClient {
             "{}/admin/realms/{}/users/{}/credentials",
             self.cfg.base_url, self.cfg.realm, id
         );
-        let creds: Vec<serde_json::Value> = self.http.get(&url).bearer_auth(&tok)
-            .send().await.context("kc has_totp list req")?
-            .error_for_status().context("kc has_totp list status")?
-            .json().await.context("kc has_totp list json")?;
-        Ok(creds.iter().any(|c| c.get("type").and_then(|v| v.as_str()) == Some("otp")))
+        let creds: Vec<serde_json::Value> = self
+            .http
+            .get(&url)
+            .bearer_auth(&tok)
+            .send()
+            .await
+            .context("kc has_totp list req")?
+            .error_for_status()
+            .context("kc has_totp list status")?
+            .json()
+            .await
+            .context("kc has_totp list json")?;
+        Ok(creds
+            .iter()
+            .any(|c| c.get("type").and_then(|v| v.as_str()) == Some("otp")))
     }
 
     /// Deletes all OTP credentials for user → forces re-enrollment on next login.
@@ -217,10 +321,18 @@ impl KcClient {
             "{}/admin/realms/{}/users/{}/credentials",
             self.cfg.base_url, self.cfg.realm, id
         );
-        let creds: Vec<serde_json::Value> = self.http.get(&url).bearer_auth(&tok)
-            .send().await.context("kc list creds req")?
-            .error_for_status().context("kc list creds status")?
-            .json().await.context("kc list creds json")?;
+        let creds: Vec<serde_json::Value> = self
+            .http
+            .get(&url)
+            .bearer_auth(&tok)
+            .send()
+            .await
+            .context("kc list creds req")?
+            .error_for_status()
+            .context("kc list creds status")?
+            .json()
+            .await
+            .context("kc list creds json")?;
         let mut removed = 0u32;
         for c in creds {
             let t = c.get("type").and_then(|v| v.as_str()).unwrap_or("");
@@ -230,9 +342,14 @@ impl KcClient {
                         "{}/admin/realms/{}/users/{}/credentials/{}",
                         self.cfg.base_url, self.cfg.realm, id, cid
                     );
-                    self.http.delete(&del).bearer_auth(&tok)
-                        .send().await.context("kc del cred req")?
-                        .error_for_status().context("kc del cred status")?;
+                    self.http
+                        .delete(&del)
+                        .bearer_auth(&tok)
+                        .send()
+                        .await
+                        .context("kc del cred req")?
+                        .error_for_status()
+                        .context("kc del cred status")?;
                     removed += 1;
                 }
             }
@@ -242,16 +359,26 @@ impl KcClient {
 
     pub async fn delete_user(&self, id: &str) -> Result<()> {
         let tok = self.token().await?;
-        let url = format!("{}/admin/realms/{}/users/{}", self.cfg.base_url, self.cfg.realm, id);
-        self.http.delete(&url).bearer_auth(&tok)
-            .send().await.context("kc delete_user req")?
-            .error_for_status().context("kc delete_user status")?;
+        let url = format!(
+            "{}/admin/realms/{}/users/{}",
+            self.cfg.base_url, self.cfg.realm, id
+        );
+        self.http
+            .delete(&url)
+            .bearer_auth(&tok)
+            .send()
+            .await
+            .context("kc delete_user req")?
+            .error_for_status()
+            .context("kc delete_user status")?;
         Ok(())
     }
 }
 
 impl From<anyhow::Error> for crate::AdminError {
-    fn from(e: anyhow::Error) -> Self { Self(e) }
+    fn from(e: anyhow::Error) -> Self {
+        Self(e)
+    }
 }
 
 #[cfg(test)]
@@ -269,13 +396,13 @@ mod tests {
     #[test]
     fn new_user_fields() {
         let u = NewUser {
-            username:   "heitor".into(),
-            email:      "h@ex.com".into(),
+            username: "heitor".into(),
+            email: "h@ex.com".into(),
             first_name: "Heitor".into(),
-            last_name:  "F".into(),
-            enabled:    true,
-            password:   "s3cr3t".into(),
-            temporary:  false,
+            last_name: "F".into(),
+            enabled: true,
+            password: "s3cr3t".into(),
+            temporary: false,
         };
         assert_eq!(u.username, "heitor");
         assert!(u.enabled);
@@ -291,8 +418,8 @@ mod tests {
     #[test]
     fn kc_config_defaults() {
         let cfg = KcConfig {
-            base_url:   "http://expresso-keycloak:8080".into(),
-            realm:      "expresso".into(),
+            base_url: "http://expresso-keycloak:8080".into(),
+            realm: "expresso".into(),
             admin_user: "admin".into(),
             admin_pass: "".into(),
         };
@@ -302,13 +429,13 @@ mod tests {
     #[test]
     fn new_user_required_fields() {
         let u = NewUser {
-            username:   "alice".into(),
-            email:      "alice@ex.com".into(),
+            username: "alice".into(),
+            email: "alice@ex.com".into(),
             first_name: "Alice".into(),
-            last_name:  "Smith".into(),
-            enabled:    true,
-            password:   "pw123".into(),
-            temporary:  false,
+            last_name: "Smith".into(),
+            enabled: true,
+            password: "pw123".into(),
+            temporary: false,
         };
         assert_eq!(u.username, "alice");
         assert!(u.enabled);
@@ -318,10 +445,10 @@ mod tests {
     #[test]
     fn update_user_email_only() {
         let u = UpdateUser {
-            email:      Some("new@ex.com".into()),
+            email: Some("new@ex.com".into()),
             first_name: None,
-            last_name:  None,
-            enabled:    None,
+            last_name: None,
+            enabled: None,
         };
         assert_eq!(u.email.as_deref(), Some("new@ex.com"));
         assert!(u.first_name.is_none());
@@ -336,10 +463,10 @@ mod tests {
     #[test]
     fn update_user_enabled_set() {
         let u = UpdateUser {
-            email:      None,
+            email: None,
             first_name: None,
-            last_name:  None,
-            enabled:    Some(false),
+            last_name: None,
+            enabled: Some(false),
         };
         assert_eq!(u.enabled, Some(false));
     }
@@ -347,13 +474,13 @@ mod tests {
     #[test]
     fn new_user_temporary_password_flag() {
         let u = NewUser {
-            username:   "alice".into(),
-            email:      "alice@example.com".into(),
+            username: "alice".into(),
+            email: "alice@example.com".into(),
             first_name: "Alice".into(),
-            last_name:  "Smith".into(),
-            enabled:    true,
-            password:   "s3cr3t".into(),
-            temporary:  true,
+            last_name: "Smith".into(),
+            enabled: true,
+            password: "s3cr3t".into(),
+            temporary: true,
         };
         assert!(u.temporary);
         assert_eq!(u.username, "alice");
@@ -362,13 +489,13 @@ mod tests {
     #[test]
     fn new_user_enabled_true_preserved() {
         let u = NewUser {
-            username:   "carol".into(),
-            email:      "c@x.com".into(),
+            username: "carol".into(),
+            email: "c@x.com".into(),
             first_name: "Carol".into(),
-            last_name:  "Doe".into(),
-            enabled:    true,
-            password:   "pw".into(),
-            temporary:  false,
+            last_name: "Doe".into(),
+            enabled: true,
+            password: "pw".into(),
+            temporary: false,
         };
         assert!(u.enabled);
     }
@@ -376,13 +503,13 @@ mod tests {
     #[test]
     fn new_user_last_name_preserved() {
         let u = NewUser {
-            username:   "dave".into(),
-            email:      "d@x.com".into(),
+            username: "dave".into(),
+            email: "d@x.com".into(),
             first_name: "Dave".into(),
-            last_name:  "Brown".into(),
-            enabled:    false,
-            password:   "pw".into(),
-            temporary:  false,
+            last_name: "Brown".into(),
+            enabled: false,
+            password: "pw".into(),
+            temporary: false,
         };
         assert_eq!(u.last_name, "Brown");
     }
@@ -390,13 +517,13 @@ mod tests {
     #[test]
     fn new_user_username_preserved() {
         let u = NewUser {
-            username:   "erin".into(),
-            email:      "e@x.com".into(),
+            username: "erin".into(),
+            email: "e@x.com".into(),
             first_name: "Erin".into(),
-            last_name:  "White".into(),
-            enabled:    true,
-            password:   "pw".into(),
-            temporary:  false,
+            last_name: "White".into(),
+            enabled: true,
+            password: "pw".into(),
+            temporary: false,
         };
         assert_eq!(u.username, "erin");
     }
@@ -404,9 +531,13 @@ mod tests {
     #[test]
     fn new_user_enabled_field_preserved() {
         let u = NewUser {
-            username: "frank".into(), email: "f@x.com".into(),
-            first_name: "Frank".into(), last_name: "Lee".into(),
-            enabled: false, password: "pw".into(), temporary: false,
+            username: "frank".into(),
+            email: "f@x.com".into(),
+            first_name: "Frank".into(),
+            last_name: "Lee".into(),
+            enabled: false,
+            password: "pw".into(),
+            temporary: false,
         };
         assert!(!u.enabled);
     }
@@ -414,9 +545,13 @@ mod tests {
     #[test]
     fn new_user_email_preserved() {
         let u = NewUser {
-            username: "grace".into(), email: "grace@corp.com".into(),
-            first_name: "Grace".into(), last_name: "Wu".into(),
-            enabled: true, password: "pw".into(), temporary: false,
+            username: "grace".into(),
+            email: "grace@corp.com".into(),
+            first_name: "Grace".into(),
+            last_name: "Wu".into(),
+            enabled: true,
+            password: "pw".into(),
+            temporary: false,
         };
         assert_eq!(u.email, "grace@corp.com");
     }
@@ -424,10 +559,10 @@ mod tests {
     #[test]
     fn update_user_last_name_only() {
         let u = UpdateUser {
-            email:      None,
+            email: None,
             first_name: None,
-            last_name:  Some("Nakamura".into()),
-            enabled:    None,
+            last_name: Some("Nakamura".into()),
+            enabled: None,
         };
         assert_eq!(u.last_name.as_deref(), Some("Nakamura"));
         assert!(u.email.is_none());
@@ -436,9 +571,13 @@ mod tests {
     #[test]
     fn new_user_temporary_false_preserved() {
         let u = NewUser {
-            username: "grace".into(), email: "grace@corp.com".into(),
-            first_name: "Grace".into(), last_name: "Wu".into(),
-            enabled: true, password: "pw".into(), temporary: false,
+            username: "grace".into(),
+            email: "grace@corp.com".into(),
+            first_name: "Grace".into(),
+            last_name: "Wu".into(),
+            enabled: true,
+            password: "pw".into(),
+            temporary: false,
         };
         assert!(!u.temporary);
     }
@@ -456,13 +595,13 @@ mod tests {
     #[test]
     fn new_user_first_name_preserved() {
         let u = NewUser {
-            username:   "alice".into(),
-            email:      "alice@ex.com".into(),
+            username: "alice".into(),
+            email: "alice@ex.com".into(),
             first_name: "Alice".into(),
-            last_name:  "Smith".into(),
-            enabled:    true,
-            password:   "pw".into(),
-            temporary:  false,
+            last_name: "Smith".into(),
+            enabled: true,
+            password: "pw".into(),
+            temporary: false,
         };
         assert_eq!(u.first_name, "Alice");
     }

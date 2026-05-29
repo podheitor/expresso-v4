@@ -10,7 +10,9 @@ pub struct TagRepo<'a> {
 }
 
 impl<'a> TagRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     pub async fn list(&self, tenant_id: Uuid, file_id: Uuid) -> Result<Vec<String>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;

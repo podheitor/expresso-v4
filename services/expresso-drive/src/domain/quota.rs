@@ -17,7 +17,7 @@ pub const DEFAULT_QUOTA_BYTES: i64 = 10 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Quota {
-    pub max_bytes:  i64,
+    pub max_bytes: i64,
     pub used_bytes: i64,
 }
 
@@ -32,15 +32,15 @@ impl Quota {
 
 #[derive(Debug, Clone, Copy, serde::Serialize)]
 pub struct UserUsage {
-    pub user_id:    Uuid,
+    pub user_id: Uuid,
     pub used_bytes: i64,
 }
 
 /// Per-folder quota: max bytes allowed in a specific folder (shallow — direct children only).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct FolderQuota {
-    pub folder_id:  Uuid,
-    pub max_bytes:  i64,
+    pub folder_id: Uuid,
+    pub max_bytes: i64,
     pub used_bytes: i64,
 }
 
@@ -58,35 +58,51 @@ pub struct FolderQuotaRepo<'a> {
 }
 
 impl<'a> FolderQuotaRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     /// Get folder quota + current shallow used bytes. Returns None if no quota configured.
     pub async fn get(&self, tenant_id: Uuid, folder_id: Uuid) -> Result<Option<FolderQuota>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row: Option<(i64,)> = sqlx::query_as(
             "SELECT max_bytes FROM drive_folder_quotas \
-             WHERE tenant_id = $1 AND folder_id = $2"
+             WHERE tenant_id = $1 AND folder_id = $2",
         )
         .bind(tenant_id)
         .bind(folder_id)
-        .fetch_optional(&mut *tx).await?;
+        .fetch_optional(&mut *tx)
+        .await?;
         let max_bytes = match row {
             Some((m,)) => m,
-            None => { tx.commit().await?; return Ok(None); }
+            None => {
+                tx.commit().await?;
+                return Ok(None);
+            }
         };
         let (used,): (Option<i64>,) = sqlx::query_as(
             "SELECT SUM(size_bytes) FROM drive_files \
-             WHERE tenant_id = $1 AND parent_id = $2 AND deleted_at IS NULL"
+             WHERE tenant_id = $1 AND parent_id = $2 AND deleted_at IS NULL",
         )
         .bind(tenant_id)
         .bind(folder_id)
-        .fetch_one(&mut *tx).await?;
+        .fetch_one(&mut *tx)
+        .await?;
         tx.commit().await?;
-        Ok(Some(FolderQuota { folder_id, max_bytes, used_bytes: used.unwrap_or(0) }))
+        Ok(Some(FolderQuota {
+            folder_id,
+            max_bytes,
+            used_bytes: used.unwrap_or(0),
+        }))
     }
 
     /// Set (upsert) folder quota.
-    pub async fn set(&self, tenant_id: Uuid, folder_id: Uuid, max_bytes: i64) -> Result<FolderQuota> {
+    pub async fn set(
+        &self,
+        tenant_id: Uuid,
+        folder_id: Uuid,
+        max_bytes: i64,
+    ) -> Result<FolderQuota> {
         if max_bytes <= 0 {
             return Err(DriveError::BadRequest("max_bytes must be > 0".into()));
         }
@@ -96,32 +112,38 @@ impl<'a> FolderQuotaRepo<'a> {
              VALUES ($1, $2, $3, now()) \
              ON CONFLICT (tenant_id, folder_id) DO UPDATE SET \
                 max_bytes  = EXCLUDED.max_bytes, \
-                updated_at = now()"
+                updated_at = now()",
         )
         .bind(tenant_id)
         .bind(folder_id)
         .bind(max_bytes)
-        .execute(&mut *tx).await?;
+        .execute(&mut *tx)
+        .await?;
         let (used,): (Option<i64>,) = sqlx::query_as(
             "SELECT SUM(size_bytes) FROM drive_files \
-             WHERE tenant_id = $1 AND parent_id = $2 AND deleted_at IS NULL"
+             WHERE tenant_id = $1 AND parent_id = $2 AND deleted_at IS NULL",
         )
         .bind(tenant_id)
         .bind(folder_id)
-        .fetch_one(&mut *tx).await?;
+        .fetch_one(&mut *tx)
+        .await?;
         tx.commit().await?;
-        Ok(FolderQuota { folder_id, max_bytes, used_bytes: used.unwrap_or(0) })
+        Ok(FolderQuota {
+            folder_id,
+            max_bytes,
+            used_bytes: used.unwrap_or(0),
+        })
     }
 
     /// Remove folder quota. Returns true if a row was deleted.
     pub async fn delete(&self, tenant_id: Uuid, folder_id: Uuid) -> Result<bool> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
-        let res = sqlx::query(
-            "DELETE FROM drive_folder_quotas WHERE tenant_id = $1 AND folder_id = $2"
-        )
-        .bind(tenant_id)
-        .bind(folder_id)
-        .execute(&mut *tx).await?;
+        let res =
+            sqlx::query("DELETE FROM drive_folder_quotas WHERE tenant_id = $1 AND folder_id = $2")
+                .bind(tenant_id)
+                .bind(folder_id)
+                .execute(&mut *tx)
+                .await?;
         tx.commit().await?;
         Ok(res.rows_affected() > 0)
     }
@@ -132,25 +154,35 @@ pub struct QuotaRepo<'a> {
 }
 
 impl<'a> QuotaRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     /// Total non-deleted bytes owned by a specific user within a tenant.
     pub async fn get_user_usage(&self, tenant_id: Uuid, user_id: Uuid) -> Result<UserUsage> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let (used,): (Option<i64>,) = sqlx::query_as(
             "SELECT SUM(size_bytes) FROM drive_files \
-             WHERE tenant_id = $1 AND owner_user_id = $2 AND deleted_at IS NULL"
+             WHERE tenant_id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
         )
         .bind(tenant_id)
         .bind(user_id)
-        .fetch_one(&mut *tx).await?;
+        .fetch_one(&mut *tx)
+        .await?;
         tx.commit().await?;
-        Ok(UserUsage { user_id, used_bytes: used.unwrap_or(0) })
+        Ok(UserUsage {
+            user_id,
+            used_bytes: used.unwrap_or(0),
+        })
     }
 
     /// Top-N users by storage usage within a tenant (non-deleted files only).
     /// Returns `Vec<(owner_user_id, file_count, used_bytes)>` ordered by used_bytes DESC.
-    pub async fn top_users_by_usage(&self, tenant_id: Uuid, limit: i64) -> Result<Vec<(Uuid, i64, i64)>> {
+    pub async fn top_users_by_usage(
+        &self,
+        tenant_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<(Uuid, i64, i64)>> {
         let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
             "SELECT owner_user_id, \
                     COUNT(*)::BIGINT AS file_count, \
@@ -171,7 +203,11 @@ impl<'a> QuotaRepo<'a> {
     /// Top-N folders by recursive storage usage within a tenant.
     /// Returns `Vec<(folder_id, folder_name, file_count, used_bytes)>` ordered by used_bytes DESC.
     /// Uses a recursive CTE to accumulate size_bytes of all descendant files for each folder.
-    pub async fn top_folders_by_usage(&self, tenant_id: Uuid, limit: i64) -> Result<Vec<(Uuid, String, i64, i64)>> {
+    pub async fn top_folders_by_usage(
+        &self,
+        tenant_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<(Uuid, String, i64, i64)>> {
         let rows: Vec<(Uuid, String, i64, i64)> = sqlx::query_as(
             "WITH RECURSIVE folder_tree AS ( \
                 SELECT id, name, parent_id, id AS root_id \
@@ -211,7 +247,11 @@ impl<'a> QuotaRepo<'a> {
     /// Returns (extension, file_count, total_bytes) ordered by total_bytes DESC.
     /// Extension is derived from `lower(split_part(name, '.', -1))` — the part
     /// after the last dot. Files with no dot get extension "".
-    pub async fn stats_by_extension(&self, tenant_id: Uuid, limit: i64) -> Result<Vec<(String, i64, i64)>> {
+    pub async fn stats_by_extension(
+        &self,
+        tenant_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<(String, i64, i64)>> {
         let rows: Vec<(String, i64, i64)> = sqlx::query_as(
             "SELECT \
                 lower(split_part(name, '.', -1)) AS ext, \
@@ -235,8 +275,8 @@ impl<'a> QuotaRepo<'a> {
     pub async fn activity_by_day(
         &self,
         tenant_id: Uuid,
-        since:     Option<time::OffsetDateTime>,
-        until:     Option<time::OffsetDateTime>,
+        since: Option<time::OffsetDateTime>,
+        until: Option<time::OffsetDateTime>,
     ) -> Result<Vec<(String, i64, i64, i64)>> {
         let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
             "SELECT \
@@ -262,7 +302,11 @@ impl<'a> QuotaRepo<'a> {
     /// Top-N owners by file count + total bytes within a tenant (non-deleted files only).
     /// Returns `Vec<(owner_user_id, file_count, total_bytes)>` ordered by file_count DESC.
     /// Sprint #646.
-    pub async fn top_owners_by_file_count(&self, tenant_id: Uuid, limit: i64) -> Result<Vec<(Uuid, i64, i64)>> {
+    pub async fn top_owners_by_file_count(
+        &self,
+        tenant_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<(Uuid, i64, i64)>> {
         let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
             "SELECT owner_user_id, \
                     COUNT(*)::BIGINT AS file_count, \
@@ -307,21 +351,30 @@ mod tests {
 
     #[test]
     fn quota_fits_within_limit() {
-        let q = Quota { max_bytes: 1000, used_bytes: 500 };
+        let q = Quota {
+            max_bytes: 1000,
+            used_bytes: 500,
+        };
         assert!(q.fits(499));
         assert!(q.fits(500)); // exactly at limit
     }
 
     #[test]
     fn quota_fits_exceeds_limit() {
-        let q = Quota { max_bytes: 1000, used_bytes: 500 };
+        let q = Quota {
+            max_bytes: 1000,
+            used_bytes: 500,
+        };
         assert!(!q.fits(501));
         assert!(!q.fits(1000));
     }
 
     #[test]
     fn quota_fits_zero_extra() {
-        let q = Quota { max_bytes: 1000, used_bytes: 1000 };
+        let q = Quota {
+            max_bytes: 1000,
+            used_bytes: 1000,
+        };
         assert!(q.fits(0));
         assert!(!q.fits(1));
     }
@@ -329,11 +382,17 @@ mod tests {
     #[test]
     fn quota_fits_saturating_add_overflow_safe() {
         // used_bytes near i64::MAX — saturating_add must not panic or wrap.
-        let q = Quota { max_bytes: i64::MAX, used_bytes: i64::MAX - 1 };
-        assert!(q.fits(1));   // used + 1 == MAX == max → fits
-        assert!(!q.fits(2));  // saturating_add overflows → MAX+1 saturates to MAX, still not > MAX
-        // Edge: used = MAX, max = MAX
-        let q2 = Quota { max_bytes: i64::MAX, used_bytes: i64::MAX };
+        let q = Quota {
+            max_bytes: i64::MAX,
+            used_bytes: i64::MAX - 1,
+        };
+        assert!(q.fits(1)); // used + 1 == MAX == max → fits
+        assert!(!q.fits(2)); // saturating_add overflows → MAX+1 saturates to MAX, still not > MAX
+                             // Edge: used = MAX, max = MAX
+        let q2 = Quota {
+            max_bytes: i64::MAX,
+            used_bytes: i64::MAX,
+        };
         assert!(q2.fits(0));
         assert!(!q2.fits(1));
     }
@@ -343,14 +402,22 @@ mod tests {
     #[test]
     fn folder_quota_fits_within() {
         let fid = Uuid::new_v4();
-        let fq = FolderQuota { folder_id: fid, max_bytes: 500, used_bytes: 100 };
+        let fq = FolderQuota {
+            folder_id: fid,
+            max_bytes: 500,
+            used_bytes: 100,
+        };
         assert!(fq.fits(400));
         assert!(!fq.fits(401));
     }
 
     #[test]
     fn folder_quota_fits_empty_folder() {
-        let fq = FolderQuota { folder_id: Uuid::new_v4(), max_bytes: 1024, used_bytes: 0 };
+        let fq = FolderQuota {
+            folder_id: Uuid::new_v4(),
+            max_bytes: 1024,
+            used_bytes: 0,
+        };
         assert!(fq.fits(1024));
         assert!(!fq.fits(1025));
     }
@@ -364,54 +431,78 @@ mod tests {
 
     #[test]
     fn quota_used_bytes_accessible() {
-        let q = Quota { max_bytes: 2048, used_bytes: 512 };
+        let q = Quota {
+            max_bytes: 2048,
+            used_bytes: 512,
+        };
         assert_eq!(q.used_bytes, 512);
         assert_eq!(q.max_bytes, 2048);
     }
 
     #[test]
     fn quota_fits_exact_max_bytes() {
-        let q = Quota { max_bytes: 1024, used_bytes: 0 };
+        let q = Quota {
+            max_bytes: 1024,
+            used_bytes: 0,
+        };
         assert!(q.fits(1024));
         assert!(!q.fits(1025));
     }
 
     #[test]
     fn quota_does_not_fit_when_full() {
-        let q = Quota { max_bytes: 1024, used_bytes: 1024 };
+        let q = Quota {
+            max_bytes: 1024,
+            used_bytes: 1024,
+        };
         assert!(!q.fits(1));
     }
 
     #[test]
     fn quota_zero_used_always_fits() {
-        let q = Quota { max_bytes: 0, used_bytes: 0 };
+        let q = Quota {
+            max_bytes: 0,
+            used_bytes: 0,
+        };
         assert!(q.fits(0));
         assert!(!q.fits(1));
     }
 
     #[test]
     fn quota_used_plus_extra_exceeds_max_does_not_fit() {
-        let q = Quota { max_bytes: 100, used_bytes: 50 };
+        let q = Quota {
+            max_bytes: 100,
+            used_bytes: 50,
+        };
         assert!(!q.fits(51));
     }
 
     #[test]
     fn quota_available_returns_remaining_bytes() {
-        let q = Quota { max_bytes: 1000, used_bytes: 300 };
+        let q = Quota {
+            max_bytes: 1000,
+            used_bytes: 300,
+        };
         assert!(q.fits(700));
         assert!(!q.fits(701));
     }
 
     #[test]
     fn quota_zero_used_fits_any_within_max() {
-        let q = Quota { max_bytes: 500, used_bytes: 0 };
+        let q = Quota {
+            max_bytes: 500,
+            used_bytes: 0,
+        };
         assert!(q.fits(500));
         assert!(!q.fits(501));
     }
 
     #[test]
     fn quota_max_bytes_field_preserved() {
-        let q = Quota { max_bytes: 8192, used_bytes: 1024 };
+        let q = Quota {
+            max_bytes: 8192,
+            used_bytes: 1024,
+        };
         assert_eq!(q.max_bytes, 8192);
     }
 
@@ -423,38 +514,60 @@ mod tests {
     #[test]
     fn folder_quota_folder_id_preserved() {
         let fid = Uuid::new_v4();
-        let fq = FolderQuota { folder_id: fid, max_bytes: 1024, used_bytes: 0 };
+        let fq = FolderQuota {
+            folder_id: fid,
+            max_bytes: 1024,
+            used_bytes: 0,
+        };
         assert_eq!(fq.folder_id, fid);
     }
 
     #[test]
     fn quota_used_bytes_plus_extra_at_boundary() {
-        let q = Quota { max_bytes: 100, used_bytes: 99 };
+        let q = Quota {
+            max_bytes: 100,
+            used_bytes: 99,
+        };
         assert!(q.fits(1));
         assert!(!q.fits(2));
     }
 
     #[test]
     fn quota_max_bytes_equals_used_does_not_fit_extra() {
-        let q = Quota { max_bytes: 500, used_bytes: 500 };
+        let q = Quota {
+            max_bytes: 500,
+            used_bytes: 500,
+        };
         assert!(!q.fits(1));
     }
 
     #[test]
     fn folder_quota_max_bytes_preserved() {
-        let fq = FolderQuota { folder_id: Uuid::new_v4(), max_bytes: 2048, used_bytes: 512 };
+        let fq = FolderQuota {
+            folder_id: Uuid::new_v4(),
+            max_bytes: 2048,
+            used_bytes: 512,
+        };
         assert_eq!(fq.max_bytes, 2048);
     }
 
     #[test]
     fn folder_quota_fits_returns_false_when_full() {
-        let fq = FolderQuota { folder_id: Uuid::new_v4(), max_bytes: 100, used_bytes: 100 };
+        let fq = FolderQuota {
+            folder_id: Uuid::new_v4(),
+            max_bytes: 100,
+            used_bytes: 100,
+        };
         assert!(!fq.fits(1));
     }
 
     #[test]
     fn folder_quota_fits_zero_bytes_when_full() {
-        let fq = FolderQuota { folder_id: Uuid::new_v4(), max_bytes: 100, used_bytes: 100 };
+        let fq = FolderQuota {
+            folder_id: Uuid::new_v4(),
+            max_bytes: 100,
+            used_bytes: 100,
+        };
         assert!(fq.fits(0));
     }
 
@@ -465,23 +578,21 @@ mod tests {
 }
 
 impl<'a> QuotaRepo<'a> {
-
     pub async fn get(&self, tenant_id: Uuid) -> Result<Quota> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
-        let (max,): (Option<i64>,) = sqlx::query_as(
-            "SELECT max_bytes FROM drive_quotas WHERE tenant_id = $1"
-        )
-        .bind(tenant_id)
-        .fetch_optional(&mut *tx).await?
-        .unwrap_or((None,));
-        let (used,): (Option<i64>,) = sqlx::query_as(
-            "SELECT drive_quota_used($1)"
-        )
-        .bind(tenant_id)
-        .fetch_one(&mut *tx).await?;
+        let (max,): (Option<i64>,) =
+            sqlx::query_as("SELECT max_bytes FROM drive_quotas WHERE tenant_id = $1")
+                .bind(tenant_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .unwrap_or((None,));
+        let (used,): (Option<i64>,) = sqlx::query_as("SELECT drive_quota_used($1)")
+            .bind(tenant_id)
+            .fetch_one(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(Quota {
-            max_bytes:  max.unwrap_or(DEFAULT_QUOTA_BYTES),
+            max_bytes: max.unwrap_or(DEFAULT_QUOTA_BYTES),
             used_bytes: used.unwrap_or(0),
         })
     }

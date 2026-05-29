@@ -10,13 +10,7 @@ use time::OffsetDateTime;
 
 type HmacSha256 = Hmac<Sha256>;
 
-pub fn sign_token(
-    secret:   &[u8],
-    file_id:  &str,
-    tenant:   &str,
-    user:     &str,
-    ttl_secs: i64,
-) -> String {
+pub fn sign_token(secret: &[u8], file_id: &str, tenant: &str, user: &str, ttl_secs: i64) -> String {
     let exp = OffsetDateTime::now_utc().unix_timestamp() + ttl_secs;
     let canonical = format!("{file_id}|{tenant}|{user}|{exp}");
     let mut mac = HmacSha256::new_from_slice(secret).expect("hmac key");
@@ -28,35 +22,44 @@ pub fn sign_token(
 /// Gera URL completa do iframe Collabora com WOPISrc + access_token.
 pub fn build_iframe_url(
     collabora_base: &str,
-    drive_base:     &str,
-    file_id:        &str,
-    access_token:   &str,
+    drive_base: &str,
+    file_id: &str,
+    access_token: &str,
 ) -> String {
-    let wopi_src = format!("{}/wopi/files/{}", drive_base.trim_end_matches('/'), file_id);
-    let enc_src  = utf8_percent_encode(&wopi_src, NON_ALPHANUMERIC).to_string();
-    let enc_tok  = utf8_percent_encode(access_token, NON_ALPHANUMERIC).to_string();
+    let wopi_src = format!(
+        "{}/wopi/files/{}",
+        drive_base.trim_end_matches('/'),
+        file_id
+    );
+    let enc_src = utf8_percent_encode(&wopi_src, NON_ALPHANUMERIC).to_string();
+    let enc_tok = utf8_percent_encode(access_token, NON_ALPHANUMERIC).to_string();
     format!(
         "{}/browser/dist/cool.html?WOPISrc={}&access_token={}",
-        collabora_base.trim_end_matches('/'), enc_src, enc_tok,
+        collabora_base.trim_end_matches('/'),
+        enc_src,
+        enc_tok,
     )
 }
 
 /// Checa se o mime é editável pelo Collabora.
 pub fn is_editable_mime(mime: Option<&str>) -> bool {
-    let Some(m) = mime else { return false; };
-    matches!(m,
+    let Some(m) = mime else {
+        return false;
+    };
+    matches!(
+        m,
         "application/vnd.oasis.opendocument.text"
-      | "application/vnd.oasis.opendocument.spreadsheet"
-      | "application/vnd.oasis.opendocument.presentation"
-      | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      | "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-      | "application/msword"
-      | "application/vnd.ms-excel"
-      | "application/vnd.ms-powerpoint"
-      | "application/rtf"
-      | "text/plain"
-      | "text/csv"
+            | "application/vnd.oasis.opendocument.spreadsheet"
+            | "application/vnd.oasis.opendocument.presentation"
+            | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            | "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            | "application/msword"
+            | "application/vnd.ms-excel"
+            | "application/vnd.ms-powerpoint"
+            | "application/rtf"
+            | "text/plain"
+            | "text/csv"
     )
 }
 
@@ -66,8 +69,12 @@ mod tests {
 
     #[test]
     fn editable_mimes() {
-        assert!(is_editable_mime(Some("application/vnd.oasis.opendocument.text")));
-        assert!(is_editable_mime(Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")));
+        assert!(is_editable_mime(Some(
+            "application/vnd.oasis.opendocument.text"
+        )));
+        assert!(is_editable_mime(Some(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )));
         assert!(!is_editable_mime(Some("image/png")));
         assert!(!is_editable_mime(None));
     }
@@ -149,13 +156,23 @@ mod extra_tests {
 
     #[test]
     fn build_iframe_url_starts_with_collabora_base() {
-        let url = build_iframe_url("https://collabora.example.com", "https://drive", "file1", "tok");
+        let url = build_iframe_url(
+            "https://collabora.example.com",
+            "https://drive",
+            "file1",
+            "tok",
+        );
         assert!(url.starts_with("https://collabora.example.com"));
     }
 
     #[test]
     fn build_iframe_url_contains_specific_file_id() {
-        let url = build_iframe_url("https://collabora.example.com", "https://drive", "file-xyz", "tok");
+        let url = build_iframe_url(
+            "https://collabora.example.com",
+            "https://drive",
+            "file-xyz",
+            "tok",
+        );
         assert!(url.contains("file%2Dxyz"));
     }
 
@@ -208,7 +225,9 @@ mod extra_tests {
 
     #[test]
     fn editable_mime_ods_is_editable() {
-        assert!(is_editable_mime(Some("application/vnd.oasis.opendocument.spreadsheet")));
+        assert!(is_editable_mime(Some(
+            "application/vnd.oasis.opendocument.spreadsheet"
+        )));
     }
 
     #[test]

@@ -18,15 +18,17 @@ use crate::error::Result;
 use crate::state::AppState;
 
 pub async fn handle(
-    state:     AppState,
+    state: AppState,
     principal: CardDavPrincipal,
-    path:      &str,
-    body:      &str,
+    path: &str,
+    body: &str,
 ) -> Result<Response> {
     // Only valid on addressbook collection URIs.
     let addressbook_id = match uri::classify(path) {
-        Target::Addressbook { user_id, addressbook_id } if user_id == principal.user_id =>
+        Target::Addressbook {
+            user_id,
             addressbook_id,
+        } if user_id == principal.user_id => addressbook_id,
         Target::Addressbook { .. } => return Ok(forbidden()),
         _ => return Ok(not_found()),
     };
@@ -56,11 +58,11 @@ pub async fn handle(
 }
 
 async fn multiget(
-    state:       &AppState,
-    principal:   &CardDavPrincipal,
+    state: &AppState,
+    principal: &CardDavPrincipal,
     addressbook_id: Uuid,
-    body:        &str,
-    req:         &PropRequest,
+    body: &str,
+    req: &PropRequest,
 ) -> Result<String> {
     let hrefs = xml::parse_multiget_hrefs(body);
     // Extract UIDs from hrefs that match our addressbook path.
@@ -83,7 +85,10 @@ async fn multiget(
     out.push_str(xml::XML_PROLOG);
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">"#);
     for c in contacts {
-        let href = format!("/carddav/{}/{}/{}.vcf", principal.user_id, addressbook_id, c.uid);
+        let href = format!(
+            "/carddav/{}/{}/{}.vcf",
+            principal.user_id, addressbook_id, c.uid
+        );
         append_contact(&mut out, &href, &c.etag, req, &c.vcard_raw);
     }
     out.push_str("</D:multistatus>");
@@ -91,11 +96,11 @@ async fn multiget(
 }
 
 async fn query(
-    state:          &AppState,
-    principal:      &CardDavPrincipal,
+    state: &AppState,
+    principal: &CardDavPrincipal,
     addressbook_id: Uuid,
-    body:           &str,
-    req:            &PropRequest,
+    body: &str,
+    req: &PropRequest,
 ) -> Result<String> {
     // Parse RFC 6352 §10.5 filter; absent → unfiltered.
     let filter = filter::parse(body);
@@ -109,9 +114,14 @@ async fn query(
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">"#);
     for c in contacts {
         if let Some(f) = filter.as_ref() {
-            if !filter::matches(&c.vcard_raw, f) { continue; }
+            if !filter::matches(&c.vcard_raw, f) {
+                continue;
+            }
         }
-        let href = format!("/carddav/{}/{}/{}.vcf", principal.user_id, addressbook_id, c.uid);
+        let href = format!(
+            "/carddav/{}/{}/{}.vcf",
+            principal.user_id, addressbook_id, c.uid
+        );
         append_contact(&mut out, &href, &c.etag, req, &c.vcard_raw);
     }
     out.push_str("</D:multistatus>");
@@ -120,7 +130,9 @@ async fn query(
 
 fn append_contact(out: &mut String, href: &str, etag: &str, req: &PropRequest, vcard: &str) {
     out.push_str("<D:response>");
-    out.push_str("<D:href>"); out.push_str(&xml::escape(href)); out.push_str("</D:href>");
+    out.push_str("<D:href>");
+    out.push_str(&xml::escape(href));
+    out.push_str("</D:href>");
     out.push_str("<D:propstat><D:prop>");
     if req.getetag {
         out.push_str("<D:getetag>\"");
@@ -139,13 +151,21 @@ fn append_contact(out: &mut String, href: &str, etag: &str, req: &PropRequest, v
     out.push_str("</D:response>");
 }
 
-
 fn forbidden() -> Response {
-    Response::builder().status(StatusCode::FORBIDDEN).body(Body::from("forbidden")).unwrap()
+    Response::builder()
+        .status(StatusCode::FORBIDDEN)
+        .body(Body::from("forbidden"))
+        .unwrap()
 }
 fn not_found() -> Response {
-    Response::builder().status(StatusCode::NOT_FOUND).body(Body::from("not found")).unwrap()
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Body::from("not found"))
+        .unwrap()
 }
 fn bad_request(msg: &'static str) -> Response {
-    Response::builder().status(StatusCode::BAD_REQUEST).body(Body::from(msg)).unwrap()
+    Response::builder()
+        .status(StatusCode::BAD_REQUEST)
+        .body(Body::from(msg))
+        .unwrap()
 }

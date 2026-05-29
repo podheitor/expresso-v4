@@ -29,12 +29,12 @@ const PAGE_SIZE: i64 = 50;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ActivityEvent {
-    pub id:         Uuid,
-    pub file_id:    Uuid,
-    pub tenant_id:  Uuid,
-    pub user_id:    Uuid,
-    pub action:     String,
-    pub detail:     Option<Value>,
+    pub id: Uuid,
+    pub file_id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub action: String,
+    pub detail: Option<Value>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
@@ -43,7 +43,7 @@ pub struct ActivityEvent {
 struct ActivityQuery {
     /// Cursor: return events older than this created_at (ISO 8601).
     before: Option<String>,
-    limit:  Option<i64>,
+    limit: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,9 +62,9 @@ pub fn routes() -> Router<AppState> {
 /// GET /api/v1/drive/files/:id/activity — list audit trail for a file.
 async fn list_activity(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Query(qs):    Query<ActivityQuery>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Query(qs): Query<ActivityQuery>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
 
@@ -83,8 +83,9 @@ async fn list_activity(
     let limit = qs.limit.unwrap_or(PAGE_SIZE).min(200).max(1);
 
     let events: Vec<ActivityEvent> = if let Some(before_str) = qs.before.as_deref() {
-        let before = time::OffsetDateTime::parse(before_str, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| DriveError::BadRequest("invalid 'before' timestamp".into()))?;
+        let before =
+            time::OffsetDateTime::parse(before_str, &time::format_description::well_known::Rfc3339)
+                .map_err(|_| DriveError::BadRequest("invalid 'before' timestamp".into()))?;
         sqlx::query_as(
             "SELECT id, file_id, tenant_id, user_id, action, detail, created_at \
              FROM drive_file_activity \
@@ -119,13 +120,15 @@ async fn list_activity(
 /// POST /api/v1/drive/files/:id/activity — append an activity event.
 async fn record_activity(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<CreateActivityBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<CreateActivityBody>,
 ) -> Result<impl IntoResponse> {
     let action = body.action.trim().to_string();
     if action.is_empty() || action.len() > 64 {
-        return Err(DriveError::BadRequest("action must be 1-64 characters".into()));
+        return Err(DriveError::BadRequest(
+            "action must be 1-64 characters".into(),
+        ));
     }
 
     let pool = state.db_or_unavailable()?;
@@ -166,12 +169,12 @@ mod tests {
     #[test]
     fn activity_event_serde_roundtrip() {
         let e = ActivityEvent {
-            id:         Uuid::nil(),
-            file_id:    Uuid::nil(),
-            tenant_id:  Uuid::nil(),
-            user_id:    Uuid::nil(),
-            action:     "upload".into(),
-            detail:     Some(serde_json::json!({"size": 1024})),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            action: "upload".into(),
+            detail: Some(serde_json::json!({"size": 1024})),
             created_at: datetime!(2026-05-22 10:00:00 UTC),
         };
         let s = serde_json::to_string(&e).unwrap();
@@ -183,11 +186,16 @@ mod tests {
     #[test]
     fn activity_event_detail_null_when_none() {
         let e = ActivityEvent {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), action: "delete".into(), detail: None,
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            action: "delete".into(),
+            detail: None,
             created_at: datetime!(2026-05-22 10:00:00 UTC),
         };
-        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
         assert!(v["detail"].is_null());
     }
 
@@ -224,8 +232,12 @@ mod tests {
     #[test]
     fn activity_event_created_at_in_rfc3339() {
         let e = ActivityEvent {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), action: "view".into(), detail: None,
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            action: "view".into(),
+            detail: None,
             created_at: datetime!(2026-06-15 12:00:00 UTC),
         };
         let s = serde_json::to_string(&e).unwrap();
@@ -251,7 +263,8 @@ mod tests {
 
     #[test]
     fn create_activity_body_detail_string_value() {
-        let b: CreateActivityBody = serde_json::from_str(r#"{"action":"download","detail":"pdf"}"#).unwrap();
+        let b: CreateActivityBody =
+            serde_json::from_str(r#"{"action":"download","detail":"pdf"}"#).unwrap();
         assert_eq!(b.action, "download");
         assert!(b.detail.is_some());
     }
@@ -308,11 +321,16 @@ mod tests {
     fn activity_event_action_preserved_in_roundtrip() {
         use time::macros::datetime;
         let e = ActivityEvent {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), action: "rename".into(), detail: None,
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            action: "rename".into(),
+            detail: None,
             created_at: datetime!(2026-05-22 10:00:00 UTC),
         };
-        let back: ActivityEvent = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
+        let back: ActivityEvent =
+            serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
         assert_eq!(back.action, "rename");
     }
 
@@ -326,8 +344,12 @@ mod tests {
         use time::macros::datetime;
         let fid = Uuid::new_v4();
         let e = ActivityEvent {
-            id: Uuid::nil(), file_id: fid, tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), action: "upload".into(), detail: None,
+            id: Uuid::nil(),
+            file_id: fid,
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            action: "upload".into(),
+            detail: None,
             created_at: datetime!(2026-05-22 10:00:00 UTC),
         };
         assert_eq!(e.file_id, fid);
@@ -359,8 +381,12 @@ mod tests {
         use time::macros::datetime;
         let uid = Uuid::new_v4();
         let e = ActivityEvent {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: uid, action: "view".into(), detail: None,
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: uid,
+            action: "view".into(),
+            detail: None,
             created_at: datetime!(2026-05-22 10:00:00 UTC),
         };
         assert_eq!(e.user_id, uid);

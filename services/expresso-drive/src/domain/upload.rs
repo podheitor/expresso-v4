@@ -21,19 +21,19 @@ use crate::error::Result;
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct UploadSession {
-    pub id:            Uuid,
-    pub tenant_id:     Uuid,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
     pub owner_user_id: Uuid,
-    pub parent_id:     Option<Uuid>,
-    pub name:          String,
-    pub mime_type:     Option<String>,
-    pub total_size:    i64,
-    pub offset_bytes:  i64,
-    pub storage_key:   String,
+    pub parent_id: Option<Uuid>,
+    pub name: String,
+    pub mime_type: Option<String>,
+    pub total_size: i64,
+    pub offset_bytes: i64,
+    pub storage_key: String,
     #[serde(with = "time::serde::rfc3339")]
-    pub created_at:    OffsetDateTime,
+    pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    pub expires_at:    OffsetDateTime,
+    pub expires_at: OffsetDateTime,
 }
 
 impl UploadSession {
@@ -44,22 +44,26 @@ impl UploadSession {
 }
 
 pub struct NewUpload<'a> {
-    pub tenant_id:     Uuid,
+    pub tenant_id: Uuid,
     pub owner_user_id: Uuid,
-    pub parent_id:     Option<Uuid>,
-    pub name:          &'a str,
-    pub mime_type:     Option<&'a str>,
-    pub total_size:    i64,
-    pub storage_key:   &'a str,
+    pub parent_id: Option<Uuid>,
+    pub name: &'a str,
+    pub mime_type: Option<&'a str>,
+    pub total_size: i64,
+    pub storage_key: &'a str,
 }
 
-pub struct UploadRepo<'a> { pool: &'a DbPool }
+pub struct UploadRepo<'a> {
+    pool: &'a DbPool,
+}
 
 const COLS: &str = "id, tenant_id, owner_user_id, parent_id, name, mime_type, \
     total_size, offset_bytes, storage_key, created_at, expires_at";
 
 impl<'a> UploadRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     pub async fn insert(&self, n: &NewUpload<'_>) -> Result<UploadSession> {
         let mut tx = begin_tenant_tx(self.pool, n.tenant_id).await?;
@@ -70,9 +74,15 @@ impl<'a> UploadRepo<'a> {
              RETURNING {COLS}"
         );
         let row: UploadSession = sqlx::query_as(&sql)
-            .bind(n.tenant_id).bind(n.owner_user_id).bind(n.parent_id)
-            .bind(n.name).bind(n.mime_type).bind(n.total_size).bind(n.storage_key)
-            .fetch_one(&mut *tx).await?;
+            .bind(n.tenant_id)
+            .bind(n.owner_user_id)
+            .bind(n.parent_id)
+            .bind(n.name)
+            .bind(n.mime_type)
+            .bind(n.total_size)
+            .bind(n.storage_key)
+            .fetch_one(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -84,8 +94,10 @@ impl<'a> UploadRepo<'a> {
              WHERE id = $1 AND tenant_id = $2"
         );
         let row: Option<UploadSession> = sqlx::query_as(&sql)
-            .bind(id).bind(tenant_id)
-            .fetch_optional(&mut *tx).await?;
+            .bind(id)
+            .bind(tenant_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -94,10 +106,10 @@ impl<'a> UploadRepo<'a> {
     /// remove the matching `.part` blobs before (or after) invoking the SQL
     /// purge function. Cross-tenant: no RLS filter, only used by GC task.
     pub async fn list_expired_keys(&self) -> Result<Vec<String>> {
-        let rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT storage_key FROM drive_uploads WHERE expires_at < now()"
-        )
-        .fetch_all(self.pool).await?;
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT storage_key FROM drive_uploads WHERE expires_at < now()")
+                .fetch_all(self.pool)
+                .await?;
         Ok(rows.into_iter().map(|(k,)| k).collect())
     }
 
@@ -105,7 +117,8 @@ impl<'a> UploadRepo<'a> {
     /// (batched 5000 per loop in SQL). Returns total rows deleted.
     pub async fn purge_expired(&self) -> Result<i64> {
         let (n,): (i64,) = sqlx::query_as("SELECT drive_uploads_purge_expired()")
-            .fetch_one(self.pool).await?;
+            .fetch_one(self.pool)
+            .await?;
         Ok(n)
     }
 
@@ -113,20 +126,24 @@ impl<'a> UploadRepo<'a> {
     /// evitar gravações concorrentes fora de ordem).
     pub async fn advance_offset(
         &self,
-        tenant_id:    Uuid,
-        id:           Uuid,
-        expected:     i64,
-        new_offset:   i64,
+        tenant_id: Uuid,
+        id: Uuid,
+        expected: i64,
+        new_offset: i64,
     ) -> Result<Option<i64>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row: Option<(i64,)> = sqlx::query_as(
             "UPDATE drive_uploads \
                 SET offset_bytes = $4 \
               WHERE id = $1 AND tenant_id = $2 AND offset_bytes = $3 \
-              RETURNING offset_bytes"
+              RETURNING offset_bytes",
         )
-        .bind(id).bind(tenant_id).bind(expected).bind(new_offset)
-        .fetch_optional(&mut *tx).await?;
+        .bind(id)
+        .bind(tenant_id)
+        .bind(expected)
+        .bind(new_offset)
+        .fetch_optional(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row.map(|(o,)| o))
     }
@@ -134,8 +151,10 @@ impl<'a> UploadRepo<'a> {
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<u64> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let r = sqlx::query("DELETE FROM drive_uploads WHERE id = $1 AND tenant_id = $2")
-            .bind(id).bind(tenant_id)
-            .execute(&mut *tx).await?;
+            .bind(id)
+            .bind(tenant_id)
+            .execute(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(r.rows_affected())
     }

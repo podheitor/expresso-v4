@@ -23,8 +23,8 @@ use serde_json::json;
 
 #[derive(Debug)]
 pub struct RateLimiter {
-    window:          Duration,
-    max:             usize,
+    window: Duration,
+    max: usize,
     /// Quando true, o middleware confia no primeiro hop de
     /// `X-Forwarded-For` ao decidir a chave do bucket. Caso contrário usa
     /// ConnectInfo (peer addr). Ligar APENAS quando o serviço estiver
@@ -32,7 +32,7 @@ pub struct RateLimiter {
     /// um atacante incrementa o XFF a cada request e ganha um bucket novo,
     /// anulando o limite.
     trust_forwarded: bool,
-    buckets:         Mutex<HashMap<IpAddr, VecDeque<Instant>>>,
+    buckets: Mutex<HashMap<IpAddr, VecDeque<Instant>>>,
 }
 
 impl RateLimiter {
@@ -42,7 +42,12 @@ impl RateLimiter {
     }
 
     pub fn with_trust_proxy(window: Duration, max: usize, trust_forwarded: bool) -> Self {
-        Self { window, max, trust_forwarded, buckets: Mutex::new(HashMap::new()) }
+        Self {
+            window,
+            max,
+            trust_forwarded,
+            buckets: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Returns true if request under limit, false if exceeded.
@@ -50,10 +55,15 @@ impl RateLimiter {
         let now = Instant::now();
         let mut map = self.buckets.lock().unwrap();
         let q = map.entry(ip).or_default();
-        while q.front().is_some_and(|t| now.duration_since(*t) > self.window) {
+        while q
+            .front()
+            .is_some_and(|t| now.duration_since(*t) > self.window)
+        {
             q.pop_front();
         }
-        if q.len() >= self.max { return false; }
+        if q.len() >= self.max {
+            return false;
+        }
         q.push_back(now);
         true
     }
@@ -67,13 +77,13 @@ pub async fn rate_limit_mw(
     headers: HeaderMap,
     req: axum::extract::Request,
     next: Next,
-) -> Response
-{
+) -> Response {
     // XFF só conta quando o operador opt-in via `trust_forwarded` —
     // sem isso, o atacante poderia gerar IPs falsos no header e fugir
     // do limite. Caminho default: peer addr da conexão.
     let ip = if limiter.trust_forwarded {
-        headers.get("x-forwarded-for")
+        headers
+            .get("x-forwarded-for")
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.split(',').next())
             .and_then(|s| s.trim().parse::<IpAddr>().ok())
@@ -91,9 +101,11 @@ pub async fn rate_limit_mw(
             ip = %ip,
             "rate limit exceeded"
         );
-        (StatusCode::TOO_MANY_REQUESTS,
-         Json(json!({"error":"rate_limited","message":"too many requests"})))
-         .into_response()
+        (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({"error":"rate_limited","message":"too many requests"})),
+        )
+            .into_response()
     }
 }
 
@@ -115,8 +127,8 @@ mod tests {
     #[test]
     fn different_ips_independent_buckets() {
         let rl = RateLimiter::new(Duration::from_secs(60), 1);
-        let a = IpAddr::V4(Ipv4Addr::new(10,0,0,1));
-        let b = IpAddr::V4(Ipv4Addr::new(10,0,0,2));
+        let a = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let b = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
         assert!(rl.check(a));
         assert!(!rl.check(a));
         assert!(rl.check(b)); // b unaffected

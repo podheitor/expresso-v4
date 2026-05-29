@@ -39,7 +39,9 @@ const DEFAULT_PORT: u16 = 8007;
 /// — tokens têm tamanho fixo conhecido pelo deployer, então length leak é
 /// aceitável; o que importa é não vazar prefixo via timing.
 fn ct_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() { return false; }
+    if a.len() != b.len() {
+        return false;
+    }
     let mut diff: u8 = 0;
     for (x, y) in a.iter().zip(b.iter()) {
         diff |= x ^ y;
@@ -47,10 +49,7 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-async fn require_bearer_token(
-    req: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
+async fn require_bearer_token(req: Request, next: Next) -> Result<Response, StatusCode> {
     // Token vem do State via extension — set abaixo no main().
     let expected = req
         .extensions()
@@ -116,61 +115,173 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let api_routes = Router::new()
-        .route("/api/v1/index", post(api::index_doc).delete(api::delete_by_tenant))
+        .route(
+            "/api/v1/index",
+            post(api::index_doc).delete(api::delete_by_tenant),
+        )
         .route("/api/v1/index/bulk", post(api::bulk_index))
         .route("/api/v1/index/{id}", delete(api::delete_doc))
         .route("/api/v1/search", get(api::search))
         .route("/api/v1/search/stats", get(api::search_stats))
-        .route("/api/v1/search/stats/by-tenant", get(api::search_stats_by_tenant))
-        .route("/api/v1/search/index/segments",           get(api::list_segments))
-        .route("/api/v1/search/index/segments/count",    get(api::segment_count))
-        .route("/api/v1/search/index/segments/largest",   get(api::largest_segment))
-        .route("/api/v1/search/index/segments/smallest",  get(api::smallest_segment))
-        .route("/api/v1/search/index/segments/stats",     get(api::segment_stats))
-        .route("/api/v1/search/index/segments/age-stats",       get(api::segment_age_stats))
-        .route("/api/v1/search/index/segments/doc-distribution", get(api::segment_doc_distribution))
-        .route("/api/v1/search/index/segments/top-n",    get(api::segments_top_n))
-        .route("/api/v1/search/index/segments/bottom-n", get(api::segments_bottom_n))
-        .route("/api/v1/search/index/segments/merge-candidates", get(api::segments_merge_candidates))
-        .route("/api/v1/search/index/segments/size-stats",       get(api::segment_size_stats))
-        .route("/api/v1/search/index/segments/doc-ratio",        get(api::segment_doc_ratio))
-        .route("/api/v1/search/index/segments/overlap",          get(api::segments_overlap))
-        .route("/api/v1/search/index/segments/cumulative",       get(api::segments_cumulative))
-        .route("/api/v1/search/index/segments/percentile",       get(api::segment_percentile))
-        .route("/api/v1/search/index/segments/stdev",            get(api::segment_stdev))
-        .route("/api/v1/search/index/segments/entropy",          get(api::segment_entropy))
-        .route("/api/v1/search/index/segments/gini",             get(api::segment_gini))
-        .route("/api/v1/search/index/segments/iqr",              get(api::segment_iqr))
-        .route("/api/v1/search/index/segments/range",            get(api::segment_range))
-        .route("/api/v1/search/index/segments/cv",               get(api::segment_cv))
-        .route("/api/v1/search/index/segments/skewness",         get(api::segment_skewness))
-        .route("/api/v1/search/index/segments/mad",              get(api::segment_mad))
-        .route("/api/v1/search/index/segments/kurtosis",         get(api::segment_kurtosis))
-        .route("/api/v1/search/index/segments/trimmed-mean",     get(api::segment_trimmed_mean))
-        .route("/api/v1/search/index/segments/harmonic-mean",    get(api::segment_harmonic_mean))
-        .route("/api/v1/search/index/segments/geometric-mean",   get(api::segment_geometric_mean))
-        .route("/api/v1/search/index/segments/z-scores",             get(api::segment_z_scores))
-        .route("/api/v1/search/index/segments/doc-density",          get(api::segment_doc_density))
-        .route("/api/v1/search/index/segments/coefficient-dispersion", get(api::segment_coefficient_dispersion))
-        .route("/api/v1/search/index/segments/percentile-rank",       get(api::segment_percentile_rank))
-        .route("/api/v1/search/index/segments/winsorized-mean",   get(api::segment_winsorized_mean))
-        .route("/api/v1/search/index/segments/normalized-entropy", get(api::segment_normalized_entropy))
-        .route("/api/v1/search/index/segments/relative-sizes",    get(api::segment_relative_sizes))
-        .route("/api/v1/search/index/segments/size-ratio",        get(api::segment_size_ratio))
-        .route("/api/v1/search/index/segments/reload",   post(api::reload_index))
-        .route("/api/v1/search/index/segments/merge",    post(api::merge_segments))
-        .route("/api/v1/search/index/segments/{id}",     get(api::get_segment))
-        .route("/api/v1/search/index/vacuum",             post(api::vacuum_index))
-        .route("/api/v1/search/index/tenant/{tenant_id}", delete(api::purge_tenant_index))
-        .route("/api/v1/search/health/index",             get(api::index_health))
-        .route("/api/v1/search/health/index/detailed",    get(api::index_health_detailed))
-        .route("/api/v1/search/index/disk-usage",          get(api::index_disk_usage))
-        .route("/api/v1/search/index/writer/stats",       get(api::writer_stats))
+        .route(
+            "/api/v1/search/stats/by-tenant",
+            get(api::search_stats_by_tenant),
+        )
+        .route("/api/v1/search/index/segments", get(api::list_segments))
+        .route(
+            "/api/v1/search/index/segments/count",
+            get(api::segment_count),
+        )
+        .route(
+            "/api/v1/search/index/segments/largest",
+            get(api::largest_segment),
+        )
+        .route(
+            "/api/v1/search/index/segments/smallest",
+            get(api::smallest_segment),
+        )
+        .route(
+            "/api/v1/search/index/segments/stats",
+            get(api::segment_stats),
+        )
+        .route(
+            "/api/v1/search/index/segments/age-stats",
+            get(api::segment_age_stats),
+        )
+        .route(
+            "/api/v1/search/index/segments/doc-distribution",
+            get(api::segment_doc_distribution),
+        )
+        .route(
+            "/api/v1/search/index/segments/top-n",
+            get(api::segments_top_n),
+        )
+        .route(
+            "/api/v1/search/index/segments/bottom-n",
+            get(api::segments_bottom_n),
+        )
+        .route(
+            "/api/v1/search/index/segments/merge-candidates",
+            get(api::segments_merge_candidates),
+        )
+        .route(
+            "/api/v1/search/index/segments/size-stats",
+            get(api::segment_size_stats),
+        )
+        .route(
+            "/api/v1/search/index/segments/doc-ratio",
+            get(api::segment_doc_ratio),
+        )
+        .route(
+            "/api/v1/search/index/segments/overlap",
+            get(api::segments_overlap),
+        )
+        .route(
+            "/api/v1/search/index/segments/cumulative",
+            get(api::segments_cumulative),
+        )
+        .route(
+            "/api/v1/search/index/segments/percentile",
+            get(api::segment_percentile),
+        )
+        .route(
+            "/api/v1/search/index/segments/stdev",
+            get(api::segment_stdev),
+        )
+        .route(
+            "/api/v1/search/index/segments/entropy",
+            get(api::segment_entropy),
+        )
+        .route("/api/v1/search/index/segments/gini", get(api::segment_gini))
+        .route("/api/v1/search/index/segments/iqr", get(api::segment_iqr))
+        .route(
+            "/api/v1/search/index/segments/range",
+            get(api::segment_range),
+        )
+        .route("/api/v1/search/index/segments/cv", get(api::segment_cv))
+        .route(
+            "/api/v1/search/index/segments/skewness",
+            get(api::segment_skewness),
+        )
+        .route("/api/v1/search/index/segments/mad", get(api::segment_mad))
+        .route(
+            "/api/v1/search/index/segments/kurtosis",
+            get(api::segment_kurtosis),
+        )
+        .route(
+            "/api/v1/search/index/segments/trimmed-mean",
+            get(api::segment_trimmed_mean),
+        )
+        .route(
+            "/api/v1/search/index/segments/harmonic-mean",
+            get(api::segment_harmonic_mean),
+        )
+        .route(
+            "/api/v1/search/index/segments/geometric-mean",
+            get(api::segment_geometric_mean),
+        )
+        .route(
+            "/api/v1/search/index/segments/z-scores",
+            get(api::segment_z_scores),
+        )
+        .route(
+            "/api/v1/search/index/segments/doc-density",
+            get(api::segment_doc_density),
+        )
+        .route(
+            "/api/v1/search/index/segments/coefficient-dispersion",
+            get(api::segment_coefficient_dispersion),
+        )
+        .route(
+            "/api/v1/search/index/segments/percentile-rank",
+            get(api::segment_percentile_rank),
+        )
+        .route(
+            "/api/v1/search/index/segments/winsorized-mean",
+            get(api::segment_winsorized_mean),
+        )
+        .route(
+            "/api/v1/search/index/segments/normalized-entropy",
+            get(api::segment_normalized_entropy),
+        )
+        .route(
+            "/api/v1/search/index/segments/relative-sizes",
+            get(api::segment_relative_sizes),
+        )
+        .route(
+            "/api/v1/search/index/segments/size-ratio",
+            get(api::segment_size_ratio),
+        )
+        .route(
+            "/api/v1/search/index/segments/reload",
+            post(api::reload_index),
+        )
+        .route(
+            "/api/v1/search/index/segments/merge",
+            post(api::merge_segments),
+        )
+        .route("/api/v1/search/index/segments/{id}", get(api::get_segment))
+        .route("/api/v1/search/index/vacuum", post(api::vacuum_index))
+        .route(
+            "/api/v1/search/index/tenant/{tenant_id}",
+            delete(api::purge_tenant_index),
+        )
+        .route("/api/v1/search/health/index", get(api::index_health))
+        .route(
+            "/api/v1/search/health/index/detailed",
+            get(api::index_health_detailed),
+        )
+        .route(
+            "/api/v1/search/index/disk-usage",
+            get(api::index_disk_usage),
+        )
+        .route("/api/v1/search/index/writer/stats", get(api::writer_stats))
         .with_state(store);
 
     let api_routes = if !token.is_empty() {
         let tok = ServiceToken(token);
-        api_routes.layer(axum::Extension(tok))
+        api_routes
+            .layer(axum::Extension(tok))
             .layer(middleware::from_fn(require_bearer_token))
     } else {
         api_routes

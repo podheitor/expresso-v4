@@ -39,13 +39,20 @@ pub async fn handle(
             }
             propfind_home(&state, &principal, &req, depth).await?
         }
-        uri::Target::Addressbook { user_id, addressbook_id } => {
+        uri::Target::Addressbook {
+            user_id,
+            addressbook_id,
+        } => {
             if user_id != principal.user_id {
                 return Ok(forbidden());
             }
             propfind_addressbook(&state, &principal, addressbook_id, &req, depth).await?
         }
-        uri::Target::Contact { user_id, addressbook_id, uid } => {
+        uri::Target::Contact {
+            user_id,
+            addressbook_id,
+            uid,
+        } => {
             if user_id != principal.user_id {
                 return Ok(forbidden());
             }
@@ -75,10 +82,10 @@ pub fn parse_depth(headers: &HeaderMap) -> Depth {
         .get("depth")
         .and_then(|v| v.to_str().ok())
         .map(|s| match s.trim().to_ascii_lowercase().as_str() {
- "0"        => Depth::Zero,
- "1"        => Depth::One,
- "infinity" => Depth::Infinity,
-            _          => Depth::Zero,
+            "0" => Depth::Zero,
+            "1" => Depth::One,
+            "infinity" => Depth::Infinity,
+            _ => Depth::Zero,
         })
         .unwrap_or(Depth::Zero)
 }
@@ -86,10 +93,10 @@ pub fn parse_depth(headers: &HeaderMap) -> Depth {
 // ─── builders ───────────────────────────────────────────────────────────────
 
 async fn propfind_home(
-    state:     &AppState,
+    state: &AppState,
     principal: &CardDavPrincipal,
-    req:       &PropRequest,
-    depth:     Depth,
+    req: &PropRequest,
+    depth: Depth,
 ) -> Result<String> {
     let pool = state.db_or_unavailable()?;
     let mut out = String::with_capacity(1024);
@@ -98,7 +105,17 @@ async fn propfind_home(
 
     // Self response — home collection.
     let home_href = format!("/carddav/{}/", principal.user_id);
-    append_collection_response(&mut out, &home_href, /*is_home=*/true, None, None, None, req, principal, &[]);
+    append_collection_response(
+        &mut out,
+        &home_href,
+        /*is_home=*/ true,
+        None,
+        None,
+        None,
+        req,
+        principal,
+        &[],
+    );
 
     if matches!(depth, Depth::One | Depth::Infinity) {
         let books = AddressbookRepo::new(pool)
@@ -108,14 +125,23 @@ async fn propfind_home(
         for ab in books {
             let href = format!("/carddav/{}/{}/", principal.user_id, ab.id);
             let dead = if req.allprop {
-                dead_repo.list_for_addressbook(principal.tenant_id, ab.id).await.unwrap_or_default()
-            } else { Vec::new() };
+                dead_repo
+                    .list_for_addressbook(principal.tenant_id, ab.id)
+                    .await
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             append_collection_response(
-                &mut out, &href, /*is_home=*/false,
+                &mut out,
+                &href,
+                /*is_home=*/ false,
                 Some(ab.name.as_str()),
                 ab.description.as_deref(),
                 Some(ab.ctag),
-                req, principal, &dead,
+                req,
+                principal,
+                &dead,
             );
         }
     }
@@ -125,11 +151,11 @@ async fn propfind_home(
 }
 
 async fn propfind_addressbook(
-    state:       &AppState,
-    principal:   &CardDavPrincipal,
+    state: &AppState,
+    principal: &CardDavPrincipal,
     addressbook_id: uuid::Uuid,
-    req:         &PropRequest,
-    depth:       Depth,
+    req: &PropRequest,
+    depth: Depth,
 ) -> Result<String> {
     let pool = state.db_or_unavailable()?;
     let repo = AddressbookRepo::new(pool);
@@ -140,15 +166,24 @@ async fn propfind_addressbook(
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav"  >"#);
 
     let dead = if req.allprop {
-        DeadPropRepo::new(pool).list_for_addressbook(principal.tenant_id, ab.id).await.unwrap_or_default()
-    } else { Vec::new() };
+        DeadPropRepo::new(pool)
+            .list_for_addressbook(principal.tenant_id, ab.id)
+            .await
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let href = format!("/carddav/{}/{}/", principal.user_id, ab.id);
     append_collection_response(
-        &mut out, &href, /*is_home=*/false,
+        &mut out,
+        &href,
+        /*is_home=*/ false,
         Some(ab.name.as_str()),
         ab.description.as_deref(),
         Some(ab.ctag),
-        req, principal, &dead,
+        req,
+        principal,
+        &dead,
     );
 
     if matches!(depth, Depth::One | Depth::Infinity) {
@@ -166,11 +201,11 @@ async fn propfind_addressbook(
 }
 
 async fn propfind_contact(
-    state:       &AppState,
-    principal:   &CardDavPrincipal,
+    state: &AppState,
+    principal: &CardDavPrincipal,
     addressbook_id: uuid::Uuid,
-    uid:         &str,
-    req:         &PropRequest,
+    uid: &str,
+    req: &PropRequest,
 ) -> Result<String> {
     let pool = state.db_or_unavailable()?;
     let c = ContactRepo::new(pool)
@@ -180,7 +215,10 @@ async fn propfind_contact(
     let mut out = String::with_capacity(1024);
     out.push_str(xml::XML_PROLOG);
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav" >"#);
-    let href = format!("/carddav/{}/{}/{}.vcf", principal.user_id, addressbook_id, c.uid);
+    let href = format!(
+        "/carddav/{}/{}/{}.vcf",
+        principal.user_id, addressbook_id, c.uid
+    );
     append_contact_response(&mut out, &href, &c.etag, req, c.vcard_raw.as_str());
     out.push_str("</D:multistatus>");
     Ok(out)
@@ -188,18 +226,20 @@ async fn propfind_contact(
 
 /// Append a `<D:response>` for a collection (home or addressbook).
 fn append_collection_response(
-    out:        &mut String,
-    href:       &str,
-    is_home:    bool,
-    dispname:   Option<&str>,
-    descr:      Option<&str>,
-    cal_meta:   Option<i64>,  // ctag when this is an addressbook collection
-    req:        &PropRequest,
-    principal:  &CardDavPrincipal,
+    out: &mut String,
+    href: &str,
+    is_home: bool,
+    dispname: Option<&str>,
+    descr: Option<&str>,
+    cal_meta: Option<i64>, // ctag when this is an addressbook collection
+    req: &PropRequest,
+    principal: &CardDavPrincipal,
     dead_props: &[DeadProp],
 ) {
     out.push_str("<D:response>");
-    out.push_str("<D:href>"); out.push_str(&xml::escape(href)); out.push_str("</D:href>");
+    out.push_str("<D:href>");
+    out.push_str(&xml::escape(href));
+    out.push_str("</D:href>");
     out.push_str("<D:propstat><D:prop>");
 
     if req.resourcetype {
@@ -261,13 +301,14 @@ fn append_collection_response(
         );
     }
     if req.current_user_privilege_set {
-        out.push_str(            "<D:current-user-privilege-set>\
+        out.push_str(
+            "<D:current-user-privilege-set>\
              <D:privilege><D:read/></D:privilege>\
              <D:privilege><D:write/></D:privilege>\
              <D:privilege><D:write-content/></D:privilege>\
              <D:privilege><D:write-properties/></D:privilege>\
              <D:privilege><D:read-current-user-privilege-set/></D:privilege>\
-             </D:current-user-privilege-set>"
+             </D:current-user-privilege-set>",
         );
     }
 
@@ -276,8 +317,8 @@ fn append_collection_response(
             out.push_str(&format!(
                 r#"<{local} xmlns="{ns}">{val}</{local}>"#,
                 local = dp.local_name,
-                ns    = xml::escape(&dp.namespace),
-                val   = xml::escape(&dp.xml_value),
+                ns = xml::escape(&dp.namespace),
+                val = xml::escape(&dp.xml_value),
             ));
         }
     }
@@ -290,11 +331,13 @@ fn append_contact_response(
     out: &mut String,
     href: &str,
     etag: &str,
-    req:  &PropRequest,
+    req: &PropRequest,
     vcard_raw: &str,
 ) {
     out.push_str("<D:response>");
-    out.push_str("<D:href>"); out.push_str(&xml::escape(href)); out.push_str("</D:href>");
+    out.push_str("<D:href>");
+    out.push_str(&xml::escape(href));
+    out.push_str("</D:href>");
     out.push_str("<D:propstat><D:prop>");
     if req.resourcetype {
         out.push_str("<D:resourcetype/>");
@@ -318,11 +361,12 @@ fn append_contact_response(
         out.push_str("</D:getcontentlength>");
     }
     if req.current_user_privilege_set {
-        out.push_str(            "<D:current-user-privilege-set>\
+        out.push_str(
+            "<D:current-user-privilege-set>\
              <D:privilege><D:read/></D:privilege>\
              <D:privilege><D:write/></D:privilege>\
              <D:privilege><D:write-content/></D:privilege>\
-             </D:current-user-privilege-set>"
+             </D:current-user-privilege-set>",
         );
     }
     out.push_str("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>");
@@ -368,7 +412,10 @@ mod tests {
 
     #[test]
     fn parse_depth_infinity() {
-        assert!(matches!(parse_depth(&headers_with_depth("infinity")), Depth::Infinity));
+        assert!(matches!(
+            parse_depth(&headers_with_depth("infinity")),
+            Depth::Infinity
+        ));
     }
 
     #[test]
@@ -378,12 +425,18 @@ mod tests {
 
     #[test]
     fn parse_depth_unknown_defaults_to_zero() {
-        assert!(matches!(parse_depth(&headers_with_depth("99")), Depth::Zero));
+        assert!(matches!(
+            parse_depth(&headers_with_depth("99")),
+            Depth::Zero
+        ));
     }
 
     #[test]
     fn parse_depth_infinity_uppercase_defaults_to_zero() {
-        assert!(matches!(parse_depth(&headers_with_depth("INFINITY")), Depth::Infinity));
+        assert!(matches!(
+            parse_depth(&headers_with_depth("INFINITY")),
+            Depth::Infinity
+        ));
     }
 
     #[test]
@@ -454,7 +507,10 @@ mod tests {
 
     #[test]
     fn parse_depth_whitespace_trimmed_to_zero() {
-        assert!(matches!(parse_depth(&headers_with_depth("  0  ")), Depth::Zero));
+        assert!(matches!(
+            parse_depth(&headers_with_depth("  0  ")),
+            Depth::Zero
+        ));
     }
 
     #[test]

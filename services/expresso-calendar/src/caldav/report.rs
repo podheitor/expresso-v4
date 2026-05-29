@@ -6,27 +6,29 @@
 //!   sends the hrefs returned by a previous PROPFIND/REPORT).
 
 use axum::{body::Body, http::StatusCode, response::Response};
-use time::{OffsetDateTime, PrimitiveDateTime, format_description};
+use time::{format_description, OffsetDateTime, PrimitiveDateTime};
 use uuid::Uuid;
 
 use crate::caldav::auth::CalDavPrincipal;
 use crate::caldav::uri::{self, Target};
 use crate::caldav::xml::{self, PropRequest};
 use crate::caldav::MULTISTATUS_CT;
-use crate::domain::{EventRepo, EventQuery};
+use crate::domain::{EventQuery, EventRepo};
 use crate::error::Result;
 use crate::state::AppState;
 
 pub async fn handle(
-    state:     AppState,
+    state: AppState,
     principal: CalDavPrincipal,
-    path:      &str,
-    body:      &str,
+    path: &str,
+    body: &str,
 ) -> Result<Response> {
     // Only valid on calendar collection URIs.
     let calendar_id = match uri::classify(path) {
-        Target::Calendar { user_id, calendar_id } if user_id == principal.user_id =>
+        Target::Calendar {
+            user_id,
             calendar_id,
+        } if user_id == principal.user_id => calendar_id,
         Target::Calendar { .. } => return Ok(forbidden()),
         _ => return Ok(not_found()),
     };
@@ -59,11 +61,11 @@ pub async fn handle(
 }
 
 async fn multiget(
-    state:       &AppState,
-    principal:   &CalDavPrincipal,
+    state: &AppState,
+    principal: &CalDavPrincipal,
     calendar_id: Uuid,
-    body:        &str,
-    req:         &PropRequest,
+    body: &str,
+    req: &PropRequest,
 ) -> Result<String> {
     let hrefs = xml::parse_multiget_hrefs(body);
     // Extract UIDs from hrefs that match our calendar path.
@@ -86,7 +88,10 @@ async fn multiget(
     out.push_str(xml::XML_PROLOG);
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">"#);
     for ev in events {
-        let href = format!("/caldav/{}/{}/{}.ics", principal.user_id, calendar_id, ev.uid);
+        let href = format!(
+            "/caldav/{}/{}/{}.ics",
+            principal.user_id, calendar_id, ev.uid
+        );
         append_event(&mut out, &href, &ev.etag, req, &ev.ical_raw);
     }
     out.push_str("</D:multistatus>");
@@ -94,19 +99,18 @@ async fn multiget(
 }
 
 async fn query(
-    state:       &AppState,
-    principal:   &CalDavPrincipal,
+    state: &AppState,
+    principal: &CalDavPrincipal,
     calendar_id: Uuid,
-    body:        &str,
-    req:         &PropRequest,
+    body: &str,
+    req: &PropRequest,
 ) -> Result<String> {
-    let range = xml::parse_time_range(body).and_then(|(s, e)| {
-        Some((parse_caldav_dt(&s)?, parse_caldav_dt(&e)?))
-    });
+    let range = xml::parse_time_range(body)
+        .and_then(|(s, e)| Some((parse_caldav_dt(&s)?, parse_caldav_dt(&e)?)));
 
     let q = EventQuery {
-        from:  range.map(|(s, _)| s),
-        to:    range.map(|(_, e)| e),
+        from: range.map(|(s, _)| s),
+        to: range.map(|(_, e)| e),
         limit: None,
     };
 
@@ -119,7 +123,10 @@ async fn query(
     out.push_str(xml::XML_PROLOG);
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">"#);
     for ev in events {
-        let href = format!("/caldav/{}/{}/{}.ics", principal.user_id, calendar_id, ev.uid);
+        let href = format!(
+            "/caldav/{}/{}/{}.ics",
+            principal.user_id, calendar_id, ev.uid
+        );
         append_event(&mut out, &href, &ev.etag, req, &ev.ical_raw);
     }
     out.push_str("</D:multistatus>");
@@ -128,7 +135,9 @@ async fn query(
 
 fn append_event(out: &mut String, href: &str, etag: &str, req: &PropRequest, ical: &str) {
     out.push_str("<D:response>");
-    out.push_str("<D:href>"); out.push_str(&xml::escape(href)); out.push_str("</D:href>");
+    out.push_str("<D:href>");
+    out.push_str(&xml::escape(href));
+    out.push_str("</D:href>");
     out.push_str("<D:propstat><D:prop>");
     if req.getetag {
         out.push_str("<D:getetag>\"");
@@ -151,14 +160,16 @@ fn append_event(out: &mut String, href: &str, etag: &str, req: &PropRequest, ica
 fn parse_caldav_dt(v: &str) -> Option<OffsetDateTime> {
     let stripped = v.strip_suffix('Z').unwrap_or(v);
     let fmt = format_description::parse("[year][month][day]T[hour][minute][second]").ok()?;
-    PrimitiveDateTime::parse(stripped, &fmt).ok().map(|p| p.assume_utc())
+    PrimitiveDateTime::parse(stripped, &fmt)
+        .ok()
+        .map(|p| p.assume_utc())
 }
 
 async fn free_busy(
-    state:       &AppState,
-    principal:   &CalDavPrincipal,
+    state: &AppState,
+    principal: &CalDavPrincipal,
     calendar_id: Uuid,
-    body:        &str,
+    body: &str,
 ) -> Result<Response> {
     // Parse [start, end] window from <time-range/>.
     let Some((s_raw, e_raw)) = xml::parse_time_range(body) else {
@@ -171,25 +182,39 @@ async fn free_busy(
     let pool = state.db_or_unavailable()?;
 
     // Collect busy windows from stored events on this calendar.
-    let q = EventQuery { from: Some(from), to: Some(to), limit: None };
+    let q = EventQuery {
+        from: Some(from),
+        to: Some(to),
+        limit: None,
+    };
     let events = EventRepo::new(pool)
         .list(principal.tenant_id, calendar_id, &q)
         .await?;
 
     // Build a minimal VFREEBUSY response.
     let mut ical = String::with_capacity(256 + events.len() * 80);
-    ical.push_str("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Expresso//CalDAV//EN\r\nMETHOD:REPLY\r\n");
+    ical.push_str(
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Expresso//CalDAV//EN\r\nMETHOD:REPLY\r\n",
+    );
     ical.push_str("BEGIN:VFREEBUSY\r\n");
     ical.push_str(&format!("DTSTART:{}\r\n", fmt_dt(from)));
-    ical.push_str(&format!("DTEND:{}\r\n",   fmt_dt(to)));
+    ical.push_str(&format!("DTEND:{}\r\n", fmt_dt(to)));
     for ev in events {
-        if ev.status.as_deref() == Some("CANCELLED") { continue; }
+        if ev.status.as_deref() == Some("CANCELLED") {
+            continue;
+        }
         // RFC 4791 §7.10: TRANSPARENT events are non-blocking for free/busy.
-        if ev.transp.as_deref() == Some("TRANSPARENT") { continue; }
-        let (Some(ds), Some(de)) = (ev.dtstart, ev.dtend) else { continue; };
+        if ev.transp.as_deref() == Some("TRANSPARENT") {
+            continue;
+        }
+        let (Some(ds), Some(de)) = (ev.dtstart, ev.dtend) else {
+            continue;
+        };
         let start = ds.max(from);
-        let end   = de.min(to);
-        if end <= start { continue; }
+        let end = de.min(to);
+        if end <= start {
+            continue;
+        }
         ical.push_str(&format!("FREEBUSY:{}/{}\r\n", fmt_dt(start), fmt_dt(end)));
     }
     ical.push_str("END:VFREEBUSY\r\nEND:VCALENDAR\r\n");
@@ -201,24 +226,36 @@ async fn free_busy(
         .unwrap())
 }
 
-
 fn fmt_dt(dt: time::OffsetDateTime) -> String {
     // RFC 5545 basic UTC format: YYYYMMDDTHHMMSSZ
     let d = dt.date();
     let t = dt.time();
     format!(
         "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-        d.year(), u8::from(d.month()), d.day(),
-        t.hour(), t.minute(), t.second(),
+        d.year(),
+        u8::from(d.month()),
+        d.day(),
+        t.hour(),
+        t.minute(),
+        t.second(),
     )
 }
 
 fn forbidden() -> Response {
-    Response::builder().status(StatusCode::FORBIDDEN).body(Body::from("forbidden")).unwrap()
+    Response::builder()
+        .status(StatusCode::FORBIDDEN)
+        .body(Body::from("forbidden"))
+        .unwrap()
 }
 fn not_found() -> Response {
-    Response::builder().status(StatusCode::NOT_FOUND).body(Body::from("not found")).unwrap()
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Body::from("not found"))
+        .unwrap()
 }
 fn bad_request(msg: &'static str) -> Response {
-    Response::builder().status(StatusCode::BAD_REQUEST).body(Body::from(msg)).unwrap()
+    Response::builder()
+        .status(StatusCode::BAD_REQUEST)
+        .body(Body::from(msg))
+        .unwrap()
 }

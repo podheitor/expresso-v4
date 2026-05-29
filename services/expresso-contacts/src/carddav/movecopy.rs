@@ -6,7 +6,11 @@
 //! - Cross-addressbook allowed (same user, same tenant).
 //! - `Overwrite: F` → if destination exists, 412.
 
-use axum::{body::Body, http::{HeaderMap, StatusCode}, response::Response};
+use axum::{
+    body::Body,
+    http::{HeaderMap, StatusCode},
+    response::Response,
+};
 
 use crate::carddav::auth::CardDavPrincipal;
 use crate::carddav::uri::{self, Target};
@@ -15,33 +19,36 @@ use crate::error::Result;
 use crate::state::AppState;
 
 pub async fn copy(
-    state:     AppState,
+    state: AppState,
     principal: CardDavPrincipal,
-    path:      &str,
-    headers:   &HeaderMap,
+    path: &str,
+    headers: &HeaderMap,
 ) -> Result<Response> {
     process(state, principal, path, headers, false).await
 }
 
 pub async fn mov(
-    state:     AppState,
+    state: AppState,
     principal: CardDavPrincipal,
-    path:      &str,
-    headers:   &HeaderMap,
+    path: &str,
+    headers: &HeaderMap,
 ) -> Result<Response> {
     process(state, principal, path, headers, true).await
 }
 
 async fn process(
-    state:     AppState,
+    state: AppState,
     principal: CardDavPrincipal,
-    path:      &str,
-    headers:   &HeaderMap,
-    is_move:   bool,
+    path: &str,
+    headers: &HeaderMap,
+    is_move: bool,
 ) -> Result<Response> {
     let (src_ab, src_uid) = match uri::classify(path) {
-        Target::Contact { user_id, addressbook_id, uid } if user_id == principal.user_id =>
-            (addressbook_id, uid),
+        Target::Contact {
+            user_id,
+            addressbook_id,
+            uid,
+        } if user_id == principal.user_id => (addressbook_id, uid),
         Target::Contact { .. } => return Ok(simple(StatusCode::FORBIDDEN)),
         _ => return Ok(simple(StatusCode::NOT_FOUND)),
     };
@@ -53,19 +60,27 @@ async fn process(
     let dest_path = strip_origin(&dest_raw);
 
     let (dst_ab, dst_uid) = match uri::classify(&dest_path) {
-        Target::Contact { user_id, addressbook_id, uid } if user_id == principal.user_id =>
-            (addressbook_id, uid),
+        Target::Contact {
+            user_id,
+            addressbook_id,
+            uid,
+        } if user_id == principal.user_id => (addressbook_id, uid),
         Target::Contact { .. } => return Ok(simple(StatusCode::FORBIDDEN)),
         _ => return Ok(bad_request("destination must resolve to a contact URI")),
     };
 
-    let overwrite = headers.get("overwrite").and_then(|h| h.to_str().ok()).map(|s| s.trim());
+    let overwrite = headers
+        .get("overwrite")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.trim());
     let allow_overwrite = !matches!(overwrite, Some("F") | Some("f"));
 
     let pool = state.db_or_unavailable()?;
     let repo = ContactRepo::new(pool);
 
-    let src = repo.get_by_uid(principal.tenant_id, src_ab, &src_uid).await?;
+    let src = repo
+        .get_by_uid(principal.tenant_id, src_ab, &src_uid)
+        .await?;
 
     let dst_existed = repo
         .get_by_uid(principal.tenant_id, dst_ab, &dst_uid)
@@ -81,15 +96,23 @@ async fn process(
 
     let same_row = src_ab == dst_ab && src.uid == dst_uid;
     if is_move && !same_row {
-        repo.delete_by_uid(principal.tenant_id, src_ab, &src.uid).await?;
+        repo.delete_by_uid(principal.tenant_id, src_ab, &src.uid)
+            .await?;
     }
 
-    let status = if dst_existed { StatusCode::NO_CONTENT } else { StatusCode::CREATED };
+    let status = if dst_existed {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::CREATED
+    };
     Ok(simple(status))
 }
 
 fn strip_origin(url: &str) -> String {
-    if let Some(rest) = url.strip_prefix("http://").or_else(|| url.strip_prefix("https://")) {
+    if let Some(rest) = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+    {
         match rest.find('/') {
             Some(i) => rest[i..].to_string(),
             None => "/".to_string(),
@@ -100,7 +123,10 @@ fn strip_origin(url: &str) -> String {
 }
 
 fn simple(status: StatusCode) -> Response {
-    Response::builder().status(status).body(Body::empty()).unwrap()
+    Response::builder()
+        .status(status)
+        .body(Body::empty())
+        .unwrap()
 }
 
 fn bad_request(msg: &'static str) -> Response {
@@ -116,13 +142,19 @@ mod tests {
 
     #[test]
     fn strip_absolute() {
-        assert_eq!(strip_origin("http://h:8003/carddav/u/a/x.vcf"), "/carddav/u/a/x.vcf");
+        assert_eq!(
+            strip_origin("http://h:8003/carddav/u/a/x.vcf"),
+            "/carddav/u/a/x.vcf"
+        );
         assert_eq!(strip_origin("/carddav/u/a/x.vcf"), "/carddav/u/a/x.vcf");
     }
 
     #[test]
     fn strip_https_origin() {
-        assert_eq!(strip_origin("https://example.com/carddav/u/a/y.vcf"), "/carddav/u/a/y.vcf");
+        assert_eq!(
+            strip_origin("https://example.com/carddav/u/a/y.vcf"),
+            "/carddav/u/a/y.vcf"
+        );
     }
 
     #[test]
@@ -138,22 +170,34 @@ mod tests {
 
     #[test]
     fn strip_origin_non_http_unchanged() {
-        assert_eq!(strip_origin("ftp://example.com/file"), "ftp://example.com/file");
+        assert_eq!(
+            strip_origin("ftp://example.com/file"),
+            "ftp://example.com/file"
+        );
     }
 
     #[test]
     fn strip_origin_preserves_query_and_fragment() {
-        assert_eq!(strip_origin("https://h/carddav/a?q=1#f"), "/carddav/a?q=1#f");
+        assert_eq!(
+            strip_origin("https://h/carddav/a?q=1#f"),
+            "/carddav/a?q=1#f"
+        );
     }
 
     #[test]
     fn strip_origin_path_only_unchanged() {
-        assert_eq!(strip_origin("/carddav/user/book/card.vcf"), "/carddav/user/book/card.vcf");
+        assert_eq!(
+            strip_origin("/carddav/user/book/card.vcf"),
+            "/carddav/user/book/card.vcf"
+        );
     }
 
     #[test]
     fn strip_origin_http_with_port_strips_host() {
-        assert_eq!(strip_origin("http://svc.internal:9000/carddav/a/b"), "/carddav/a/b");
+        assert_eq!(
+            strip_origin("http://svc.internal:9000/carddav/a/b"),
+            "/carddav/a/b"
+        );
     }
 
     #[test]
@@ -163,22 +207,34 @@ mod tests {
 
     #[test]
     fn strip_origin_preserves_path_with_tilde() {
-        assert_eq!(strip_origin("https://svc/~user/book/card.vcf"), "/~user/book/card.vcf");
+        assert_eq!(
+            strip_origin("https://svc/~user/book/card.vcf"),
+            "/~user/book/card.vcf"
+        );
     }
 
     #[test]
     fn strip_origin_port_in_authority_stripped() {
-        assert_eq!(strip_origin("https://host:8443/carddav/user"), "/carddav/user");
+        assert_eq!(
+            strip_origin("https://host:8443/carddav/user"),
+            "/carddav/user"
+        );
     }
 
     #[test]
     fn strip_origin_http_simple_path() {
-        assert_eq!(strip_origin("http://example.com/contacts/principal"), "/contacts/principal");
+        assert_eq!(
+            strip_origin("http://example.com/contacts/principal"),
+            "/contacts/principal"
+        );
     }
 
     #[test]
     fn strip_origin_already_relative_unchanged() {
-        assert_eq!(strip_origin("/carddav/tenant/book/card.vcf"), "/carddav/tenant/book/card.vcf");
+        assert_eq!(
+            strip_origin("/carddav/tenant/book/card.vcf"),
+            "/carddav/tenant/book/card.vcf"
+        );
     }
 
     #[test]
@@ -213,12 +269,18 @@ mod tests {
 
     #[test]
     fn strip_origin_ftp_scheme_unchanged() {
-        assert_eq!(strip_origin("ftp://host.example.com/file"), "ftp://host.example.com/file");
+        assert_eq!(
+            strip_origin("ftp://host.example.com/file"),
+            "ftp://host.example.com/file"
+        );
     }
 
     #[test]
     fn strip_origin_https_path_with_encoded_chars_preserved() {
-        assert_eq!(strip_origin("https://host/path%20with%20spaces"), "/path%20with%20spaces");
+        assert_eq!(
+            strip_origin("https://host/path%20with%20spaces"),
+            "/path%20with%20spaces"
+        );
     }
 
     #[test]
@@ -228,6 +290,9 @@ mod tests {
 
     #[test]
     fn strip_origin_https_path_with_query_string() {
-        assert_eq!(strip_origin("https://host/cards/a.vcf?v=1"), "/cards/a.vcf?v=1");
+        assert_eq!(
+            strip_origin("https://host/cards/a.vcf?v=1"),
+            "/cards/a.vcf?v=1"
+        );
     }
 }

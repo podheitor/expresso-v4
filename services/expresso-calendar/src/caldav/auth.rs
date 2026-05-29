@@ -31,7 +31,7 @@ use crate::state::AppState;
 #[derive(Debug, Clone, Copy)]
 pub struct CalDavPrincipal {
     pub tenant_id: Uuid,
-    pub user_id:   Uuid,
+    pub user_id: Uuid,
 }
 
 #[async_trait]
@@ -53,10 +53,10 @@ impl FromRequestParts<AppState> for CalDavPrincipal {
         // 1) Keycloak path (production).
         if let Some(kc) = state.kc_basic() {
             match kc.authenticate(&user, &pass).await {
-                Ok(_)                                     => return resolve_user(state, &user, tenant_hint).await,
-                Err(KcBasicError::InvalidCredentials)     => return Err(AuthError::Forbidden),
-                Err(KcBasicError::Unreachable(_))         => return Err(AuthError::Unavailable),
-                Err(KcBasicError::Upstream(_))            => return Err(AuthError::Unavailable),
+                Ok(_) => return resolve_user(state, &user, tenant_hint).await,
+                Err(KcBasicError::InvalidCredentials) => return Err(AuthError::Forbidden),
+                Err(KcBasicError::Unreachable(_)) => return Err(AuthError::Unavailable),
+                Err(KcBasicError::Upstream(_)) => return Err(AuthError::Unavailable),
             }
         }
 
@@ -75,44 +75,48 @@ impl FromRequestParts<AppState> for CalDavPrincipal {
 /// host is not mapped, or the realm name does not parse as a UUID.
 fn resolve_tenant_from_host(parts: &Parts) -> Option<Uuid> {
     let resolver = parts.extensions.get::<Arc<TenantResolver>>()?;
-    let host = parts.headers.get(header::HOST).and_then(|v| v.to_str().ok())?;
+    let host = parts
+        .headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())?;
     let realm = resolver.resolve(host)?;
     Uuid::parse_str(realm.trim()).ok()
 }
 
 async fn resolve_user(
-    state:       &AppState,
-    user:        &str,
+    state: &AppState,
+    user: &str,
     tenant_hint: Option<Uuid>,
 ) -> Result<CalDavPrincipal, AuthError> {
     let pool = state.db().ok_or(AuthError::Unavailable)?;
 
     if let Some(tenant_id) = tenant_hint {
-        let row: Option<(Uuid,)> = sqlx::query_as(
-            r#"SELECT id FROM users WHERE tenant_id = $1 AND email = $2 LIMIT 1"#,
-        )
-        .bind(tenant_id)
-        .bind(user)
-        .fetch_optional(pool)
-        .await
-        .map_err(|_| AuthError::Unavailable)?;
+        let row: Option<(Uuid,)> =
+            sqlx::query_as(r#"SELECT id FROM users WHERE tenant_id = $1 AND email = $2 LIMIT 1"#)
+                .bind(tenant_id)
+                .bind(user)
+                .fetch_optional(pool)
+                .await
+                .map_err(|_| AuthError::Unavailable)?;
         let (user_id,) = row.ok_or(AuthError::Forbidden)?;
         return Ok(CalDavPrincipal { tenant_id, user_id });
     }
 
     // No host→tenant mapping: detect ambiguity. If exactly one tenant owns
     // this email, accept it; otherwise refuse rather than guess.
-    let rows: Vec<(Uuid, Uuid)> = sqlx::query_as(
-        r#"SELECT tenant_id, id FROM users WHERE email = $1 LIMIT 2"#,
-    )
-    .bind(user)
-    .fetch_all(pool)
-    .await
-    .map_err(|_| AuthError::Unavailable)?;
+    let rows: Vec<(Uuid, Uuid)> =
+        sqlx::query_as(r#"SELECT tenant_id, id FROM users WHERE email = $1 LIMIT 2"#)
+            .bind(user)
+            .fetch_all(pool)
+            .await
+            .map_err(|_| AuthError::Unavailable)?;
     match rows.as_slice() {
-        [(tenant_id, user_id)] => Ok(CalDavPrincipal { tenant_id: *tenant_id, user_id: *user_id }),
-        []                     => Err(AuthError::Forbidden),
-        _                      => {
+        [(tenant_id, user_id)] => Ok(CalDavPrincipal {
+            tenant_id: *tenant_id,
+            user_id: *user_id,
+        }),
+        [] => Err(AuthError::Forbidden),
+        _ => {
             tracing::warn!(email = %user, "ambiguous CalDAV login: email exists in multiple tenants and no Host→tenant mapping wired");
             Err(AuthError::Forbidden)
         }
@@ -121,7 +125,9 @@ async fn resolve_user(
 
 /// Decode `Basic <b64(user:pass)>` → (user, pass).
 fn decode_basic(header: &str) -> Option<(String, String)> {
-    let token = header.strip_prefix("Basic ").or_else(|| header.strip_prefix("basic "))?;
+    let token = header
+        .strip_prefix("Basic ")
+        .or_else(|| header.strip_prefix("basic "))?;
     let decoded = STANDARD.decode(token.trim()).ok()?;
     let s = String::from_utf8(decoded).ok()?;
     let (u, p) = s.split_once(':')?;
@@ -138,16 +144,18 @@ pub enum AuthError {
 
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
-        let challenge = HeaderValue::from_static("Basic realm=\"Expresso CalDAV\", charset=\"UTF-8\"");
+        let challenge =
+            HeaderValue::from_static("Basic realm=\"Expresso CalDAV\", charset=\"UTF-8\"");
         let (status, msg) = match self {
-            Self::Missing     => (StatusCode::UNAUTHORIZED,        "authentication required"),
-            Self::Malformed   => (StatusCode::BAD_REQUEST,         "malformed Authorization header"),
-            Self::Forbidden   => (StatusCode::UNAUTHORIZED,        "invalid credentials"),
+            Self::Missing => (StatusCode::UNAUTHORIZED, "authentication required"),
+            Self::Malformed => (StatusCode::BAD_REQUEST, "malformed Authorization header"),
+            Self::Forbidden => (StatusCode::UNAUTHORIZED, "invalid credentials"),
             Self::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "auth backend unavailable"),
         };
         let mut resp = (status, msg).into_response();
         if matches!(status, StatusCode::UNAUTHORIZED) {
-            resp.headers_mut().insert(header::WWW_AUTHENTICATE, challenge);
+            resp.headers_mut()
+                .insert(header::WWW_AUTHENTICATE, challenge);
         }
         resp
     }

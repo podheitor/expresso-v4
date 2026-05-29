@@ -41,10 +41,10 @@ use crate::state::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct FileTag {
-    pub id:         Uuid,
-    pub file_id:    Uuid,
-    pub tenant_id:  Uuid,
-    pub tag:        String,
+    pub id: Uuid,
+    pub file_id: Uuid,
+    pub tenant_id: Uuid,
+    pub tag: String,
     pub created_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
@@ -66,50 +66,23 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/drive/files/:id/tags",
             get(list_file_tags).post(add_tag).delete(clear_tags),
         )
-        .route(
-            "/api/v1/drive/files/:id/tags/bulk",
-            post(bulk_add_tags),
-        )
-        .route(
-            "/api/v1/drive/files/:id/tags/:tag",
-            delete(remove_tag),
-        )
+        .route("/api/v1/drive/files/:id/tags/bulk", post(bulk_add_tags))
+        .route("/api/v1/drive/files/:id/tags/:tag", delete(remove_tag))
         .route(
             "/api/v1/drive/tags/:tag",
             get(list_files_by_tag).patch(rename_tag),
         )
-        .route(
-            "/api/v1/drive/tags/:tag/merge",
-            post(merge_tag),
-        )
-        .route(
-            "/api/v1/drive/tags/:tag/count",
-            get(count_files_by_tag),
-        )
-        .route(
-            "/api/v1/drive/tags/orphans",
-            delete(delete_orphan_tags),
-        )
-        .route(
-            "/api/v1/drive/tags/stats",
-            get(tag_stats),
-        )
-        .route(
-            "/api/v1/drive/tags/stats-by-user",
-            get(tag_stats_by_user),
-        )
-        .route(
-            "/api/v1/drive/tags/co-occurrence",
-            get(tag_co_occurrence),
-        )
+        .route("/api/v1/drive/tags/:tag/merge", post(merge_tag))
+        .route("/api/v1/drive/tags/:tag/count", get(count_files_by_tag))
+        .route("/api/v1/drive/tags/orphans", delete(delete_orphan_tags))
+        .route("/api/v1/drive/tags/stats", get(tag_stats))
+        .route("/api/v1/drive/tags/stats-by-user", get(tag_stats_by_user))
+        .route("/api/v1/drive/tags/co-occurrence", get(tag_co_occurrence))
         .route(
             "/api/v1/drive/tags/co-occurrence-by-user",
             get(tag_co_occurrence_by_user),
         )
-        .route(
-            "/api/v1/drive/tags/intersect",
-            get(intersect_files_by_tags),
-        )
+        .route("/api/v1/drive/tags/intersect", get(intersect_files_by_tags))
         .route(
             "/api/v1/drive/tags/intersect-exclude",
             get(intersect_exclude_files_by_tags),
@@ -118,10 +91,7 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/drive/tags/intersect-exclude-by-user",
             get(intersect_exclude_files_by_tags_by_user),
         )
-        .route(
-            "/api/v1/drive/tags/union",
-            get(union_files_by_tags),
-        )
+        .route("/api/v1/drive/tags/union", get(union_files_by_tags))
         .route(
             "/api/v1/drive/tags/rename-history",
             get(list_tag_rename_history),
@@ -142,7 +112,7 @@ pub fn routes() -> Router<AppState> {
 
 #[derive(Debug, Serialize, FromRow)]
 struct TagStat {
-    tag:        String,
+    tag: String,
     file_count: i64,
 }
 
@@ -150,10 +120,7 @@ struct TagStat {
 /// Conta apenas files ativos (deleted_at IS NULL). Ordenado por count DESC, depois
 /// alfabético. Útil pra "tag cloud" e dashboards. Path estático ganha precedência
 /// sobre `/:tag` (lição #443).
-async fn tag_stats(
-    State(state): State<AppState>,
-    ctx:          RequestCtx,
-) -> Result<impl IntoResponse> {
+async fn tag_stats(State(state): State<AppState>, ctx: RequestCtx) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
     let stats: Vec<TagStat> = sqlx::query_as(
         "SELECT t.tag, COUNT(DISTINCT t.file_id) AS file_count \
@@ -172,7 +139,7 @@ async fn tag_stats(
 #[derive(Debug, Serialize, FromRow)]
 struct TagStatByUser {
     created_by: Uuid,
-    tag:        String,
+    tag: String,
     file_count: i64,
 }
 
@@ -185,7 +152,7 @@ struct TagStatByUser {
 /// Path com hífen evita colisão com `/:tag` (lição #443).
 async fn tag_stats_by_user(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
     let stats: Vec<TagStatByUser> = sqlx::query_as(
@@ -205,18 +172,18 @@ async fn tag_stats_by_user(
 #[derive(Debug, Deserialize)]
 struct CoOccurrenceQuery {
     /// Top-N pares retornados, default 50, cap 1..500.
-    limit:    Option<i64>,
+    limit: Option<i64>,
     /// Filtra pares onde uma das tags == this (matching tag_a OR tag_b),
     /// lowercase. Útil pra "qual tag co-ocorre com X".
-    tag:      Option<String>,
+    tag: Option<String>,
     /// Threshold mínimo de co-occurrence_count, default 1 (tudo).
     min_count: Option<i64>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
 struct TagCoOccurrence {
-    tag_a:  String,
-    tag_b:  String,
+    tag_a: String,
+    tag_b: String,
     /// Files distintos que carregam ambas tags.
     co_count: i64,
 }
@@ -232,10 +199,10 @@ struct TagCoOccurrence {
 /// hífen evita ambiguidade adicional. Default limit 50, cap 1..500.
 async fn tag_co_occurrence(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<CoOccurrenceQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<CoOccurrenceQuery>,
 ) -> Result<impl IntoResponse> {
-    let limit     = q.limit.unwrap_or(50).clamp(1, 500);
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
     let min_count = q.min_count.unwrap_or(1).max(1);
     let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
 
@@ -275,12 +242,12 @@ async fn tag_co_occurrence(
 
 #[derive(Debug, Deserialize)]
 struct CoOccurrenceByUserQuery {
-    limit:     Option<i64>,
+    limit: Option<i64>,
     /// Filtra a um user específico (UUID). Se omitido, retorna pares de
     /// todos os users (top-N global agrupado por user).
-    user_id:   Option<Uuid>,
+    user_id: Option<Uuid>,
     /// Filtra pares onde uma das tags == this (tag_a OR tag_b), lowercase.
-    tag:       Option<String>,
+    tag: Option<String>,
     /// Threshold mínimo de co-occurrence_count, default 1.
     min_count: Option<i64>,
 }
@@ -288,10 +255,10 @@ struct CoOccurrenceByUserQuery {
 #[derive(Debug, Serialize, FromRow)]
 struct TagCoOccurrenceByUser {
     created_by: Uuid,
-    tag_a:      String,
-    tag_b:      String,
+    tag_a: String,
+    tag_b: String,
     /// Files distintos onde ESSE user aplicou ambas tags.
-    co_count:   i64,
+    co_count: i64,
 }
 
 /// GET /api/v1/drive/tags/co-occurrence-by-user?limit=&user_id=&tag=&min_count=
@@ -307,11 +274,11 @@ struct TagCoOccurrenceByUser {
 /// hífen evita colisão com `/:tag` (lição #443/#448).
 async fn tag_co_occurrence_by_user(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<CoOccurrenceByUserQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<CoOccurrenceByUserQuery>,
 ) -> Result<impl IntoResponse> {
-    let limit      = q.limit.unwrap_or(50).clamp(1, 500);
-    let min_count  = q.min_count.unwrap_or(1).max(1);
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let min_count = q.min_count.unwrap_or(1).max(1);
     let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
 
     let pool = state.db_or_unavailable()?;
@@ -362,7 +329,7 @@ struct OrphansCleanupResult {
 /// `/orphans` ganha precedência sobre `/:tag` em axum (lição #440).
 async fn delete_orphan_tags(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
     let r = sqlx::query(
@@ -378,7 +345,9 @@ async fn delete_orphan_tags(
     .bind(ctx.tenant_id)
     .execute(pool)
     .await?;
-    Ok(Json(OrphansCleanupResult { removed: r.rows_affected() }))
+    Ok(Json(OrphansCleanupResult {
+        removed: r.rows_affected(),
+    }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -400,17 +369,21 @@ struct MergeTagBody {
 /// habilitando undo preciso.
 async fn merge_tag(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(tag):    Path<String>,
-    Json(body):   Json<MergeTagBody>,
+    ctx: RequestCtx,
+    Path(tag): Path<String>,
+    Json(body): Json<MergeTagBody>,
 ) -> Result<impl IntoResponse> {
-    let src  = tag.trim().to_lowercase();
-    let dst  = body.into.trim().to_lowercase();
+    let src = tag.trim().to_lowercase();
+    let dst = body.into.trim().to_lowercase();
     if dst.is_empty() || dst.chars().count() > 64 {
-        return Err(DriveError::BadRequest("into must be 1-64 characters".into()));
+        return Err(DriveError::BadRequest(
+            "into must be 1-64 characters".into(),
+        ));
     }
     if dst == src {
-        return Err(DriveError::BadRequest("into must differ from source tag".into()));
+        return Err(DriveError::BadRequest(
+            "into must differ from source tag".into(),
+        ));
     }
 
     let pool = state.db_or_unavailable()?;
@@ -448,13 +421,12 @@ async fn merge_tag(
 
     // Captura os files restantes com src (esses serão UPDATEados src→dst);
     // undo precisa reverter dst→src + re-add não, dst sai por update.
-    let merged_rows: Vec<(Uuid,)> = sqlx::query_as(
-        "SELECT file_id FROM drive_file_tags WHERE tenant_id = $1 AND tag = $2",
-    )
-    .bind(ctx.tenant_id)
-    .bind(&src)
-    .fetch_all(&mut *tx)
-    .await?;
+    let merged_rows: Vec<(Uuid,)> =
+        sqlx::query_as("SELECT file_id FROM drive_file_tags WHERE tenant_id = $1 AND tag = $2")
+            .bind(ctx.tenant_id)
+            .bind(&src)
+            .fetch_all(&mut *tx)
+            .await?;
     let merged_file_ids: Vec<Uuid> = merged_rows.into_iter().map(|(id,)| id).collect();
 
     let r = sqlx::query(
@@ -496,21 +468,21 @@ async fn merge_tag(
 
 #[derive(Debug, Serialize, FromRow)]
 struct TagMergeHistoryEntry {
-    id:                Uuid,
-    src_tag:           String,
-    dst_tag:           String,
-    merged_count:      i64,
-    merged_by:         Uuid,
+    id: Uuid,
+    src_tag: String,
+    dst_tag: String,
+    merged_count: i64,
+    merged_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
-    merged_at:         OffsetDateTime,
+    merged_at: OffsetDateTime,
 }
 
 #[derive(Debug, Deserialize)]
 struct TagMergeHistoryQuery {
-    limit:  Option<i64>,
-    since:  Option<OffsetDateTime>,
+    limit: Option<i64>,
+    since: Option<OffsetDateTime>,
     before: Option<OffsetDateTime>,
-    tag:    Option<String>,
+    tag: Option<String>,
 }
 
 /// GET /api/v1/drive/tags/merge-history?limit=&since=&before=&tag= — audit
@@ -519,8 +491,8 @@ struct TagMergeHistoryQuery {
 /// 1..500. Path estático precede `/:tag` (lição #443/#448).
 async fn list_tag_merge_history(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<TagMergeHistoryQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<TagMergeHistoryQuery>,
 ) -> Result<impl IntoResponse> {
     let limit = q.limit.unwrap_or(50).clamp(1, 500);
     let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
@@ -560,8 +532,8 @@ async fn list_tag_merge_history(
 /// `{undone_id, src_tag, dst_tag, restored_merged, restored_dropped}`.
 async fn undo_tag_merge(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -659,17 +631,21 @@ struct RenameTagResult {
 /// renamed_count, renamed_by, renamed_at}` para audit trail.
 async fn rename_tag(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(tag):    Path<String>,
-    Json(body):   Json<RenameTagBody>,
+    ctx: RequestCtx,
+    Path(tag): Path<String>,
+    Json(body): Json<RenameTagBody>,
 ) -> Result<impl IntoResponse> {
     let old = tag.trim().to_lowercase();
     let new = body.new_tag.trim().to_lowercase();
     if new.is_empty() || new.chars().count() > 64 {
-        return Err(DriveError::BadRequest("new_tag must be 1-64 characters".into()));
+        return Err(DriveError::BadRequest(
+            "new_tag must be 1-64 characters".into(),
+        ));
     }
     if new == old {
-        return Err(DriveError::BadRequest("new_tag must differ from old tag".into()));
+        return Err(DriveError::BadRequest(
+            "new_tag must differ from old tag".into(),
+        ));
     }
 
     let pool = state.db_or_unavailable()?;
@@ -718,26 +694,29 @@ async fn rename_tag(
 
     tx.commit().await?;
 
-    Ok(Json(RenameTagResult { renamed, new_tag: new }))
+    Ok(Json(RenameTagResult {
+        renamed,
+        new_tag: new,
+    }))
 }
 
 #[derive(Debug, Serialize, FromRow)]
 struct TagRenameHistoryEntry {
-    id:            Uuid,
-    old_tag:       String,
-    new_tag:       String,
+    id: Uuid,
+    old_tag: String,
+    new_tag: String,
     renamed_count: i64,
-    renamed_by:    Uuid,
+    renamed_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
-    renamed_at:    OffsetDateTime,
+    renamed_at: OffsetDateTime,
 }
 
 #[derive(Debug, Deserialize)]
 struct TagRenameHistoryQuery {
-    limit:  Option<i64>,
-    since:  Option<OffsetDateTime>,
+    limit: Option<i64>,
+    since: Option<OffsetDateTime>,
     before: Option<OffsetDateTime>,
-    tag:    Option<String>,
+    tag: Option<String>,
 }
 
 /// GET /api/v1/drive/tags/rename-history?limit=&since=&before=&tag= — lista
@@ -748,8 +727,8 @@ struct TagRenameHistoryQuery {
 /// pra UI de undo manual. Path estático precede `/:tag` (lição #443/#448).
 async fn list_tag_rename_history(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<TagRenameHistoryQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<TagRenameHistoryQuery>,
 ) -> Result<impl IntoResponse> {
     let limit = q.limit.unwrap_or(50).clamp(1, 500);
     let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
@@ -782,11 +761,11 @@ async fn list_tag_rename_history(
 
 #[derive(Debug, Serialize)]
 struct UndoTagRenameResult {
-    undone_id:    Uuid,
-    reverted:     u64,
-    old_tag:      String,
-    new_tag:      String,
-    history_id:   Uuid,
+    undone_id: Uuid,
+    reverted: u64,
+    old_tag: String,
+    new_tag: String,
+    history_id: Uuid,
 }
 
 /// POST /api/v1/drive/tags/rename-history/:id/undo — reverte um rename anterior
@@ -800,8 +779,8 @@ struct UndoTagRenameResult {
 /// a entry de undo é gravada mesmo assim para audit trail.
 async fn undo_tag_rename(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -819,7 +798,7 @@ async fn undo_tag_rename(
 
     // Reverso: queremos voltar new_tag para old_tag.
     let from = orig_new;
-    let to   = orig_old;
+    let to = orig_old;
 
     let _ = sqlx::query(
         "DELETE FROM drive_file_tags \
@@ -864,10 +843,10 @@ async fn undo_tag_rename(
     tx.commit().await?;
 
     Ok(Json(UndoTagRenameResult {
-        undone_id:  id,
+        undone_id: id,
         reverted,
-        old_tag:    from,
-        new_tag:    to,
+        old_tag: from,
+        new_tag: to,
         history_id: new_history_id.0,
     }))
 }
@@ -879,9 +858,9 @@ async fn undo_tag_rename(
 /// ignorados via ON CONFLICT DO NOTHING. Retorna a lista atual de tags do arquivo.
 async fn bulk_add_tags(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<BulkTagsBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<BulkTagsBody>,
 ) -> Result<impl IntoResponse> {
     use std::collections::BTreeSet;
 
@@ -892,10 +871,14 @@ async fn bulk_add_tags(
         .filter(|t| !t.is_empty() && t.chars().count() <= 64)
         .collect();
     if tags.is_empty() {
-        return Err(DriveError::BadRequest("at least one valid tag required".into()));
+        return Err(DriveError::BadRequest(
+            "at least one valid tag required".into(),
+        ));
     }
     if tags.len() > 100 {
-        return Err(DriveError::BadRequest("max 100 tags per bulk request".into()));
+        return Err(DriveError::BadRequest(
+            "max 100 tags per bulk request".into(),
+        ));
     }
     let tag_vec: Vec<String> = tags.into_iter().collect();
 
@@ -941,9 +924,9 @@ async fn bulk_add_tags(
 /// POST /api/v1/drive/files/:id/tags — add a tag to a file.
 async fn add_tag(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<AddTagBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<AddTagBody>,
 ) -> Result<impl IntoResponse> {
     let tag = body.tag.trim().to_lowercase();
     if tag.is_empty() || tag.chars().count() > 64 {
@@ -983,7 +966,7 @@ async fn add_tag(
 /// DELETE /api/v1/drive/files/:id/tags/:tag — remove a tag from a file.
 async fn remove_tag(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, tag)): Path<(Uuid, String)>,
 ) -> Result<impl IntoResponse> {
     let tag = tag.trim().to_lowercase();
@@ -1008,8 +991,8 @@ async fn remove_tag(
 /// DELETE /api/v1/drive/files/:id/tags — remove all tags from a file (sprint #416).
 async fn clear_tags(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
 
@@ -1024,13 +1007,11 @@ async fn clear_tags(
         return Err(DriveError::NotFound(id));
     }
 
-    sqlx::query(
-        "DELETE FROM drive_file_tags WHERE file_id = $1 AND tenant_id = $2",
-    )
-    .bind(id)
-    .bind(ctx.tenant_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("DELETE FROM drive_file_tags WHERE file_id = $1 AND tenant_id = $2")
+        .bind(id)
+        .bind(ctx.tenant_id)
+        .execute(pool)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1038,8 +1019,8 @@ async fn clear_tags(
 /// GET /api/v1/drive/files/:id/tags — list all tags on a file.
 async fn list_file_tags(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
 
@@ -1071,8 +1052,8 @@ async fn list_file_tags(
 /// GET /api/v1/drive/tags/:tag — list files tagged with this tag (tenant-scoped).
 async fn list_files_by_tag(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(tag):    Path<String>,
+    ctx: RequestCtx,
+    Path(tag): Path<String>,
 ) -> Result<impl IntoResponse> {
     let tag = tag.trim().to_lowercase();
     let pool = state.db_or_unavailable()?;
@@ -1093,7 +1074,7 @@ async fn list_files_by_tag(
 
 #[derive(Debug, Serialize)]
 struct TagCount {
-    tag:        String,
+    tag: String,
     file_count: i64,
 }
 
@@ -1106,8 +1087,8 @@ struct TagCount {
 /// pra lowercase igual list_files_by_tag.
 async fn count_files_by_tag(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(tag):    Path<String>,
+    ctx: RequestCtx,
+    Path(tag): Path<String>,
 ) -> Result<impl IntoResponse> {
     let tag = tag.trim().to_lowercase();
     let pool = state.db_or_unavailable()?;
@@ -1123,7 +1104,10 @@ async fn count_files_by_tag(
     .fetch_one(pool)
     .await?;
 
-    Ok(Json(TagCount { tag, file_count: count }))
+    Ok(Json(TagCount {
+        tag,
+        file_count: count,
+    }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1134,9 +1118,9 @@ struct IntersectQuery {
 
 #[derive(Debug, Serialize)]
 struct IntersectResult {
-    tags:        Vec<String>,
-    file_ids:    Vec<Uuid>,
-    file_count:  i64,
+    tags: Vec<String>,
+    file_ids: Vec<Uuid>,
+    file_count: i64,
 }
 
 /// GET /api/v1/drive/tags/intersect?tags=a,b,c — retorna file_ids que possuem
@@ -1150,10 +1134,11 @@ struct IntersectResult {
 /// tag legítima (tag não pode bater com static segment).
 async fn intersect_files_by_tags(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<IntersectQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<IntersectQuery>,
 ) -> Result<impl IntoResponse> {
-    let mut tags: Vec<String> = q.tags
+    let mut tags: Vec<String> = q
+        .tags
         .split(',')
         .map(|t| t.trim().to_lowercase())
         .filter(|t| !t.is_empty())
@@ -1169,7 +1154,9 @@ async fn intersect_files_by_tags(
     }
     for t in &tags {
         if t.chars().count() > 64 {
-            return Err(DriveError::BadRequest("each tag must be 1-64 characters".into()));
+            return Err(DriveError::BadRequest(
+                "each tag must be 1-64 characters".into(),
+            ));
         }
     }
 
@@ -1196,20 +1183,24 @@ async fn intersect_files_by_tags(
     let file_ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
     let file_count = file_ids.len() as i64;
 
-    Ok(Json(IntersectResult { tags, file_ids, file_count }))
+    Ok(Json(IntersectResult {
+        tags,
+        file_ids,
+        file_count,
+    }))
 }
 
 #[derive(Debug, Deserialize)]
 struct IntersectExcludeQuery {
-    tags:    String,
+    tags: String,
     exclude: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct IntersectExcludeResult {
-    tags:       Vec<String>,
-    exclude:    Vec<String>,
-    file_ids:   Vec<Uuid>,
+    tags: Vec<String>,
+    exclude: Vec<String>,
+    file_ids: Vec<Uuid>,
     file_count: i64,
 }
 
@@ -1225,8 +1216,8 @@ struct IntersectExcludeResult {
 /// `/intersect-exclude` evita colisão com `/:tag` (lição #443/#448).
 async fn intersect_exclude_files_by_tags(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<IntersectExcludeQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<IntersectExcludeQuery>,
 ) -> Result<impl IntoResponse> {
     fn norm(raw: &str) -> Vec<String> {
         let mut out: Vec<String> = raw
@@ -1249,7 +1240,9 @@ async fn intersect_exclude_files_by_tags(
     }
     for t in tags.iter().chain(exclude.iter()) {
         if t.chars().count() > 64 {
-            return Err(DriveError::BadRequest("each tag must be 1-64 characters".into()));
+            return Err(DriveError::BadRequest(
+                "each tag must be 1-64 characters".into(),
+            ));
         }
     }
 
@@ -1283,23 +1276,28 @@ async fn intersect_exclude_files_by_tags(
     let file_ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
     let file_count = file_ids.len() as i64;
 
-    Ok(Json(IntersectExcludeResult { tags, exclude, file_ids, file_count }))
+    Ok(Json(IntersectExcludeResult {
+        tags,
+        exclude,
+        file_ids,
+        file_count,
+    }))
 }
 
 #[derive(Debug, Deserialize)]
 struct IntersectExcludeByUserQuery {
-    tags:       String,
-    exclude:    Option<String>,
+    tags: String,
+    exclude: Option<String>,
     /// Filter by file owner. Defaults to the authenticated user when absent.
     created_by: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize)]
 struct IntersectExcludeByUserResult {
-    tags:       Vec<String>,
-    exclude:    Vec<String>,
+    tags: Vec<String>,
+    exclude: Vec<String>,
     created_by: Uuid,
-    file_ids:   Vec<Uuid>,
+    file_ids: Vec<Uuid>,
     file_count: i64,
 }
 
@@ -1314,8 +1312,8 @@ struct IntersectExcludeByUserResult {
 /// validação do #489 (lowercase, trim, dedup, max 32 tags, max 64 chars/tag).
 async fn intersect_exclude_files_by_tags_by_user(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<IntersectExcludeByUserQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<IntersectExcludeByUserQuery>,
 ) -> Result<impl IntoResponse> {
     fn norm(raw: &str) -> Vec<String> {
         let mut out: Vec<String> = raw
@@ -1327,7 +1325,7 @@ async fn intersect_exclude_files_by_tags_by_user(
         out.dedup();
         out
     }
-    let tags    = norm(&q.tags);
+    let tags = norm(&q.tags);
     let exclude = norm(q.exclude.as_deref().unwrap_or(""));
 
     if tags.is_empty() {
@@ -1338,7 +1336,9 @@ async fn intersect_exclude_files_by_tags_by_user(
     }
     for t in tags.iter().chain(exclude.iter()) {
         if t.chars().count() > 64 {
-            return Err(DriveError::BadRequest("each tag must be 1-64 characters".into()));
+            return Err(DriveError::BadRequest(
+                "each tag must be 1-64 characters".into(),
+            ));
         }
     }
 
@@ -1375,14 +1375,20 @@ async fn intersect_exclude_files_by_tags_by_user(
     let file_ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
     let file_count = file_ids.len() as i64;
 
-    Ok(Json(IntersectExcludeByUserResult { tags, exclude, created_by, file_ids, file_count }))
+    Ok(Json(IntersectExcludeByUserResult {
+        tags,
+        exclude,
+        created_by,
+        file_ids,
+        file_count,
+    }))
 }
 
 #[derive(Debug, Serialize)]
 struct UnionResult {
-    tags:         Vec<String>,
-    file_ids:     Vec<Uuid>,
-    file_count:   i64,
+    tags: Vec<String>,
+    file_ids: Vec<Uuid>,
+    file_count: i64,
 }
 
 /// GET /api/v1/drive/tags/union?tags=a,b,c — retorna file_ids que possuem
@@ -1394,10 +1400,11 @@ struct UnionResult {
 /// `/tags/union` precede `/tags/:tag` (lição #443/#448).
 async fn union_files_by_tags(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<IntersectQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<IntersectQuery>,
 ) -> Result<impl IntoResponse> {
-    let mut tags: Vec<String> = q.tags
+    let mut tags: Vec<String> = q
+        .tags
         .split(',')
         .map(|t| t.trim().to_lowercase())
         .filter(|t| !t.is_empty())
@@ -1413,7 +1420,9 @@ async fn union_files_by_tags(
     }
     for t in &tags {
         if t.chars().count() > 64 {
-            return Err(DriveError::BadRequest("each tag must be 1-64 characters".into()));
+            return Err(DriveError::BadRequest(
+                "each tag must be 1-64 characters".into(),
+            ));
         }
     }
 
@@ -1437,7 +1446,11 @@ async fn union_files_by_tags(
     let file_ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
     let file_count = file_ids.len() as i64;
 
-    Ok(Json(UnionResult { tags, file_ids, file_count }))
+    Ok(Json(UnionResult {
+        tags,
+        file_ids,
+        file_count,
+    }))
 }
 
 #[cfg(test)]
@@ -1448,10 +1461,10 @@ mod tests {
     #[test]
     fn file_tag_serde_roundtrip() {
         let t = FileTag {
-            id:         Uuid::nil(),
-            file_id:    Uuid::nil(),
-            tenant_id:  Uuid::nil(),
-            tag:        "important".into(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            tag: "important".into(),
             created_by: Uuid::nil(),
             created_at: datetime!(2026-05-22 08:00:00 UTC),
         };
@@ -1497,8 +1510,11 @@ mod tests {
     #[test]
     fn file_tag_created_at_in_rfc3339() {
         let t = FileTag {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            tag: "t".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            tag: "t".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-07-04 00:00:00 UTC),
         };
         let s = serde_json::to_string(&t).unwrap();
@@ -1520,7 +1536,8 @@ mod tests {
 
     #[test]
     fn bulk_tags_body_multiple_tags_preserved() {
-        let b: BulkTagsBody = serde_json::from_str(r#"{"tags":["urgent","review","archive"]}"#).unwrap();
+        let b: BulkTagsBody =
+            serde_json::from_str(r#"{"tags":["urgent","review","archive"]}"#).unwrap();
         assert_eq!(b.tags.len(), 3);
         assert_eq!(b.tags[0], "urgent");
     }
@@ -1555,8 +1572,11 @@ mod tests {
         use time::macros::datetime;
         let tid = Uuid::new_v4();
         let t = FileTag {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: tid,
-            tag: "report".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: tid,
+            tag: "report".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-07-04 00:00:00 UTC),
         };
         assert_eq!(t.tenant_id, tid);

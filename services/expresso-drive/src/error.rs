@@ -1,6 +1,10 @@
 //! Drive service error types.
 
-use axum::{http::StatusCode, response::{IntoResponse, Response}, Json};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use serde_json::json;
 use thiserror::Error;
 use uuid::Uuid;
@@ -48,13 +52,13 @@ impl IntoResponse for DriveError {
     fn into_response(self) -> Response {
         let status = match &self {
             Self::DatabaseUnavailable => StatusCode::SERVICE_UNAVAILABLE,
-            Self::NotFound(_)         => StatusCode::NOT_FOUND,
-            Self::Gone(_)             => StatusCode::GONE,
-            Self::Conflict(_)         => StatusCode::CONFLICT,
-            Self::BadRequest(_)       => StatusCode::BAD_REQUEST,
-            Self::Forbidden           => StatusCode::FORBIDDEN,
-            Self::Unauthorized        => StatusCode::UNAUTHORIZED,
-            Self::QuotaExceeded      => StatusCode::INSUFFICIENT_STORAGE,
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::Gone(_) => StatusCode::GONE,
+            Self::Conflict(_) => StatusCode::CONFLICT,
+            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::Forbidden => StatusCode::FORBIDDEN,
+            Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::QuotaExceeded => StatusCode::INSUFFICIENT_STORAGE,
             Self::Io(_) | Self::Database(_) | Self::Core(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         let body = Json(json!({"error": self.to_string()}));
@@ -73,7 +77,10 @@ mod tests {
 
     #[test]
     fn not_found_is_404() {
-        assert_eq!(status(DriveError::NotFound(Uuid::new_v4())), StatusCode::NOT_FOUND);
+        assert_eq!(
+            status(DriveError::NotFound(Uuid::new_v4())),
+            StatusCode::NOT_FOUND
+        );
     }
 
     #[test]
@@ -83,12 +90,18 @@ mod tests {
 
     #[test]
     fn conflict_is_409() {
-        assert_eq!(status(DriveError::Conflict("dup".into())), StatusCode::CONFLICT);
+        assert_eq!(
+            status(DriveError::Conflict("dup".into())),
+            StatusCode::CONFLICT
+        );
     }
 
     #[test]
     fn bad_request_is_400() {
-        assert_eq!(status(DriveError::BadRequest("bad".into())), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            status(DriveError::BadRequest("bad".into())),
+            StatusCode::BAD_REQUEST
+        );
     }
 
     #[test]
@@ -103,12 +116,18 @@ mod tests {
 
     #[test]
     fn quota_exceeded_is_507() {
-        assert_eq!(status(DriveError::QuotaExceeded), StatusCode::INSUFFICIENT_STORAGE);
+        assert_eq!(
+            status(DriveError::QuotaExceeded),
+            StatusCode::INSUFFICIENT_STORAGE
+        );
     }
 
     #[test]
     fn database_unavailable_is_503() {
-        assert_eq!(status(DriveError::DatabaseUnavailable), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            status(DriveError::DatabaseUnavailable),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
     }
 
     #[test]
@@ -138,7 +157,10 @@ mod tests {
 
     #[test]
     fn quota_exceeded_status_is_507() {
-        assert_eq!(status(DriveError::QuotaExceeded), StatusCode::INSUFFICIENT_STORAGE);
+        assert_eq!(
+            status(DriveError::QuotaExceeded),
+            StatusCode::INSUFFICIENT_STORAGE
+        );
     }
 
     #[test]
@@ -148,7 +170,10 @@ mod tests {
 
     #[test]
     fn conflict_lock_mismatch_is_409() {
-        assert_eq!(status(DriveError::Conflict("lock mismatch".into())), StatusCode::CONFLICT);
+        assert_eq!(
+            status(DriveError::Conflict("lock mismatch".into())),
+            StatusCode::CONFLICT
+        );
     }
 
     #[test]
@@ -171,7 +196,10 @@ mod tests {
 
     #[test]
     fn database_unavailable_is_503_status() {
-        assert_eq!(status(DriveError::DatabaseUnavailable), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            status(DriveError::DatabaseUnavailable),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
     }
 
     #[test]

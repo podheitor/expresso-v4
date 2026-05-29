@@ -25,9 +25,9 @@
 
 use std::{env, net::SocketAddr, sync::Arc, time::Duration};
 
+use expresso_core::{create_db_pool, DbPool};
 use once_cell::sync::Lazy;
 use prometheus::{register_int_counter_vec, IntCounterVec};
-use expresso_core::{DbPool, create_db_pool};
 use std::collections::HashMap;
 
 static NOTIFICATIONS_DISPATCHED: Lazy<IntCounterVec> = Lazy::new(|| {
@@ -44,33 +44,33 @@ use axum::{
     extract::{FromRequestParts, Path, Query, Request, State},
     http::{request::Parts, StatusCode},
     middleware::{self, Next},
-    response::{IntoResponse, Response, Sse, sse::Event},
+    response::{sse::Event, IntoResponse, Response, Sse},
     routing::{get, patch, post},
     Json, Router,
 };
-use time::OffsetDateTime;
 use expresso_auth_client::{AuthContext, Authenticated, OidcConfig, OidcValidator};
 use futures::stream;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use time::OffsetDateTime;
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-const SERVICE:      &str  = "expresso-notifications";
-const DEFAULT_PORT: u16   = 8006;
-const CHANNEL_CAP:  usize = 4096;
+const SERVICE: &str = "expresso-notifications";
+const DEFAULT_PORT: u16 = 8006;
+const CHANNEL_CAP: usize = 4096;
 
 // ─── Notification event ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Notification {
     /// Event kind: "new_mail" | "flags_changed" | "folder_updated"
-    pub kind:      String,
-    pub user_id:   Uuid,
+    pub kind: String,
+    pub user_id: Uuid,
     pub tenant_id: Uuid,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub folder:    Option<String>,
+    pub folder: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_id: Option<Uuid>,
 }
@@ -79,14 +79,14 @@ pub struct Notification {
 
 #[derive(Clone)]
 struct AppState {
-    tx:         Arc<broadcast::Sender<Notification>>,
-    validator:  Option<Arc<OidcValidator>>,
+    tx: Arc<broadcast::Sender<Notification>>,
+    validator: Option<Arc<OidcValidator>>,
     /// Redis connection pool for cross-pod publish. None when REDIS_URL is unset.
-    redis_pub:  Option<Arc<deadpool_redis::Pool>>,
+    redis_pub: Option<Arc<deadpool_redis::Pool>>,
     /// External webhook: (url, client). None when NOTIFICATIONS__WEBHOOK_URL is unset.
-    webhook:    Option<(Arc<str>, reqwest::Client)>,
+    webhook: Option<(Arc<str>, reqwest::Client)>,
     /// PostgreSQL pool for persisting and querying notifications. None when DATABASE__URL is unset.
-    db:         Option<Arc<DbPool>>,
+    db: Option<Arc<DbPool>>,
 }
 
 // ─── Optional auth extractor ─────────────────────────────────────────────────
@@ -117,11 +117,7 @@ impl<S: Send + Sync> FromRequestParts<S> for MaybeAuthenticated {
 
 /// Injects `Arc<OidcValidator>` into request extensions so that the
 /// `Authenticated` extractor can find it.
-async fn inject_validator(
-    State(st): State<AppState>,
-    mut req:   Request,
-    next:      Next,
-) -> Response {
+async fn inject_validator(State(st): State<AppState>, mut req: Request, next: Next) -> Response {
     if let Some(v) = &st.validator {
         req.extensions_mut().insert(v.clone());
     }
@@ -133,13 +129,15 @@ async fn inject_validator(
 /// POST /internal/notify — called by expresso-mail on new delivery.
 /// This endpoint must be network-isolated (not exposed to the internet).
 async fn internal_notify(
-    State(st):   State<AppState>,
+    State(st): State<AppState>,
     Json(notif): Json<Notification>,
 ) -> Json<serde_json::Value> {
     // Broadcast to local SSE streams on this pod.
     let _ = st.tx.send(notif.clone());
 
-    NOTIFICATIONS_DISPATCHED.with_label_values(&[&notif.kind]).inc();
+    NOTIFICATIONS_DISPATCHED
+        .with_label_values(&[&notif.kind])
+        .inc();
 
     // Publish to Redis so other pods pick it up via their subscriber relay.
     if let Some(pool) = &st.redis_pub {
@@ -147,7 +145,10 @@ async fn internal_notify(
             match pool.get().await {
                 Ok(mut conn) => {
                     use deadpool_redis::redis::AsyncCommands;
-                    if let Err(e) = conn.publish::<_, _, ()>("expresso:notifications", &payload).await {
+                    if let Err(e) = conn
+                        .publish::<_, _, ()>("expresso:notifications", &payload)
+                        .await
+                    {
                         warn!(error = %e, "Redis publish failed");
                     }
                 }
@@ -159,9 +160,9 @@ async fn internal_notify(
     // Fire external webhook with retry (3 attempts, exponential backoff 1s/2s/4s).
     // On exhaustion, payload is written to notification_dlq for inspection/replay.
     if let Some((url, client)) = &st.webhook {
-        let url    = url.clone();
+        let url = url.clone();
         let client = client.clone();
-        let body   = serde_json::to_value(&notif).unwrap_or_default();
+        let body = serde_json::to_value(&notif).unwrap_or_default();
         let db_dlq = st.db.clone();
         let notif2 = notif.clone();
         tokio::spawn(async move {
@@ -174,7 +175,7 @@ async fn internal_notify(
                 match client.post(url.as_ref()).json(&body).send().await {
                     Ok(resp) if resp.status().is_success() => return,
                     Ok(resp) => last_err = format!("HTTP {}", resp.status()),
-                    Err(e)   => last_err = e.to_string(),
+                    Err(e) => last_err = e.to_string(),
                 }
                 warn!(attempt = attempt + 1, error = %last_err, "notification webhook attempt failed");
             }
@@ -184,7 +185,7 @@ async fn internal_notify(
                 if let Err(e) = sqlx::query(
                     "INSERT INTO notification_dlq \
                         (tenant_id, user_id, kind, payload, attempts, last_error) \
-                     VALUES ($1, $2, $3, $4, $5, $6)"
+                     VALUES ($1, $2, $3, $4, $5, $6)",
                 )
                 .bind(notif2.tenant_id)
                 .bind(notif2.user_id)
@@ -193,7 +194,8 @@ async fn internal_notify(
                 .bind(MAX_ATTEMPTS as i32)
                 .bind(&last_err)
                 .execute(pool.as_ref())
-                .await {
+                .await
+                {
                     warn!(error = %e, "failed to write to notification_dlq");
                 }
             }
@@ -215,7 +217,8 @@ async fn internal_notify(
             .bind(&notif2.folder)
             .bind(notif2.message_id)
             .execute(pool.as_ref())
-            .await {
+            .await
+            {
                 warn!(error = %e, "failed to persist notification");
             }
         });
@@ -227,7 +230,7 @@ async fn internal_notify(
 #[derive(Debug, Deserialize)]
 struct StreamParams {
     /// Only used in dev mode (no JWT validator configured).
-    user_id:   Option<Uuid>,
+    user_id: Option<Uuid>,
     tenant_id: Option<Uuid>,
 }
 
@@ -237,25 +240,31 @@ struct StreamParams {
 /// validated and user_id/tenant_id are taken from the claims.
 /// In dev mode (no validator), query params user_id/tenant_id are required.
 async fn notifications_stream(
-    State(st):     State<AppState>,
+    State(st): State<AppState>,
     MaybeAuthenticated(auth): MaybeAuthenticated,
     Query(params): Query<StreamParams>,
 ) -> Result<impl IntoResponse, (axum::http::StatusCode, Json<serde_json::Value>)> {
     let (user_id, tenant_id) = if st.validator.is_some() {
         match auth {
             Some(ctx) => (ctx.user_id, ctx.tenant_id),
-            None => return Err((
-                axum::http::StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "unauthorized", "message": "missing_bearer"})),
-            )),
+            None => {
+                return Err((
+                    axum::http::StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": "unauthorized", "message": "missing_bearer"})),
+                ))
+            }
         }
     } else {
         match (params.user_id, params.tenant_id) {
             (Some(u), Some(t)) => (u, t),
-            _ => return Err((
-                axum::http::StatusCode::BAD_REQUEST,
-                Json(json!({"error": "bad_request", "message": "user_id and tenant_id required in dev mode"})),
-            )),
+            _ => {
+                return Err((
+                    axum::http::StatusCode::BAD_REQUEST,
+                    Json(
+                        json!({"error": "bad_request", "message": "user_id and tenant_id required in dev mode"}),
+                    ),
+                ))
+            }
         }
     };
 
@@ -269,9 +278,7 @@ async fn notifications_stream(
                         continue;
                     }
                     let data = serde_json::to_string(&notif).unwrap_or_default();
-                    let event = Event::default()
-                        .event(&notif.kind)
-                        .data(data);
+                    let event = Event::default().event(&notif.kind).data(data);
                     return Some((Ok::<Event, std::convert::Infallible>(event), rx));
                 }
                 Err(broadcast::error::RecvError::Closed) => return None,
@@ -298,7 +305,7 @@ struct DigestParams {
     /// RFC 3339 timestamp — aggregate unread notifications since this point.
     since: String,
     /// Only used in dev mode (no validator). Ignored when JWT is present.
-    user_id:   Option<Uuid>,
+    user_id: Option<Uuid>,
     tenant_id: Option<Uuid>,
 }
 
@@ -307,38 +314,51 @@ struct DigestParams {
 /// Returns counts of unread notifications grouped by kind since the given
 /// timestamp. Useful for badge counts and "what did I miss?" summaries.
 async fn digest(
-    State(st):     State<AppState>,
+    State(st): State<AppState>,
     MaybeAuthenticated(auth): MaybeAuthenticated,
     Query(params): Query<DigestParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let (user_id, tenant_id) = if st.validator.is_some() {
         match auth {
             Some(ctx) => (ctx.user_id, ctx.tenant_id),
-            None => return Err((
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "unauthorized", "message": "missing_bearer"})),
-            )),
+            None => {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": "unauthorized", "message": "missing_bearer"})),
+                ))
+            }
         }
     } else {
         match (params.user_id, params.tenant_id) {
             (Some(u), Some(t)) => (u, t),
-            _ => return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "bad_request", "message": "user_id and tenant_id required in dev mode"})),
-            )),
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(
+                        json!({"error": "bad_request", "message": "user_id and tenant_id required in dev mode"}),
+                    ),
+                ))
+            }
         }
     };
 
-    let since = OffsetDateTime::parse(&params.since, &time::format_description::well_known::Rfc3339)
-        .map_err(|_| (
+    let since = OffsetDateTime::parse(
+        &params.since,
+        &time::format_description::well_known::Rfc3339,
+    )
+    .map_err(|_| {
+        (
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "bad_request", "message": "since must be RFC 3339"})),
-        ))?;
+        )
+    })?;
 
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable", "message": "database not configured"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable", "message": "database not configured"})),
+        )
+    })?;
 
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT kind, COUNT(*)::BIGINT \
@@ -352,10 +372,12 @@ async fn digest(
     .bind(since)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": "internal", "message": e.to_string()})),
-    ))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "internal", "message": e.to_string()})),
+        )
+    })?;
 
     let total: i64 = rows.iter().map(|(_, c)| c).sum();
     let by_kind: HashMap<&str, i64> = rows.iter().map(|(k, c)| (k.as_str(), *c)).collect();
@@ -365,10 +387,10 @@ async fn digest(
 
 /// Helper: resolve (user_id, tenant_id) from auth or query params (dev mode).
 fn resolve_identity(
-    st:     &AppState,
-    auth:   Option<AuthContext>,
+    st: &AppState,
+    auth: Option<AuthContext>,
     user_q: Option<Uuid>,
-    ten_q:  Option<Uuid>,
+    ten_q: Option<Uuid>,
 ) -> Result<(Uuid, Uuid), (StatusCode, Json<serde_json::Value>)> {
     if st.validator.is_some() {
         match auth {
@@ -383,7 +405,9 @@ fn resolve_identity(
             (Some(u), Some(t)) => Ok((u, t)),
             _ => Err((
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "bad_request", "message": "user_id and tenant_id required in dev mode"})),
+                Json(
+                    json!({"error": "bad_request", "message": "user_id and tenant_id required in dev mode"}),
+                ),
             )),
         }
     }
@@ -391,22 +415,24 @@ fn resolve_identity(
 
 #[derive(Debug, Deserialize)]
 struct IdentityParams {
-    user_id:   Option<Uuid>,
+    user_id: Option<Uuid>,
     tenant_id: Option<Uuid>,
 }
 
 /// PATCH /api/v1/notifications/:id/read — mark a single notification as read.
 async fn mark_read(
-    State(st):     State<AppState>,
+    State(st): State<AppState>,
     MaybeAuthenticated(auth): MaybeAuthenticated,
     Query(params): Query<IdentityParams>,
-    Path(id):      Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
     let (user_id, tenant_id) = resolve_identity(&st, auth, params.user_id, params.tenant_id)?;
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable", "message": "database not configured"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable", "message": "database not configured"})),
+        )
+    })?;
     sqlx::query(
         "UPDATE notifications SET is_read = true \
          WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
@@ -416,10 +442,12 @@ async fn mark_read(
     .bind(user_id)
     .execute(pool.as_ref())
     .await
-    .map_err(|e| (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": "internal", "message": e.to_string()})),
-    ))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "internal", "message": e.to_string()})),
+        )
+    })?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -428,30 +456,34 @@ async fn mark_read(
 #[derive(Debug, Deserialize)]
 struct PushSubscribeBody {
     endpoint: String,
-    p256dh:   String,
-    auth:     String,
+    p256dh: String,
+    auth: String,
 }
 
 /// POST /api/v1/notifications/push — register a WebPush subscription.
 async fn push_subscribe(
-    State(st):     State<AppState>,
+    State(st): State<AppState>,
     MaybeAuthenticated(auth): MaybeAuthenticated,
     Query(params): Query<IdentityParams>,
-    Json(body):    Json<PushSubscribeBody>,
+    Json(body): Json<PushSubscribeBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let (user_id, tenant_id) = resolve_identity(&st, auth, params.user_id, params.tenant_id)?;
 
     if body.endpoint.is_empty() || body.p256dh.is_empty() || body.auth.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "bad_request", "message": "endpoint, p256dh and auth are required"})),
+            Json(
+                json!({"error": "bad_request", "message": "endpoint, p256dh and auth are required"}),
+            ),
         ));
     }
 
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable", "message": "database not configured"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable", "message": "database not configured"})),
+        )
+    })?;
 
     let id: Uuid = sqlx::query_scalar(
         "INSERT INTO notification_push_subscriptions (tenant_id, user_id, endpoint, p256dh, auth) \
@@ -467,10 +499,12 @@ async fn push_subscribe(
     .bind(&body.auth)
     .fetch_one(pool.as_ref())
     .await
-    .map_err(|e| (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": "internal", "message": e.to_string()})),
-    ))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "internal", "message": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({"id": id, "ok": true})))
 }
@@ -482,17 +516,19 @@ struct PushUnsubscribeBody {
 
 /// DELETE /api/v1/notifications/push — remove a WebPush subscription.
 async fn push_unsubscribe(
-    State(st):     State<AppState>,
+    State(st): State<AppState>,
     MaybeAuthenticated(auth): MaybeAuthenticated,
     Query(params): Query<IdentityParams>,
-    Json(body):    Json<PushUnsubscribeBody>,
+    Json(body): Json<PushUnsubscribeBody>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
     let (user_id, tenant_id) = resolve_identity(&st, auth, params.user_id, params.tenant_id)?;
 
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable", "message": "database not configured"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable", "message": "database not configured"})),
+        )
+    })?;
 
     sqlx::query(
         "DELETE FROM notification_push_subscriptions \
@@ -503,25 +539,29 @@ async fn push_unsubscribe(
     .bind(&body.endpoint)
     .execute(pool.as_ref())
     .await
-    .map_err(|e| (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": "internal", "message": e.to_string()})),
-    ))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "internal", "message": e.to_string()})),
+        )
+    })?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// PATCH /api/v1/notifications/read-all — mark all unread notifications as read.
 async fn mark_all_read(
-    State(st):     State<AppState>,
+    State(st): State<AppState>,
     MaybeAuthenticated(auth): MaybeAuthenticated,
     Query(params): Query<IdentityParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let (user_id, tenant_id) = resolve_identity(&st, auth, params.user_id, params.tenant_id)?;
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable", "message": "database not configured"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable", "message": "database not configured"})),
+        )
+    })?;
     let r = sqlx::query(
         "UPDATE notifications SET is_read = true \
          WHERE tenant_id = $1 AND user_id = $2 AND is_read = false",
@@ -530,10 +570,12 @@ async fn mark_all_read(
     .bind(user_id)
     .execute(pool.as_ref())
     .await
-    .map_err(|e| (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": "internal", "message": e.to_string()})),
-    ))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "internal", "message": e.to_string()})),
+        )
+    })?;
     Ok(Json(json!({ "marked_read": r.rows_affected() })))
 }
 
@@ -564,29 +606,51 @@ struct StatsLimitQuery {
 /// are optional temporal filters on `failed_at`. Without them, stats cover all
 /// entries. Sprints #599 (base) + #619 (temporal filter).
 async fn dlq_stats(
-    State(st):   State<AppState>,
-    Query(q):    Query<DlqStatsQuery>,
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
     // Parse temporal bounds.
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     // Build temporal WHERE clause (shared across all 3 queries).
     let (where_clause, has_since, has_until) = match (since_dt.is_some(), until_dt.is_some()) {
-        (true,  true)  => ("WHERE failed_at >= $1::timestamptz AND failed_at < $2::timestamptz", true, true),
-        (true,  false) => ("WHERE failed_at >= $1::timestamptz", true, false),
-        (false, true)  => ("WHERE failed_at < $1::timestamptz", false, true),
+        (true, true) => (
+            "WHERE failed_at >= $1::timestamptz AND failed_at < $2::timestamptz",
+            true,
+            true,
+        ),
+        (true, false) => ("WHERE failed_at >= $1::timestamptz", true, false),
+        (false, true) => ("WHERE failed_at < $1::timestamptz", false, true),
         (false, false) => ("", false, false),
     };
 
@@ -594,14 +658,18 @@ async fn dlq_stats(
     macro_rules! bind_temporal {
         ($q:expr) => {{
             let mut qb = $q;
-            if has_since { qb = qb.bind(since_dt.unwrap()); }
-            if has_until { qb = qb.bind(until_dt.unwrap()); }
+            if has_since {
+                qb = qb.bind(since_dt.unwrap());
+            }
+            if has_until {
+                qb = qb.bind(until_dt.unwrap());
+            }
             qb
         }};
     }
 
-    let count_sql  = format!("SELECT COUNT(*) FROM notification_dlq {where_clause}");
-    let kind_sql   = format!(
+    let count_sql = format!("SELECT COUNT(*) FROM notification_dlq {where_clause}");
+    let kind_sql = format!(
         "SELECT kind, COUNT(*)::BIGINT FROM notification_dlq {where_clause} \
          GROUP BY kind ORDER BY COUNT(*) DESC, kind ASC"
     );
@@ -613,22 +681,39 @@ async fn dlq_stats(
     let (count,): (i64,) = bind_temporal!(sqlx::query_as(&count_sql))
         .fetch_one(pool.as_ref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     let kind_rows: Vec<(String, i64)> = bind_temporal!(sqlx::query_as(&kind_sql))
         .fetch_all(pool.as_ref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     let tenant_rows: Vec<(Option<uuid::Uuid>, i64)> = bind_temporal!(sqlx::query_as(&tenant_sql))
         .fetch_all(pool.as_ref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
-    let by_kind: Vec<serde_json::Value> = kind_rows.into_iter()
+    let by_kind: Vec<serde_json::Value> = kind_rows
+        .into_iter()
         .map(|(kind, cnt)| json!({"kind": kind, "count": cnt}))
         .collect();
-    let by_tenant: Vec<serde_json::Value> = tenant_rows.into_iter()
+    let by_tenant: Vec<serde_json::Value> = tenant_rows
+        .into_iter()
         .map(|(tid, cnt)| json!({"tenant_id": tid, "count": cnt}))
         .collect();
 
@@ -648,21 +733,39 @@ async fn dlq_stats(
 /// Sprint #650.
 async fn dlq_stats_by_day(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT \
@@ -678,9 +781,15 @@ async fn dlq_stats_by_day(
     .bind(until_dt)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let days: Vec<serde_json::Value> = rows.into_iter()
+    let days: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, count)| json!({"day": day, "count": count}))
         .collect();
 
@@ -694,21 +803,39 @@ async fn dlq_stats_by_day(
 /// `since`/`until` RFC3339 opcionais. Sprint #700.
 async fn dlq_stats_by_hour(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT \
@@ -726,7 +853,8 @@ async fn dlq_stats_by_hour(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    let hours: Vec<serde_json::Value> = rows.into_iter()
+    let hours: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(hour, count)| json!({"hour": hour, "count": count}))
         .collect();
 
@@ -740,21 +868,39 @@ async fn dlq_stats_by_hour(
 /// Retorna `{rows:[{hour,kind,count}]}`. Sprint #720.
 async fn dlq_stats_by_hour_and_kind(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT \
@@ -773,7 +919,8 @@ async fn dlq_stats_by_hour_and_kind(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(hour, kind, count)| json!({"hour": hour, "kind": kind, "count": count}))
         .collect();
 
@@ -787,21 +934,39 @@ async fn dlq_stats_by_hour_and_kind(
 /// opcionais com o padrão `$N::timestamptz IS NULL OR ...`. Sprint #656.
 async fn dlq_stats_by_kind_and_day(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT \
@@ -818,9 +983,15 @@ async fn dlq_stats_by_kind_and_day(
     .bind(until_dt)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, kind, count)| json!({"day": day, "kind": kind, "count": count}))
         .collect();
 
@@ -834,21 +1005,39 @@ async fn dlq_stats_by_kind_and_day(
 /// `by-kind-and-day` (#656) mas escopado por tenant. Sprint #661.
 async fn dlq_stats_by_tenant_and_day(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, Option<uuid::Uuid>, i64)> = sqlx::query_as(
         "SELECT \
@@ -865,9 +1054,15 @@ async fn dlq_stats_by_tenant_and_day(
     .bind(until_dt)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, tenant_id, count)| json!({"day": day, "tenant_id": tenant_id, "count": count}))
         .collect();
 
@@ -882,21 +1077,39 @@ async fn dlq_stats_by_tenant_and_day(
 /// Sprint #666.
 async fn dlq_stats_by_error_kind(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
         "SELECT last_error, COUNT(*)::BIGINT AS count \
@@ -910,9 +1123,15 @@ async fn dlq_stats_by_error_kind(
     .bind(until_dt)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(error_kind, count)| json!({"error_kind": error_kind, "count": count}))
         .collect();
 
@@ -927,12 +1146,14 @@ async fn dlq_stats_by_error_kind(
 /// (#661) com rollup simples. Sprint #671.
 async fn dlq_stats_by_tenant(
     State(st): State<AppState>,
-    Query(q):  Query<StatsLimitQuery>,
+    Query(q): Query<StatsLimitQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
 
     let rows: Vec<(Option<uuid::Uuid>, i64)> = sqlx::query_as(
@@ -945,9 +1166,15 @@ async fn dlq_stats_by_tenant(
     .bind(limit)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(tid, count)| json!({"tenant_id": tid, "count": count}))
         .collect();
 
@@ -960,12 +1187,14 @@ async fn dlq_stats_by_tenant(
 /// escopado por tenant. `limit` default 20 max 200. Retorna `{rows:[{tenant_id,kind,count}]}`. Sprint #710.
 async fn dlq_stats_by_tenant_and_kind(
     State(st): State<AppState>,
-    Query(q):  Query<StatsLimitQuery>,
+    Query(q): Query<StatsLimitQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
 
     let rows: Vec<(uuid::Uuid, String, i64)> = sqlx::query_as(
@@ -978,9 +1207,15 @@ async fn dlq_stats_by_tenant_and_kind(
     .bind(limit)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(tid, kind, count)| json!({"tenant_id": tid, "kind": kind, "count": count}))
         .collect();
 
@@ -993,12 +1228,14 @@ async fn dlq_stats_by_tenant_and_kind(
 /// Rollup simples de by-kind-and-day (#656) — visão total acumulada. Sprint #676.
 async fn dlq_stats_by_kind(
     State(st): State<AppState>,
-    Query(q):  Query<StatsLimitQuery>,
+    Query(q): Query<StatsLimitQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
 
     let rows: Vec<(String, i64)> = sqlx::query_as(
@@ -1011,9 +1248,15 @@ async fn dlq_stats_by_kind(
     .bind(limit)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(kind, count)| json!({"kind": kind, "count": count}))
         .collect();
 
@@ -1028,21 +1271,39 @@ async fn dlq_stats_by_kind(
 /// por usuário. Sprint #691.
 async fn dlq_stats_by_day_and_user(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, Option<uuid::Uuid>, i64)> = sqlx::query_as(
         "SELECT \
@@ -1059,9 +1320,15 @@ async fn dlq_stats_by_day_and_user(
     .bind(until_dt)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, user_id, count)| json!({"day": day, "user_id": user_id, "count": count}))
         .collect();
 
@@ -1075,12 +1342,14 @@ async fn dlq_stats_by_day_and_user(
 /// escopado por usuário. `limit` default 20 max 200. Sprint #686.
 async fn dlq_stats_by_user(
     State(st): State<AppState>,
-    Query(q):  Query<StatsLimitQuery>,
+    Query(q): Query<StatsLimitQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
 
     let rows: Vec<(Option<uuid::Uuid>, i64)> = sqlx::query_as(
@@ -1093,9 +1362,15 @@ async fn dlq_stats_by_user(
     .bind(limit)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(uid, count)| json!({"user_id": uid, "count": count}))
         .collect();
 
@@ -1108,12 +1383,14 @@ async fn dlq_stats_by_user(
 /// tipo de falha. `limit` default 20 max 200. Retorna `{rows:[{kind,user_id,count}]}`. Sprint #705.
 async fn dlq_stats_by_kind_and_user(
     State(st): State<AppState>,
-    Query(q):  Query<StatsLimitQuery>,
+    Query(q): Query<StatsLimitQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
 
     let rows: Vec<(String, Option<uuid::Uuid>, i64)> = sqlx::query_as(
@@ -1126,9 +1403,15 @@ async fn dlq_stats_by_kind_and_user(
     .bind(limit)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(kind, user_id, count)| json!({"kind": kind, "user_id": user_id, "count": count}))
         .collect();
 
@@ -1143,10 +1426,12 @@ async fn dlq_stats_by_kind_and_user(
 async fn dlq_stats_attempts_distribution(
     State(st): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
     let (a1, a2, a3, a4, a5plus): (i64, i64, i64, i64, i64) = sqlx::query_as(
         "SELECT \
@@ -1159,7 +1444,12 @@ async fn dlq_stats_attempts_distribution(
     )
     .fetch_one(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({
         "buckets": [
@@ -1184,12 +1474,14 @@ struct RetentionQuery {
 
 async fn dlq_stats_retention(
     State(st): State<AppState>,
-    Query(q):  Query<RetentionQuery>,
+    Query(q): Query<RetentionQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let days = q.days.unwrap_or(7).max(0);
 
     let (stale_count, oldest_failed_at): (i64, Option<OffsetDateTime>) = sqlx::query_as(
@@ -1200,7 +1492,12 @@ async fn dlq_stats_retention(
     .bind(days)
     .fetch_one(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({
         "days":             days,
@@ -1216,21 +1513,39 @@ async fn dlq_stats_retention(
 /// Retorna `{rows:[{minute,count}]}`. Sprint #725.
 async fn dlq_stats_by_minute(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT \
@@ -1248,7 +1563,8 @@ async fn dlq_stats_by_minute(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(minute, count)| json!({"minute": minute, "count": count}))
         .collect();
 
@@ -1262,21 +1578,39 @@ async fn dlq_stats_by_minute(
 /// Retorna `{rows:[{minute,kind,count}]}`. Sprint #730.
 async fn dlq_stats_by_minute_and_kind(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT \
@@ -1295,7 +1629,8 @@ async fn dlq_stats_by_minute_and_kind(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(minute, kind, count)| json!({"minute": minute, "kind": kind, "count": count}))
         .collect();
 
@@ -1309,21 +1644,39 @@ async fn dlq_stats_by_minute_and_kind(
 /// Retorna `{rows:[{day,kind,count}]}`. Sprint #715.
 async fn dlq_stats_by_day_and_kind(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT \
@@ -1340,9 +1693,15 @@ async fn dlq_stats_by_day_and_kind(
     .bind(until_dt)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, kind, count)| json!({"day": day, "kind": kind, "count": count}))
         .collect();
 
@@ -1355,12 +1714,14 @@ async fn dlq_stats_by_day_and_kind(
 /// Retorna `{rows:[{kind,tenant_id,count}]}` ordenado por count DESC. Sprint #735.
 async fn dlq_stats_by_kind_and_tenant(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
     let raw_limit = q.limit.unwrap_or(50).clamp(1, 500) as i64;
 
@@ -1374,7 +1735,12 @@ async fn dlq_stats_by_kind_and_tenant(
     .bind(raw_limit)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(kind, tenant_id, count)| json!({"kind": kind, "tenant_id": tenant_id, "count": count}))
@@ -1388,21 +1754,39 @@ async fn dlq_stats_by_kind_and_tenant(
 /// Retorna `{rows:[{hour,tenant_id,count}]}` ordenado por hour ASC, tenant_id ASC. Sprint #740.
 async fn dlq_stats_by_tenant_and_hour(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT \
@@ -1433,21 +1817,39 @@ async fn dlq_stats_by_tenant_and_hour(
 /// Retorna `{rows:[{kind,hour,count}]}` ordenado por kind ASC, hour ASC. Sprint #745.
 async fn dlq_stats_by_kind_and_hour(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT \
@@ -1466,7 +1868,8 @@ async fn dlq_stats_by_kind_and_hour(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(kind, hour, count)| json!({"kind": kind, "hour": hour, "count": count}))
         .collect();
     Ok(Json(json!({"rows": result})))
@@ -1478,12 +1881,14 @@ async fn dlq_stats_by_kind_and_hour(
 /// `limit` default 20 max 200. Retorna `{rows:[{error_prefix,count}]}` count DESC. Sprint #750.
 async fn dlq_stats_by_error_prefix(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
     let limit = q.limit.unwrap_or(20).clamp(1, 200) as i64;
 
@@ -1498,9 +1903,15 @@ async fn dlq_stats_by_error_prefix(
     .bind(limit)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(error_prefix, count)| json!({"error_prefix": error_prefix, "count": count}))
         .collect();
     Ok(Json(json!({"rows": result})))
@@ -1512,22 +1923,37 @@ async fn dlq_stats_by_error_prefix(
 async fn dlq_stats_summary(
     State(st): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
     let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*)::BIGINT FROM notification_dlq")
-        .fetch_one(pool.as_ref()).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .fetch_one(pool.as_ref())
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     let by_kind: Vec<(String, i64)> = sqlx::query_as(
         "SELECT kind, COUNT(*)::BIGINT FROM notification_dlq GROUP BY kind ORDER BY count DESC",
     )
-    .fetch_all(pool.as_ref()).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let by_kind_out: Vec<serde_json::Value> = by_kind.into_iter()
+    let by_kind_out: Vec<serde_json::Value> = by_kind
+        .into_iter()
         .map(|(kind, count)| json!({"kind": kind, "count": count}))
         .collect();
     Ok(Json(json!({"total": total, "by_kind": by_kind_out})))
@@ -1539,21 +1965,39 @@ async fn dlq_stats_summary(
 /// Retorna `{rows:[{day,tenant_id,kind,count}]}`. Sprint #760.
 async fn dlq_stats_by_tenant_and_kind_and_day(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, String, String, i64)> = sqlx::query_as(
         "SELECT \
@@ -1565,9 +2009,16 @@ async fn dlq_stats_by_tenant_and_kind_and_day(
          GROUP BY day, tenant_id, kind \
          ORDER BY day ASC, tenant_id ASC, kind ASC",
     )
-    .bind(since_dt).bind(until_dt)
-    .fetch_all(pool.as_ref()).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .bind(since_dt)
+    .bind(until_dt)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(day, tenant_id, kind, count)| json!({"day": day, "tenant_id": tenant_id, "kind": kind, "count": count}))
@@ -1580,21 +2031,39 @@ async fn dlq_stats_by_tenant_and_kind_and_day(
 /// Simetria com by-tenant-and-kind-and-day mas sem kind. Retorna `{rows:[{day,tenant_id,count}]}` day ASC. Sprint #765.
 async fn dlq_stats_by_day_and_tenant(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT \
@@ -1606,11 +2075,19 @@ async fn dlq_stats_by_day_and_tenant(
          GROUP BY day, tenant_id \
          ORDER BY day ASC, tenant_id ASC",
     )
-    .bind(since_dt).bind(until_dt)
-    .fetch_all(pool.as_ref()).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .bind(since_dt)
+    .bind(until_dt)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, tenant_id, count)| json!({"day": day, "tenant_id": tenant_id, "count": count}))
         .collect();
     Ok(Json(json!({"rows": result})))
@@ -1623,10 +2100,12 @@ async fn dlq_stats_by_day_and_tenant(
 async fn dlq_stats_age_distribution(
     State(st): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
     let (lt_1h, h1_to_6h, h6_to_24h, d1_to_7d, gt_7d): (i64, i64, i64, i64, i64) =
         sqlx::query_as(
@@ -1656,21 +2135,39 @@ async fn dlq_stats_age_distribution(
 /// Retorna `{rows:[{hour,tenant_id,count}]}`. Sprint #775.
 async fn dlq_stats_by_hour_and_tenant(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, Option<Uuid>, i64)> = sqlx::query_as(
         "SELECT \
@@ -1701,12 +2198,14 @@ async fn dlq_stats_by_hour_and_tenant(
 /// Limit default 50 max 500. Retorna `{rows:[{user_id,kind,count}]}` count DESC. Sprint #780.
 async fn dlq_stats_by_user_and_kind(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let limit = q.limit.unwrap_or(50).min(500).max(1);
 
     let rows: Vec<(Option<Uuid>, String, i64)> = sqlx::query_as(
@@ -1719,9 +2218,15 @@ async fn dlq_stats_by_user_and_kind(
     .bind(limit)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(uid, kind, count)| json!({"user_id": uid, "kind": kind, "count": count}))
         .collect();
     Ok(Json(json!({"rows": result})))
@@ -1733,21 +2238,39 @@ async fn dlq_stats_by_user_and_kind(
 /// Retorna `{rows:[{day,kind,tenant_id,count}]}`. Sprint #785.
 async fn dlq_stats_by_day_and_kind_and_tenant(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, String, Option<Uuid>, i64)> = sqlx::query_as(
         "SELECT \
@@ -1765,7 +2288,12 @@ async fn dlq_stats_by_day_and_kind_and_tenant(
     .bind(until_dt)
     .fetch_all(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(day, kind, tid, count)| json!({"day": day, "kind": kind, "tenant_id": tid, "count": count}))
@@ -1779,21 +2307,39 @@ async fn dlq_stats_by_day_and_kind_and_tenant(
 /// Retorna `{rows:[{hour,user_id,count}]}` ordenado por hour ASC, user_id ASC. Sprint #790.
 async fn dlq_stats_by_hour_and_user(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, Option<Uuid>, i64)> = sqlx::query_as(
         "SELECT \
@@ -1812,7 +2358,8 @@ async fn dlq_stats_by_hour_and_user(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(hour, uid, count)| json!({"hour": hour, "user_id": uid, "count": count}))
         .collect();
     Ok(Json(json!({"rows": result})))
@@ -1823,20 +2370,38 @@ async fn dlq_stats_by_hour_and_user(
 /// Granularidade fina cross-tenant. Retorna `{rows:[{minute,tenant_id,count}]}` minute ASC. Sprint #795.
 async fn dlq_stats_by_minute_and_tenant(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, Option<Uuid>, i64)> = sqlx::query_as(
         "SELECT \
@@ -1853,7 +2418,8 @@ async fn dlq_stats_by_minute_and_tenant(
     .fetch_all(pool.as_ref()).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(m, t, c)| json!({"minute": m, "tenant_id": t, "count": c}))
         .collect();
     Ok(Json(json!({"rows": result})))
@@ -1864,20 +2430,38 @@ async fn dlq_stats_by_minute_and_tenant(
 /// Granularidade fina por usuário. Retorna `{rows:[{minute,user_id,count}]}` minute ASC. Sprint #800.
 async fn dlq_stats_by_minute_and_user(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, Option<Uuid>, i64)> = sqlx::query_as(
         "SELECT \
@@ -1894,7 +2478,8 @@ async fn dlq_stats_by_minute_and_user(
     .fetch_all(pool.as_ref()).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(m, u, c)| json!({"minute": m, "user_id": u, "count": c}))
         .collect();
     Ok(Json(json!({"rows": result})))
@@ -1906,12 +2491,14 @@ async fn dlq_stats_by_minute_and_user(
 /// Limit default 5 max 50. Retorna `{rows:[{kind,tenant_id,count}]}` kind ASC, count DESC. Sprint #805.
 async fn dlq_stats_top_tenants_by_kind(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let limit = q.limit.unwrap_or(5).min(50).max(1);
 
     let rows: Vec<(String, Option<Uuid>, i64)> = sqlx::query_as(
@@ -1922,10 +2509,17 @@ async fn dlq_stats_top_tenants_by_kind(
           LIMIT $1",
     )
     .bind(limit)
-    .fetch_all(pool.as_ref()).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(k, t, c)| json!({"kind": k, "tenant_id": t, "count": c}))
         .collect();
     Ok(Json(json!({"rows": result})))
@@ -1937,20 +2531,38 @@ async fn dlq_stats_top_tenants_by_kind(
 /// Retorna `{rows:[{kind,minute,count}]}`. Sprint #810.
 async fn dlq_stats_by_kind_and_minute(
     State(st): State<AppState>,
-    Query(q):  Query<DlqStatsQuery>,
+    Query(q): Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     let rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT \
@@ -1967,7 +2579,8 @@ async fn dlq_stats_by_kind_and_minute(
     .fetch_all(pool.as_ref()).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(k, m, c)| json!({"kind": k, "minute": m, "count": c}))
         .collect();
     Ok(Json(json!({"rows": result})))
@@ -1977,14 +2590,21 @@ async fn dlq_stats_by_kind_and_minute(
 async fn count_dlq(
     State(st): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notification_dlq")
         .fetch_one(pool.as_ref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
     Ok(Json(json!({"count": count})))
 }
 
@@ -1998,17 +2618,24 @@ async fn oldest_dlq_entry(
     State(st): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     use sqlx::Row as _;
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let row = sqlx::query(
         "SELECT id, tenant_id, user_id, kind, payload, attempts, last_error, failed_at \
            FROM notification_dlq ORDER BY failed_at ASC LIMIT 1",
     )
     .fetch_optional(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let entry = row.map(|r| {
         let id:         Uuid                = r.get("id");
@@ -2044,17 +2671,24 @@ async fn newest_dlq_entry(
     State(st): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     use sqlx::Row as _;
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let row = sqlx::query(
         "SELECT id, tenant_id, user_id, kind, payload, attempts, last_error, failed_at \
            FROM notification_dlq ORDER BY failed_at DESC LIMIT 1",
     )
     .fetch_optional(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let entry = row.map(|r| {
         let id:         Uuid                = r.get("id");
@@ -2086,35 +2720,65 @@ async fn newest_dlq_entry(
 /// RFC3339, exclusive). Filters compose with AND. Limit 1–500, default 50.
 /// Sprints #600 (kind+tenant_id) + #614 (since+until temporal filter).
 async fn list_dlq(
-    State(st):   State<AppState>,
-    Query(q):    Query<DlqListQuery>,
+    State(st): State<AppState>,
+    Query(q): Query<DlqListQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     use sqlx::Row as _;
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
-    let limit  = q.limit.unwrap_or(50).clamp(1, 500) as i64;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
+    let limit = q.limit.unwrap_or(50).clamp(1, 500) as i64;
     let offset = q.offset.unwrap_or(0).max(0) as i64;
 
     // Parse temporal bounds (RFC3339 → OffsetDateTime).
-    let since_dt = q.since.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
-    }).transpose()?;
-    let until_dt = q.until.as_deref().map(|s| {
-        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
-    }).transpose()?;
+    let since_dt = q
+        .since
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "since must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
+    let until_dt = q
+        .until
+        .as_deref()
+        .map(|s| {
+            OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "until must be RFC3339"})),
+                )
+            })
+        })
+        .transpose()?;
 
     // Build WHERE conditions; $1=limit, $2=offset always; filters start at $3.
     let mut conditions: Vec<String> = Vec::new();
     let mut next_param = 3usize;
 
-    if q.kind.is_some()      { conditions.push(format!("kind = ${next_param}"));                next_param += 1; }
-    if q.tenant_id.is_some() { conditions.push(format!("tenant_id = ${next_param}"));           next_param += 1; }
-    if since_dt.is_some()    { conditions.push(format!("failed_at >= ${next_param}::timestamptz")); next_param += 1; }
-    if until_dt.is_some()    { conditions.push(format!("failed_at <  ${next_param}::timestamptz")); next_param += 1; }
+    if q.kind.is_some() {
+        conditions.push(format!("kind = ${next_param}"));
+        next_param += 1;
+    }
+    if q.tenant_id.is_some() {
+        conditions.push(format!("tenant_id = ${next_param}"));
+        next_param += 1;
+    }
+    if since_dt.is_some() {
+        conditions.push(format!("failed_at >= ${next_param}::timestamptz"));
+        next_param += 1;
+    }
+    if until_dt.is_some() {
+        conditions.push(format!("failed_at <  ${next_param}::timestamptz"));
+        next_param += 1;
+    }
     let _ = next_param; // suppress "unused" warning after last use
 
     let where_clause = if conditions.is_empty() {
@@ -2131,18 +2795,25 @@ async fn list_dlq(
           LIMIT $1 OFFSET $2"
     );
     let mut q_builder = sqlx::query(&sql).bind(limit).bind(offset);
-    if let Some(ref k)  = q.kind      { q_builder = q_builder.bind(k.as_str()); }
-    if let Some(t)      = q.tenant_id { q_builder = q_builder.bind(t); }
-    if let Some(s)      = since_dt    { q_builder = q_builder.bind(s); }
-    if let Some(u)      = until_dt    { q_builder = q_builder.bind(u); }
+    if let Some(ref k) = q.kind {
+        q_builder = q_builder.bind(k.as_str());
+    }
+    if let Some(t) = q.tenant_id {
+        q_builder = q_builder.bind(t);
+    }
+    if let Some(s) = since_dt {
+        q_builder = q_builder.bind(s);
+    }
+    if let Some(u) = until_dt {
+        q_builder = q_builder.bind(u);
+    }
 
-    let rows = q_builder
-        .fetch_all(pool.as_ref())
-        .await
-        .map_err(|e| (
+    let rows = q_builder.fetch_all(pool.as_ref()).await.map_err(|e| {
+        (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "internal", "message": e.to_string()})),
-        ))?;
+        )
+    })?;
     let items: Vec<serde_json::Value> = rows.iter().map(|r| {
         let id:         Uuid                  = r.get("id");
         let tenant_id:  Option<Uuid>          = r.try_get("tenant_id").ok();
@@ -2163,21 +2834,23 @@ async fn list_dlq(
             "failed_at":  failed_at.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
         })
     }).collect();
-    Ok(Json(json!({"items": items, "limit": limit, "offset": offset,
+    Ok(Json(
+        json!({"items": items, "limit": limit, "offset": offset,
         "filter": {"kind": q.kind, "tenant_id": q.tenant_id,
-                   "since": q.since, "until": q.until}})))
+                   "since": q.since, "until": q.until}}),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
 struct DlqListQuery {
-    limit:     Option<u32>,
-    offset:    Option<u32>,
-    kind:      Option<String>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+    kind: Option<String>,
     tenant_id: Option<Uuid>,
     /// RFC3339 lower bound on failed_at (inclusive). Sprint #614.
-    since:     Option<String>,
+    since: Option<String>,
     /// RFC3339 upper bound on failed_at (exclusive). Sprint #614.
-    until:     Option<String>,
+    until: Option<String>,
 }
 
 /// GET /api/v1/notifications/dlq/:id — inspeciona uma entrada individual da DLQ.
@@ -2186,13 +2859,15 @@ struct DlqListQuery {
 /// attempts, last_error, failed_at). 404 se o entry não existe. Sprint #586.
 async fn get_dlq_entry(
     State(st): State<AppState>,
-    Path(id):  Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     use sqlx::Row as _;
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let row = sqlx::query(
         "SELECT id, tenant_id, user_id, kind, payload, attempts, last_error, failed_at \
            FROM notification_dlq WHERE id = $1",
@@ -2200,16 +2875,21 @@ async fn get_dlq_entry(
     .bind(id)
     .fetch_optional(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?
     .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"}))))?;
 
-    let tenant_id:  Option<Uuid>      = row.try_get("tenant_id").ok();
-    let user_id:    Option<Uuid>      = row.try_get("user_id").ok();
-    let kind:       String            = row.get("kind");
-    let payload:    serde_json::Value = row.get("payload");
-    let attempts:   i32               = row.get("attempts");
-    let last_error: Option<String>    = row.try_get("last_error").ok();
-    let failed_at:  OffsetDateTime    = row.get("failed_at");
+    let tenant_id: Option<Uuid> = row.try_get("tenant_id").ok();
+    let user_id: Option<Uuid> = row.try_get("user_id").ok();
+    let kind: String = row.get("kind");
+    let payload: serde_json::Value = row.get("payload");
+    let attempts: i32 = row.get("attempts");
+    let last_error: Option<String> = row.try_get("last_error").ok();
+    let failed_at: OffsetDateTime = row.get("failed_at");
 
     Ok(Json(json!({
         "id":         id,
@@ -2226,20 +2906,24 @@ async fn get_dlq_entry(
 /// DELETE /api/v1/notifications/dlq/:id — remove a DLQ entry (after manual retry).
 async fn delete_dlq_entry(
     State(st): State<AppState>,
-    Path(id):  Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     sqlx::query("DELETE FROM notification_dlq WHERE id = $1")
         .bind(id)
         .execute(pool.as_ref())
         .await
-        .map_err(|e| (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "internal", "message": e.to_string()})),
-        ))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "internal", "message": e.to_string()})),
+            )
+        })?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -2252,18 +2936,20 @@ async fn delete_dlq_entry(
 #[derive(Debug, Deserialize)]
 struct PatchDlqBody {
     last_error: Option<serde_json::Value>, // string | null
-    attempts:   Option<i32>,
+    attempts: Option<i32>,
 }
 
 async fn patch_dlq_entry(
     State(st): State<AppState>,
-    Path(id):  Path<Uuid>,
+    Path(id): Path<Uuid>,
     Json(body): Json<PatchDlqBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
     // Validate at least one field provided.
     if body.last_error.is_none() && body.attempts.is_none() {
@@ -2278,7 +2964,12 @@ async fn patch_dlq_entry(
         .bind(id)
         .fetch_optional(pool.as_ref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
     if exists.is_none() {
         return Err((StatusCode::NOT_FOUND, Json(json!({"error": "not_found"}))));
     }
@@ -2289,27 +2980,45 @@ async fn patch_dlq_entry(
         let val: Option<String> = match le {
             serde_json::Value::Null => None,
             serde_json::Value::String(s) => Some(s.clone()),
-            _ => return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "last_error must be a string or null"})))),
+            _ => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "last_error must be a string or null"})),
+                ))
+            }
         };
         sqlx::query("UPDATE notification_dlq SET last_error = $1 WHERE id = $2")
             .bind(val)
             .bind(id)
             .execute(pool.as_ref())
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": e.to_string()})),
+                )
+            })?;
         updated.push("last_error");
     }
 
     if let Some(att) = body.attempts {
         if att < 0 {
-            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "attempts must be >= 0"}))));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "attempts must be >= 0"})),
+            ));
         }
         sqlx::query("UPDATE notification_dlq SET attempts = $1 WHERE id = $2")
             .bind(att)
             .bind(id)
             .execute(pool.as_ref())
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": e.to_string()})),
+                )
+            })?;
         updated.push("attempts");
     }
 
@@ -2324,9 +3033,9 @@ async fn patch_dlq_entry(
 /// Returns `{updated, not_found, ids_updated: [uuid]}`. Sprint #624.
 #[derive(Debug, Deserialize)]
 struct BulkPatchDlqBody {
-    ids:        Vec<Uuid>,
+    ids: Vec<Uuid>,
     last_error: Option<serde_json::Value>, // string | null
-    attempts:   Option<i32>,
+    attempts: Option<i32>,
 }
 
 async fn bulk_patch_dlq(
@@ -2334,30 +3043,49 @@ async fn bulk_patch_dlq(
     Json(body): Json<BulkPatchDlqBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     if body.ids.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "ids must not be empty"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "ids must not be empty"})),
+        ));
     }
     if body.ids.len() > 200 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": format!("too many ids: {} (max 200)", body.ids.len())}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": format!("too many ids: {} (max 200)", body.ids.len())})),
+        ));
     }
     if body.last_error.is_none() && body.attempts.is_none() {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "at least one of last_error or attempts is required"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "at least one of last_error or attempts is required"})),
+        ));
     }
 
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
     // Validate last_error value if present.
     let last_error_val: Option<Option<String>> = match &body.last_error {
         None => None,
         Some(serde_json::Value::Null) => Some(None),
         Some(serde_json::Value::String(s)) => Some(Some(s.clone())),
-        Some(_) => return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "last_error must be a string or null"})))),
+        Some(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "last_error must be a string or null"})),
+            ))
+        }
     };
     if let Some(att) = body.attempts {
         if att < 0 {
-            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "attempts must be >= 0"}))));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "attempts must be >= 0"})),
+            ));
         }
     }
 
@@ -2366,11 +3094,17 @@ async fn bulk_patch_dlq(
 
     for &id in &body.ids {
         // Check existence first.
-        let exists: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM notification_dlq WHERE id = $1")
-            .bind(id)
-            .fetch_optional(pool.as_ref())
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        let exists: Option<(Uuid,)> =
+            sqlx::query_as("SELECT id FROM notification_dlq WHERE id = $1")
+                .bind(id)
+                .fetch_optional(pool.as_ref())
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": e.to_string()})),
+                    )
+                })?;
         if exists.is_none() {
             continue;
         }
@@ -2381,7 +3115,12 @@ async fn bulk_patch_dlq(
                 .bind(id)
                 .execute(pool.as_ref())
                 .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": e.to_string()})),
+                    )
+                })?;
         }
         if let Some(att) = body.attempts {
             sqlx::query("UPDATE notification_dlq SET attempts = $1 WHERE id = $2")
@@ -2389,7 +3128,12 @@ async fn bulk_patch_dlq(
                 .bind(id)
                 .execute(pool.as_ref())
                 .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": e.to_string()})),
+                    )
+                })?;
         }
         ids_updated.push(id);
     }
@@ -2408,13 +3152,15 @@ async fn bulk_patch_dlq(
 /// removes the DLQ entry on success. On failure the entry remains in the DLQ.
 async fn retry_dlq_entry(
     State(st): State<AppState>,
-    Path(id):  Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     use sqlx::Row as _;
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
     // Load the DLQ entry.
     let row = sqlx::query(
@@ -2425,32 +3171,45 @@ async fn retry_dlq_entry(
     .bind(id)
     .fetch_optional(pool.as_ref())
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?
     .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"}))))?;
 
     let payload: serde_json::Value = row.get("payload");
 
     // Reconstruct the notification from the saved payload.
-    let notif: Notification = serde_json::from_value(payload.clone())
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let notif: Notification = serde_json::from_value(payload.clone()).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     // Re-dispatch: broadcast locally + Redis + webhook (same as internal_notify).
     let _ = st.tx.send(notif.clone());
-    NOTIFICATIONS_DISPATCHED.with_label_values(&[&notif.kind]).inc();
+    NOTIFICATIONS_DISPATCHED
+        .with_label_values(&[&notif.kind])
+        .inc();
 
     if let Some(redis_pool) = &st.redis_pub {
         if let Ok(body) = serde_json::to_string(&notif) {
             if let Ok(mut conn) = redis_pool.get().await {
                 use deadpool_redis::redis::AsyncCommands;
-                let _ = conn.publish::<_, _, ()>("expresso:notifications", &body).await;
+                let _ = conn
+                    .publish::<_, _, ()>("expresso:notifications", &body)
+                    .await;
             }
         }
     }
 
     if let Some((url, client)) = &st.webhook {
-        let url    = url.clone();
+        let url = url.clone();
         let client = client.clone();
-        let body   = payload.clone();
+        let body = payload.clone();
         tokio::spawn(async move {
             let _ = client.post(url.as_ref()).json(&body).send().await;
         });
@@ -2461,7 +3220,12 @@ async fn retry_dlq_entry(
         .bind(id)
         .execute(pool.as_ref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     Ok(Json(json!({"retried": true, "id": id, "kind": notif.kind})))
 }
@@ -2474,14 +3238,21 @@ async fn retry_dlq_entry(
 async fn purge_dlq(
     State(st): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
     let res = sqlx::query("DELETE FROM notification_dlq")
         .execute(pool.as_ref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
     Ok(Json(json!({"deleted": res.rows_affected()})))
 }
 
@@ -2495,46 +3266,59 @@ async fn retry_all_dlq(
     State(st): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     use sqlx::Row as _;
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
-    let rows = sqlx::query(
-        "SELECT id, kind, payload FROM notification_dlq ORDER BY created_at ASC",
-    )
-    .fetch_all(pool.as_ref())
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let rows =
+        sqlx::query("SELECT id, kind, payload FROM notification_dlq ORDER BY created_at ASC")
+            .fetch_all(pool.as_ref())
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": e.to_string()})),
+                )
+            })?;
 
     let total = rows.len() as u64;
     let (mut retried, mut failed) = (0u64, 0u64);
 
     for row in rows {
-        let id:      Uuid                = row.get("id");
-        let payload: serde_json::Value   = row.get("payload");
+        let id: Uuid = row.get("id");
+        let payload: serde_json::Value = row.get("payload");
 
         let notif: Notification = match serde_json::from_value(payload.clone()) {
-            Ok(n)  => n,
-            Err(_) => { failed += 1; continue; }
+            Ok(n) => n,
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
         };
 
         let _ = st.tx.send(notif.clone());
-        NOTIFICATIONS_DISPATCHED.with_label_values(&[&notif.kind]).inc();
+        NOTIFICATIONS_DISPATCHED
+            .with_label_values(&[&notif.kind])
+            .inc();
 
         if let Some(redis_pool) = &st.redis_pub {
             if let Ok(body) = serde_json::to_string(&notif) {
                 if let Ok(mut conn) = redis_pool.get().await {
                     use deadpool_redis::redis::AsyncCommands;
-                    let _ = conn.publish::<_, _, ()>("expresso:notifications", &body).await;
+                    let _ = conn
+                        .publish::<_, _, ()>("expresso:notifications", &body)
+                        .await;
                 }
             }
         }
 
         if let Some((url, client)) = &st.webhook {
-            let url    = url.clone();
+            let url = url.clone();
             let client = client.clone();
-            let body   = payload.clone();
+            let body = payload.clone();
             tokio::spawn(async move {
                 let _ = client.post(url.as_ref()).json(&body).send().await;
             });
@@ -2545,12 +3329,14 @@ async fn retry_all_dlq(
             .execute(pool.as_ref())
             .await
         {
-            Ok(_)  => retried += 1,
-            Err(_) => failed  += 1,
+            Ok(_) => retried += 1,
+            Err(_) => failed += 1,
         }
     }
 
-    Ok(Json(json!({"retried": retried, "failed": failed, "total": total})))
+    Ok(Json(
+        json!({"retried": retried, "failed": failed, "total": total}),
+    ))
 }
 
 /// POST /api/v1/notifications/dlq/retry-filtered?kind=&tenant_id= — re-dispatch filtrado da DLQ.
@@ -2561,60 +3347,75 @@ async fn retry_all_dlq(
 /// Sprint #606.
 async fn retry_filtered_dlq(
     State(st): State<AppState>,
-    Query(q):  Query<DlqListQuery>,
+    Query(q): Query<DlqListQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     use sqlx::Row as _;
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
     let (where_clause, bind_kind, bind_tenant) = match (&q.kind, &q.tenant_id) {
         (Some(_), Some(_)) => ("WHERE kind = $1 AND tenant_id = $2", true, true),
-        (Some(_), None)    => ("WHERE kind = $1",                    true, false),
-        (None,    Some(_)) => ("WHERE tenant_id = $1",               false, true),
-        (None,    None)    => ("",                                    false, false),
+        (Some(_), None) => ("WHERE kind = $1", true, false),
+        (None, Some(_)) => ("WHERE tenant_id = $1", false, true),
+        (None, None) => ("", false, false),
     };
     let sql = format!(
         "SELECT id, kind, payload FROM notification_dlq {where_clause} ORDER BY created_at ASC"
     );
     let mut q_builder = sqlx::query(&sql);
-    if bind_kind   { q_builder = q_builder.bind(q.kind.as_deref().unwrap()); }
-    if bind_tenant { q_builder = q_builder.bind(q.tenant_id.unwrap()); }
+    if bind_kind {
+        q_builder = q_builder.bind(q.kind.as_deref().unwrap());
+    }
+    if bind_tenant {
+        q_builder = q_builder.bind(q.tenant_id.unwrap());
+    }
 
-    let rows = q_builder
-        .fetch_all(pool.as_ref())
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let rows = q_builder.fetch_all(pool.as_ref()).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let total = rows.len() as u64;
     let (mut retried, mut failed) = (0u64, 0u64);
 
     for row in rows {
-        let id:      Uuid              = row.get("id");
+        let id: Uuid = row.get("id");
         let payload: serde_json::Value = row.get("payload");
 
         let notif: Notification = match serde_json::from_value(payload.clone()) {
-            Ok(n)  => n,
-            Err(_) => { failed += 1; continue; }
+            Ok(n) => n,
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
         };
 
         let _ = st.tx.send(notif.clone());
-        NOTIFICATIONS_DISPATCHED.with_label_values(&[&notif.kind]).inc();
+        NOTIFICATIONS_DISPATCHED
+            .with_label_values(&[&notif.kind])
+            .inc();
 
         if let Some(redis_pool) = &st.redis_pub {
             if let Ok(body) = serde_json::to_string(&notif) {
                 if let Ok(mut conn) = redis_pool.get().await {
                     use deadpool_redis::redis::AsyncCommands;
-                    let _ = conn.publish::<_, _, ()>("expresso:notifications", &body).await;
+                    let _ = conn
+                        .publish::<_, _, ()>("expresso:notifications", &body)
+                        .await;
                 }
             }
         }
 
         if let Some((url, client)) = &st.webhook {
-            let url    = url.clone();
+            let url = url.clone();
             let client = client.clone();
-            let body   = payload.clone();
+            let body = payload.clone();
             tokio::spawn(async move {
                 let _ = client.post(url.as_ref()).json(&body).send().await;
             });
@@ -2625,8 +3426,8 @@ async fn retry_filtered_dlq(
             .execute(pool.as_ref())
             .await
         {
-            Ok(_)  => retried += 1,
-            Err(_) => failed  += 1,
+            Ok(_) => retried += 1,
+            Err(_) => failed += 1,
         }
     }
 
@@ -2653,28 +3454,46 @@ async fn bulk_count_dlq(
     Json(body): Json<BulkCountDlqBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     if body.ids.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "ids must not be empty"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "ids must not be empty"})),
+        ));
     }
     if body.ids.len() > 200 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": format!("too many ids: {} (max 200)", body.ids.len())}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": format!("too many ids: {} (max 200)", body.ids.len())})),
+        ));
     }
 
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
     // Single query: fetch all ids that exist, preserving input ordering.
-    let found_rows: Vec<(Uuid,)> = sqlx::query_as(
-        "SELECT id FROM notification_dlq WHERE id = ANY($1)",
-    )
-    .bind(&body.ids)
-    .fetch_all(pool.as_ref())
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let found_rows: Vec<(Uuid,)> =
+        sqlx::query_as("SELECT id FROM notification_dlq WHERE id = ANY($1)")
+            .bind(&body.ids)
+            .fetch_all(pool.as_ref())
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": e.to_string()})),
+                )
+            })?;
 
-    let found_set: std::collections::HashSet<Uuid> = found_rows.into_iter().map(|(id,)| id).collect();
-    let ids_found: Vec<Uuid> = body.ids.iter().filter(|id| found_set.contains(id)).copied().collect();
+    let found_set: std::collections::HashSet<Uuid> =
+        found_rows.into_iter().map(|(id,)| id).collect();
+    let ids_found: Vec<Uuid> = body
+        .ids
+        .iter()
+        .filter(|id| found_set.contains(id))
+        .copied()
+        .collect();
     let not_found = body.ids.len() - ids_found.len();
 
     Ok(Json(json!({
@@ -2702,53 +3521,74 @@ async fn bulk_retry_dlq(
     Json(body): Json<BulkRetryDlqBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     if body.ids.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "ids must not be empty"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "ids must not be empty"})),
+        ));
     }
     if body.ids.len() > 200 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": format!("too many ids: {} (max 200)", body.ids.len())}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": format!("too many ids: {} (max 200)", body.ids.len())})),
+        ));
     }
 
-    let pool = st.db.as_ref().ok_or_else(|| (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "unavailable"})),
-    ))?;
+    let pool = st.db.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "unavailable"})),
+        )
+    })?;
 
     use sqlx::Row as _;
     let mut ids_retried: Vec<Uuid> = Vec::new();
     let mut not_found = 0usize;
-    let mut failed    = 0usize;
+    let mut failed = 0usize;
 
     for &id in &body.ids {
-        let row = sqlx::query(
-            "SELECT id, kind, payload FROM notification_dlq WHERE id = $1",
-        )
-        .bind(id)
-        .fetch_optional(pool.as_ref())
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        let row = sqlx::query("SELECT id, kind, payload FROM notification_dlq WHERE id = $1")
+            .bind(id)
+            .fetch_optional(pool.as_ref())
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": e.to_string()})),
+                )
+            })?;
 
-        let Some(row) = row else { not_found += 1; continue; };
+        let Some(row) = row else {
+            not_found += 1;
+            continue;
+        };
 
         let payload: serde_json::Value = row.get("payload");
         let notif: Notification = match serde_json::from_value(payload.clone()) {
-            Ok(n)  => n,
-            Err(_) => { failed += 1; continue; }
+            Ok(n) => n,
+            Err(_) => {
+                failed += 1;
+                continue;
+            }
         };
 
         let _ = st.tx.send(notif.clone());
-        NOTIFICATIONS_DISPATCHED.with_label_values(&[&notif.kind]).inc();
+        NOTIFICATIONS_DISPATCHED
+            .with_label_values(&[&notif.kind])
+            .inc();
 
         if let Some(redis_pool) = &st.redis_pub {
             if let Ok(body_str) = serde_json::to_string(&notif) {
                 if let Ok(mut conn) = redis_pool.get().await {
                     use deadpool_redis::redis::AsyncCommands;
-                    let _ = conn.publish::<_, _, ()>("expresso:notifications", &body_str).await;
+                    let _ = conn
+                        .publish::<_, _, ()>("expresso:notifications", &body_str)
+                        .await;
                 }
             }
         }
 
         if let Some((url, client)) = &st.webhook {
-            let url    = url.clone();
+            let url = url.clone();
             let client = client.clone();
             let body_v = payload.clone();
             tokio::spawn(async move {
@@ -2761,7 +3601,7 @@ async fn bulk_retry_dlq(
             .execute(pool.as_ref())
             .await
         {
-            Ok(_)  => ids_retried.push(id),
+            Ok(_) => ids_retried.push(id),
             Err(_) => failed += 1,
         }
     }
@@ -2823,7 +3663,7 @@ async fn maybe_start_redis_relay(tx: Arc<broadcast::Sender<Notification>>) {
 
 async fn redis_relay_loop(
     url: &str,
-    tx:  Arc<broadcast::Sender<Notification>>,
+    tx: Arc<broadcast::Sender<Notification>>,
 ) -> anyhow::Result<()> {
     use deadpool_redis::redis::Client;
     let client = Client::open(url)?;
@@ -2842,8 +3682,12 @@ async fn redis_relay_loop(
 // ─── OIDC validator (optional) ───────────────────────────────────────────────
 
 async fn maybe_build_validator() -> Option<Arc<OidcValidator>> {
-    let issuer   = env::var("AUTH__OIDC_ISSUER").ok().filter(|v| !v.is_empty())?;
-    let audience = env::var("AUTH__OIDC_AUDIENCE").ok().filter(|v| !v.is_empty())?;
+    let issuer = env::var("AUTH__OIDC_ISSUER")
+        .ok()
+        .filter(|v| !v.is_empty())?;
+    let audience = env::var("AUTH__OIDC_AUDIENCE")
+        .ok()
+        .filter(|v| !v.is_empty())?;
 
     let cfg = OidcConfig::new(issuer.clone(), audience);
     match OidcValidator::new(cfg).await {
@@ -2886,7 +3730,8 @@ fn resolve_addr() -> anyhow::Result<SocketAddr> {
         .ok()
         .and_then(|v| v.parse::<u16>().ok())
         .unwrap_or(DEFAULT_PORT);
-    format!("{host}:{port}").parse::<SocketAddr>()
+    format!("{host}:{port}")
+        .parse::<SocketAddr>()
         .map_err(|e| anyhow::anyhow!("invalid bind address: {}", e))
 }
 
@@ -2902,70 +3747,190 @@ async fn main() -> anyhow::Result<()> {
 
     maybe_start_redis_relay(tx.clone()).await;
 
-    let validator  = maybe_build_validator().await;
-    let redis_pub  = maybe_build_redis_pub().await;
-    let webhook    = env::var("NOTIFICATIONS__WEBHOOK_URL").ok()
+    let validator = maybe_build_validator().await;
+    let redis_pub = maybe_build_redis_pub().await;
+    let webhook = env::var("NOTIFICATIONS__WEBHOOK_URL")
+        .ok()
         .filter(|v| !v.is_empty())
         .map(|url| (Arc::<str>::from(url.as_str()), reqwest::Client::new()));
     let db = maybe_build_db().await;
-    let state = AppState { tx, validator, redis_pub, webhook, db };
+    let state = AppState {
+        tx,
+        validator,
+        redis_pub,
+        webhook,
+        db,
+    };
 
     let app = Router::new()
-        .route("/health",                          get(health))
-        .route("/ready",                           get(ready))
-        .route("/internal/notify",                 post(internal_notify))
-        .route("/notifications/stream",            get(notifications_stream))
-        .route("/api/v1/notifications/digest",     get(digest))
-        .route("/api/v1/notifications/:id/read",   patch(mark_read))
-        .route("/api/v1/notifications/read-all",   patch(mark_all_read))
-        .route("/api/v1/notifications/push",       post(push_subscribe).delete(push_unsubscribe))
-        .route("/api/v1/notifications/dlq/stats",            get(dlq_stats))
-        .route("/api/v1/notifications/dlq/stats/by-day",          get(dlq_stats_by_day))
-        .route("/api/v1/notifications/dlq/stats/by-hour",         get(dlq_stats_by_hour))
-        .route("/api/v1/notifications/dlq/stats/by-kind-and-day",   get(dlq_stats_by_kind_and_day))
-        .route("/api/v1/notifications/dlq/stats/by-tenant-and-day", get(dlq_stats_by_tenant_and_day))
-        .route("/api/v1/notifications/dlq/stats/by-error-kind",     get(dlq_stats_by_error_kind))
-        .route("/api/v1/notifications/dlq/stats/by-tenant",         get(dlq_stats_by_tenant))
-        .route("/api/v1/notifications/dlq/stats/by-kind",             get(dlq_stats_by_kind))
-        .route("/api/v1/notifications/dlq/stats/by-tenant-and-kind",  get(dlq_stats_by_tenant_and_kind))
-        .route("/api/v1/notifications/dlq/stats/by-user",                  get(dlq_stats_by_user))
-        .route("/api/v1/notifications/dlq/stats/by-kind-and-user",          get(dlq_stats_by_kind_and_user))
-        .route("/api/v1/notifications/dlq/stats/by-day-and-user",           get(dlq_stats_by_day_and_user))
-        .route("/api/v1/notifications/dlq/stats/attempts-distribution", get(dlq_stats_attempts_distribution))
-        .route("/api/v1/notifications/dlq/stats/retention",             get(dlq_stats_retention))
-        .route("/api/v1/notifications/dlq/stats/by-day-and-kind",        get(dlq_stats_by_day_and_kind))
-        .route("/api/v1/notifications/dlq/stats/by-hour-and-kind",       get(dlq_stats_by_hour_and_kind))
-        .route("/api/v1/notifications/dlq/stats/by-minute",              get(dlq_stats_by_minute))
-        .route("/api/v1/notifications/dlq/stats/by-minute-and-kind",     get(dlq_stats_by_minute_and_kind))
-        .route("/api/v1/notifications/dlq/stats/by-kind-and-tenant",     get(dlq_stats_by_kind_and_tenant))
-        .route("/api/v1/notifications/dlq/stats/by-tenant-and-hour",     get(dlq_stats_by_tenant_and_hour))
-        .route("/api/v1/notifications/dlq/stats/by-kind-and-hour",       get(dlq_stats_by_kind_and_hour))
-        .route("/api/v1/notifications/dlq/stats/by-error-prefix",        get(dlq_stats_by_error_prefix))
-        .route("/api/v1/notifications/dlq/stats/summary",                get(dlq_stats_summary))
-        .route("/api/v1/notifications/dlq/stats/by-tenant-and-kind-and-day", get(dlq_stats_by_tenant_and_kind_and_day))
-        .route("/api/v1/notifications/dlq/stats/by-day-and-tenant",      get(dlq_stats_by_day_and_tenant))
-        .route("/api/v1/notifications/dlq/stats/age-distribution",        get(dlq_stats_age_distribution))
-        .route("/api/v1/notifications/dlq/stats/by-hour-and-tenant",       get(dlq_stats_by_hour_and_tenant))
-        .route("/api/v1/notifications/dlq/stats/by-user-and-kind",         get(dlq_stats_by_user_and_kind))
-        .route("/api/v1/notifications/dlq/stats/by-day-and-kind-and-tenant", get(dlq_stats_by_day_and_kind_and_tenant))
-        .route("/api/v1/notifications/dlq/stats/by-hour-and-user",         get(dlq_stats_by_hour_and_user))
-        .route("/api/v1/notifications/dlq/stats/by-minute-and-tenant",    get(dlq_stats_by_minute_and_tenant))
-        .route("/api/v1/notifications/dlq/stats/by-minute-and-user",      get(dlq_stats_by_minute_and_user))
-        .route("/api/v1/notifications/dlq/stats/top-tenants-by-kind",     get(dlq_stats_top_tenants_by_kind))
-        .route("/api/v1/notifications/dlq/stats/by-kind-and-minute",      get(dlq_stats_by_kind_and_minute))
-        .route("/api/v1/notifications/dlq/count",            get(count_dlq))
-        .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
-        .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))
-        .route("/api/v1/notifications/dlq/retry-all",        post(retry_all_dlq))
-        .route("/api/v1/notifications/dlq/retry-filtered",   post(retry_filtered_dlq))
-        .route("/api/v1/notifications/dlq/bulk",             patch(bulk_patch_dlq))
-        .route("/api/v1/notifications/dlq/bulk/count",       post(bulk_count_dlq))
-        .route("/api/v1/notifications/dlq/bulk/retry",       post(bulk_retry_dlq))
-        .route("/api/v1/notifications/dlq",           get(list_dlq).delete(purge_dlq))
-        .route("/api/v1/notifications/dlq/:id",       get(get_dlq_entry).delete(delete_dlq_entry).patch(patch_dlq_entry))
+        .route("/health", get(health))
+        .route("/ready", get(ready))
+        .route("/internal/notify", post(internal_notify))
+        .route("/notifications/stream", get(notifications_stream))
+        .route("/api/v1/notifications/digest", get(digest))
+        .route("/api/v1/notifications/:id/read", patch(mark_read))
+        .route("/api/v1/notifications/read-all", patch(mark_all_read))
+        .route(
+            "/api/v1/notifications/push",
+            post(push_subscribe).delete(push_unsubscribe),
+        )
+        .route("/api/v1/notifications/dlq/stats", get(dlq_stats))
+        .route(
+            "/api/v1/notifications/dlq/stats/by-day",
+            get(dlq_stats_by_day),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-hour",
+            get(dlq_stats_by_hour),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-kind-and-day",
+            get(dlq_stats_by_kind_and_day),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-tenant-and-day",
+            get(dlq_stats_by_tenant_and_day),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-error-kind",
+            get(dlq_stats_by_error_kind),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-tenant",
+            get(dlq_stats_by_tenant),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-kind",
+            get(dlq_stats_by_kind),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-tenant-and-kind",
+            get(dlq_stats_by_tenant_and_kind),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-user",
+            get(dlq_stats_by_user),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-kind-and-user",
+            get(dlq_stats_by_kind_and_user),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-day-and-user",
+            get(dlq_stats_by_day_and_user),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/attempts-distribution",
+            get(dlq_stats_attempts_distribution),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/retention",
+            get(dlq_stats_retention),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-day-and-kind",
+            get(dlq_stats_by_day_and_kind),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-hour-and-kind",
+            get(dlq_stats_by_hour_and_kind),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-minute",
+            get(dlq_stats_by_minute),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-minute-and-kind",
+            get(dlq_stats_by_minute_and_kind),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-kind-and-tenant",
+            get(dlq_stats_by_kind_and_tenant),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-tenant-and-hour",
+            get(dlq_stats_by_tenant_and_hour),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-kind-and-hour",
+            get(dlq_stats_by_kind_and_hour),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-error-prefix",
+            get(dlq_stats_by_error_prefix),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/summary",
+            get(dlq_stats_summary),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-tenant-and-kind-and-day",
+            get(dlq_stats_by_tenant_and_kind_and_day),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-day-and-tenant",
+            get(dlq_stats_by_day_and_tenant),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/age-distribution",
+            get(dlq_stats_age_distribution),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-hour-and-tenant",
+            get(dlq_stats_by_hour_and_tenant),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-user-and-kind",
+            get(dlq_stats_by_user_and_kind),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-day-and-kind-and-tenant",
+            get(dlq_stats_by_day_and_kind_and_tenant),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-hour-and-user",
+            get(dlq_stats_by_hour_and_user),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-minute-and-tenant",
+            get(dlq_stats_by_minute_and_tenant),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-minute-and-user",
+            get(dlq_stats_by_minute_and_user),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/top-tenants-by-kind",
+            get(dlq_stats_top_tenants_by_kind),
+        )
+        .route(
+            "/api/v1/notifications/dlq/stats/by-kind-and-minute",
+            get(dlq_stats_by_kind_and_minute),
+        )
+        .route("/api/v1/notifications/dlq/count", get(count_dlq))
+        .route("/api/v1/notifications/dlq/oldest", get(oldest_dlq_entry))
+        .route("/api/v1/notifications/dlq/newest", get(newest_dlq_entry))
+        .route("/api/v1/notifications/dlq/retry-all", post(retry_all_dlq))
+        .route(
+            "/api/v1/notifications/dlq/retry-filtered",
+            post(retry_filtered_dlq),
+        )
+        .route("/api/v1/notifications/dlq/bulk", patch(bulk_patch_dlq))
+        .route("/api/v1/notifications/dlq/bulk/count", post(bulk_count_dlq))
+        .route("/api/v1/notifications/dlq/bulk/retry", post(bulk_retry_dlq))
+        .route("/api/v1/notifications/dlq", get(list_dlq).delete(purge_dlq))
+        .route(
+            "/api/v1/notifications/dlq/:id",
+            get(get_dlq_entry)
+                .delete(delete_dlq_entry)
+                .patch(patch_dlq_entry),
+        )
         .route("/api/v1/notifications/dlq/:id/retry", post(retry_dlq_entry))
         .merge(expresso_observability::metrics_router())
-        .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            inject_validator,
+        ))
         .with_state(state);
 
     let addr = resolve_addr()?;

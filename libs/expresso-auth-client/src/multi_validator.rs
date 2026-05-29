@@ -19,10 +19,9 @@ use tracing::{debug, info};
 use crate::error::{AuthError, Result};
 use crate::validator::{OidcConfig, OidcValidator};
 
-
 pub struct MultiRealmValidator {
     issuer_template: String,
-    audience:        String,
+    audience: String,
     cache: RwLock<HashMap<String, Arc<OidcValidator>>>,
 }
 
@@ -33,13 +32,13 @@ impl MultiRealmValidator {
         let tpl = issuer_template.into();
         if !tpl.contains("{realm}") {
             return Err(AuthError::Config(
-                "issuer_template must contain '{realm}' placeholder".into()
+                "issuer_template must contain '{realm}' placeholder".into(),
             ));
         }
         Ok(Self {
             issuer_template: tpl,
-            audience:        audience.into(),
-            cache:           RwLock::new(HashMap::new()),
+            audience: audience.into(),
+            cache: RwLock::new(HashMap::new()),
         })
     }
 
@@ -56,7 +55,7 @@ impl MultiRealmValidator {
         let issuer = self.issuer_for(realm);
         debug!(%realm, %issuer, "building validator for realm");
         let cfg = OidcConfig::new(issuer.clone(), self.audience.clone());
-        let v   = Arc::new(OidcValidator::new(cfg).await?);
+        let v = Arc::new(OidcValidator::new(cfg).await?);
         w.insert(realm.to_string(), v.clone());
         crate::metrics::REALM_CACHE_SIZE.set(w.len() as i64);
         info!(%realm, validators_cached = w.len(), "realm validator ready");
@@ -68,7 +67,9 @@ impl MultiRealmValidator {
         self.issuer_template.replace("{realm}", realm)
     }
 
-    pub fn audience(&self) -> &str { &self.audience }
+    pub fn audience(&self) -> &str {
+        &self.audience
+    }
 
     /// Number of realms currently cached.
     pub async fn cached_realms(&self) -> usize {

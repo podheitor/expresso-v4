@@ -28,10 +28,10 @@ use crate::state::AppState;
 /// Live (mapped) calendar-collection property namespaces + local names.
 /// Order: (namespace-uri, local-name).
 const LIVE_PROPS: &[(&str, &str)] = &[
-    ("DAV:",                                  "displayname"),
-    ("urn:ietf:params:xml:ns:caldav",         "calendar-description"),
-    ("http://apple.com/ns/ical/",             "calendar-color"),
-    ("urn:ietf:params:xml:ns:caldav",         "calendar-timezone"),
+    ("DAV:", "displayname"),
+    ("urn:ietf:params:xml:ns:caldav", "calendar-description"),
+    ("http://apple.com/ns/ical/", "calendar-color"),
+    ("urn:ietf:params:xml:ns:caldav", "calendar-timezone"),
 ];
 
 fn is_live_prop(ns: &str, local: &str) -> bool {
@@ -40,14 +40,17 @@ fn is_live_prop(ns: &str, local: &str) -> bool {
 }
 
 pub async fn handle(
-    state:     AppState,
+    state: AppState,
     principal: CalDavPrincipal,
-    path:      &str,
-    body:      &str,
+    path: &str,
+    body: &str,
 ) -> Result<Response> {
     let calendar_id = match uri::classify(path) {
         Target::Home { user_id } if user_id == principal.user_id => None,
-        Target::Calendar { user_id, calendar_id } if user_id == principal.user_id => Some(calendar_id),
+        Target::Calendar {
+            user_id,
+            calendar_id,
+        } if user_id == principal.user_id => Some(calendar_id),
         Target::Home { .. } | Target::Calendar { .. } => return Ok(forbidden()),
         _ => return Ok(not_found()),
     };
@@ -65,21 +68,27 @@ pub async fn handle(
         }
 
         // Dead props → persist.
-        let has_dead = set_props.iter().any(|p| !is_live_prop(&p.namespace, &p.local))
-                    || remove_props.iter().any(|p| !is_live_prop(&p.namespace, &p.local));
+        let has_dead = set_props
+            .iter()
+            .any(|p| !is_live_prop(&p.namespace, &p.local))
+            || remove_props
+                .iter()
+                .any(|p| !is_live_prop(&p.namespace, &p.local));
         if has_dead {
             let pool = state.db_or_unavailable()?;
             let repo = DeadPropRepo::new(pool);
             for p in &set_props {
                 if !is_live_prop(&p.namespace, &p.local) {
-                    let _ = repo.upsert_calendar(
-                        principal.tenant_id, cid, &p.namespace, &p.local, &p.value,
-                    ).await;
+                    let _ = repo
+                        .upsert_calendar(principal.tenant_id, cid, &p.namespace, &p.local, &p.value)
+                        .await;
                 }
             }
             for p in &remove_props {
                 if !is_live_prop(&p.namespace, &p.local) {
-                    let _ = repo.remove_calendar(principal.tenant_id, cid, &p.namespace, &p.local).await;
+                    let _ = repo
+                        .remove_calendar(principal.tenant_id, cid, &p.namespace, &p.local)
+                        .await;
                 }
             }
         }
@@ -101,7 +110,7 @@ pub async fn handle(
         out.push_str(&format!(
             r#"<{local} xmlns="{ns}"/>"#,
             local = p.local,
-            ns    = escape(&p.namespace),
+            ns = escape(&p.namespace),
         ));
         out.push_str("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>");
     }
@@ -120,9 +129,9 @@ pub async fn handle(
 /// One parsed property element from a set/remove block.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct Prop {
-    pub namespace: String,  // resolved URI ("" if none)
-    pub local:     String,  // local name (as written)
-    pub value:     String,  // inner text content
+    pub namespace: String, // resolved URI ("" if none)
+    pub local: String,     // local name (as written)
+    pub value: String,     // inner text content
 }
 
 /// Parse `<D:propertyupdate>` body → (set, remove) with namespace resolution.
@@ -130,7 +139,7 @@ fn parse_set_remove(body: &str) -> (Vec<Prop>, Vec<Prop>) {
     let mut reader = NsReader::from_str(body);
     reader.config_mut().trim_text(true);
 
-    let mut set_props    = Vec::new();
+    let mut set_props = Vec::new();
     let mut remove_props = Vec::new();
     let mut mode: Option<&'static str> = None;
     let mut in_prop = false;
@@ -141,11 +150,11 @@ fn parse_set_remove(body: &str) -> (Vec<Prop>, Vec<Prop>) {
         match reader.read_resolved_event() {
             Ok((nsr, Event::Start(e))) => {
                 let local = local_name_str(&e);
-                let lc    = local.to_ascii_lowercase();
+                let lc = local.to_ascii_lowercase();
                 match lc.as_str() {
-                    "set"    => mode = Some("set"),
+                    "set" => mode = Some("set"),
                     "remove" => mode = Some("remove"),
-                    "prop"   => in_prop = true,
+                    "prop" => in_prop = true,
                     _ if in_prop && current.is_none() => {
                         let ns = ns_to_string(&nsr);
                         current = Some((ns, local, String::new()));
@@ -156,25 +165,43 @@ fn parse_set_remove(body: &str) -> (Vec<Prop>, Vec<Prop>) {
             Ok((nsr, Event::Empty(e))) => {
                 if in_prop {
                     let local = local_name_str(&e);
-                    let ns    = ns_to_string(&nsr);
-                    push_entry(&mut set_props, &mut remove_props, mode, ns, local, String::new());
+                    let ns = ns_to_string(&nsr);
+                    push_entry(
+                        &mut set_props,
+                        &mut remove_props,
+                        mode,
+                        ns,
+                        local,
+                        String::new(),
+                    );
                 }
             }
             Ok((_, Event::Text(t))) => {
                 if let Some((_, _, buf)) = current.as_mut() {
-                    if let Ok(s) = t.decode() { buf.push_str(&s); }
+                    if let Ok(s) = t.decode() {
+                        buf.push_str(&s);
+                    }
                 }
             }
             Ok((_, Event::End(e))) => {
                 let name = e.name();
-                let local = std::str::from_utf8(name.local_name().as_ref()).unwrap_or("").to_string();
-                let lc    = local.to_ascii_lowercase();
+                let local = std::str::from_utf8(name.local_name().as_ref())
+                    .unwrap_or("")
+                    .to_string();
+                let lc = local.to_ascii_lowercase();
                 match lc.as_str() {
                     "set" | "remove" => mode = None,
-                    "prop"           => in_prop = false,
+                    "prop" => in_prop = false,
                     _ => {
                         if let Some((ns, local, buf)) = current.take() {
-                            push_entry(&mut set_props, &mut remove_props, mode, ns, local, buf.trim().to_string());
+                            push_entry(
+                                &mut set_props,
+                                &mut remove_props,
+                                mode,
+                                ns,
+                                local,
+                                buf.trim().to_string(),
+                            );
                         }
                     }
                 }
@@ -188,23 +215,29 @@ fn parse_set_remove(body: &str) -> (Vec<Prop>, Vec<Prop>) {
 }
 
 fn push_entry(
-    set:    &mut Vec<Prop>,
+    set: &mut Vec<Prop>,
     remove: &mut Vec<Prop>,
-    mode:   Option<&'static str>,
-    ns:     String,
-    local:  String,
-    value:  String,
+    mode: Option<&'static str>,
+    ns: String,
+    local: String,
+    value: String,
 ) {
-    let p = Prop { namespace: ns, local, value };
+    let p = Prop {
+        namespace: ns,
+        local,
+        value,
+    };
     match mode {
-        Some("set")    => set.push(p),
+        Some("set") => set.push(p),
         Some("remove") => remove.push(p),
         _ => {}
     }
 }
 
 fn local_name_str<'a>(e: &quick_xml::events::BytesStart<'a>) -> String {
-    let raw = std::str::from_utf8(e.local_name().as_ref()).unwrap_or("").to_string();
+    let raw = std::str::from_utf8(e.local_name().as_ref())
+        .unwrap_or("")
+        .to_string();
     raw
 }
 
@@ -218,13 +251,17 @@ fn ns_to_string(nsr: &ResolveResult<'_>) -> String {
 fn build_patch(set_props: &[Prop]) -> UpdateCalendar {
     let mut patch = UpdateCalendar::default();
     for p in set_props {
-        if p.value.is_empty() { continue; }
-        if !is_live_prop(&p.namespace, &p.local) { continue; }
+        if p.value.is_empty() {
+            continue;
+        }
+        if !is_live_prop(&p.namespace, &p.local) {
+            continue;
+        }
         match p.local.to_ascii_lowercase().as_str() {
-            "displayname"          => patch.name        = Some(p.value.clone()),
+            "displayname" => patch.name = Some(p.value.clone()),
             "calendar-description" => patch.description = Some(p.value.clone()),
-            "calendar-color"       => patch.color       = Some(p.value.clone()),
-            "calendar-timezone"    => patch.timezone    = Some(p.value.clone()),
+            "calendar-color" => patch.color = Some(p.value.clone()),
+            "calendar-timezone" => patch.timezone = Some(p.value.clone()),
             _ => {}
         }
     }
@@ -236,15 +273,21 @@ fn patch_has_changes(p: &UpdateCalendar) -> bool {
 }
 
 fn forbidden() -> Response {
-    Response::builder().status(StatusCode::FORBIDDEN).body(Body::from("forbidden")).unwrap()
+    Response::builder()
+        .status(StatusCode::FORBIDDEN)
+        .body(Body::from("forbidden"))
+        .unwrap()
 }
 fn not_found() -> Response {
-    Response::builder().status(StatusCode::NOT_FOUND).body(Body::from("not found")).unwrap()
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Body::from("not found"))
+        .unwrap()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{build_patch, parse_set_remove, patch_has_changes, is_live_prop};
+    use super::{build_patch, is_live_prop, parse_set_remove, patch_has_changes};
 
     #[test]
     fn parses_set_with_values() {
@@ -306,7 +349,10 @@ mod tests {
             </D:prop></D:set>
           </D:propertyupdate>"#;
         let (set, _) = parse_set_remove(body);
-        let dead: Vec<&super::Prop> = set.iter().filter(|p| !is_live_prop(&p.namespace, &p.local)).collect();
+        let dead: Vec<&super::Prop> = set
+            .iter()
+            .filter(|p| !is_live_prop(&p.namespace, &p.local))
+            .collect();
         assert_eq!(dead.len(), 1);
         assert_eq!(dead[0].namespace, "http://example.com/custom");
         assert_eq!(dead[0].local, "my-prop");
@@ -355,60 +401,108 @@ mod tests {
     #[test]
     fn patch_has_changes_true_when_name_set() {
         use super::UpdateCalendar;
-        let p = UpdateCalendar { name: Some("New Name".into()), description: None, color: None, timezone: None, is_default: None };
+        let p = UpdateCalendar {
+            name: Some("New Name".into()),
+            description: None,
+            color: None,
+            timezone: None,
+            is_default: None,
+        };
         assert!(patch_has_changes(&p));
     }
 
     #[test]
     fn patch_has_changes_true_when_timezone_set() {
         use super::UpdateCalendar;
-        let p = UpdateCalendar { name: None, description: None, color: None, timezone: Some("America/Sao_Paulo".into()), is_default: None };
+        let p = UpdateCalendar {
+            name: None,
+            description: None,
+            color: None,
+            timezone: Some("America/Sao_Paulo".into()),
+            is_default: None,
+        };
         assert!(patch_has_changes(&p));
     }
 
     #[test]
     fn patch_has_changes_true_when_color_set() {
         use super::UpdateCalendar;
-        let p = UpdateCalendar { name: None, description: None, color: Some("#ff0000".into()), timezone: None, is_default: None };
+        let p = UpdateCalendar {
+            name: None,
+            description: None,
+            color: Some("#ff0000".into()),
+            timezone: None,
+            is_default: None,
+        };
         assert!(patch_has_changes(&p));
     }
 
     #[test]
     fn patch_all_none_has_no_changes() {
         use super::UpdateCalendar;
-        let p = UpdateCalendar { name: None, description: None, color: None, timezone: None, is_default: None };
+        let p = UpdateCalendar {
+            name: None,
+            description: None,
+            color: None,
+            timezone: None,
+            is_default: None,
+        };
         assert!(!patch_has_changes(&p));
     }
 
     #[test]
     fn patch_with_timezone_only_has_changes() {
         use super::UpdateCalendar;
-        let p = UpdateCalendar { name: None, description: None, color: None, timezone: Some("America/Sao_Paulo".into()), is_default: None };
+        let p = UpdateCalendar {
+            name: None,
+            description: None,
+            color: None,
+            timezone: Some("America/Sao_Paulo".into()),
+            is_default: None,
+        };
         assert!(patch_has_changes(&p));
     }
 
     #[test]
     fn patch_has_changes_true_when_description_set() {
         use super::UpdateCalendar;
-        let p = UpdateCalendar { name: None, description: Some("desc".into()), color: None, timezone: None, is_default: None };
+        let p = UpdateCalendar {
+            name: None,
+            description: Some("desc".into()),
+            color: None,
+            timezone: None,
+            is_default: None,
+        };
         assert!(patch_has_changes(&p));
     }
 
     #[test]
     fn patch_has_changes_false_when_is_default_none() {
         use super::UpdateCalendar;
-        let p = UpdateCalendar { name: None, description: None, color: None, timezone: None, is_default: None };
+        let p = UpdateCalendar {
+            name: None,
+            description: None,
+            color: None,
+            timezone: None,
+            is_default: None,
+        };
         assert!(!patch_has_changes(&p));
     }
 
     #[test]
     fn is_live_prop_caldav_calendar_description() {
-        assert!(is_live_prop("urn:ietf:params:xml:ns:caldav", "calendar-description"));
+        assert!(is_live_prop(
+            "urn:ietf:params:xml:ns:caldav",
+            "calendar-description"
+        ));
     }
 
     #[test]
     fn is_live_prop_caldav_calendar_timezone() {
-        assert!(is_live_prop("urn:ietf:params:xml:ns:caldav", "calendar-timezone"));
+        assert!(is_live_prop(
+            "urn:ietf:params:xml:ns:caldav",
+            "calendar-timezone"
+        ));
     }
 
     #[test]
@@ -428,7 +522,10 @@ mod tests {
 
     #[test]
     fn is_live_prop_caldav_calendar_description_is_live() {
-        assert!(is_live_prop("urn:ietf:params:xml:ns:caldav", "calendar-description"));
+        assert!(is_live_prop(
+            "urn:ietf:params:xml:ns:caldav",
+            "calendar-description"
+        ));
     }
 
     #[test]

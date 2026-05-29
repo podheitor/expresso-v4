@@ -1,9 +1,12 @@
 //! PostgreSQL connection pool + tenant RLS context helper
 
-use sqlx::{PgPool, PgConnection, Postgres, Transaction};
+use crate::{
+    config::DatabaseConfig,
+    error::{CoreError, Result},
+};
+use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use std::time::Duration;
 use uuid::Uuid;
-use crate::{config::DatabaseConfig, error::{CoreError, Result}};
 
 pub type DbPool = PgPool;
 
@@ -56,8 +59,8 @@ pub async fn begin_tenant_tx(pool: &DbPool, tenant_id: Uuid) -> Result<Transacti
 /// from migration source.
 #[derive(Debug, Clone)]
 pub struct RlsPosture {
-    pub role:           String,
-    pub bypassrls:      bool,
+    pub role: String,
+    pub bypassrls: bool,
     pub tables_missing: Vec<String>,
     pub tables_unforced: Vec<String>,
 }
@@ -66,9 +69,7 @@ impl RlsPosture {
     /// True when every checked table has RLS enabled + forced AND the
     /// current role does not bypass RLS (i.e. policies actually apply).
     pub fn is_strict(&self) -> bool {
-        !self.bypassrls
-            && self.tables_missing.is_empty()
-            && self.tables_unforced.is_empty()
+        !self.bypassrls && self.tables_missing.is_empty() && self.tables_unforced.is_empty()
     }
 }
 
@@ -77,35 +78,49 @@ impl RlsPosture {
 /// any deviation; never fails the caller.
 pub async fn report_rls_posture(pool: &DbPool, tables: &[&str]) -> RlsPosture {
     let role: String = sqlx::query_scalar("SELECT current_user::text")
-        .fetch_one(pool).await.unwrap_or_else(|_| "unknown".into());
+        .fetch_one(pool)
+        .await
+        .unwrap_or_else(|_| "unknown".into());
     let bypassrls: bool = sqlx::query_scalar(
-        "SELECT COALESCE((SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user), false)"
-    ).fetch_one(pool).await.unwrap_or(false);
+        "SELECT COALESCE((SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user), false)",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
 
     // relrowsecurity = ENABLE RLS, relforcerowsecurity = FORCE RLS.
     let rows: Vec<(String, bool, bool)> = sqlx::query_as(
         "SELECT c.relname::text, c.relrowsecurity, c.relforcerowsecurity \
          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
-         WHERE n.nspname = 'public' AND c.relname = ANY($1)"
+         WHERE n.nspname = 'public' AND c.relname = ANY($1)",
     )
     .bind(tables)
-    .fetch_all(pool).await.unwrap_or_default();
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
 
-    let present: std::collections::HashMap<&str, (bool, bool)> = rows.iter()
-        .map(|(n, e, f)| (n.as_str(), (*e, *f))).collect();
+    let present: std::collections::HashMap<&str, (bool, bool)> = rows
+        .iter()
+        .map(|(n, e, f)| (n.as_str(), (*e, *f)))
+        .collect();
 
-    let mut tables_missing  = Vec::new();
+    let mut tables_missing = Vec::new();
     let mut tables_unforced = Vec::new();
     for t in tables {
         match present.get(t) {
-            None                  => tables_missing.push((*t).to_string()),
-            Some((false, _))      => tables_unforced.push(format!("{t} (RLS disabled)")),
-            Some((true,  false))  => tables_unforced.push(format!("{t} (not FORCEd)")),
-            Some((true,  true))   => {} // OK
+            None => tables_missing.push((*t).to_string()),
+            Some((false, _)) => tables_unforced.push(format!("{t} (RLS disabled)")),
+            Some((true, false)) => tables_unforced.push(format!("{t} (not FORCEd)")),
+            Some((true, true)) => {} // OK
         }
     }
 
-    let posture = RlsPosture { role, bypassrls, tables_missing, tables_unforced };
+    let posture = RlsPosture {
+        role,
+        bypassrls,
+        tables_missing,
+        tables_unforced,
+    };
     if posture.is_strict() {
         tracing::info!(role = %posture.role, tables = tables.len(), "RLS posture: strict");
     } else {

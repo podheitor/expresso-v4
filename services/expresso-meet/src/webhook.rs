@@ -18,15 +18,17 @@ const MAX_ATTEMPTS: u32 = 3;
 /// Shared webhook configuration. `None` when `MEET__WEBHOOK_URL` is unset.
 #[derive(Clone, Debug)]
 pub struct WebhookConfig {
-    pub url:    Arc<str>,
+    pub url: Arc<str>,
     pub client: reqwest::Client,
 }
 
 impl WebhookConfig {
     pub fn from_env() -> Option<Self> {
-        let url = std::env::var("MEET__WEBHOOK_URL").ok().filter(|v| !v.is_empty())?;
+        let url = std::env::var("MEET__WEBHOOK_URL")
+            .ok()
+            .filter(|v| !v.is_empty())?;
         Some(Self {
-            url:    Arc::from(url.as_str()),
+            url: Arc::from(url.as_str()),
             client: reqwest::Client::new(),
         })
     }
@@ -34,19 +36,24 @@ impl WebhookConfig {
 
 #[derive(Serialize)]
 struct Payload<'a> {
-    event:     &'a str,
+    event: &'a str,
     tenant_id: Uuid,
-    meeting:   Value,
+    meeting: Value,
 }
 
 /// Dispatch a webhook event in the background with exponential backoff retry.
 /// Does nothing when `cfg` is `None`.
 pub fn dispatch(cfg: Option<&WebhookConfig>, event: &'static str, tenant_id: Uuid, meeting: Value) {
     let Some(cfg) = cfg else { return };
-    let url    = cfg.url.clone();
+    let url = cfg.url.clone();
     let client = cfg.client.clone();
     tokio::spawn(async move {
-        let body = serde_json::to_value(Payload { event, tenant_id, meeting }).unwrap_or_default();
+        let body = serde_json::to_value(Payload {
+            event,
+            tenant_id,
+            meeting,
+        })
+        .unwrap_or_default();
         let mut delay = Duration::from_secs(1);
         for attempt in 1..=MAX_ATTEMPTS {
             match client.post(url.as_ref()).json(&body).send().await {
@@ -68,7 +75,10 @@ pub fn dispatch(cfg: Option<&WebhookConfig>, event: &'static str, tenant_id: Uui
                 delay *= 2;
             }
         }
-        warn!(event, "webhook delivery failed after {} attempts", MAX_ATTEMPTS);
+        warn!(
+            event,
+            "webhook delivery failed after {} attempts", MAX_ATTEMPTS
+        );
     });
 }
 
@@ -101,7 +111,12 @@ mod tests {
     #[test]
     fn dispatch_does_nothing_when_cfg_is_none() {
         // Must not panic; simply returns early.
-        dispatch(None, "meeting.started", Uuid::new_v4(), serde_json::Value::Null);
+        dispatch(
+            None,
+            "meeting.started",
+            Uuid::new_v4(),
+            serde_json::Value::Null,
+        );
     }
 
     #[test]
@@ -129,7 +144,12 @@ mod tests {
     #[test]
     fn dispatch_none_cfg_with_various_events_does_not_panic() {
         let tenant = Uuid::new_v4();
-        dispatch(None, "meeting.ended", tenant, serde_json::json!({"id": "abc"}));
+        dispatch(
+            None,
+            "meeting.ended",
+            tenant,
+            serde_json::json!({"id": "abc"}),
+        );
         dispatch(None, "recording.started", tenant, serde_json::Value::Null);
     }
 

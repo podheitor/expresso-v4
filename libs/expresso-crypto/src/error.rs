@@ -47,7 +47,10 @@ mod tests {
         fn returns_error() -> Result<(), ExpresscryptoError> {
             Err(anyhow::anyhow!("test").into())
         }
-        assert!(matches!(returns_error(), Err(ExpresscryptoError::Internal(_))));
+        assert!(matches!(
+            returns_error(),
+            Err(ExpresscryptoError::Internal(_))
+        ));
     }
 
     #[test]
@@ -152,8 +155,14 @@ mod tests {
 
     #[test]
     fn two_different_internal_errors_produce_different_debug_output() {
-        let a = format!("{:?}", ExpresscryptoError::Internal(anyhow::anyhow!("err_alpha")));
-        let b = format!("{:?}", ExpresscryptoError::Internal(anyhow::anyhow!("err_beta")));
+        let a = format!(
+            "{:?}",
+            ExpresscryptoError::Internal(anyhow::anyhow!("err_alpha"))
+        );
+        let b = format!(
+            "{:?}",
+            ExpresscryptoError::Internal(anyhow::anyhow!("err_beta"))
+        );
         assert_ne!(a, b);
     }
 

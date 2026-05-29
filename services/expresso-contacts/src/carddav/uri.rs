@@ -12,9 +12,18 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub enum Target {
-    Home { user_id: Uuid },
-    Addressbook { user_id: Uuid, addressbook_id: Uuid },
-    Contact { user_id: Uuid, addressbook_id: Uuid, uid: String },
+    Home {
+        user_id: Uuid,
+    },
+    Addressbook {
+        user_id: Uuid,
+        addressbook_id: Uuid,
+    },
+    Contact {
+        user_id: Uuid,
+        addressbook_id: Uuid,
+        uid: String,
+    },
     Unknown,
 }
 
@@ -47,7 +56,10 @@ pub fn classify(path: &str) -> Target {
             let u = parse_uuid(segments[0]);
             let c = parse_uuid(segments[1]);
             match (u, c) {
-                (Some(u), Some(c)) => Target::Addressbook { user_id: u, addressbook_id: c },
+                (Some(u), Some(c)) => Target::Addressbook {
+                    user_id: u,
+                    addressbook_id: c,
+                },
                 _ => Target::Unknown,
             }
         }
@@ -55,12 +67,13 @@ pub fn classify(path: &str) -> Target {
             let u = parse_uuid(segments[0]);
             let c = parse_uuid(segments[1]);
             let last = segments[2];
-            let uid = last
-                .strip_suffix(".vcf")
-                .map(|s| percent_decode(s));
+            let uid = last.strip_suffix(".vcf").map(|s| percent_decode(s));
             match (u, c, uid) {
-                (Some(u), Some(c), Some(uid)) =>
-                    Target::Contact { user_id: u, addressbook_id: c, uid },
+                (Some(u), Some(c), Some(uid)) => Target::Contact {
+                    user_id: u,
+                    addressbook_id: c,
+                    uid,
+                },
                 _ => Target::Unknown,
             }
         }
@@ -116,7 +129,9 @@ mod tests {
         let u = Uuid::new_v4();
         let c = Uuid::new_v4();
         let t = classify(&format!("/carddav/{u}/{c}/"));
-        assert!(matches!(t, Target::Addressbook { user_id, addressbook_id } if user_id == u && addressbook_id == c));
+        assert!(
+            matches!(t, Target::Addressbook { user_id, addressbook_id } if user_id == u && addressbook_id == c)
+        );
     }
 
     #[test]
@@ -125,7 +140,11 @@ mod tests {
         let c = Uuid::new_v4();
         let t = classify(&format!("/carddav/{u}/{c}/abc-123%40ex.vcf"));
         match t {
-            Target::Contact { user_id, addressbook_id, uid } => {
+            Target::Contact {
+                user_id,
+                addressbook_id,
+                uid,
+            } => {
                 assert_eq!(user_id, u);
                 assert_eq!(addressbook_id, c);
                 assert_eq!(uid, "abc-123@ex");

@@ -13,26 +13,36 @@ use crate::error::{CalendarError, Result};
 pub struct AppState(Arc<Inner>);
 
 struct Inner {
-    db:           Option<DbPool>,
-    kc_basic:     Option<KcBasicAuthenticator>,
-    events:       EventBus,
-    search_url:   String,
+    db: Option<DbPool>,
+    kc_basic: Option<KcBasicAuthenticator>,
+    events: EventBus,
+    search_url: String,
     search_token: String,
 }
 
 impl AppState {
     pub fn new(
-        db:           Option<DbPool>,
-        kc_basic:     Option<KcBasicAuthenticator>,
-        events:       EventBus,
-        search_url:   String,
+        db: Option<DbPool>,
+        kc_basic: Option<KcBasicAuthenticator>,
+        events: EventBus,
+        search_url: String,
         search_token: String,
     ) -> Self {
-        Self(Arc::new(Inner { db, kc_basic, events, search_url, search_token }))
+        Self(Arc::new(Inner {
+            db,
+            kc_basic,
+            events,
+            search_url,
+            search_token,
+        }))
     }
 
-    pub fn search_url(&self)   -> &str { &self.0.search_url }
-    pub fn search_token(&self) -> &str { &self.0.search_token }
+    pub fn search_url(&self) -> &str {
+        &self.0.search_url
+    }
+    pub fn search_token(&self) -> &str {
+        &self.0.search_token
+    }
 
     pub fn events(&self) -> &EventBus {
         &self.0.events

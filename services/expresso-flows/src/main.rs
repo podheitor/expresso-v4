@@ -24,6 +24,7 @@
 
 use std::{env, net::SocketAddr, sync::Arc};
 
+use axum::async_trait;
 use axum::{
     extract::{FromRequestParts, Path, Query, Request, State},
     http::{header, request::Parts, HeaderMap, HeaderValue, StatusCode},
@@ -32,22 +33,21 @@ use axum::{
     routing::{delete, get, patch, post},
     Json, Router,
 };
-use axum::async_trait;
-use expresso_auth_client::{AuthContext, Authenticated, AuthRejection, OidcConfig, OidcValidator};
+use expresso_auth_client::{AuthContext, AuthRejection, Authenticated, OidcConfig, OidcValidator};
 use expresso_core::{begin_tenant_tx, create_db_pool, init_tracing, run_migrations, AppConfig};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::info;
 use uuid::Uuid;
 
-const SERVICE:      &str = "expresso-flows";
-const DEFAULT_PORT: u16  = 8005;
+const SERVICE: &str = "expresso-flows";
+const DEFAULT_PORT: u16 = 8005;
 
 // ─── App state ────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 struct AppState {
-    db:        expresso_core::DbPool,
+    db: expresso_core::DbPool,
     validator: Option<Arc<OidcValidator>>,
 }
 
@@ -55,64 +55,64 @@ struct AppState {
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 struct FlowRule {
-    pub id:               Uuid,
-    pub user_id:          Uuid,
-    pub tenant_id:        Uuid,
-    pub name:             String,
-    pub enabled:          bool,
-    pub priority:         i32,
-    pub conditions:       serde_json::Value,
-    pub condition_mode:   String,
-    pub actions:          serde_json::Value,
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub tenant_id: Uuid,
+    pub name: String,
+    pub enabled: bool,
+    pub priority: i32,
+    pub conditions: serde_json::Value,
+    pub condition_mode: String,
+    pub actions: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
 struct CreateRuleRequest {
-    pub name:             Option<String>,
-    pub enabled:          Option<bool>,
-    pub priority:         Option<i32>,
-    pub conditions:       serde_json::Value,
+    pub name: Option<String>,
+    pub enabled: Option<bool>,
+    pub priority: Option<i32>,
+    pub conditions: serde_json::Value,
     /// "and" (default) or "or"
-    pub condition_mode:   Option<String>,
-    pub actions:          serde_json::Value,
+    pub condition_mode: Option<String>,
+    pub actions: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
 struct UpdateRuleRequest {
-    pub name:             Option<String>,
-    pub enabled:          Option<bool>,
-    pub priority:         Option<i32>,
-    pub conditions:       Option<serde_json::Value>,
-    pub condition_mode:   Option<String>,
-    pub actions:          Option<serde_json::Value>,
+    pub name: Option<String>,
+    pub enabled: Option<bool>,
+    pub priority: Option<i32>,
+    pub conditions: Option<serde_json::Value>,
+    pub condition_mode: Option<String>,
+    pub actions: Option<serde_json::Value>,
 }
 
 /// Query params for GET /api/v1/flows/rules
 #[derive(Debug, Deserialize)]
 struct ListRulesParams {
     /// Filter by enabled status. Omit to return all rules.
-    pub enabled:      Option<bool>,
+    pub enabled: Option<bool>,
     /// ILIKE filter on rule name. E.g. `?name=invoice` matches "Invoice alerts".
-    pub name:         Option<String>,
+    pub name: Option<String>,
     /// Return only rules with priority >= this value.
-    pub priority_min:    Option<i32>,
+    pub priority_min: Option<i32>,
     /// Return only rules with priority <= this value.
-    pub priority_max:    Option<i32>,
+    pub priority_max: Option<i32>,
     /// Filter by condition_mode: "and" or "or". Omit to return all.
-    pub condition_mode:  Option<String>,
+    pub condition_mode: Option<String>,
     /// Return only rules that contain at least one action of this type.
     /// E.g. `?action_type=move_to_folder`, `?action_type=webhook`.
-    pub action_type:     Option<String>,
+    pub action_type: Option<String>,
     /// Maximum number of rules to return (default 100, max 500).
-    pub limit:           Option<i64>,
+    pub limit: Option<i64>,
     /// Zero-indexed page for offset pagination (default 0).
-    pub page:            Option<i64>,
+    pub page: Option<i64>,
 }
 
 /// One entry in a bulk reorder request.
 #[derive(Debug, Deserialize)]
 struct PriorityEntry {
-    pub id:       Uuid,
+    pub id: Uuid,
     pub priority: i32,
 }
 
@@ -134,21 +134,21 @@ struct BulkDeleteResult {
 /// Payload from expresso-mail: metadata about the delivered message.
 #[derive(Debug, Deserialize)]
 struct ProcessRequest {
-    pub user_id:         Uuid,
-    pub tenant_id:       Uuid,
-    pub message_id:      Uuid,
-    pub folder:          String,
-    pub from_addr:       Option<String>,
-    pub to_addrs:        Option<Vec<String>>,
-    pub subject:         Option<String>,
+    pub user_id: Uuid,
+    pub tenant_id: Uuid,
+    pub message_id: Uuid,
+    pub folder: String,
+    pub from_addr: Option<String>,
+    pub to_addrs: Option<Vec<String>>,
+    pub subject: Option<String>,
     pub has_attachments: Option<bool>,
-    pub size_bytes:      Option<i32>,
+    pub size_bytes: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
 struct ProcessResponse {
     pub matched_rules: usize,
-    pub actions:       Vec<serde_json::Value>,
+    pub actions: Vec<serde_json::Value>,
 }
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
@@ -164,11 +164,7 @@ impl<S: Send + Sync> FromRequestParts<S> for AuthCtx {
     }
 }
 
-async fn inject_validator(
-    State(st): State<AppState>,
-    mut req:   Request,
-    next:      Next,
-) -> Response {
+async fn inject_validator(State(st): State<AppState>, mut req: Request, next: Next) -> Response {
     if let Some(v) = &st.validator {
         req.extensions_mut().insert(v.clone());
     }
@@ -178,33 +174,44 @@ async fn inject_validator(
 // ─── CRUD handlers ────────────────────────────────────────────────────────────
 
 async fn list_rules(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<ListRulesParams>,
-    req_headers:   HeaderMap,
+    req_headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    let limit  = params.limit.unwrap_or(100).min(500);
+    let limit = params.limit.unwrap_or(100).min(500);
     let offset = params.page.unwrap_or(0) * limit;
 
     let enabled_filter = match params.enabled {
-        Some(true)  => "AND enabled = TRUE",
+        Some(true) => "AND enabled = TRUE",
         Some(false) => "AND enabled = FALSE",
-        None        => "",
+        None => "",
     };
-    let name_filter = params.name.map(|n| {
-        let esc = n.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-        format!("AND name ILIKE '%{esc}%'")
-    }).unwrap_or_default();
-    let priority_min_filter = params.priority_min
+    let name_filter = params
+        .name
+        .map(|n| {
+            let esc = n
+                .replace('\'', "''")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            format!("AND name ILIKE '%{esc}%'")
+        })
+        .unwrap_or_default();
+    let priority_min_filter = params
+        .priority_min
         .map(|v| format!("AND priority >= {v}"))
         .unwrap_or_default();
-    let priority_max_filter = params.priority_max
+    let priority_max_filter = params
+        .priority_max
         .map(|v| format!("AND priority <= {v}"))
         .unwrap_or_default();
-    let condition_mode_filter = params.condition_mode.map(|m| {
-        let esc = m.replace('\'', "''");
-        format!("AND condition_mode = '{esc}'")
-    }).unwrap_or_default();
+    let condition_mode_filter = params
+        .condition_mode
+        .map(|m| {
+            let esc = m.replace('\'', "''");
+            format!("AND condition_mode = '{esc}'")
+        })
+        .unwrap_or_default();
     let action_type_filter = params.action_type.map(|t| {
         let esc = t.replace('\'', "''");
         format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements(actions) a WHERE a->>'type' = '{esc}')")
@@ -231,7 +238,10 @@ async fn list_rules(
     if let Some(ts) = max_updated {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) = time::OffsetDateTime::parse(
+                    ims_str,
+                    &time::format_description::well_known::Rfc2822,
+                ) {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -245,7 +255,12 @@ async fn list_rules(
         .bind(ctx.user_id)
         .fetch_all(&st.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     let count_sql = format!(
         "SELECT COUNT(*) FROM flow_rules \
@@ -261,23 +276,34 @@ async fn list_rules(
 
     let mut resp = (
         StatusCode::OK,
-        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        [(
+            header::HeaderName::from_static("x-total-count"),
+            total.to_string(),
+        )],
         Json(rows),
-    ).into_response();
+    )
+        .into_response();
     if let Some(ts) = max_updated {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
 
 async fn create_rule(
-    State(st):   State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Json(req):   Json<CreateRuleRequest>,
+    Json(req): Json<CreateRuleRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let rule: FlowRule = sqlx::query_as(
         "INSERT INTO flow_rules (user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions) \
@@ -296,8 +322,12 @@ async fn create_rule(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    tx.commit().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let location = format!("/api/v1/flows/rules/{}", rule.id);
     Ok((
@@ -308,13 +338,17 @@ async fn create_rule(
 }
 
 async fn update_rule(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
-    Json(req):    Json<UpdateRuleRequest>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateRuleRequest>,
 ) -> Result<Json<FlowRule>, (StatusCode, Json<serde_json::Value>)> {
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let rule: Option<FlowRule> = sqlx::query_as(
         "UPDATE flow_rules \
@@ -341,34 +375,41 @@ async fn update_rule(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    tx.commit().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     match rule {
         Some(r) => Ok(Json(r)),
-        None    => Err((StatusCode::NOT_FOUND, Json(json!({"error": "rule not found"})))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "rule not found"})),
+        )),
     }
 }
 
 /// GET /api/v1/flows/rules/:id — ETag + Last-Modified; responds 304 if If-None-Match or If-Modified-Since matches.
 async fn get_rule(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
-    req_headers:  HeaderMap,
+    Path(id): Path<Uuid>,
+    req_headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     #[derive(sqlx::FromRow)]
     struct RuleRow {
-        id:             Uuid,
-        user_id:        Uuid,
-        tenant_id:      Uuid,
-        name:           String,
-        enabled:        bool,
-        priority:       i32,
-        conditions:     serde_json::Value,
+        id: Uuid,
+        user_id: Uuid,
+        tenant_id: Uuid,
+        name: String,
+        enabled: bool,
+        priority: i32,
+        conditions: serde_json::Value,
         condition_mode: String,
-        actions:        serde_json::Value,
-        updated_at:     time::OffsetDateTime,
+        actions: serde_json::Value,
+        updated_at: time::OffsetDateTime,
     }
 
     let row: Option<RuleRow> = sqlx::query_as(
@@ -382,12 +423,23 @@ async fn get_rule(
     .bind(ctx.user_id)
     .fetch_optional(&st.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let r = row.ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "rule not found"}))))?;
+    let r = row.ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "rule not found"})),
+        )
+    })?;
 
     let etag = format!("\"{}-{}\"", r.updated_at.unix_timestamp(), r.id);
-    let last_modified = r.updated_at
+    let last_modified = r
+        .updated_at
         .format(&time::format_description::well_known::Rfc2822)
         .unwrap_or_default();
 
@@ -398,7 +450,9 @@ async fn get_rule(
     }
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if r.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -407,34 +461,36 @@ async fn get_rule(
     }
 
     let rule = FlowRule {
-        id:             r.id,
-        user_id:        r.user_id,
-        tenant_id:      r.tenant_id,
-        name:           r.name,
-        enabled:        r.enabled,
-        priority:       r.priority,
-        conditions:     r.conditions,
+        id: r.id,
+        user_id: r.user_id,
+        tenant_id: r.tenant_id,
+        name: r.name,
+        enabled: r.enabled,
+        priority: r.priority,
+        conditions: r.conditions,
         condition_mode: r.condition_mode,
-        actions:        r.actions,
+        actions: r.actions,
     };
 
     Ok((
         StatusCode::OK,
-        [
-            (header::ETAG,          etag),
-            (header::LAST_MODIFIED, last_modified),
-        ],
+        [(header::ETAG, etag), (header::LAST_MODIFIED, last_modified)],
         Json(rule),
-    ).into_response())
+    )
+        .into_response())
 }
 
 async fn delete_rule(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     sqlx::query("DELETE FROM flow_rules WHERE id = $1 AND tenant_id = $2 AND user_id = $3")
         .bind(id)
@@ -442,10 +498,19 @@ async fn delete_rule(
         .bind(ctx.user_id)
         .execute(&mut *tx)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
-    tx.commit().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -453,12 +518,16 @@ async fn delete_rule(
 /// PATCH /api/v1/flows/rules/:id/toggle — flip enabled ↔ disabled atomically.
 /// Returns the updated rule. 404 if not found.
 async fn toggle_rule(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<FlowRule>, (StatusCode, Json<serde_json::Value>)> {
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let row: Option<FlowRule> = sqlx::query_as(
         "UPDATE flow_rules SET enabled = NOT enabled \
@@ -472,12 +541,19 @@ async fn toggle_rule(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    tx.commit().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     match row {
         Some(r) => Ok(Json(r)),
-        None    => Err((StatusCode::NOT_FOUND, Json(json!({"error": "rule not found"})))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "rule not found"})),
+        )),
     }
 }
 
@@ -487,16 +563,20 @@ async fn toggle_rule(
 /// Body: `{"ids": ["<uuid>", …]}`
 /// Only deletes rules owned by the authenticated user+tenant. Returns count deleted.
 async fn bulk_delete_rules(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Json(req):    Json<BulkDeleteRulesRequest>,
+    Json(req): Json<BulkDeleteRulesRequest>,
 ) -> Result<Json<BulkDeleteResult>, (StatusCode, Json<serde_json::Value>)> {
     if req.ids.is_empty() {
         return Ok(Json(BulkDeleteResult { deleted: 0 }));
     }
 
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let res = sqlx::query(
         "DELETE FROM flow_rules \
@@ -507,12 +587,23 @@ async fn bulk_delete_rules(
     .bind(ctx.user_id)
     .execute(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    tx.commit().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    Ok(Json(BulkDeleteResult { deleted: res.rows_affected() }))
+    Ok(Json(BulkDeleteResult {
+        deleted: res.rows_affected(),
+    }))
 }
 
 // ─── Reorder handler ──────────────────────────────────────────────────────────
@@ -521,7 +612,7 @@ async fn bulk_delete_rules(
 /// Body: `[{"id": "<uuid>", "priority": N}, …]`
 /// Only updates rules owned by the authenticated user+tenant.
 async fn reorder_rules(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
     Json(entries): Json<Vec<PriorityEntry>>,
 ) -> Result<Json<ReorderResult>, (StatusCode, Json<serde_json::Value>)> {
@@ -529,8 +620,12 @@ async fn reorder_rules(
         return Ok(Json(ReorderResult { updated: 0 }));
     }
 
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let mut updated = 0usize;
     for entry in &entries {
@@ -545,12 +640,21 @@ async fn reorder_rules(
         .bind(ctx.user_id)
         .execute(&mut *tx)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
         updated += rows.rows_affected() as usize;
     }
 
-    tx.commit().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(ReorderResult { updated }))
 }
@@ -560,8 +664,8 @@ async fn reorder_rules(
 /// POST /internal/process — evaluate rules for a freshly delivered message.
 /// Returns the list of actions from all matching rules (caller executes them).
 async fn internal_process(
-    State(st):   State<AppState>,
-    Json(req):   Json<ProcessRequest>,
+    State(st): State<AppState>,
+    Json(req): Json<ProcessRequest>,
 ) -> Json<ProcessResponse> {
     let rules: Vec<FlowRule> = match sqlx::query_as(
         "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions \
@@ -589,20 +693,27 @@ async fn internal_process(
             if let Some(arr) = rule.actions.as_array() {
                 for a in arr {
                     let mut entry = a.clone();
-                    entry["rule_id"]      = json!(rule.id);
-                    entry["message_id"]   = json!(req.message_id);
+                    entry["rule_id"] = json!(rule.id);
+                    entry["message_id"] = json!(req.message_id);
                     actions.push(entry);
                 }
             }
         }
     }
 
-    Json(ProcessResponse { matched_rules: matched, actions })
+    Json(ProcessResponse {
+        matched_rules: matched,
+        actions,
+    })
 }
 
 /// Evaluate all conditions for a rule.
 /// `condition_mode`: "or" — any single condition suffices; "and" (default) — all must match.
-fn rule_matches(conditions: &serde_json::Value, condition_mode: &str, req: &ProcessRequest) -> bool {
+fn rule_matches(
+    conditions: &serde_json::Value,
+    condition_mode: &str,
+    req: &ProcessRequest,
+) -> bool {
     let conds = match conditions.as_array() {
         Some(a) if !a.is_empty() => a,
         _ => return true, // no conditions = always match
@@ -612,13 +723,18 @@ fn rule_matches(conditions: &serde_json::Value, condition_mode: &str, req: &Proc
 
     for cond in conds {
         let field = cond.get("field").and_then(|v| v.as_str()).unwrap_or("");
-        let op    = cond.get("op").and_then(|v| v.as_str()).unwrap_or("contains");
-        let val   = cond.get("value").and_then(|v| v.as_str()).unwrap_or("");
+        let op = cond
+            .get("op")
+            .and_then(|v| v.as_str())
+            .unwrap_or("contains");
+        let val = cond.get("value").and_then(|v| v.as_str()).unwrap_or("");
 
         let cond_result = eval_condition(field, op, val, req);
 
         if is_or {
-            if cond_result { return true; }
+            if cond_result {
+                return true;
+            }
         } else if !cond_result {
             return false;
         }
@@ -630,10 +746,13 @@ fn rule_matches(conditions: &serde_json::Value, condition_mode: &str, req: &Proc
 
 fn eval_condition(field: &str, op: &str, val: &str, req: &ProcessRequest) -> bool {
     match field {
-        "from"    => req.from_addr.as_deref().map_or(false, |h| str_op(h, op, val)),
+        "from" => req
+            .from_addr
+            .as_deref()
+            .map_or(false, |h| str_op(h, op, val)),
         "subject" => req.subject.as_deref().map_or(false, |h| str_op(h, op, val)),
-        "folder"  => str_op(&req.folder, op, val),
-        "to"      => {
+        "folder" => str_op(&req.folder, op, val),
+        "to" => {
             let addrs = req.to_addrs.as_deref().unwrap_or(&[]);
             addrs.iter().any(|a| str_op(a, op, val))
         }
@@ -643,13 +762,13 @@ fn eval_condition(field: &str, op: &str, val: &str, req: &ProcessRequest) -> boo
         }
         "size" => {
             let threshold = val.trim().parse::<i32>().unwrap_or(0);
-            let actual    = req.size_bytes.unwrap_or(0);
+            let actual = req.size_bytes.unwrap_or(0);
             match op {
-                "gt"  | "greater_than"          => actual > threshold,
-                "lt"  | "less_than"             => actual < threshold,
+                "gt" | "greater_than" => actual > threshold,
+                "lt" | "less_than" => actual < threshold,
                 "gte" | "greater_than_or_equal" => actual >= threshold,
-                "lte" | "less_than_or_equal"    => actual <= threshold,
-                _                               => actual == threshold,
+                "lte" | "less_than_or_equal" => actual <= threshold,
+                _ => actual == threshold,
             }
         }
         _ => false,
@@ -657,12 +776,12 @@ fn eval_condition(field: &str, op: &str, val: &str, req: &ProcessRequest) -> boo
 }
 
 fn str_op(hay: &str, op: &str, needle: &str) -> bool {
-    let hay_lc    = hay.to_lowercase();
+    let hay_lc = hay.to_lowercase();
     let needle_lc = needle.to_lowercase();
     match op {
-        "equals"      => hay_lc == needle_lc,
+        "equals" => hay_lc == needle_lc,
         "starts_with" => hay_lc.starts_with(&needle_lc),
-        _             => hay_lc.contains(&needle_lc), // "contains" is default
+        _ => hay_lc.contains(&needle_lc), // "contains" is default
     }
 }
 
@@ -677,12 +796,22 @@ async fn ready() -> Json<serde_json::Value> {
 }
 
 async fn maybe_build_validator() -> Option<Arc<OidcValidator>> {
-    let issuer   = env::var("AUTH__OIDC_ISSUER").ok().filter(|v| !v.is_empty())?;
-    let audience = env::var("AUTH__OIDC_AUDIENCE").ok().filter(|v| !v.is_empty())?;
+    let issuer = env::var("AUTH__OIDC_ISSUER")
+        .ok()
+        .filter(|v| !v.is_empty())?;
+    let audience = env::var("AUTH__OIDC_AUDIENCE")
+        .ok()
+        .filter(|v| !v.is_empty())?;
     let cfg = OidcConfig::new(issuer.clone(), audience);
     match OidcValidator::new(cfg).await {
-        Ok(v)  => { info!(issuer = %issuer, "OIDC validator ready"); Some(Arc::new(v)) }
-        Err(e) => { tracing::warn!(error = %e, "OIDC init failed — no JWT auth"); None }
+        Ok(v) => {
+            info!(issuer = %issuer, "OIDC validator ready");
+            Some(Arc::new(v))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "OIDC init failed — no JWT auth");
+            None
+        }
     }
 }
 
@@ -692,7 +821,8 @@ fn resolve_addr() -> anyhow::Result<SocketAddr> {
         .ok()
         .and_then(|v| v.parse::<u16>().ok())
         .unwrap_or(DEFAULT_PORT);
-    format!("{host}:{port}").parse::<SocketAddr>()
+    format!("{host}:{port}")
+        .parse::<SocketAddr>()
         .map_err(|e| anyhow::anyhow!("invalid bind address: {}", e))
 }
 
@@ -712,16 +842,22 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState { db, validator };
 
     let app = Router::new()
-        .route("/health",                  get(health))
-        .route("/ready",                   get(ready))
-        .route("/internal/process",        post(internal_process))
-        .route("/api/v1/flows/rules",             get(list_rules).post(create_rule))
-        .route("/api/v1/flows/rules/reorder",     patch(reorder_rules))
-        .route("/api/v1/flows/rules/bulk",         delete(bulk_delete_rules))
-        .route("/api/v1/flows/rules/:id/toggle",   patch(toggle_rule))
-        .route("/api/v1/flows/rules/:id",          get(get_rule).patch(update_rule).delete(delete_rule))
+        .route("/health", get(health))
+        .route("/ready", get(ready))
+        .route("/internal/process", post(internal_process))
+        .route("/api/v1/flows/rules", get(list_rules).post(create_rule))
+        .route("/api/v1/flows/rules/reorder", patch(reorder_rules))
+        .route("/api/v1/flows/rules/bulk", delete(bulk_delete_rules))
+        .route("/api/v1/flows/rules/:id/toggle", patch(toggle_rule))
+        .route(
+            "/api/v1/flows/rules/:id",
+            get(get_rule).patch(update_rule).delete(delete_rule),
+        )
         .merge(expresso_observability::metrics_router())
-        .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            inject_validator,
+        ))
         .with_state(state);
 
     let addr = resolve_addr()?;
@@ -745,15 +881,15 @@ mod tests {
         size_bytes: Option<i32>,
     ) -> ProcessRequest {
         ProcessRequest {
-            user_id:         Uuid::new_v4(),
-            tenant_id:       Uuid::new_v4(),
-            message_id:      Uuid::new_v4(),
-            folder:          folder.into(),
-            from_addr:       from.map(Into::into),
-            to_addrs:        to.map(|v| v.into_iter().map(Into::into).collect()),
-            subject:         subject.map(Into::into),
+            user_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            message_id: Uuid::new_v4(),
+            folder: folder.into(),
+            from_addr: from.map(Into::into),
+            to_addrs: to.map(|v| v.into_iter().map(Into::into).collect()),
+            subject: subject.map(Into::into),
             has_attachments: has_attachments,
-            size_bytes:      size_bytes,
+            size_bytes: size_bytes,
         }
     }
 
@@ -837,7 +973,14 @@ mod tests {
 
     #[test]
     fn eval_condition_to_any_addr_matches() {
-        let r = req("INBOX", None, None, Some(vec!["a@x.com", "b@x.com"]), None, None);
+        let r = req(
+            "INBOX",
+            None,
+            None,
+            Some(vec!["a@x.com", "b@x.com"]),
+            None,
+            None,
+        );
         assert!(eval_condition("to", "contains", "b@x.com", &r));
     }
 
@@ -905,7 +1048,14 @@ mod tests {
 
     #[test]
     fn rule_matches_and_all_match() {
-        let r = req("INBOX", Some("boss@corp.com"), Some("Invoice"), None, None, None);
+        let r = req(
+            "INBOX",
+            Some("boss@corp.com"),
+            Some("Invoice"),
+            None,
+            None,
+            None,
+        );
         let conds = serde_json::json!([
             {"field": "from", "op": "contains", "value": "corp.com"},
             {"field": "subject", "op": "contains", "value": "invoice"}
@@ -915,7 +1065,14 @@ mod tests {
 
     #[test]
     fn rule_matches_and_one_fails() {
-        let r = req("INBOX", Some("boss@corp.com"), Some("Hello"), None, None, None);
+        let r = req(
+            "INBOX",
+            Some("boss@corp.com"),
+            Some("Hello"),
+            None,
+            None,
+            None,
+        );
         let conds = serde_json::json!([
             {"field": "from", "op": "contains", "value": "corp.com"},
             {"field": "subject", "op": "contains", "value": "invoice"}
@@ -925,7 +1082,14 @@ mod tests {
 
     #[test]
     fn rule_matches_or_first_matches() {
-        let r = req("INBOX", Some("boss@corp.com"), Some("Hello"), None, None, None);
+        let r = req(
+            "INBOX",
+            Some("boss@corp.com"),
+            Some("Hello"),
+            None,
+            None,
+            None,
+        );
         let conds = serde_json::json!([
             {"field": "from", "op": "contains", "value": "corp.com"},
             {"field": "subject", "op": "contains", "value": "invoice"}
@@ -935,7 +1099,14 @@ mod tests {
 
     #[test]
     fn rule_matches_or_none_match() {
-        let r = req("INBOX", Some("other@example.com"), Some("Hello"), None, None, None);
+        let r = req(
+            "INBOX",
+            Some("other@example.com"),
+            Some("Hello"),
+            None,
+            None,
+            None,
+        );
         let conds = serde_json::json!([
             {"field": "from", "op": "contains", "value": "corp.com"},
             {"field": "subject", "op": "contains", "value": "invoice"}

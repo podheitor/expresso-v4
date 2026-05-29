@@ -12,12 +12,12 @@ pub fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
-            '<'  => out.push_str("&lt;"),
-            '>'  => out.push_str("&gt;"),
-            '&'  => out.push_str("&amp;"),
-            '"'  => out.push_str("&quot;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '&' => out.push_str("&amp;"),
+            '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&apos;"),
-            _    => out.push(c),
+            _ => out.push(c),
         }
     }
     out
@@ -29,27 +29,27 @@ pub const XML_PROLOG: &str = r#"<?xml version="1.0" encoding="utf-8"?>"#;
 /// Property names we support in PROPFIND / REPORT responses.
 #[derive(Debug, Clone, Default)]
 pub struct PropRequest {
-    pub displayname:                       bool,
-    pub getetag:                           bool,
-    pub getctag:                           bool,   // calendarserver ns
-    pub resourcetype:                      bool,
-    pub getcontenttype:                    bool,
-    pub current_user_principal:            bool,
-    pub calendar_home_set:                 bool,
-    pub calendar_description:              bool,
-    pub calendar_color:                    bool,   // apple ns
-    pub calendar_timezone:                 bool,
-    pub supported_calendar_component_set:  bool,
-    pub calendar_data:                     bool,   // caldav ns
-    pub owner:                             bool,
-    pub supported_report_set:              bool,
-    pub current_user_privilege_set:        bool,
-    pub getcontentlength:                  bool,
-    pub sync_token:                        bool,
-    pub schedule_inbox_url:                bool,
-    pub schedule_outbox_url:               bool,
+    pub displayname: bool,
+    pub getetag: bool,
+    pub getctag: bool, // calendarserver ns
+    pub resourcetype: bool,
+    pub getcontenttype: bool,
+    pub current_user_principal: bool,
+    pub calendar_home_set: bool,
+    pub calendar_description: bool,
+    pub calendar_color: bool, // apple ns
+    pub calendar_timezone: bool,
+    pub supported_calendar_component_set: bool,
+    pub calendar_data: bool, // caldav ns
+    pub owner: bool,
+    pub supported_report_set: bool,
+    pub current_user_privilege_set: bool,
+    pub getcontentlength: bool,
+    pub sync_token: bool,
+    pub schedule_inbox_url: bool,
+    pub schedule_outbox_url: bool,
     /// True when body was empty or `<allprop/>` → include dead properties.
-    pub allprop:                           bool,
+    pub allprop: bool,
 }
 
 impl PropRequest {
@@ -99,7 +99,7 @@ pub fn parse_propfind(body: &str) -> PropRequest {
                 let local = local_name(e.name().as_ref());
                 match local.as_str() {
                     "allprop" => saw_allprop = true,
-                    "prop"    => in_prop = true,
+                    "prop" => in_prop = true,
                     name if in_prop => mark_prop(&mut req, name),
                     _ => {}
                 }
@@ -116,7 +116,11 @@ pub fn parse_propfind(body: &str) -> PropRequest {
             _ => {}
         }
     }
-    if saw_allprop { PropRequest::all() } else { req }
+    if saw_allprop {
+        PropRequest::all()
+    } else {
+        req
+    }
 }
 
 /// Parse calendar-multiget REPORT → list of `<href>` targets (paths).
@@ -167,13 +171,13 @@ pub fn parse_time_range(body: &str) -> Option<(String, String)> {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
                 if local_name(e.name().as_ref()) == "time-range" {
                     let mut start = None;
-                    let mut end   = None;
+                    let mut end = None;
                     for attr in e.attributes().flatten() {
                         let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
                         let val = attr.unescape_value().ok().map(|c| c.into_owned());
                         match key {
                             "start" => start = val,
-                            "end"   => end   = val,
+                            "end" => end = val,
                             _ => {}
                         }
                     }
@@ -222,8 +226,8 @@ pub fn parse_sync_token(body: &str) -> Option<String> {
                 }
             }
             Ok(Event::Eof) => break,
-            Err(_)         => break,
-            _              => {}
+            Err(_) => break,
+            _ => {}
         }
     }
     None
@@ -237,10 +241,10 @@ pub fn detect_report_kind(body: &str) -> Option<&'static str> {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
                 let local = local_name(e.name().as_ref());
                 match local.as_str() {
-                    "calendar-query"    => return Some("calendar-query"),
+                    "calendar-query" => return Some("calendar-query"),
                     "calendar-multiget" => return Some("calendar-multiget"),
-                    "free-busy-query"   => return Some("free-busy-query"),
-                    "sync-collection"   => return Some("sync-collection"),
+                    "free-busy-query" => return Some("free-busy-query"),
+                    "sync-collection" => return Some("sync-collection"),
                     _ => {}
                 }
             }
@@ -256,30 +260,33 @@ pub fn detect_report_kind(body: &str) -> Option<&'static str> {
 /// Strip namespace prefix from an XML element name (`C:prop` → `prop`).
 fn local_name(bytes: &[u8]) -> String {
     let raw = std::str::from_utf8(bytes).unwrap_or("");
-    raw.rsplit_once(':').map(|(_, l)| l).unwrap_or(raw).to_ascii_lowercase()
+    raw.rsplit_once(':')
+        .map(|(_, l)| l)
+        .unwrap_or(raw)
+        .to_ascii_lowercase()
 }
 
 fn mark_prop(req: &mut PropRequest, name: &str) {
     match name {
-        "displayname"                      => req.displayname = true,
-        "getetag"                          => req.getetag = true,
-        "getctag"                          => req.getctag = true,
-        "resourcetype"                     => req.resourcetype = true,
-        "getcontenttype"                   => req.getcontenttype = true,
-        "current-user-principal"           => req.current_user_principal = true,
-        "calendar-home-set"                => req.calendar_home_set = true,
-        "calendar-description"             => req.calendar_description = true,
-        "calendar-color"                   => req.calendar_color = true,
-        "calendar-timezone"                => req.calendar_timezone = true,
+        "displayname" => req.displayname = true,
+        "getetag" => req.getetag = true,
+        "getctag" => req.getctag = true,
+        "resourcetype" => req.resourcetype = true,
+        "getcontenttype" => req.getcontenttype = true,
+        "current-user-principal" => req.current_user_principal = true,
+        "calendar-home-set" => req.calendar_home_set = true,
+        "calendar-description" => req.calendar_description = true,
+        "calendar-color" => req.calendar_color = true,
+        "calendar-timezone" => req.calendar_timezone = true,
         "supported-calendar-component-set" => req.supported_calendar_component_set = true,
-        "calendar-data"                    => req.calendar_data = true,
-        "owner"                            => req.owner = true,
-        "supported-report-set"             => req.supported_report_set = true,
-        "current-user-privilege-set"       => req.current_user_privilege_set = true,
-        "getcontentlength"                 => req.getcontentlength = true,
-        "sync-token"                       => req.sync_token = true,
-        "schedule-inbox-URL"               => req.schedule_inbox_url = true,
-        "schedule-outbox-URL"              => req.schedule_outbox_url = true,
+        "calendar-data" => req.calendar_data = true,
+        "owner" => req.owner = true,
+        "supported-report-set" => req.supported_report_set = true,
+        "current-user-privilege-set" => req.current_user_privilege_set = true,
+        "getcontentlength" => req.getcontentlength = true,
+        "sync-token" => req.sync_token = true,
+        "schedule-inbox-URL" => req.schedule_inbox_url = true,
+        "schedule-outbox-URL" => req.schedule_outbox_url = true,
         _ => {}
     }
 }
@@ -345,7 +352,8 @@ mod tests {
 
     #[test]
     fn parse_sync_token_present_and_empty() {
-        let with = r#"<sync-collection xmlns="DAV:"><sync-token>urn:x:42</sync-token></sync-collection>"#;
+        let with =
+            r#"<sync-collection xmlns="DAV:"><sync-token>urn:x:42</sync-token></sync-collection>"#;
         let empty = r#"<sync-collection xmlns="DAV:"><sync-token/></sync-collection>"#;
         assert_eq!(super::parse_sync_token(with), Some("urn:x:42".to_string()));
         assert_eq!(super::parse_sync_token(empty), None);

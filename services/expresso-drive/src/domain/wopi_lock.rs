@@ -28,12 +28,12 @@ pub const LOCK_TTL: Duration = Duration::minutes(30);
 #[derive(Debug, Clone, FromRow)]
 #[allow(dead_code)] // row type for the locks table; repo currently returns tokens only
 pub struct WopiLock {
-    pub file_id:     Uuid,
-    pub tenant_id:   Uuid,
-    pub lock_token:  String,
-    pub locked_by:   Uuid,
+    pub file_id: Uuid,
+    pub tenant_id: Uuid,
+    pub lock_token: String,
+    pub locked_by: Uuid,
     pub acquired_at: OffsetDateTime,
-    pub expires_at:  OffsetDateTime,
+    pub expires_at: OffsetDateTime,
 }
 
 impl WopiLock {
@@ -43,12 +43,16 @@ impl WopiLock {
     }
 }
 
-pub struct WopiLockRepo<'a> { pool: &'a DbPool }
+pub struct WopiLockRepo<'a> {
+    pool: &'a DbPool,
+}
 
 const COLS: &str = "file_id, tenant_id, lock_token, locked_by, acquired_at, expires_at";
 
 impl<'a> WopiLockRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     /// Returns the lock row if present AND not expired. An expired lock is
     /// treated as absent (caller can overwrite it via `acquire`).
@@ -66,9 +70,9 @@ impl<'a> WopiLockRepo<'a> {
     pub async fn acquire_or_refresh(
         &self,
         tenant_id: Uuid,
-        file_id:   Uuid,
-        token:     &str,
-        user_id:   Uuid,
+        file_id: Uuid,
+        token: &str,
+        user_id: Uuid,
     ) -> Result<AcquireOutcome> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
 
@@ -93,8 +97,12 @@ impl<'a> WopiLockRepo<'a> {
              RETURNING {COLS}"
         );
         let row: Option<WopiLock> = sqlx::query_as(&sql)
-            .bind(file_id).bind(tenant_id).bind(token).bind(user_id)
-            .fetch_optional(&mut *tx).await?;
+            .bind(file_id)
+            .bind(tenant_id)
+            .bind(token)
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         let outcome = match row {
             Some(lock) => AcquireOutcome::Held(lock),
             None => {
@@ -114,10 +122,10 @@ impl<'a> WopiLockRepo<'a> {
     pub async fn unlock_and_relock(
         &self,
         tenant_id: Uuid,
-        file_id:   Uuid,
+        file_id: Uuid,
         old_token: &str,
         new_token: &str,
-        user_id:   Uuid,
+        user_id: Uuid,
     ) -> Result<AcquireOutcome> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
@@ -131,8 +139,13 @@ impl<'a> WopiLockRepo<'a> {
               RETURNING {COLS}"
         );
         let row: Option<WopiLock> = sqlx::query_as(&sql)
-            .bind(tenant_id).bind(file_id).bind(old_token).bind(new_token).bind(user_id)
-            .fetch_optional(&mut *tx).await?;
+            .bind(tenant_id)
+            .bind(file_id)
+            .bind(old_token)
+            .bind(new_token)
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         let outcome = match row {
             Some(lock) => AcquireOutcome::Held(lock),
             None => {
@@ -146,20 +159,18 @@ impl<'a> WopiLockRepo<'a> {
 
     /// Release a lock. Returns Ok(true) when removed, Ok(false) when the
     /// supplied token didn't match the active lock.
-    pub async fn release(
-        &self,
-        tenant_id: Uuid,
-        file_id:   Uuid,
-        token:     &str,
-    ) -> Result<bool> {
+    pub async fn release(&self, tenant_id: Uuid, file_id: Uuid, token: &str) -> Result<bool> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let r = sqlx::query(
             "DELETE FROM drive_wopi_locks \
               WHERE tenant_id = $1 AND file_id = $2 \
-                AND lock_token = $3 AND expires_at > now()"
+                AND lock_token = $3 AND expires_at > now()",
         )
-        .bind(tenant_id).bind(file_id).bind(token)
-        .execute(&mut *tx).await?;
+        .bind(tenant_id)
+        .bind(file_id)
+        .bind(token)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(r.rows_affected() > 0)
     }
@@ -169,17 +180,19 @@ impl<'a> WopiLockRepo<'a> {
 /// between `get_active` and the conflict-fallback paths so the client's
 /// `X-WOPI-Lock` value is consistent with the row that blocked the upsert.
 async fn fetch_active(
-    tx:        &mut Transaction<'_, Postgres>,
+    tx: &mut Transaction<'_, Postgres>,
     tenant_id: Uuid,
-    file_id:   Uuid,
+    file_id: Uuid,
 ) -> Result<Option<WopiLock>> {
     let sql = format!(
         "SELECT {COLS} FROM drive_wopi_locks \
          WHERE tenant_id = $1 AND file_id = $2 AND expires_at > now()"
     );
     let row: Option<WopiLock> = sqlx::query_as(&sql)
-        .bind(tenant_id).bind(file_id)
-        .fetch_optional(&mut **tx).await?;
+        .bind(tenant_id)
+        .bind(file_id)
+        .fetch_optional(&mut **tx)
+        .await?;
     Ok(row)
 }
 
@@ -229,12 +242,12 @@ mod tests {
     fn lock_at_exact_expiry_is_expired() {
         // expires_at == now_utc() should be treated as expired (<=).
         let l = WopiLock {
-            file_id:     Uuid::nil(),
-            tenant_id:   Uuid::nil(),
-            lock_token:  "tok".into(),
-            locked_by:   Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            lock_token: "tok".into(),
+            locked_by: Uuid::nil(),
             acquired_at: OffsetDateTime::now_utc(),
-            expires_at:  OffsetDateTime::now_utc(), // exactly now → expired
+            expires_at: OffsetDateTime::now_utc(), // exactly now → expired
         };
         assert!(l.is_expired());
     }
@@ -441,10 +454,12 @@ mod tests {
     fn fresh_lock_locked_by_matches_user_id() {
         let uid = Uuid::new_v4();
         let l = WopiLock {
-            file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            lock_token: "tok".into(), locked_by: uid,
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            lock_token: "tok".into(),
+            locked_by: uid,
             acquired_at: time::OffsetDateTime::now_utc(),
-            expires_at:  time::OffsetDateTime::now_utc() + time::Duration::minutes(30),
+            expires_at: time::OffsetDateTime::now_utc() + time::Duration::minutes(30),
         };
         assert_eq!(l.locked_by, uid);
     }
@@ -452,10 +467,12 @@ mod tests {
     #[test]
     fn wopi_lock_file_id_matches_when_set_to_nil() {
         let l = WopiLock {
-            file_id: Uuid::nil(), tenant_id: Uuid::new_v4(),
-            lock_token: "abc".into(), locked_by: Uuid::new_v4(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::new_v4(),
+            lock_token: "abc".into(),
+            locked_by: Uuid::new_v4(),
             acquired_at: time::OffsetDateTime::now_utc(),
-            expires_at:  time::OffsetDateTime::now_utc() + time::Duration::minutes(30),
+            expires_at: time::OffsetDateTime::now_utc() + time::Duration::minutes(30),
         };
         assert_eq!(l.file_id, Uuid::nil());
     }

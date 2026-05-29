@@ -38,42 +38,56 @@ pub fn routes() -> Router<AppState> {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SieveRules {
     pub enabled: bool,
-    pub script:  String,
+    pub script: String,
 }
 
 impl Default for SieveRules {
     fn default() -> Self {
-        Self { enabled: true, script: String::new() }
+        Self {
+            enabled: true,
+            script: String::new(),
+        }
     }
 }
 
 async fn get_sieve(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row = sqlx::query(
         "SELECT enabled, script, updated_at
-         FROM user_sieve WHERE user_id = $1 AND tenant_id = $2"
+         FROM user_sieve WHERE user_id = $1 AND tenant_id = $2",
     )
     .bind(ctx.user_id)
     .bind(ctx.tenant_id)
-    .fetch_optional(&mut *tx).await?;
+    .fetch_optional(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     let (rules, updated_at) = match row {
         Some(r) => {
             let ua: Option<OffsetDateTime> = r.try_get("updated_at").ok();
-            (SieveRules { enabled: r.get("enabled"), script: r.get("script") }, ua)
-        },
+            (
+                SieveRules {
+                    enabled: r.get("enabled"),
+                    script: r.get("script"),
+                },
+                ua,
+            )
+        }
         None => (SieveRules::default(), None),
     };
     if let Some(ts) = updated_at {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -81,7 +95,8 @@ async fn get_sieve(
             }
         }
         let mut resp = Json(rules).into_response();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
         return Ok(resp);
     }
     Ok(Json(rules).into_response())
@@ -101,13 +116,14 @@ async fn put_sieve(
          ON CONFLICT (user_id) DO UPDATE SET
             enabled    = EXCLUDED.enabled,
             script     = EXCLUDED.script,
-            updated_at = now()"
+            updated_at = now()",
     )
     .bind(ctx.user_id)
     .bind(ctx.tenant_id)
     .bind(rules.enabled)
     .bind(&rules.script)
-    .execute(&mut *tx).await?;
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(rules))
@@ -154,7 +170,8 @@ async fn test_sieve(
     if req.raw_message.len() > MAX_TEST_MESSAGE_BYTES {
         return Err(MailError::BadRequest(format!(
             "raw_message too large: {} bytes (max {})",
-            req.raw_message.len(), MAX_TEST_MESSAGE_BYTES
+            req.raw_message.len(),
+            MAX_TEST_MESSAGE_BYTES
         )));
     }
     // Validate + compile script first (size + syntax). Returns 400 on error.
@@ -162,18 +179,46 @@ async fn test_sieve(
 
     let actions_raw = crate::sieve::evaluate(req.script.as_bytes(), req.raw_message.as_bytes());
 
-    let actions: Vec<SieveTestAction> = actions_raw.into_iter().map(|a| match a {
-        crate::sieve::FilterAction::Keep { flags } =>
-            SieveTestAction { action: "keep".into(), folder: None, reason: None, address: None, flags },
-        crate::sieve::FilterAction::FileInto { folder, flags } =>
-            SieveTestAction { action: "fileinto".into(), folder: Some(folder), reason: None, address: None, flags },
-        crate::sieve::FilterAction::Reject { reason } =>
-            SieveTestAction { action: "reject".into(), folder: None, reason: Some(reason), address: None, flags: vec![] },
-        crate::sieve::FilterAction::Discard =>
-            SieveTestAction { action: "discard".into(), folder: None, reason: None, address: None, flags: vec![] },
-        crate::sieve::FilterAction::Redirect { address } =>
-            SieveTestAction { action: "redirect".into(), folder: None, reason: None, address: Some(address), flags: vec![] },
-    }).collect();
+    let actions: Vec<SieveTestAction> = actions_raw
+        .into_iter()
+        .map(|a| match a {
+            crate::sieve::FilterAction::Keep { flags } => SieveTestAction {
+                action: "keep".into(),
+                folder: None,
+                reason: None,
+                address: None,
+                flags,
+            },
+            crate::sieve::FilterAction::FileInto { folder, flags } => SieveTestAction {
+                action: "fileinto".into(),
+                folder: Some(folder),
+                reason: None,
+                address: None,
+                flags,
+            },
+            crate::sieve::FilterAction::Reject { reason } => SieveTestAction {
+                action: "reject".into(),
+                folder: None,
+                reason: Some(reason),
+                address: None,
+                flags: vec![],
+            },
+            crate::sieve::FilterAction::Discard => SieveTestAction {
+                action: "discard".into(),
+                folder: None,
+                reason: None,
+                address: None,
+                flags: vec![],
+            },
+            crate::sieve::FilterAction::Redirect { address } => SieveTestAction {
+                action: "redirect".into(),
+                folder: None,
+                reason: None,
+                address: Some(address),
+                flags: vec![],
+            },
+        })
+        .collect();
 
     Ok(Json(SieveTestResponse { actions }))
 }
@@ -184,7 +229,8 @@ fn validate_script(script: &str) -> Result<()> {
     if script.len() > MAX_SIEVE_SCRIPT_BYTES {
         return Err(MailError::BadRequest(format!(
             "sieve script too large: {} bytes (max {})",
-            script.len(), MAX_SIEVE_SCRIPT_BYTES
+            script.len(),
+            MAX_SIEVE_SCRIPT_BYTES
         )));
     }
     if !script.is_empty() {
@@ -219,8 +265,10 @@ if header :contains "Subject" "[spam]" {
         let bad = "this is not valid sieve at all }}}}";
         let err = validate_script(bad).unwrap_err();
         let msg = format!("{err:?}");
-        assert!(msg.contains("compile") || msg.contains("sieve"),
-            "expected compile error, got: {msg}");
+        assert!(
+            msg.contains("compile") || msg.contains("sieve"),
+            "expected compile error, got: {msg}"
+        );
     }
 
     #[test]
@@ -235,8 +283,10 @@ if header :contains "Subject" "[spam]" {
         assert!(s.len() > MAX_SIEVE_SCRIPT_BYTES);
         let err = validate_script(&s).unwrap_err();
         let msg = format!("{err:?}");
-        assert!(msg.contains("too large") || msg.contains("max"),
-            "expected size-limit error, got: {msg}");
+        assert!(
+            msg.contains("too large") || msg.contains("max"),
+            "expected size-limit error, got: {msg}"
+        );
     }
 
     #[test]
@@ -269,45 +319,66 @@ if header :contains "Subject" "[spam]" {
 
     #[test]
     fn sieve_rules_disabled_script_preserved() {
-        let r = SieveRules { enabled: false, script: "fileinto \"INBOX\";".into() };
+        let r = SieveRules {
+            enabled: false,
+            script: "fileinto \"INBOX\";".into(),
+        };
         assert!(!r.enabled);
         assert!(r.script.contains("fileinto"));
     }
 
     #[test]
     fn sieve_rules_enabled_serializes_true() {
-        let r = SieveRules { enabled: true, script: "keep;".into() };
+        let r = SieveRules {
+            enabled: true,
+            script: "keep;".into(),
+        };
         let j = serde_json::to_value(&r).unwrap();
         assert_eq!(j["enabled"], true);
     }
 
     #[test]
     fn sieve_rules_script_preserved() {
-        let r = SieveRules { enabled: false, script: "discard;".into() };
+        let r = SieveRules {
+            enabled: false,
+            script: "discard;".into(),
+        };
         assert_eq!(r.script, "discard;");
     }
 
     #[test]
     fn sieve_rules_enabled_flag_preserved() {
-        let r = SieveRules { enabled: true, script: String::new() };
+        let r = SieveRules {
+            enabled: true,
+            script: String::new(),
+        };
         assert!(r.enabled);
     }
 
     #[test]
     fn sieve_rules_disabled_flag_preserved() {
-        let r = SieveRules { enabled: false, script: "keep;".into() };
+        let r = SieveRules {
+            enabled: false,
+            script: "keep;".into(),
+        };
         assert!(!r.enabled);
     }
 
     #[test]
     fn sieve_rules_empty_script_is_valid() {
-        let r = SieveRules { enabled: false, script: String::new() };
+        let r = SieveRules {
+            enabled: false,
+            script: String::new(),
+        };
         assert!(r.script.is_empty());
     }
 
     #[test]
     fn sieve_rules_enabled_field_preserved() {
-        let r = SieveRules { enabled: true, script: "keep;".into() };
+        let r = SieveRules {
+            enabled: true,
+            script: "keep;".into(),
+        };
         assert!(r.enabled);
     }
 
@@ -332,7 +403,10 @@ if header :contains "Subject" "[spam]" {
 
     #[test]
     fn sieve_rules_roundtrip_preserves_enabled_and_script() {
-        let r = SieveRules { enabled: false, script: "discard;".into() };
+        let r = SieveRules {
+            enabled: false,
+            script: "discard;".into(),
+        };
         let s = serde_json::to_string(&r).unwrap();
         let back: SieveRules = serde_json::from_str(&s).unwrap();
         assert!(!back.enabled);

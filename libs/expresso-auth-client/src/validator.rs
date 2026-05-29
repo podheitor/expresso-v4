@@ -11,7 +11,11 @@
 //! Refresh: on cache-miss `kid`, re-fetch JWKS once (keys rotated). If still
 //! missing → `KidNotFound`. TTL refresh is opportunistic (no background task).
 
-use std::{collections::HashMap, sync::Arc, time::{Duration, Instant}};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use arc_swap::ArcSwap;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
@@ -26,9 +30,9 @@ use crate::error::{AuthError, Result};
 pub struct OidcConfig {
     /// Expected `iss` claim — full realm URL, e.g.
     /// `http://keycloak/realms/expresso`.
-    pub issuer:    String,
+    pub issuer: String,
     /// Expected `aud` entry — Keycloak client_id (e.g. `expresso-web`).
-    pub audience:  String,
+    pub audience: String,
     /// Minimum interval between JWKS refresh attempts. Prevents thundering
     /// herd if every unknown `kid` triggered a fetch.
     pub jwks_min_refresh: Duration,
@@ -39,10 +43,10 @@ pub struct OidcConfig {
 impl OidcConfig {
     pub fn new(issuer: impl Into<String>, audience: impl Into<String>) -> Self {
         Self {
-            issuer:   issuer.into(),
+            issuer: issuer.into(),
             audience: audience.into(),
             jwks_min_refresh: Duration::from_secs(30),
-            http_timeout:     Duration::from_secs(5),
+            http_timeout: Duration::from_secs(5),
         }
     }
 
@@ -50,11 +54,18 @@ impl OidcConfig {
     /// validation. First entry also used as `primary_audience` for role/roles
     /// extraction from `resource_access[audience]`.
     pub fn audiences(&self) -> Vec<&str> {
-        self.audience.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect()
+        self.audience
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect()
     }
 
     pub fn primary_audience(&self) -> &str {
-        self.audiences().into_iter().next().unwrap_or(self.audience.as_str())
+        self.audiences()
+            .into_iter()
+            .next()
+            .unwrap_or(self.audience.as_str())
     }
 }
 
@@ -74,12 +85,12 @@ struct Jwk {
     kty: String,
     alg: Option<String>,
     // RSA
-    n:   Option<String>,
-    e:   Option<String>,
+    n: Option<String>,
+    e: Option<String>,
     // EC
     crv: Option<String>,
-    x:   Option<String>,
-    y:   Option<String>,
+    x: Option<String>,
+    y: Option<String>,
 }
 
 struct KeyEntry {
@@ -88,11 +99,11 @@ struct KeyEntry {
 }
 
 pub struct OidcValidator {
-    cfg:      OidcConfig,
-    http:     reqwest::Client,
+    cfg: OidcConfig,
+    http: reqwest::Client,
     jwks_uri: ArcSwap<String>,
-    keys:     ArcSwap<HashMap<String, Arc<KeyEntry>>>,
-    refresh:  Mutex<Instant>,  // last refresh attempt
+    keys: ArcSwap<HashMap<String, Arc<KeyEntry>>>,
+    refresh: Mutex<Instant>, // last refresh attempt
 }
 
 impl OidcValidator {
@@ -110,12 +121,14 @@ impl OidcValidator {
             cfg,
             http,
             jwks_uri: ArcSwap::from_pointee(jwks_uri),
-            keys:     ArcSwap::from_pointee(keys),
-            refresh:  Mutex::new(Instant::now()),
+            keys: ArcSwap::from_pointee(keys),
+            refresh: Mutex::new(Instant::now()),
         })
     }
 
-    pub fn config(&self) -> &OidcConfig { &self.cfg }
+    pub fn config(&self) -> &OidcConfig {
+        &self.cfg
+    }
 
     /// Validate a bearer JWT and return a normalized `AuthContext`.
     pub async fn validate(&self, token: &str) -> Result<AuthContext> {
@@ -131,8 +144,8 @@ impl OidcValidator {
         val.set_audience(&auds);
         val.validate_exp = true;
 
-        let data = decode::<RawClaims>(token, &key_entry.key, &val)
-            .map_err(|e| match e.kind() {
+        let data =
+            decode::<RawClaims>(token, &key_entry.key, &val).map_err(|e| match e.kind() {
                 jsonwebtoken::errors::ErrorKind::ExpiredSignature => AuthError::Expired,
                 _ => AuthError::InvalidToken(e.to_string()),
             })?;
@@ -142,7 +155,9 @@ impl OidcValidator {
 
     /// Lookup a `kid` in the cache; on miss, refresh JWKS once (rate-limited).
     async fn lookup_or_refresh(&self, kid: Option<&str>) -> Result<Arc<KeyEntry>> {
-        if let Some(entry) = self.lookup(kid) { return Ok(entry); }
+        if let Some(entry) = self.lookup(kid) {
+            return Ok(entry);
+        }
 
         // Cache miss — rate-limit refresh attempts to avoid hammering Keycloak
         // on malformed tokens.
@@ -157,9 +172,10 @@ impl OidcValidator {
         let uri = self.jwks_uri.load_full();
         match Self::fetch_jwks(&self.http, &uri).await {
             Ok(new_keys) => self.keys.store(Arc::new(new_keys)),
-            Err(e)       => warn!(error = %e, "jwks refresh failed"),
+            Err(e) => warn!(error = %e, "jwks refresh failed"),
         }
-        self.lookup(kid).ok_or(AuthError::KidNotFound(kid.map(String::from)))
+        self.lookup(kid)
+            .ok_or(AuthError::KidNotFound(kid.map(String::from)))
     }
 
     fn lookup(&self, kid: Option<&str>) -> Option<Arc<KeyEntry>> {
@@ -174,13 +190,24 @@ impl OidcValidator {
     }
 
     async fn discover(http: &reqwest::Client, issuer: &str) -> Result<String> {
-        let url = format!("{}/.well-known/openid-configuration", issuer.trim_end_matches('/'));
-        let resp = http.get(&url).send().await
+        let url = format!(
+            "{}/.well-known/openid-configuration",
+            issuer.trim_end_matches('/')
+        );
+        let resp = http
+            .get(&url)
+            .send()
+            .await
             .map_err(|e| AuthError::Config(format!("discovery fetch: {e}")))?;
         if !resp.status().is_success() {
-            return Err(AuthError::Config(format!("discovery HTTP {}", resp.status())));
+            return Err(AuthError::Config(format!(
+                "discovery HTTP {}",
+                resp.status()
+            )));
         }
-        let disc: Discovery = resp.json().await
+        let disc: Discovery = resp
+            .json()
+            .await
             .map_err(|e| AuthError::Config(format!("discovery decode: {e}")))?;
         Ok(disc.jwks_uri)
     }
@@ -189,12 +216,17 @@ impl OidcValidator {
         http: &reqwest::Client,
         uri: &str,
     ) -> Result<HashMap<String, Arc<KeyEntry>>> {
-        let resp = http.get(uri).send().await
+        let resp = http
+            .get(uri)
+            .send()
+            .await
             .map_err(|e| AuthError::JwksFetch(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(AuthError::JwksFetch(format!("HTTP {}", resp.status())));
         }
-        let jwks: Jwks = resp.json().await
+        let jwks: Jwks = resp
+            .json()
+            .await
             .map_err(|e| AuthError::JwksFetch(format!("decode: {e}")))?;
         let mut out = HashMap::with_capacity(jwks.keys.len());
         for jwk in jwks.keys {
@@ -217,7 +249,7 @@ fn jwk_to_key(jwk: &Jwk) -> Option<KeyEntry> {
             let alg = match jwk.alg.as_deref() {
                 Some("RS384") => Algorithm::RS384,
                 Some("RS512") => Algorithm::RS512,
-                _             => Algorithm::RS256,
+                _ => Algorithm::RS256,
             };
             Some(KeyEntry { key, alg })
         }
@@ -226,7 +258,7 @@ fn jwk_to_key(jwk: &Jwk) -> Option<KeyEntry> {
             let key = DecodingKey::from_ec_components(x, y).ok()?;
             let alg = match jwk.crv.as_deref() {
                 Some("P-384") => Algorithm::ES384,
-                _             => Algorithm::ES256,
+                _ => Algorithm::ES256,
             };
             Some(KeyEntry { key, alg })
         }

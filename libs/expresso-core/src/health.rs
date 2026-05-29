@@ -6,29 +6,33 @@
 
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
-use axum::{http::StatusCode, response::{IntoResponse, Response}, Json};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use serde::Serialize;
 
 pub type CheckFuture = Pin<Box<dyn Future<Output = Result<(), String>> + Send>>;
 pub type CheckFn = Arc<dyn Fn() -> CheckFuture + Send + Sync>;
 
 pub struct ReadinessCheck {
-    pub name:     &'static str,
+    pub name: &'static str,
     pub required: bool,
-    pub run:      CheckFn,
+    pub run: CheckFn,
 }
 
 #[derive(Serialize)]
 pub struct ComponentStatus {
-    name:   &'static str,
+    name: &'static str,
     status: &'static str, // "ok" | "fail"
-    error:  Option<String>,
+    error: Option<String>,
     elapsed_ms: u128,
 }
 
 #[derive(Serialize)]
 pub struct ReadyReport {
-    pub status:     &'static str, // "ok" | "degraded" | "fail"
+    pub status: &'static str, // "ok" | "degraded" | "fail"
     pub components: Vec<ComponentStatus>,
 }
 
@@ -45,19 +49,46 @@ pub async fn run(checks: &[ReadinessCheck]) -> (StatusCode, ReadyReport) {
         let (status, error) = match result {
             Ok(Ok(())) => ("ok", None),
             Ok(Err(e)) => ("fail", Some(e)),
-            Err(_)     => ("fail", Some("timeout".into())),
+            Err(_) => ("fail", Some("timeout".into())),
         };
         if status == "fail" {
-            if c.required { fail_required = true; } else { fail_optional = true; }
+            if c.required {
+                fail_required = true;
+            } else {
+                fail_optional = true;
+            }
         }
         components.push(ComponentStatus {
-            name: c.name, status, error, elapsed_ms: t.elapsed().as_millis(),
+            name: c.name,
+            status,
+            error,
+            elapsed_ms: t.elapsed().as_millis(),
         });
     }
-    let overall = if fail_required { "fail" } else if fail_optional { "degraded" } else { "ok" };
-    let code = if fail_required { StatusCode::SERVICE_UNAVAILABLE } else { StatusCode::OK };
-    tracing::debug!(elapsed_ms = start.elapsed().as_millis(), overall, "readyz checked");
-    (code, ReadyReport { status: overall, components })
+    let overall = if fail_required {
+        "fail"
+    } else if fail_optional {
+        "degraded"
+    } else {
+        "ok"
+    };
+    let code = if fail_required {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::OK
+    };
+    tracing::debug!(
+        elapsed_ms = start.elapsed().as_millis(),
+        overall,
+        "readyz checked"
+    );
+    (
+        code,
+        ReadyReport {
+            status: overall,
+            components,
+        },
+    )
 }
 
 impl IntoResponse for ReadyReport {
@@ -71,8 +102,11 @@ pub fn db_check(pool: sqlx::PgPool) -> CheckFn {
     Arc::new(move || {
         let p = pool.clone();
         Box::pin(async move {
-            sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(&p).await
-                .map(|_| ()).map_err(|e| e.to_string())
+            sqlx::query_scalar::<_, i32>("SELECT 1")
+                .fetch_one(&p)
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string())
         })
     })
 }

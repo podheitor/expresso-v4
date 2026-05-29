@@ -18,7 +18,7 @@ use std::{
 #[derive(Debug)]
 struct FailureTracker {
     window_start: Instant,
-    failures:     u32,
+    failures: u32,
     locked_until: Option<Instant>,
 }
 
@@ -27,12 +27,12 @@ pub struct LoginLockout {
     /// Falhas consecutivas (na janela `failure_window`) antes do
     /// lockout disparar. Default 10 — alto pra usuários reais não
     /// caírem por typo, baixo pra brute-force.
-    max_failures:     u32,
+    max_failures: u32,
     /// Janela de contagem das falhas. Default 60s.
-    failure_window:   Duration,
+    failure_window: Duration,
     /// Duração do lockout depois de atingir `max_failures`. Default 5min.
     lockout_duration: Duration,
-    failures:         Mutex<HashMap<String, FailureTracker>>,
+    failures: Mutex<HashMap<String, FailureTracker>>,
 }
 
 impl Default for LoginLockout {
@@ -44,32 +44,39 @@ impl Default for LoginLockout {
 impl LoginLockout {
     pub fn new(max_failures: u32, failure_window: Duration, lockout_duration: Duration) -> Self {
         Self {
-            max_failures, failure_window, lockout_duration,
+            max_failures,
+            failure_window,
+            lockout_duration,
             failures: Mutex::new(HashMap::new()),
         }
     }
 
     pub fn is_locked_out(&self, user: &str) -> bool {
         let key = user.to_ascii_lowercase();
-        let Ok(guard) = self.failures.lock() else { return false; };
+        let Ok(guard) = self.failures.lock() else {
+            return false;
+        };
         let now = Instant::now();
-        guard.get(&key)
+        guard
+            .get(&key)
             .and_then(|t| t.locked_until)
             .is_some_and(|until| until > now)
     }
 
     pub fn record_failure(&self, user: &str) {
         let key = user.to_ascii_lowercase();
-        let Ok(mut guard) = self.failures.lock() else { return; };
+        let Ok(mut guard) = self.failures.lock() else {
+            return;
+        };
         let now = Instant::now();
         let entry = guard.entry(key).or_insert(FailureTracker {
             window_start: now,
-            failures:     0,
+            failures: 0,
             locked_until: None,
         });
         if now.duration_since(entry.window_start) > self.failure_window {
             entry.window_start = now;
-            entry.failures     = 0;
+            entry.failures = 0;
             entry.locked_until = None;
         }
         entry.failures += 1;

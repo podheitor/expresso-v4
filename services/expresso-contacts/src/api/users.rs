@@ -17,17 +17,24 @@ pub fn routes() -> Router<AppState> {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct UserQuery { pub email: Option<String> }
+pub struct UserQuery {
+    pub email: Option<String>,
+}
 
 #[derive(Debug, Serialize)]
-pub struct UserOut { pub id: Uuid, pub email: String }
+pub struct UserOut {
+    pub id: Uuid,
+    pub email: String,
+}
 
 async fn lookup(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<UserQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<UserQuery>,
 ) -> Result<Json<UserOut>> {
-    let email = q.email.ok_or_else(|| ContactsError::BadRequest("email required".into()))?;
+    let email = q
+        .email
+        .ok_or_else(|| ContactsError::BadRequest("email required".into()))?;
     let email = email.trim().to_ascii_lowercase();
     if email.is_empty() {
         return Err(ContactsError::BadRequest("email empty".into()));
@@ -43,7 +50,9 @@ async fn lookup(
 
     match row {
         Some((id, email)) => Ok(Json(UserOut { id, email })),
-        None => Err(ContactsError::BadRequest(format!("user not found: {email}"))),
+        None => Err(ContactsError::BadRequest(format!(
+            "user not found: {email}"
+        ))),
     }
 }
 
@@ -144,7 +153,10 @@ mod tests {
     #[test]
     fn user_out_fields_accessible() {
         let id = uuid::Uuid::nil();
-        let out = UserOut { id, email: "test@example.com".into() };
+        let out = UserOut {
+            id,
+            email: "test@example.com".into(),
+        };
         assert_eq!(out.email, "test@example.com");
         assert_eq!(out.id, id);
     }
@@ -152,7 +164,10 @@ mod tests {
     #[test]
     fn user_out_serializes_id_and_email() {
         let id = uuid::Uuid::nil();
-        let out = UserOut { id, email: "alice@example.com".into() };
+        let out = UserOut {
+            id,
+            email: "alice@example.com".into(),
+        };
         let s = serde_json::to_string(&out).unwrap();
         assert!(s.contains("alice@example.com"));
         assert!(s.contains(&id.to_string()));
@@ -160,26 +175,38 @@ mod tests {
 
     #[test]
     fn user_out_email_field_accessible() {
-        let out = UserOut { id: uuid::Uuid::nil(), email: "bob@example.com".into() };
+        let out = UserOut {
+            id: uuid::Uuid::nil(),
+            email: "bob@example.com".into(),
+        };
         assert_eq!(out.email, "bob@example.com");
     }
 
     #[test]
     fn user_out_id_nil_preserved() {
-        let out = UserOut { id: uuid::Uuid::nil(), email: "test@example.com".into() };
+        let out = UserOut {
+            id: uuid::Uuid::nil(),
+            email: "test@example.com".into(),
+        };
         assert_eq!(out.id, uuid::Uuid::nil());
     }
 
     #[test]
     fn user_out_email_round_trip() {
-        let out = UserOut { id: uuid::Uuid::nil(), email: "round@trip.io".into() };
+        let out = UserOut {
+            id: uuid::Uuid::nil(),
+            email: "round@trip.io".into(),
+        };
         assert_eq!(out.email, "round@trip.io");
     }
 
     #[test]
     fn user_out_json_contains_id_key() {
         let id = uuid::Uuid::nil();
-        let out = UserOut { id, email: "key@test.com".into() };
+        let out = UserOut {
+            id,
+            email: "key@test.com".into(),
+        };
         let v: serde_json::Value = serde_json::to_value(&out).unwrap();
         assert!(v.get("id").is_some());
         assert!(v.get("email").is_some());
@@ -187,14 +214,20 @@ mod tests {
 
     #[test]
     fn user_out_email_is_string_field() {
-        let out = UserOut { id: uuid::Uuid::nil(), email: "string@field.io".into() };
+        let out = UserOut {
+            id: uuid::Uuid::nil(),
+            email: "string@field.io".into(),
+        };
         let s = serde_json::to_string(&out).unwrap();
         assert!(s.contains("string@field.io"));
     }
 
     #[test]
     fn user_out_id_field_is_nil_uuid() {
-        let out = UserOut { id: uuid::Uuid::nil(), email: "x@example.com".into() };
+        let out = UserOut {
+            id: uuid::Uuid::nil(),
+            email: "x@example.com".into(),
+        };
         assert_eq!(out.id, uuid::Uuid::nil());
     }
 }

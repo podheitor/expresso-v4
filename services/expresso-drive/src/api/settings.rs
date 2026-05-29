@@ -12,8 +12,10 @@ use crate::error::{DriveError, Result};
 use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/api/v1/drive/settings/trash-purge", get(get_trash_purge).put(put_trash_purge))
+    Router::new().route(
+        "/api/v1/drive/settings/trash-purge",
+        get(get_trash_purge).put(put_trash_purge),
+    )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -42,7 +44,9 @@ async fn get_trash_purge(
     .fetch_optional(pool)
     .await?
     .flatten();
-    Ok(Json(TrashPurgeSettings { auto_purge_days: days }))
+    Ok(Json(TrashPurgeSettings {
+        auto_purge_days: days,
+    }))
 }
 
 /// PUT /api/v1/drive/settings/trash-purge — set (or clear) auto-purge.
@@ -82,7 +86,12 @@ async fn put_trash_purge(
         }
     }
 
-    Ok((StatusCode::OK, Json(TrashPurgeSettings { auto_purge_days: body.auto_purge_days })))
+    Ok((
+        StatusCode::OK,
+        Json(TrashPurgeSettings {
+            auto_purge_days: body.auto_purge_days,
+        }),
+    ))
 }
 
 #[cfg(test)]
@@ -91,15 +100,20 @@ mod tests {
 
     #[test]
     fn trash_purge_settings_with_days() {
-        let s = TrashPurgeSettings { auto_purge_days: Some(30) };
+        let s = TrashPurgeSettings {
+            auto_purge_days: Some(30),
+        };
         let json = serde_json::to_string(&s).unwrap();
         assert!(json.contains("30"));
     }
 
     #[test]
     fn trash_purge_settings_disabled() {
-        let s = TrashPurgeSettings { auto_purge_days: None };
-        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        let s = TrashPurgeSettings {
+            auto_purge_days: None,
+        };
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert!(v["auto_purge_days"].is_null());
     }
 
@@ -126,29 +140,39 @@ mod tests {
 
     #[test]
     fn trash_purge_settings_serializes_some() {
-        let s = TrashPurgeSettings { auto_purge_days: Some(7) };
+        let s = TrashPurgeSettings {
+            auto_purge_days: Some(7),
+        };
         let v: serde_json::Value = serde_json::to_value(&s).unwrap();
         assert_eq!(v["auto_purge_days"], 7);
     }
 
     #[test]
     fn trash_purge_settings_serializes_null() {
-        let s = TrashPurgeSettings { auto_purge_days: None };
+        let s = TrashPurgeSettings {
+            auto_purge_days: None,
+        };
         let v: serde_json::Value = serde_json::to_value(&s).unwrap();
         assert!(v["auto_purge_days"].is_null());
     }
 
     #[test]
     fn trash_purge_settings_roundtrip() {
-        let s = TrashPurgeSettings { auto_purge_days: Some(30) };
-        let back: TrashPurgeSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        let s = TrashPurgeSettings {
+            auto_purge_days: Some(30),
+        };
+        let back: TrashPurgeSettings =
+            serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back.auto_purge_days, Some(30));
     }
 
     #[test]
     fn trash_purge_settings_null_days_roundtrip() {
-        let s = TrashPurgeSettings { auto_purge_days: None };
-        let back: TrashPurgeSettings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        let s = TrashPurgeSettings {
+            auto_purge_days: None,
+        };
+        let back: TrashPurgeSettings =
+            serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert!(back.auto_purge_days.is_none());
     }
 
@@ -160,25 +184,33 @@ mod tests {
 
     #[test]
     fn trash_purge_settings_none_when_absent() {
-        let s = TrashPurgeSettings { auto_purge_days: None };
+        let s = TrashPurgeSettings {
+            auto_purge_days: None,
+        };
         assert!(s.auto_purge_days.is_none());
     }
 
     #[test]
     fn trash_purge_settings_90_days_preserved() {
-        let s = TrashPurgeSettings { auto_purge_days: Some(90) };
+        let s = TrashPurgeSettings {
+            auto_purge_days: Some(90),
+        };
         assert_eq!(s.auto_purge_days, Some(90));
     }
 
     #[test]
     fn trash_purge_settings_none_auto_purge() {
-        let s = TrashPurgeSettings { auto_purge_days: None };
+        let s = TrashPurgeSettings {
+            auto_purge_days: None,
+        };
         assert!(s.auto_purge_days.is_none());
     }
 
     #[test]
     fn trash_purge_settings_seven_days_preserved() {
-        let s = TrashPurgeSettings { auto_purge_days: Some(7) };
+        let s = TrashPurgeSettings {
+            auto_purge_days: Some(7),
+        };
         assert_eq!(s.auto_purge_days, Some(7));
     }
 
@@ -190,7 +222,9 @@ mod tests {
 
     #[test]
     fn trash_purge_settings_max_days_preserved() {
-        let s = TrashPurgeSettings { auto_purge_days: Some(3650) };
+        let s = TrashPurgeSettings {
+            auto_purge_days: Some(3650),
+        };
         let v: serde_json::Value = serde_json::to_value(&s).unwrap();
         assert_eq!(v["auto_purge_days"], 3650);
     }
@@ -209,7 +243,9 @@ mod tests {
 
     #[test]
     fn trash_purge_settings_30_days_preserved() {
-        let s = TrashPurgeSettings { auto_purge_days: Some(30) };
+        let s = TrashPurgeSettings {
+            auto_purge_days: Some(30),
+        };
         assert_eq!(s.auto_purge_days, Some(30));
     }
 
@@ -221,20 +257,26 @@ mod tests {
 
     #[test]
     fn trash_purge_settings_one_day_preserved() {
-        let s = TrashPurgeSettings { auto_purge_days: Some(1) };
+        let s = TrashPurgeSettings {
+            auto_purge_days: Some(1),
+        };
         assert_eq!(s.auto_purge_days, Some(1));
     }
 
     #[test]
     fn trash_purge_settings_serializes_days_as_number() {
-        let s = TrashPurgeSettings { auto_purge_days: Some(7) };
+        let s = TrashPurgeSettings {
+            auto_purge_days: Some(7),
+        };
         let v: serde_json::Value = serde_json::to_value(&s).unwrap();
         assert_eq!(v["auto_purge_days"], 7);
     }
 
     #[test]
     fn trash_purge_settings_some_365_days_preserved() {
-        let s = TrashPurgeSettings { auto_purge_days: Some(365) };
+        let s = TrashPurgeSettings {
+            auto_purge_days: Some(365),
+        };
         assert_eq!(s.auto_purge_days, Some(365));
     }
 

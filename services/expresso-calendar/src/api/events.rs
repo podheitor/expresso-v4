@@ -10,11 +10,11 @@ use axum::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use expresso_core::begin_tenant_tx;
 use crate::api::context::RequestCtx;
 use crate::domain::{Event, EventQuery, EventRepo};
 use crate::error::{CalendarError, Result};
 use crate::state::AppState;
+use expresso_core::begin_tenant_tx;
 
 /// Cap pro VCALENDAR de UM evento (create/update). Eventos reais com
 /// participantes/VALARM/recurrence ficam em poucos KiB; 256 KiB cobre
@@ -40,22 +40,17 @@ pub(crate) async fn assert_can_write(
     match lvl.as_deref() {
         Some("OWNER") | Some("WRITE") | Some("ADMIN") => Ok(()),
         Some("READ") => Err(crate::error::CalendarError::Forbidden),
-        Some(_)      => Err(crate::error::CalendarError::Forbidden),
-        None         => Err(crate::error::CalendarError::CalendarNotFound(cal_id.to_string())),
+        Some(_) => Err(crate::error::CalendarError::Forbidden),
+        None => Err(crate::error::CalendarError::CalendarNotFound(
+            cal_id.to_string(),
+        )),
     }
 }
 
-
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route(
-            "/api/v1/calendars/:cal_id/events",
-            post(create).get(list),
-        )
-        .route(
-            "/api/v1/calendars/:cal_id/events-count",
-            get(count_events),
-        )
+        .route("/api/v1/calendars/:cal_id/events", post(create).get(list))
+        .route("/api/v1/calendars/:cal_id/events-count", get(count_events))
         .route(
             "/api/v1/calendars/:cal_id/events-histogram",
             get(events_histogram),
@@ -320,14 +315,8 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
-        .route(
-            "/api/v1/calendars/:cal_id/export.ics",
-            get(export_ics),
-        )
-        .route(
-            "/api/v1/calendars/:cal_id/import",
-            post(import_ics),
-        )
+        .route("/api/v1/calendars/:cal_id/export.ics", get(export_ics))
+        .route("/api/v1/calendars/:cal_id/import", post(import_ics))
         .route(
             "/api/v1/calendars/:cal_id/events/:id/history",
             get(event_history).delete(delete_event_history),
@@ -344,10 +333,7 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/itip/request.ics",
             get(itip_request),
         )
-        .route(
-            "/api/v1/calendars/:cal_id/events/:id/rsvp",
-            post(rsvp),
-        )
+        .route("/api/v1/calendars/:cal_id/events/:id/rsvp", post(rsvp))
         .route(
             "/api/v1/calendars/:cal_id/events/:id/attendees",
             get(list_attendees),
@@ -390,7 +376,9 @@ pub fn routes() -> Router<AppState> {
         )
         .route(
             "/api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id",
-            get(get_one_override).delete(delete_override).patch(patch_override),
+            get(get_one_override)
+                .delete(delete_override)
+                .patch(patch_override),
         )
         .route(
             "/api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id/cancel",
@@ -436,10 +424,7 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/exdates-preview/stats",
             get(exdates_preview_stats),
         )
-        .route(
-            "/api/v1/calendars/events/search",
-            get(events_search),
-        )
+        .route("/api/v1/calendars/events/search", get(events_search))
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -452,10 +437,14 @@ async fn create(
     validate_ics(&raw, MAX_EVENT_ICS_BYTES)?;
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
-    let ev = EventRepo::new(pool).create(ctx.tenant_id, cal_id, &raw).await?;
+    let ev = EventRepo::new(pool)
+        .create(ctx.tenant_id, cal_id, &raw)
+        .await?;
 
     state.events().publish(crate::events::Event::EventCreated {
-        tenant_id: ctx.tenant_id, event_id: ev.id, summary: ev.summary.clone(),
+        tenant_id: ctx.tenant_id,
+        event_id: ev.id,
+        summary: ev.summary.clone(),
     });
     state.events().publish_imip(ev.clone(), "REQUEST");
 
@@ -463,8 +452,10 @@ async fn create(
     let location = format!("/api/v1/calendars/{}/events/{}", ev.calendar_id, ev.id);
 
     let mut resp = (StatusCode::CREATED, Json(ev)).into_response();
-    resp.headers_mut().insert(header::ETAG,     HeaderValue::from_str(&etag).unwrap());
-    resp.headers_mut().insert(header::LOCATION, HeaderValue::from_str(&location).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::LOCATION, HeaderValue::from_str(&location).unwrap());
     Ok(resp)
 }
 
@@ -512,9 +503,11 @@ async fn events_histogram(
         "day" => "day",
         "week" => "week",
         "month" => "month",
-        other => return Err(CalendarError::BadRequest(format!(
-            "bucket must be day|week|month, got {other}"
-        ))),
+        other => {
+            return Err(CalendarError::BadRequest(format!(
+                "bucket must be day|week|month, got {other}"
+            )))
+        }
     };
     let pool = state.db_or_unavailable()?;
     let sql = format!(
@@ -546,8 +539,8 @@ async fn events_histogram(
 
 #[derive(Debug, serde::Deserialize)]
 pub struct EventsHistogramParams {
-    pub from:   Option<OffsetDateTime>,
-    pub to:     Option<OffsetDateTime>,
+    pub from: Option<OffsetDateTime>,
+    pub to: Option<OffsetDateTime>,
     pub bucket: Option<String>,
 }
 
@@ -563,20 +556,25 @@ pub struct EventsDigestParams {
 /// colisão com `events/:id` (lição #427).
 async fn events_digest(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
     Query(params): Query<EventsDigestParams>,
 ) -> Result<Response> {
     use crate::domain::ical;
-    use time::{Date, Time, format_description::well_known::Iso8601};
+    use time::{format_description::well_known::Iso8601, Date, Time};
 
-    let date = Date::parse(&params.day, &Iso8601::DATE)
-        .map_err(|_| CalendarError::BadRequest(format!("day must be YYYY-MM-DD, got {}", params.day)))?;
+    let date = Date::parse(&params.day, &Iso8601::DATE).map_err(|_| {
+        CalendarError::BadRequest(format!("day must be YYYY-MM-DD, got {}", params.day))
+    })?;
     let start = date.with_time(Time::MIDNIGHT).assume_utc();
     let end = start + time::Duration::days(1);
 
     let pool = state.db_or_unavailable()?;
-    let q = crate::domain::EventQuery { from: Some(start), to: Some(end), limit: None };
+    let q = crate::domain::EventQuery {
+        from: Some(start),
+        to: Some(end),
+        limit: None,
+    };
     let events = EventRepo::new(pool).list(ctx.tenant_id, cal_id, &q).await?;
 
     let blocks: Vec<String> = events
@@ -592,8 +590,11 @@ async fn events_digest(
     );
     resp.headers_mut().insert(
         header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&format!("attachment; filename=\"digest-{}.ics\"", params.day))
-            .unwrap_or_else(|_| HeaderValue::from_static("attachment; filename=\"digest.ics\"")),
+        HeaderValue::from_str(&format!(
+            "attachment; filename=\"digest-{}.ics\"",
+            params.day
+        ))
+        .unwrap_or_else(|_| HeaderValue::from_static("attachment; filename=\"digest.ics\"")),
     );
     Ok(resp)
 }
@@ -601,7 +602,7 @@ async fn events_digest(
 #[derive(Debug, serde::Deserialize)]
 pub struct EventsDigestRangeParams {
     pub from: OffsetDateTime,
-    pub to:   OffsetDateTime,
+    pub to: OffsetDateTime,
 }
 
 /// GET /api/v1/calendars/:cal_id/events-digest-range?from=&to=
@@ -609,9 +610,9 @@ pub struct EventsDigestRangeParams {
 /// pra ranges arbitrários (semana, sprint, mês). Reusa EventRepo::list +
 /// extract_vevent_block + wrap_vcalendar igual events-digest single-day.
 async fn events_digest_range(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
-    Path(cal_id):  Path<Uuid>,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<Uuid>,
     Query(params): Query<EventsDigestRangeParams>,
 ) -> Result<Response> {
     use crate::domain::ical;
@@ -622,7 +623,9 @@ async fn events_digest_range(
 
     let pool = state.db_or_unavailable()?;
     let q = crate::domain::EventQuery {
-        from: Some(params.from), to: Some(params.to), limit: None,
+        from: Some(params.from),
+        to: Some(params.to),
+        limit: None,
     };
     let events = EventRepo::new(pool).list(ctx.tenant_id, cal_id, &q).await?;
 
@@ -647,23 +650,23 @@ async fn events_digest_range(
 #[derive(Debug, serde::Deserialize)]
 pub struct EventsConflictsParams {
     pub from: OffsetDateTime,
-    pub to:   OffsetDateTime,
+    pub to: OffsetDateTime,
 }
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
 struct ConflictPairRow {
-    a_id:      Uuid,
+    a_id: Uuid,
     a_summary: Option<String>,
     #[serde(with = "time::serde::rfc3339::option")]
     a_dtstart: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option")]
-    a_dtend:   Option<OffsetDateTime>,
-    b_id:      Uuid,
+    a_dtend: Option<OffsetDateTime>,
+    b_id: Uuid,
     b_summary: Option<String>,
     #[serde(with = "time::serde::rfc3339::option")]
     b_dtstart: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option")]
-    b_dtend:   Option<OffsetDateTime>,
+    b_dtend: Option<OffsetDateTime>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events-conflicts?from=&to=
@@ -675,9 +678,9 @@ struct ConflictPairRow {
 /// de invites. Mantemos hífen no path (events-conflicts) seguindo padrão das
 /// outras rotas estáticas sob /:cal_id que conflitariam com /:event_id.
 async fn events_conflicts(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
-    Path(cal_id):  Path<Uuid>,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<Uuid>,
     Query(params): Query<EventsConflictsParams>,
 ) -> Result<Json<serde_json::Value>> {
     if params.from >= params.to {
@@ -712,9 +715,13 @@ async fn events_conflicts(
     .fetch_all(pool)
     .await?;
 
-    let from_s = params.from.format(&time::format_description::well_known::Rfc3339)
+    let from_s = params
+        .from
+        .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_else(|_| String::new());
-    let to_s   = params.to.format(&time::format_description::well_known::Rfc3339)
+    let to_s = params
+        .to
+        .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_else(|_| String::new());
     Ok(Json(serde_json::json!({
         "from":      from_s,
@@ -731,9 +738,9 @@ async fn events_conflicts(
 /// "X conflitos detectados" antes do user decidir abrir a lista. Hífen no path
 /// segue mesmo padrão de `events-conflicts` evitando colisão com `:event_id`.
 async fn events_conflicts_count(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
-    Path(cal_id):  Path<Uuid>,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<Uuid>,
     Query(params): Query<EventsConflictsParams>,
 ) -> Result<Json<serde_json::Value>> {
     if params.from >= params.to {
@@ -766,9 +773,13 @@ async fn events_conflicts_count(
     .fetch_one(pool)
     .await?;
 
-    let from_s = params.from.format(&time::format_description::well_known::Rfc3339)
+    let from_s = params
+        .from
+        .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_else(|_| String::new());
-    let to_s   = params.to.format(&time::format_description::well_known::Rfc3339)
+    let to_s = params
+        .to
+        .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_else(|_| String::new());
     Ok(Json(serde_json::json!({
         "from":  from_s,
@@ -780,7 +791,7 @@ async fn events_conflicts_count(
 #[derive(Debug, serde::Deserialize)]
 pub struct EventsBulkDeleteParams {
     pub from: OffsetDateTime,
-    pub to:   OffsetDateTime,
+    pub to: OffsetDateTime,
 }
 
 /// POST /api/v1/calendars/:cal_id/events-bulk-delete?from=&to= — apaga em massa
@@ -792,9 +803,9 @@ pub struct EventsBulkDeleteParams {
 /// evitar query string em verbo DELETE (alguns proxies/CDNs descartam body
 /// e query) e marcar a operação como "irreversível, lê params".
 async fn events_bulk_delete(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
-    Path(cal_id):  Path<Uuid>,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<Uuid>,
     Query(params): Query<EventsBulkDeleteParams>,
 ) -> Result<Json<serde_json::Value>> {
     if params.from >= params.to {
@@ -813,11 +824,11 @@ async fn events_bulk_delete(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangePreviewQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     #[serde(default)]
-    limit:  Option<i64>,
+    limit: Option<i64>,
     /// Keyset cursor: RFC3339 `dtstart` of the last event from the previous page.
     /// When present, returns events with `dtstart > cursor`. Enables stable
     /// cursor pagination over large ranges without offset drift. Sprint #604.
@@ -835,9 +846,9 @@ struct EventsByRangePreviewQuery {
 /// Sprints #544 (foundation) + #604 (cursor pagination).
 async fn events_by_range_preview(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangePreviewQuery>,
+    Query(q): Query<EventsByRangePreviewQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -851,8 +862,8 @@ async fn events_by_range_preview(
     // We implement "> cursor" via "after_effective = cursor" + SQL "> $cursor".
     let effective_after = match (q.after, q.cursor) {
         (Some(a), Some(c)) => Some(if c > a { c } else { a }),
-        (None,    Some(c)) => Some(c),
-        (after,   None)    => after,
+        (None, Some(c)) => Some(c),
+        (after, None) => after,
     };
     let has_cursor = q.cursor.is_some();
 
@@ -905,16 +916,21 @@ async fn events_by_range_preview(
     tx.commit().await?;
 
     let next_cursor = rows.last().and_then(|ev| ev.dtstart);
-    let has_more    = rows.len() as i64 == limit;
+    let has_more = rows.len() as i64 == limit;
 
-    let events: Vec<serde_json::Value> = rows.iter().map(|ev| serde_json::json!({
-        "id":      ev.id,
-        "uid":     ev.uid,
-        "summary": ev.summary,
-        "dtstart": ev.dtstart,
-        "dtend":   ev.dtend,
-        "rrule":   ev.rrule,
-    })).collect();
+    let events: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|ev| {
+            serde_json::json!({
+                "id":      ev.id,
+                "uid":     ev.uid,
+                "summary": ev.summary,
+                "dtstart": ev.dtstart,
+                "dtend":   ev.dtend,
+                "rrule":   ev.rrule,
+            })
+        })
+        .collect();
 
     Ok(Json(serde_json::json!({
         "calendar_id": cal_id,
@@ -928,7 +944,7 @@ async fn events_by_range_preview(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeExportQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     /// Output format: "ics" (default). Reserved for future formats (e.g. "json").
@@ -945,9 +961,9 @@ struct EventsByRangeExportQuery {
 /// Sprint #612.
 async fn events_by_range_export(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeExportQuery>,
+    Query(q): Query<EventsByRangeExportQuery>,
 ) -> Result<Response> {
     use crate::domain::ical;
 
@@ -985,7 +1001,8 @@ async fn events_by_range_export(
     .await?;
     tx.commit().await?;
 
-    let blocks: Vec<String> = events.iter()
+    let blocks: Vec<String> = events
+        .iter()
         .filter_map(|e| ical::extract_vevent_block(&e.ical_raw))
         .collect();
     let body = ical::wrap_vcalendar(&blocks);
@@ -1005,7 +1022,7 @@ async fn events_by_range_export(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeAttendeesQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
 }
@@ -1021,9 +1038,9 @@ struct EventsByRangeAttendeesQuery {
 /// Read-only; no auth gate beyond tenant/user ownership of the calendar. Sprint #617.
 async fn events_by_range_attendees(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeAttendeesQuery>,
+    Query(q): Query<EventsByRangeAttendeesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     use crate::domain::itip;
     use std::collections::HashMap;
@@ -1062,19 +1079,24 @@ async fn events_by_range_attendees(
     for ev in &events {
         for att in itip::parse_attendees(&ev.ical_raw) {
             let key = att.email.to_lowercase();
-            seen.entry(key).or_insert_with(|| serde_json::json!({
-                "email":    att.email,
-                "cn":       att.cn,
-                "role":     att.role,
-                "partstat": att.partstat,
-            }));
+            seen.entry(key).or_insert_with(|| {
+                serde_json::json!({
+                    "email":    att.email,
+                    "cn":       att.cn,
+                    "role":     att.role,
+                    "partstat": att.partstat,
+                })
+            });
         }
     }
 
     let mut attendees: Vec<serde_json::Value> = seen.into_values().collect();
     // Stable sort by email for deterministic response order.
     attendees.sort_by(|a, b| {
-        a["email"].as_str().unwrap_or("").cmp(b["email"].as_str().unwrap_or(""))
+        a["email"]
+            .as_str()
+            .unwrap_or("")
+            .cmp(b["email"].as_str().unwrap_or(""))
     });
 
     Ok(Json(serde_json::json!({
@@ -1094,9 +1116,9 @@ async fn events_by_range_attendees(
 /// Sprint #622.
 async fn events_by_range_organizers(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeAttendeesQuery>,
+    Query(q): Query<EventsByRangeAttendeesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1160,9 +1182,9 @@ async fn events_by_range_organizers(
 /// Response: `{calendar_id, events_scanned, count, locations: [string]}`. Sprint #627.
 async fn events_by_range_locations(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeAttendeesQuery>,
+    Query(q): Query<EventsByRangeAttendeesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1181,8 +1203,12 @@ async fn events_by_range_locations(
             AND ($3::timestamptz IS NULL OR dtstart >= $3) \
             AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
 
     let rows: Vec<(String,)> = sqlx::query_as(
         "SELECT DISTINCT location \
@@ -1195,8 +1221,12 @@ async fn events_by_range_locations(
             AND ($4::timestamptz IS NULL OR dtstart <  $4) \
           ORDER BY location ASC",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     let locations: Vec<&str> = rows.iter().map(|(l,)| l.as_str()).collect();
@@ -1217,9 +1247,9 @@ async fn events_by_range_locations(
 /// Response: `{calendar_id, events_scanned, count, summaries: [string]}`. Sprint #632.
 async fn events_by_range_summaries(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeAttendeesQuery>,
+    Query(q): Query<EventsByRangeAttendeesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1238,8 +1268,12 @@ async fn events_by_range_summaries(
             AND ($3::timestamptz IS NULL OR dtstart >= $3) \
             AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
 
     let rows: Vec<(String,)> = sqlx::query_as(
         "SELECT DISTINCT summary \
@@ -1252,8 +1286,12 @@ async fn events_by_range_summaries(
             AND ($4::timestamptz IS NULL OR dtstart <  $4) \
           ORDER BY summary ASC",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     let summaries: Vec<&str> = rows.iter().map(|(s,)| s.as_str()).collect();
@@ -1277,16 +1315,16 @@ async fn events_by_range_summaries(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeDurationStatsQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
 }
 
 async fn events_by_range_duration_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeDurationStatsQuery>,
+    Query(q): Query<EventsByRangeDurationStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1312,8 +1350,12 @@ async fn events_by_range_duration_stats(
            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     let (events_with_duration, avg_minutes, min_minutes, max_minutes, total_minutes) = row;
@@ -1338,16 +1380,16 @@ async fn events_by_range_duration_stats(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeStatusTimelineQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
 }
 
 async fn events_by_range_status_timeline(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeStatusTimelineQuery>,
+    Query(q): Query<EventsByRangeStatusTimelineQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1378,15 +1420,18 @@ async fn events_by_range_status_timeline(
     .fetch_all(&mut *tx).await?;
     tx.commit().await?;
 
-    let days: Vec<serde_json::Value> = rows.into_iter().map(|(day, confirmed, tentative, cancelled, other)| {
-        serde_json::json!({
-            "day":       day,
-            "confirmed": confirmed,
-            "tentative": tentative,
-            "cancelled": cancelled,
-            "other":     other,
+    let days: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(day, confirmed, tentative, cancelled, other)| {
+            serde_json::json!({
+                "day":       day,
+                "confirmed": confirmed,
+                "tentative": tentative,
+                "cancelled": cancelled,
+                "other":     other,
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(serde_json::json!({
         "calendar_id": cal_id,
@@ -1406,16 +1451,16 @@ async fn events_by_range_status_timeline(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeRruleStatsQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
 }
 
 async fn events_by_range_rrule_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1475,9 +1520,9 @@ async fn events_by_range_rrule_stats(
 /// Sprint #652.
 async fn events_by_range_class_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1487,9 +1532,8 @@ async fn events_by_range_class_stats(
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
 
-    let (total, public, private, confidential, unset): (i64, i64, i64, i64, i64) =
-        sqlx::query_as(
-            "SELECT \
+    let (total, public, private, confidential, unset): (i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
                 COUNT(*)::BIGINT                                                   AS total, \
                 COUNT(*) FILTER (WHERE class = 'PUBLIC')::BIGINT                  AS public, \
                 COUNT(*) FILTER (WHERE class = 'PRIVATE')::BIGINT                 AS private, \
@@ -1500,9 +1544,13 @@ async fn events_by_range_class_stats(
                AND calendar_id = $2 \
                AND ($3::timestamptz IS NULL OR dtstart >= $3) \
                AND ($4::timestamptz IS NULL OR dtstart <  $4)",
-        )
-        .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-        .fetch_one(&mut *tx).await?;
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -1524,9 +1572,9 @@ async fn events_by_range_class_stats(
 /// Sprint #655.
 async fn events_by_range_transp_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1536,9 +1584,8 @@ async fn events_by_range_transp_stats(
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
 
-    let (total, opaque, transparent, unset): (i64, i64, i64, i64) =
-        sqlx::query_as(
-            "SELECT \
+    let (total, opaque, transparent, unset): (i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
                 COUNT(*)::BIGINT                                                   AS total, \
                 COUNT(*) FILTER (WHERE transp = 'OPAQUE')::BIGINT                 AS opaque, \
                 COUNT(*) FILTER (WHERE transp = 'TRANSPARENT')::BIGINT            AS transparent, \
@@ -1548,9 +1595,13 @@ async fn events_by_range_transp_stats(
                AND calendar_id = $2 \
                AND ($3::timestamptz IS NULL OR dtstart >= $3) \
                AND ($4::timestamptz IS NULL OR dtstart <  $4)",
-        )
-        .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-        .fetch_one(&mut *tx).await?;
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -1570,9 +1621,9 @@ async fn events_by_range_transp_stats(
 /// `events_with_attendees` / `events_without_attendees`. Sprint #660.
 async fn events_by_range_attendee_count_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     use crate::domain::itip;
 
@@ -1603,14 +1654,15 @@ async fn events_by_range_attendee_count_stats(
     .await?;
     tx.commit().await?;
 
-    let counts: Vec<usize> = raws.iter()
+    let counts: Vec<usize> = raws
+        .iter()
         .map(|(raw,)| itip::parse_attendees(raw).len())
         .collect();
 
     let total_events = counts.len();
-    let events_with    = counts.iter().filter(|&&c| c > 0).count() as i64;
+    let events_with = counts.iter().filter(|&&c| c > 0).count() as i64;
     let events_without = (total_events as i64) - events_with;
-    let max_attendees  = counts.iter().copied().max().unwrap_or(0) as i64;
+    let max_attendees = counts.iter().copied().max().unwrap_or(0) as i64;
     let avg_attendees: f64 = if total_events == 0 {
         0.0
     } else {
@@ -1634,9 +1686,9 @@ async fn events_by_range_attendee_count_stats(
 /// GROUP BY para top-N locations (limit default 20, max 200). Sprint #665.
 async fn events_by_range_location_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1658,8 +1710,12 @@ async fn events_by_range_location_stats(
             AND ($3::timestamptz IS NULL OR dtstart >= $3) \
             AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
 
     let top_rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT location, COUNT(*)::BIGINT AS cnt \
@@ -1674,11 +1730,16 @@ async fn events_by_range_location_stats(
           ORDER BY cnt DESC, location ASC \
           LIMIT 20",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
-    let top_locations: Vec<serde_json::Value> = top_rows.into_iter()
+    let top_locations: Vec<serde_json::Value> = top_rows
+        .into_iter()
         .map(|(location, count)| serde_json::json!({"location": location, "count": count}))
         .collect();
 
@@ -1698,9 +1759,9 @@ async fn events_by_range_location_stats(
 /// Sprint #670.
 async fn events_by_range_organizer_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1722,8 +1783,12 @@ async fn events_by_range_organizer_stats(
             AND ($3::timestamptz IS NULL OR dtstart >= $3) \
             AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
 
     let top_rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT organizer_email, COUNT(*)::BIGINT AS cnt \
@@ -1738,11 +1803,16 @@ async fn events_by_range_organizer_stats(
           ORDER BY cnt DESC, organizer_email ASC \
           LIMIT 20",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
-    let top_organizers: Vec<serde_json::Value> = top_rows.into_iter()
+    let top_organizers: Vec<serde_json::Value> = top_rows
+        .into_iter()
         .map(|(organizer, count)| serde_json::json!({"organizer": organizer, "count": count}))
         .collect();
 
@@ -1761,9 +1831,9 @@ async fn events_by_range_organizer_stats(
 /// `other` = valores não-padrão RFC 5545; `unset` = IS NULL. Sprint #675.
 async fn events_by_range_status_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1813,15 +1883,14 @@ async fn events_by_range_status_stats(
 /// com visão acumulada sem escopo temporal. Sprint #690.
 async fn events_class_distribution(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
 
-    let (total, public, private, confidential, unset): (i64, i64, i64, i64, i64) =
-        sqlx::query_as(
-            "SELECT \
+    let (total, public, private, confidential, unset): (i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
                 COUNT(*)::BIGINT                                        AS total, \
                 COUNT(*) FILTER (WHERE class = 'PUBLIC')::BIGINT       AS public, \
                 COUNT(*) FILTER (WHERE class = 'PRIVATE')::BIGINT      AS private, \
@@ -1829,9 +1898,11 @@ async fn events_class_distribution(
                 COUNT(*) FILTER (WHERE class IS NULL)::BIGINT          AS unset \
              FROM calendar_events \
              WHERE tenant_id = $1 AND calendar_id = $2",
-        )
-        .bind(ctx.tenant_id).bind(cal_id)
-        .fetch_one(&mut *tx).await?;
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -1851,9 +1922,9 @@ async fn events_class_distribution(
 /// Retorna `{calendar_id,total,buckets:[{range,count}]}`. Sprint #699.
 async fn events_by_range_duration_distribution(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeDurationStatsQuery>,
+    Query(q): Query<EventsByRangeDurationStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1906,9 +1977,9 @@ async fn events_by_range_duration_distribution(
 /// Retorna `{calendar_id,total,all_day,timed}`. Sprint #714.
 async fn events_by_range_all_day_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -1936,8 +2007,12 @@ async fn events_by_range_all_day_stats(
            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -1955,9 +2030,9 @@ async fn events_by_range_all_day_stats(
 /// Retorna `{calendar_id,total,with_description,without_description,avg_length,max_length}`. Sprint #719.
 async fn events_by_range_description_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -2003,9 +2078,9 @@ async fn events_by_range_description_stats(
 /// Retorna `{calendar_id,total,with_summary,without_summary,avg_length,max_length}`. Sprint #724.
 async fn events_by_range_summary_length_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -2051,9 +2126,9 @@ async fn events_by_range_summary_length_stats(
 /// Retorna `{calendar_id,total,with_location,without_location,avg_length,max_length}`. Sprint #729.
 async fn events_by_range_location_length_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -2099,9 +2174,9 @@ async fn events_by_range_location_length_stats(
 /// Retorna `{calendar_id,total,unique_uids,duplicate_entries}`. Sprint #734.
 async fn events_by_range_uid_uniqueness(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -2121,8 +2196,12 @@ async fn events_by_range_uid_uniqueness(
            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -2139,9 +2218,9 @@ async fn events_by_range_uid_uniqueness(
 /// Top-N domínios mais presentes; default 20. Retorna `{calendar_id,events_scanned,rows:[{domain,count}]}`. Sprint #739.
 async fn events_by_range_attendee_domain_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     use crate::domain::itip;
     use std::collections::HashMap;
@@ -2162,8 +2241,12 @@ async fn events_by_range_attendee_domain_stats(
             AND ($3::timestamptz IS NULL OR dtstart >= $3) \
             AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     let events_scanned = raws.len();
@@ -2171,7 +2254,9 @@ async fn events_by_range_attendee_domain_stats(
     for (raw,) in &raws {
         for att in itip::parse_attendees(raw) {
             if let Some(domain) = att.email.split('@').nth(1) {
-                *domain_counts.entry(domain.to_ascii_lowercase()).or_insert(0) += 1;
+                *domain_counts
+                    .entry(domain.to_ascii_lowercase())
+                    .or_insert(0) += 1;
             }
         }
     }
@@ -2180,7 +2265,8 @@ async fn events_by_range_attendee_domain_stats(
     rows.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     rows.truncate(20);
 
-    let out: Vec<serde_json::Value> = rows.into_iter()
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(domain, count)| serde_json::json!({"domain": domain, "count": count}))
         .collect();
 
@@ -2197,9 +2283,9 @@ async fn events_by_range_attendee_domain_stats(
 /// Self-join com id < id2 para evitar duplicatas. Retorna `{calendar_id,overlap_pair_count}`. Sprint #744.
 async fn events_by_range_overlap_count(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -2224,8 +2310,12 @@ async fn events_by_range_overlap_count(
             AND ($3::timestamptz IS NULL OR a.dtstart >= $3) \
             AND ($4::timestamptz IS NULL OR a.dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -2240,9 +2330,9 @@ async fn events_by_range_overlap_count(
 /// sequence alto indica eventos muito editados. Retorna `{calendar_id,total,avg_sequence,max_sequence}`. Sprint #749.
 async fn events_by_range_sequence_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -2263,8 +2353,12 @@ async fn events_by_range_sequence_stats(
            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -2281,9 +2375,9 @@ async fn events_by_range_sequence_stats(
 /// Retorna `{calendar_id,rows:[{domain,count}]}` count DESC. Sprint #754.
 async fn events_by_range_organizer_domain_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -2308,11 +2402,16 @@ async fn events_by_range_organizer_domain_stats(
          ORDER BY count DESC \
          LIMIT 20",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
-    let out: Vec<serde_json::Value> = rows.into_iter()
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(domain, count)| serde_json::json!({"domain": domain, "count": count}))
         .collect();
 
@@ -2327,12 +2426,14 @@ async fn events_by_range_organizer_domain_stats(
 /// COUNT por DATE_TRUNC('day', created_at) no intervalo dtstart. Retorna `{calendar_id,rows:[{day,count}]}` day ASC. Sprint #759.
 async fn events_by_range_created_by_day(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
-        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
     }
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -2346,14 +2447,21 @@ async fn events_by_range_created_by_day(
             AND ($4::timestamptz IS NULL OR dtstart <  $4) \
           GROUP BY day ORDER BY day ASC",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
-    let out: Vec<serde_json::Value> = rows.into_iter()
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
         .collect();
-    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": out})))
+    Ok(Json(
+        serde_json::json!({"calendar_id": cal_id, "rows": out}),
+    ))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/updated-by-day?after=&before=
@@ -2361,12 +2469,14 @@ async fn events_by_range_created_by_day(
 /// COUNT por DATE_TRUNC('day', updated_at). Complementa created-by-day (#759). Sprint #764.
 async fn events_by_range_updated_by_day(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
-        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
     }
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -2380,14 +2490,21 @@ async fn events_by_range_updated_by_day(
             AND ($4::timestamptz IS NULL OR dtstart <  $4) \
           GROUP BY day ORDER BY day ASC",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
-    let out: Vec<serde_json::Value> = rows.into_iter()
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
         .collect();
-    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": out})))
+    Ok(Json(
+        serde_json::json!({"calendar_id": cal_id, "rows": out}),
+    ))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/etag-collision-check?after=&before=
@@ -2396,12 +2513,14 @@ async fn events_by_range_updated_by_day(
 /// Retorna `{calendar_id,total,unique_etags,collisions}`. Sprint #769.
 async fn events_by_range_etag_collision_check(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
-        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
     }
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -2413,8 +2532,12 @@ async fn events_by_range_etag_collision_check(
             AND ($3::timestamptz IS NULL OR dtstart >= $3) \
             AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -2431,12 +2554,14 @@ async fn events_by_range_etag_collision_check(
 /// Retorna `{calendar_id,total,no_end_count,with_end_count}`. Sprint #774.
 async fn events_by_range_no_end_count(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
-        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
     }
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -2450,8 +2575,12 @@ async fn events_by_range_no_end_count(
            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -2468,12 +2597,14 @@ async fn events_by_range_no_end_count(
 /// Retorna `{calendar_id,location_count,total_events,entropy_bits,top:[{location,count}]}`. Sprint #799.
 async fn events_by_range_location_entropy(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
-        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
     }
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -2487,18 +2618,29 @@ async fn events_by_range_location_entropy(
           GROUP BY loc \
           ORDER BY cnt DESC",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     let total: i64 = rows.iter().map(|(_, c)| c).sum();
-    let entropy: f64 = if total == 0 { 0.0 } else {
-        rows.iter().filter(|(_, c)| *c > 0).map(|(_, c)| {
-            let p = *c as f64 / total as f64;
-            -p * p.log2()
-        }).sum()
+    let entropy: f64 = if total == 0 {
+        0.0
+    } else {
+        rows.iter()
+            .filter(|(_, c)| *c > 0)
+            .map(|(_, c)| {
+                let p = *c as f64 / total as f64;
+                -p * p.log2()
+            })
+            .sum()
     };
-    let top: Vec<serde_json::Value> = rows.iter().take(20)
+    let top: Vec<serde_json::Value> = rows
+        .iter()
+        .take(20)
         .map(|(loc, cnt)| serde_json::json!({"location": loc, "count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({
@@ -2516,12 +2658,14 @@ async fn events_by_range_location_entropy(
 /// Retorna `{calendar_id,total,with_alarm,without_alarm}`. Sprint #804.
 async fn events_by_range_has_alarm_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
-        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
     }
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -2535,8 +2679,12 @@ async fn events_by_range_has_alarm_stats(
             AND ($3::timestamptz IS NULL OR dtstart >= $3) \
             AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -2554,12 +2702,14 @@ async fn events_by_range_has_alarm_stats(
 /// Retorna `{calendar_id,rows:[{hour,count}]}` hour ASC. Sprint #809.
 async fn events_by_range_dtstart_hour_distribution(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
-        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
     }
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -2576,14 +2726,21 @@ async fn events_by_range_dtstart_hour_distribution(
           GROUP BY hour \
           ORDER BY hour ASC",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(hour, count)| serde_json::json!({"hour": hour, "count": count}))
         .collect();
-    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+    Ok(Json(
+        serde_json::json!({"calendar_id": cal_id, "rows": result}),
+    ))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/weekday-distribution?after=&before=
@@ -2592,12 +2749,14 @@ async fn events_by_range_dtstart_hour_distribution(
 /// Retorna `{calendar_id,rows:[{dow,day_name,count}]}` dow ASC. Sprint #814.
 async fn events_by_range_weekday_distribution(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
-        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
     }
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -2614,18 +2773,33 @@ async fn events_by_range_weekday_distribution(
           GROUP BY dow \
           ORDER BY dow ASC",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
-    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    const DAY_NAMES: [&str; 7] = [
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+    ];
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(dow, count)| {
             let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"dow": dow, "day_name": name, "count": count})
         })
         .collect();
-    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+    Ok(Json(
+        serde_json::json!({"calendar_id": cal_id, "rows": result}),
+    ))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/rrule-freq-stats?after=&before=
@@ -2635,12 +2809,14 @@ async fn events_by_range_weekday_distribution(
 /// Retorna `{calendar_id,total_recurring,rows:[{freq,count}]}` count DESC. Sprint #779.
 async fn events_by_range_rrule_freq_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
-        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
     }
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -2653,25 +2829,41 @@ async fn events_by_range_rrule_freq_stats(
             AND ($3::timestamptz IS NULL OR dtstart >= $3) \
             AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     let total_recurring = rows_raw.len() as i64;
     let mut freq_map: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
     for (rrule_opt,) in &rows_raw {
-        let freq = rrule_opt.as_deref()
+        let freq = rrule_opt
+            .as_deref()
             .and_then(|r| r.split(';').find(|p| p.starts_with("FREQ=")))
             .and_then(|p| p.strip_prefix("FREQ="))
             .map(|f| f.split(';').next().unwrap_or(f).to_uppercase())
-            .filter(|f| matches!(f.as_str(), "DAILY"|"WEEKLY"|"MONTHLY"|"YEARLY"|"HOURLY"|"MINUTELY"|"SECONDLY"))
+            .filter(|f| {
+                matches!(
+                    f.as_str(),
+                    "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY" | "HOURLY" | "MINUTELY" | "SECONDLY"
+                )
+            })
             .unwrap_or_else(|| "OTHER".to_string());
         *freq_map.entry(freq).or_insert(0) += 1;
     }
-    let mut freq_rows: Vec<serde_json::Value> = freq_map.into_iter()
+    let mut freq_rows: Vec<serde_json::Value> = freq_map
+        .into_iter()
         .map(|(freq, count)| serde_json::json!({"freq": freq, "count": count}))
         .collect();
-    freq_rows.sort_by(|a, b| b["count"].as_i64().unwrap_or(0).cmp(&a["count"].as_i64().unwrap_or(0)));
+    freq_rows.sort_by(|a, b| {
+        b["count"]
+            .as_i64()
+            .unwrap_or(0)
+            .cmp(&a["count"].as_i64().unwrap_or(0))
+    });
 
     Ok(Json(serde_json::json!({
         "calendar_id":     cal_id,
@@ -2686,12 +2878,14 @@ async fn events_by_range_rrule_freq_stats(
 /// Retorna `{calendar_id,total,opaque,transparent,unset}`. Sprint #784.
 async fn events_by_range_transparency_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
-        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
     }
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -2707,8 +2901,12 @@ async fn events_by_range_transparency_stats(
             AND ($3::timestamptz IS NULL OR dtstart >= $3) \
             AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -2726,12 +2924,14 @@ async fn events_by_range_transparency_stats(
 /// class NULL agrupado como "UNSET". Retorna `{calendar_id,rows:[{day,class,count}]}`. Sprint #789.
 async fn events_by_range_class_by_day(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
-        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
     }
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -2748,14 +2948,21 @@ async fn events_by_range_class_by_day(
           GROUP BY day, class \
           ORDER BY day ASC, class ASC",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
-    let result: Vec<serde_json::Value> = rows.into_iter()
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, class, count)| serde_json::json!({"day": day, "class": class, "count": count}))
         .collect();
-    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+    Ok(Json(
+        serde_json::json!({"calendar_id": cal_id, "rows": result}),
+    ))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/title-word-count?after=&before= — avg/max palavras em summary.
@@ -2765,12 +2972,14 @@ async fn events_by_range_class_by_day(
 /// Retorna `{calendar_id,total,with_summary,avg_words,max_words}`. Sprint #794.
 async fn events_by_range_title_word_count(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
-        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
     }
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
@@ -2795,8 +3004,12 @@ async fn events_by_range_title_word_count(
                 AND ($3::timestamptz IS NULL OR dtstart >= $3) \
                 AND ($4::timestamptz IS NULL OR dtstart <  $4)",
         )
-        .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-        .fetch_one(&mut *tx).await?;
+        .bind(ctx.tenant_id)
+        .bind(cal_id)
+        .bind(q.after)
+        .bind(q.before)
+        .fetch_one(&mut *tx)
+        .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -2815,9 +3028,9 @@ async fn events_by_range_title_word_count(
 /// Retorna `{calendar_id,recurrent_with_duration,avg_minutes,min_minutes,max_minutes,total_minutes}`. Sprint #704.
 async fn events_by_range_recurrence_duration_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -2844,8 +3057,12 @@ async fn events_by_range_recurrence_duration_stats(
            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
     )
-    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     let (recurrent_with_duration, avg_minutes, min_minutes, max_minutes, total_minutes) = row;
@@ -2865,9 +3082,9 @@ async fn events_by_range_recurrence_duration_stats(
 /// Retorna `{calendar_id,total,high,medium,low,undefined}`. Sprint #685.
 async fn events_by_range_priority_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -2877,9 +3094,8 @@ async fn events_by_range_priority_stats(
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
 
-    let (total, high, medium, low, undefined): (i64, i64, i64, i64, i64) =
-        sqlx::query_as(
-            "SELECT \
+    let (total, high, medium, low, undefined): (i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
                 COUNT(*)::BIGINT                                                      AS total, \
                 COUNT(*) FILTER (WHERE priority >= 1 AND priority <= 4)::BIGINT      AS high, \
                 COUNT(*) FILTER (WHERE priority = 5)::BIGINT                          AS medium, \
@@ -2891,9 +3107,13 @@ async fn events_by_range_priority_stats(
                AND dtstart IS NOT NULL \
                AND ($3::timestamptz IS NULL OR dtstart >= $3) \
                AND ($4::timestamptz IS NULL OR dtstart <  $4)",
-        )
-        .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-        .fetch_one(&mut *tx).await?;
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
     tx.commit().await?;
 
     Ok(Json(serde_json::json!({
@@ -2909,9 +3129,9 @@ async fn events_by_range_priority_stats(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeStatsQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:    Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    before:   Option<OffsetDateTime>,
+    before: Option<OffsetDateTime>,
     /// Temporal breakdown granularity: "day", "week", or "month".
     /// When present, response includes `by_period: [{period, count}]`.
     /// Sprint #609.
@@ -2948,9 +3168,9 @@ struct EventsByRangeStatsQuery {
 /// dualidade master vs override consolidada em #543/#544.
 async fn events_by_range_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeStatsQuery>,
+    Query(q): Query<EventsByRangeStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -3017,16 +3237,17 @@ async fn events_by_range_stats(
     // Optional temporal breakdown via group_by=day|week|month. Sprint #609.
     let by_period = if let Some(granularity) = &q.group_by {
         let trunc = match granularity.as_str() {
-            "day"   => "day",
-            "week"  => "week",
+            "day" => "day",
+            "week" => "week",
             "month" => "month",
-            other   => return Err(CalendarError::BadRequest(
-                format!("group_by must be 'day', 'week', or 'month'; got '{other}'")
-            )),
+            other => {
+                return Err(CalendarError::BadRequest(format!(
+                    "group_by must be 'day', 'week', or 'month'; got '{other}'"
+                )))
+            }
         };
-        let period_rows: Vec<(OffsetDateTime, i64)> = sqlx::query_as(
-            &format!(
-                r#"SELECT DATE_TRUNC('{trunc}', dtstart AT TIME ZONE 'UTC') AS period,
+        let period_rows: Vec<(OffsetDateTime, i64)> = sqlx::query_as(&format!(
+            r#"SELECT DATE_TRUNC('{trunc}', dtstart AT TIME ZONE 'UTC') AS period,
                           COUNT(*) AS cnt
                      FROM calendar_events
                     WHERE tenant_id   = $1
@@ -3036,8 +3257,7 @@ async fn events_by_range_stats(
                       AND ($4::timestamptz IS NULL OR dtstart <  $4)
                     GROUP BY period
                     ORDER BY period ASC"#
-            )
-        )
+        ))
         .bind(ctx.tenant_id)
         .bind(cal_id)
         .bind(q.after)
@@ -3045,9 +3265,10 @@ async fn events_by_range_stats(
         .fetch_all(pool)
         .await?;
 
-        let buckets: Vec<serde_json::Value> = period_rows.iter().map(|(dt, cnt)| {
-            serde_json::json!({"period": dt, "count": cnt})
-        }).collect();
+        let buckets: Vec<serde_json::Value> = period_rows
+            .iter()
+            .map(|(dt, cnt)| serde_json::json!({"period": dt, "count": cnt}))
+            .collect();
         Some(buckets)
     } else {
         None
@@ -3063,8 +3284,8 @@ async fn events_by_range_stats(
         "by_status":      by_status,
     });
     if let Some(bp) = by_period {
-        resp["by_period"]    = serde_json::json!(bp);
-        resp["group_by"]     = serde_json::json!(q.group_by);
+        resp["by_period"] = serde_json::json!(bp);
+        resp["group_by"] = serde_json::json!(q.group_by);
     }
     Ok(Json(resp))
 }
@@ -3072,10 +3293,10 @@ async fn events_by_range_stats(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeMoveQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
-    dst:    Uuid,
+    dst: Uuid,
 }
 
 /// PATCH /api/v1/calendars/:cal_id/events-by-range/move?after=&before=&dst=
@@ -3114,9 +3335,9 @@ struct EventsByRangeMoveQuery {
 /// com `moved: u64` count das linhas afetadas.
 async fn events_by_range_move(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeMoveQuery>,
+    Query(q): Query<EventsByRangeMoveQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -3141,7 +3362,7 @@ async fn events_by_range_move(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeSetStatusQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     status: String,
@@ -3175,9 +3396,9 @@ struct EventsByRangeSetStatusQuery {
 /// das mutações single-field, mas custa N parses dos raws.
 async fn events_by_range_set_status(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeSetStatusQuery>,
+    Query(q): Query<EventsByRangeSetStatusQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -3209,7 +3430,7 @@ async fn events_by_range_set_status(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeClearRruleQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
 }
@@ -3241,9 +3462,9 @@ struct EventsByRangeClearRruleQuery {
 /// do #545 antes de chamar.
 async fn events_by_range_clear_rrule(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeClearRruleQuery>,
+    Query(q): Query<EventsByRangeClearRruleQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -3266,7 +3487,7 @@ async fn events_by_range_clear_rrule(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeSetSummaryQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     summary: String,
@@ -3292,9 +3513,9 @@ struct EventsByRangeSetSummaryQuery {
 /// summary (paralelo do #547/#548, simetria com a família).
 async fn events_by_range_set_summary(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeSetSummaryQuery>,
+    Query(q): Query<EventsByRangeSetSummaryQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -3323,7 +3544,7 @@ async fn events_by_range_set_summary(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeSetLocationQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     #[serde(default)]
@@ -3352,18 +3573,16 @@ struct EventsByRangeSetLocationQuery {
 /// mesmo location (paralelo do #547/#548/#549).
 async fn events_by_range_set_location(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeSetLocationQuery>,
+    Query(q): Query<EventsByRangeSetLocationQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
             return Err(CalendarError::BadRequest("after must be < before".into()));
         }
     }
-    let location: Option<&str> = q.location
-        .as_deref()
-        .filter(|s| !s.trim().is_empty());
+    let location: Option<&str> = q.location.as_deref().filter(|s| !s.trim().is_empty());
 
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
@@ -3382,7 +3601,7 @@ async fn events_by_range_set_location(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeSetDescriptionQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     #[serde(default)]
@@ -3411,18 +3630,16 @@ struct EventsByRangeSetDescriptionQuery {
 /// #547/#548/#549/#550).
 async fn events_by_range_set_description(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeSetDescriptionQuery>,
+    Query(q): Query<EventsByRangeSetDescriptionQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
             return Err(CalendarError::BadRequest("after must be < before".into()));
         }
     }
-    let description: Option<&str> = q.description
-        .as_deref()
-        .filter(|s| !s.trim().is_empty());
+    let description: Option<&str> = q.description.as_deref().filter(|s| !s.trim().is_empty());
 
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
@@ -3441,7 +3658,7 @@ async fn events_by_range_set_description(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeSetOrganizerEmailQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     #[serde(default)]
@@ -3479,16 +3696,17 @@ struct EventsByRangeSetOrganizerEmailQuery {
 /// organizer (paralelo do #547-#551).
 async fn events_by_range_set_organizer_email(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeSetOrganizerEmailQuery>,
+    Query(q): Query<EventsByRangeSetOrganizerEmailQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
             return Err(CalendarError::BadRequest("after must be < before".into()));
         }
     }
-    let organizer: Option<&str> = q.organizer_email
+    let organizer: Option<&str> = q
+        .organizer_email
         .as_deref()
         .filter(|s| !s.trim().is_empty());
 
@@ -3509,7 +3727,7 @@ async fn events_by_range_set_organizer_email(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeSetRruleQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     #[serde(default)]
@@ -3557,18 +3775,16 @@ struct EventsByRangeSetRruleQuery {
 /// eventos que já tinham a mesma rrule (paralelo do #547-#552).
 async fn events_by_range_set_rrule(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeSetRruleQuery>,
+    Query(q): Query<EventsByRangeSetRruleQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
             return Err(CalendarError::BadRequest("after must be < before".into()));
         }
     }
-    let rrule: Option<&str> = q.rrule
-        .as_deref()
-        .filter(|s| !s.trim().is_empty());
+    let rrule: Option<&str> = q.rrule.as_deref().filter(|s| !s.trim().is_empty());
 
     if let Some(s) = rrule {
         if crate::domain::rrule::Rrule::parse(s).is_none() {
@@ -3595,15 +3811,15 @@ async fn events_by_range_set_rrule(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeSetTextFieldsQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     #[serde(default)]
-    summary:         Option<String>,
+    summary: Option<String>,
     #[serde(default)]
-    location:        Option<String>,
+    location: Option<String>,
     #[serde(default)]
-    description:     Option<String>,
+    description: Option<String>,
     #[serde(default)]
     organizer_email: Option<String>,
 }
@@ -3640,9 +3856,9 @@ struct EventsByRangeSetTextFieldsQuery {
 /// classes.
 async fn events_by_range_set_text_fields(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeSetTextFieldsQuery>,
+    Query(q): Query<EventsByRangeSetTextFieldsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -3653,29 +3869,32 @@ async fn events_by_range_set_text_fields(
     fn split(p: Option<&str>) -> Option<Option<&str>> {
         p.map(|s| {
             let t = s.trim();
-            if t.is_empty() { None } else { Some(s) }
+            if t.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
         })
     }
-    let summary    = split(q.summary.as_deref());
-    let location   = split(q.location.as_deref());
-    let descr      = split(q.description.as_deref());
-    let organizer  = split(q.organizer_email.as_deref());
+    let summary = split(q.summary.as_deref());
+    let location = split(q.location.as_deref());
+    let descr = split(q.description.as_deref());
+    let organizer = split(q.organizer_email.as_deref());
 
-    let nothing = summary.is_none() && location.is_none()
-               && descr.is_none()   && organizer.is_none();
+    let nothing = summary.is_none() && location.is_none() && descr.is_none() && organizer.is_none();
 
-    let mut fields_set:     Vec<&str> = Vec::new();
+    let mut fields_set: Vec<&str> = Vec::new();
     let mut fields_cleared: Vec<&str> = Vec::new();
     for (name, p) in [
-        ("summary",         summary),
-        ("location",        location),
-        ("description",     descr),
+        ("summary", summary),
+        ("location", location),
+        ("description", descr),
         ("organizer_email", organizer),
     ] {
         match p {
             Some(Some(_)) => fields_set.push(name),
-            Some(None)    => fields_cleared.push(name),
-            None          => {}
+            Some(None) => fields_cleared.push(name),
+            None => {}
         }
     }
 
@@ -3687,9 +3906,14 @@ async fn events_by_range_set_text_fields(
     } else {
         EventRepo::new(pool)
             .set_text_fields_range(
-                ctx.tenant_id, cal_id,
-                summary, location, descr, organizer,
-                q.after, q.before,
+                ctx.tenant_id,
+                cal_id,
+                summary,
+                location,
+                descr,
+                organizer,
+                q.after,
+                q.before,
             )
             .await?
     };
@@ -3705,10 +3929,10 @@ async fn events_by_range_set_text_fields(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeSetClassQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
-    class:  String,
+    class: String,
 }
 
 /// PATCH /api/v1/calendars/:cal_id/events-by-range/set-class?after=&before=&class=
@@ -3726,9 +3950,9 @@ struct EventsByRangeSetClassQuery {
 /// `after >= before` → 400. Retorna `{calendar_id, class, updated}`.
 async fn events_by_range_set_class(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeSetClassQuery>,
+    Query(q): Query<EventsByRangeSetClassQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -3760,7 +3984,7 @@ async fn events_by_range_set_class(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeSetTransparencyQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     transp: String,
@@ -3781,9 +4005,9 @@ struct EventsByRangeSetTransparencyQuery {
 /// só observável via GET estruturado e export ICS pós próximo PUT.
 async fn events_by_range_set_transparency(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeSetTransparencyQuery>,
+    Query(q): Query<EventsByRangeSetTransparencyQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -3822,7 +4046,7 @@ async fn events_by_range_set_transparency(
 /// Path com hífen evita colisão com `events/:id` (lição #427).
 async fn events_recurrence_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
@@ -3870,7 +4094,7 @@ async fn events_recurrence_stats(
 
 #[derive(Debug, serde::Deserialize)]
 struct RecurrenceMonthlyQuery {
-    since:  Option<OffsetDateTime>,
+    since: Option<OffsetDateTime>,
     before: Option<OffsetDateTime>,
 }
 
@@ -3884,9 +4108,9 @@ struct RecurrenceMonthlyQuery {
 /// `events/:id` (lição #427). Range opcional via `since`/`before`.
 async fn events_recurrence_monthly(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<RecurrenceMonthlyQuery>,
+    Query(q): Query<RecurrenceMonthlyQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -3909,10 +4133,15 @@ async fn events_recurrence_monthly(
     .fetch_all(pool)
     .await?;
 
-    let buckets: Vec<serde_json::Value> = rows.into_iter()
+    let buckets: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(bucket, single, recurring)| {
             let total = single + recurring;
-            let rate = if total > 0 { recurring as f64 / total as f64 } else { 0.0 };
+            let rate = if total > 0 {
+                recurring as f64 / total as f64
+            } else {
+                0.0
+            };
             serde_json::json!({
                 "month":     bucket,
                 "single":    single,
@@ -3950,7 +4179,9 @@ async fn list(
     if let Some(ts) = max_updated {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -3960,12 +4191,19 @@ async fn list(
     }
     let events = EventRepo::new(pool).list(ctx.tenant_id, cal_id, &q).await?;
     let mut resp = (
-        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        [(
+            header::HeaderName::from_static("x-total-count"),
+            total.to_string(),
+        )],
         Json(events),
-    ).into_response();
+    )
+        .into_response();
     if let Some(ts) = max_updated {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -3984,10 +4222,15 @@ async fn get_one(
             return Ok(StatusCode::NOT_MODIFIED.into_response());
         }
     }
-    let lm = ev.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = ev
+        .updated_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if ev.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -3995,8 +4238,10 @@ async fn get_one(
         }
     }
     let mut resp = Json(ev).into_response();
-    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
@@ -4012,14 +4257,17 @@ async fn update(
     let ev = EventRepo::new(pool).update(ctx.tenant_id, id, &raw).await?;
 
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: ev.id,
-        summary: ev.summary.clone(), sequence: ev.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: ev.id,
+        summary: ev.summary.clone(),
+        sequence: ev.sequence,
     });
     state.events().publish_imip(ev.clone(), "REQUEST");
 
     let etag = format!("\"{}\"", ev.etag);
     let mut resp = Json(ev).into_response();
-    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
     Ok(resp)
 }
 
@@ -4030,12 +4278,12 @@ async fn update(
 /// `ical_raw` is left stale until the client does a PUT — consistent with events-by-range/*.
 #[derive(Debug, serde::Deserialize)]
 struct PatchEventBody {
-    summary:     Option<serde_json::Value>,
-    location:    Option<serde_json::Value>,
+    summary: Option<serde_json::Value>,
+    location: Option<serde_json::Value>,
     description: Option<serde_json::Value>,
-    dtstart:     Option<serde_json::Value>,
-    dtend:       Option<serde_json::Value>,
-    status:      Option<serde_json::Value>,
+    dtstart: Option<serde_json::Value>,
+    dtend: Option<serde_json::Value>,
+    status: Option<serde_json::Value>,
 }
 
 async fn patch_event(
@@ -4052,7 +4300,9 @@ async fn patch_event(
             None => Ok(None),
             Some(serde_json::Value::Null) => Ok(Some(None)),
             Some(serde_json::Value::String(s)) => Ok(Some(Some(s))),
-            _ => Err(CalendarError::BadRequest("field must be a string or null".into())),
+            _ => Err(CalendarError::BadRequest(
+                "field must be a string or null".into(),
+            )),
         }
     }
 
@@ -4065,16 +4315,18 @@ async fn patch_event(
                     .map(|dt| Some(Some(dt)))
                     .map_err(|_| CalendarError::BadRequest("dtstart/dtend must be RFC 3339".into()))
             }
-            _ => Err(CalendarError::BadRequest("dtstart/dtend must be a string or null".into())),
+            _ => Err(CalendarError::BadRequest(
+                "dtstart/dtend must be a string or null".into(),
+            )),
         }
     }
 
-    let summary     = str_field(body.summary)?;
-    let location    = str_field(body.location)?;
+    let summary = str_field(body.summary)?;
+    let location = str_field(body.location)?;
     let description = str_field(body.description)?;
-    let status      = str_field(body.status)?;
-    let dtstart     = ts_field(body.dtstart)?;
-    let dtend       = ts_field(body.dtend)?;
+    let status = str_field(body.status)?;
+    let dtstart = ts_field(body.dtstart)?;
+    let dtend = ts_field(body.dtend)?;
 
     if let Some(Some(ref s)) = status {
         let s = s.as_str();
@@ -4086,17 +4338,29 @@ async fn patch_event(
     }
 
     let ev = EventRepo::new(pool)
-        .patch_fields(ctx.tenant_id, id, summary, location, description, dtstart, dtend, status)
+        .patch_fields(
+            ctx.tenant_id,
+            id,
+            summary,
+            location,
+            description,
+            dtstart,
+            dtend,
+            status,
+        )
         .await?;
 
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: ev.id,
-        summary: ev.summary.clone(), sequence: ev.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: ev.id,
+        summary: ev.summary.clone(),
+        sequence: ev.sequence,
     });
 
     let etag = format!("\"{}\"", ev.etag);
     let mut resp = Json(ev).into_response();
-    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
     Ok(resp)
 }
 
@@ -4108,21 +4372,23 @@ async fn delete(
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
     EventRepo::new(pool).delete(ctx.tenant_id, id).await?;
-    state.events().publish(crate::events::Event::EventCancelled {
-        tenant_id: ctx.tenant_id, event_id: id,
-    });
+    state
+        .events()
+        .publish(crate::events::Event::EventCancelled {
+            tenant_id: ctx.tenant_id,
+            event_id: id,
+        });
     Ok(StatusCode::NO_CONTENT)
 }
-
 
 /// GET /api/v1/calendars/:cal_id/export.ics — returns all events as a single
 /// VCALENDAR (text/calendar). Unauthenticated CalDAV clients can also fetch
 /// raw calendar via CalDAV REPORT; this endpoint is for simple downloads.
 async fn export_ics(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    req_headers:  HeaderMap,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     use crate::domain::ical;
 
@@ -4140,7 +4406,9 @@ async fn export_ics(
     if let Some(ts) = max_ts {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -4169,8 +4437,11 @@ async fn export_ics(
         HeaderValue::from_static("attachment; filename=\"calendar.ics\""),
     );
     if let Some(ts) = max_ts {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -4190,7 +4461,9 @@ async fn import_ics(
     validate_ics(&raw, MAX_IMPORT_ICS_BYTES)?;
     let blocks = ical::split_vcalendar_to_events(&raw);
     if blocks.is_empty() {
-        return Err(CalendarError::BadRequest("no VEVENT blocks found in payload".into()));
+        return Err(CalendarError::BadRequest(
+            "no VEVENT blocks found in payload".into(),
+        ));
     }
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
@@ -4213,7 +4486,6 @@ async fn import_ics(
     Ok((StatusCode::OK, Json(body)).into_response())
 }
 
-
 /// GET /api/v1/calendars/:cal_id/events/:id/history — log de mudanças de etag/sequence.
 ///
 /// Retorna as últimas N entradas da `calendar_event_history` para o evento,
@@ -4222,7 +4494,7 @@ async fn import_ics(
 /// 404 se o evento não pertence ao tenant/calendar. Sprint #583.
 async fn event_history(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, event_id)): Path<(Uuid, Uuid)>,
     Query(params): Query<HistoryParams>,
 ) -> Result<Json<serde_json::Value>> {
@@ -4230,9 +4502,7 @@ async fn event_history(
     let pool = state.db_or_unavailable()?;
 
     // Verify event belongs to this tenant (404 guard).
-    let ev = EventRepo::new(pool)
-        .get(ctx.tenant_id, event_id)
-        .await?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, event_id).await?;
     if ev.calendar_id != cal_id {
         return Err(CalendarError::EventNotFound(event_id));
     }
@@ -4255,13 +4525,15 @@ async fn event_history(
 
     let entries: Vec<serde_json::Value> = rows
         .into_iter()
-        .map(|(id, etag, sequence, op, changed_at)| json!({
-            "id":         id,
-            "etag":       etag,
-            "sequence":   sequence,
-            "op":         op,
-            "changed_at": changed_at,
-        }))
+        .map(|(id, etag, sequence, op, changed_at)| {
+            json!({
+                "id":         id,
+                "etag":       etag,
+                "sequence":   sequence,
+                "op":         op,
+                "changed_at": changed_at,
+            })
+        })
         .collect();
 
     Ok(Json(json!({
@@ -4283,7 +4555,7 @@ struct HistoryParams {
 /// 404 se evento não pertence ao tenant/calendar. Sprint #590.
 async fn delete_event_history(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, event_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>> {
     use serde_json::json;
@@ -4291,9 +4563,7 @@ async fn delete_event_history(
 
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
 
-    let ev = EventRepo::new(pool)
-        .get(ctx.tenant_id, event_id)
-        .await?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, event_id).await?;
     if ev.calendar_id != cal_id {
         return Err(CalendarError::EventNotFound(event_id));
     }
@@ -4322,20 +4592,24 @@ async fn delete_event_history(
 /// 404 se evento não pertence ao tenant/calendar. Sprint #594.
 async fn event_history_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, event_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>> {
     use serde_json::json;
     let pool = state.db_or_unavailable()?;
 
-    let ev = EventRepo::new(pool)
-        .get(ctx.tenant_id, event_id)
-        .await?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, event_id).await?;
     if ev.calendar_id != cal_id {
         return Err(CalendarError::EventNotFound(event_id));
     }
 
-    let row: (i64, i64, i64, Option<OffsetDateTime>, Option<OffsetDateTime>) = sqlx::query_as(
+    let row: (
+        i64,
+        i64,
+        i64,
+        Option<OffsetDateTime>,
+        Option<OffsetDateTime>,
+    ) = sqlx::query_as(
         "SELECT COUNT(*) AS total, \
                 COUNT(*) FILTER (WHERE op = 'PUT')   AS put_count, \
                 COUNT(*) FILTER (WHERE op = 'PATCH') AS patch_count, \
@@ -4370,7 +4644,7 @@ async fn event_history_stats(
 /// se a entrada não existe nesse evento. Sprint #598.
 async fn get_history_entry(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, event_id, entry_id)): Path<(Uuid, Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>> {
     use serde_json::json;
@@ -4393,8 +4667,7 @@ async fn get_history_entry(
     .await
     .map_err(CalendarError::Database)?;
 
-    let (id, etag, sequence, op, changed_at) = row
-        .ok_or(CalendarError::EventNotFound(entry_id))?;
+    let (id, etag, sequence, op, changed_at) = row.ok_or(CalendarError::EventNotFound(entry_id))?;
 
     Ok(Json(json!({
         "id":          id,
@@ -4411,16 +4684,19 @@ async fn get_history_entry(
 /// event wrapped with METHOD:REQUEST for SMTP invitation attachment.
 async fn itip_request(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((_cal, id)): Path<(Uuid, Uuid)>,
-    req_headers:  HeaderMap,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     use crate::domain::itip;
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
 
     let etag = format!("\"{}-{}\"", ev.updated_at.unix_timestamp(), ev.id);
-    let lm   = ev.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = ev
+        .updated_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
 
     if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
         if inm.as_bytes() == etag.as_bytes() {
@@ -4429,7 +4705,9 @@ async fn itip_request(
     }
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if ev.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -4447,14 +4725,16 @@ async fn itip_request(
         header::CONTENT_DISPOSITION,
         HeaderValue::from_static("attachment; filename=\"invite.ics\""),
     );
-    resp.headers_mut().insert(header::ETAG,          HeaderValue::from_str(&etag).unwrap());
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
 #[derive(Debug, serde::Deserialize)]
 struct RsvpBody {
-    email:    String,
+    email: String,
     partstat: String,
 }
 
@@ -4476,7 +4756,7 @@ async fn rsvp(
     let ev = repo.get(ctx.tenant_id, id).await?;
 
     let new_raw = itip::apply_rsvp(&ev.ical_raw, &body.email, &body.partstat)?;
-    let reply   = itip::build_reply(&new_raw, &body.email, &body.partstat)?;
+    let reply = itip::build_reply(&new_raw, &body.email, &body.partstat)?;
     let updated = repo.update(ctx.tenant_id, id, &new_raw).await?;
 
     let out = serde_json::json!({
@@ -4489,17 +4769,22 @@ async fn rsvp(
 /// GET /api/v1/calendars/:cal_id/events/:id/attendees — parsed attendee list.
 async fn list_attendees(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((_cal, id)): Path<(Uuid, Uuid)>,
-    req_headers:  HeaderMap,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     use crate::domain::itip;
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    let lm = ev.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = ev
+        .updated_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if ev.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -4507,15 +4792,21 @@ async fn list_attendees(
         }
     }
     let atts = itip::parse_attendees(&ev.ical_raw);
-    let body: Vec<_> = atts.into_iter().map(|a| serde_json::json!({
-        "email":    a.email,
-        "cn":       a.cn,
-        "role":     a.role,
-        "partstat": a.partstat,
-        "rsvp":     a.rsvp,
-    })).collect();
+    let body: Vec<_> = atts
+        .into_iter()
+        .map(|a| {
+            serde_json::json!({
+                "email":    a.email,
+                "cn":       a.cn,
+                "role":     a.role,
+                "partstat": a.partstat,
+                "rsvp":     a.rsvp,
+            })
+        })
+        .collect();
     let mut resp = (StatusCode::OK, Json(body)).into_response();
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    resp.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
@@ -4528,7 +4819,8 @@ fn validate_ics(raw: &str, max_bytes: usize) -> Result<()> {
     if raw.len() > max_bytes {
         return Err(CalendarError::BadRequest(format!(
             "ics payload too large: {} bytes (max {})",
-            raw.len(), max_bytes
+            raw.len(),
+            max_bytes
         )));
     }
     Ok(())
@@ -4539,7 +4831,7 @@ struct InstancesParams {
     #[serde(with = "time::serde::rfc3339")]
     from: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    to:   OffsetDateTime,
+    to: OffsetDateTime,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -4547,7 +4839,7 @@ struct EventInstance {
     #[serde(with = "time::serde::rfc3339")]
     dtstart: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    dtend:   OffsetDateTime,
+    dtend: OffsetDateTime,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/instances?from=&to= — expande
@@ -4560,7 +4852,7 @@ struct EventInstance {
 /// re-implementar expander client-side.
 async fn events_instances(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((_cal_id, id)): Path<(Uuid, Uuid)>,
     Query(params): Query<InstancesParams>,
 ) -> Result<Json<serde_json::Value>> {
@@ -4572,10 +4864,12 @@ async fn events_instances(
 
     let dtstart = match ev.dtstart {
         Some(s) => s,
-        None    => return Ok(Json(serde_json::json!({
-            "event_id": ev.id, "summary": ev.summary,
-            "rrule": ev.rrule, "count": 0, "instances": [],
-        }))),
+        None => {
+            return Ok(Json(serde_json::json!({
+                "event_id": ev.id, "summary": ev.summary,
+                "rrule": ev.rrule, "count": 0, "instances": [],
+            })))
+        }
     };
     let duration = match ev.dtend {
         Some(e) if e > dtstart => e - dtstart,
@@ -4585,17 +4879,25 @@ async fn events_instances(
     let pairs: Vec<(OffsetDateTime, OffsetDateTime)> = match ev.rrule.as_deref() {
         Some(raw) if !raw.trim().is_empty() => match crate::domain::rrule::Rrule::parse(raw) {
             Some(rule) => rule.expand(dtstart, duration, params.from, params.to),
-            None       => crate::domain::rrule::single_instance(dtstart, ev.dtend, params.from, params.to)
-                              .into_iter().collect(),
+            None => {
+                crate::domain::rrule::single_instance(dtstart, ev.dtend, params.from, params.to)
+                    .into_iter()
+                    .collect()
+            }
         },
         _ => crate::domain::rrule::single_instance(dtstart, ev.dtend, params.from, params.to)
-                 .into_iter().collect(),
+            .into_iter()
+            .collect(),
     };
 
     let exdates = parse_exdates(&ev.ical_raw);
-    let instances: Vec<EventInstance> = pairs.into_iter()
+    let instances: Vec<EventInstance> = pairs
+        .into_iter()
         .filter(|(s, _)| !exdates.iter().any(|x| x == s))
-        .map(|(s, e)| EventInstance { dtstart: s, dtend: e })
+        .map(|(s, e)| EventInstance {
+            dtstart: s,
+            dtend: e,
+        })
         .collect();
 
     Ok(Json(serde_json::json!({
@@ -4612,7 +4914,7 @@ struct InstancesBulkParams {
     #[serde(with = "time::serde::rfc3339")]
     from: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    to:   OffsetDateTime,
+    to: OffsetDateTime,
     /// Cap por evento expandido (proteção: rrule sem UNTIL+COUNT pode estourar).
     /// Default 500, max 5000 — gates abaixo do array do `Rrule::expand`.
     per_event_cap: Option<usize>,
@@ -4621,9 +4923,9 @@ struct InstancesBulkParams {
 #[derive(Debug, serde::Serialize)]
 struct EventInstancesGroup {
     event_id: Uuid,
-    summary:  Option<String>,
-    rrule:    Option<String>,
-    count:    usize,
+    summary: Option<String>,
+    rrule: Option<String>,
+    count: usize,
     instances: Vec<EventInstance>,
 }
 
@@ -4640,7 +4942,7 @@ struct EventInstancesGroup {
 /// com hífen evita colisão com `events/:id` (lição #427/#443/#448).
 async fn events_instances_bulk(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
     Query(params): Query<InstancesBulkParams>,
 ) -> Result<Json<serde_json::Value>> {
@@ -4652,7 +4954,7 @@ async fn events_instances_bulk(
     let pool = state.db_or_unavailable()?;
     let q = crate::domain::EventQuery {
         from: Some(params.from),
-        to:   Some(params.to),
+        to: Some(params.to),
         limit: None,
     };
     let events = EventRepo::new(pool).list(ctx.tenant_id, cal_id, &q).await?;
@@ -4663,7 +4965,7 @@ async fn events_instances_bulk(
     for ev in events {
         let dtstart = match ev.dtstart {
             Some(s) => s,
-            None    => continue,
+            None => continue,
         };
         let duration = match ev.dtend {
             Some(e) if e > dtstart => e - dtstart,
@@ -4673,18 +4975,26 @@ async fn events_instances_bulk(
         let pairs: Vec<(OffsetDateTime, OffsetDateTime)> = match ev.rrule.as_deref() {
             Some(raw) if !raw.trim().is_empty() => match crate::domain::rrule::Rrule::parse(raw) {
                 Some(rule) => rule.expand(dtstart, duration, params.from, params.to),
-                None       => crate::domain::rrule::single_instance(dtstart, ev.dtend, params.from, params.to)
-                                  .into_iter().collect(),
+                None => {
+                    crate::domain::rrule::single_instance(dtstart, ev.dtend, params.from, params.to)
+                        .into_iter()
+                        .collect()
+                }
             },
             _ => crate::domain::rrule::single_instance(dtstart, ev.dtend, params.from, params.to)
-                     .into_iter().collect(),
+                .into_iter()
+                .collect(),
         };
 
         let exdates = parse_exdates(&ev.ical_raw);
-        let mut instances: Vec<EventInstance> = pairs.into_iter()
+        let mut instances: Vec<EventInstance> = pairs
+            .into_iter()
             .filter(|(s, _)| !exdates.iter().any(|x| x == s))
             .take(per_cap)
-            .map(|(s, e)| EventInstance { dtstart: s, dtend: e })
+            .map(|(s, e)| EventInstance {
+                dtstart: s,
+                dtend: e,
+            })
             .collect();
 
         if instances.is_empty() {
@@ -4696,17 +5006,21 @@ async fn events_instances_bulk(
         instances.shrink_to_fit();
 
         groups.push(EventInstancesGroup {
-            event_id:  ev.id,
-            summary:   ev.summary,
-            rrule:     ev.rrule,
-            count:     instances.len(),
+            event_id: ev.id,
+            summary: ev.summary,
+            rrule: ev.rrule,
+            count: instances.len(),
             instances,
         });
     }
 
-    let from_s = params.from.format(&time::format_description::well_known::Rfc3339)
+    let from_s = params
+        .from
+        .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_default();
-    let to_s   = params.to.format(&time::format_description::well_known::Rfc3339)
+    let to_s = params
+        .to
+        .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_default();
     Ok(Json(serde_json::json!({
         "from":            from_s,
@@ -4727,20 +5041,25 @@ async fn events_instances_bulk(
 fn parse_exdates(ical_raw: &str) -> Vec<OffsetDateTime> {
     use time::format_description::FormatItem;
     use time::macros::format_description;
-    static FMT: &[FormatItem<'static>] = format_description!(
-        "[year][month][day]T[hour][minute][second]Z"
-    );
+    static FMT: &[FormatItem<'static>] =
+        format_description!("[year][month][day]T[hour][minute][second]Z");
     let mut out = Vec::new();
     for line in ical_raw.lines() {
         let trimmed = line.trim_start();
-        let upper: String = trimmed.chars().take(7).collect::<String>().to_ascii_uppercase();
+        let upper: String = trimmed
+            .chars()
+            .take(7)
+            .collect::<String>()
+            .to_ascii_uppercase();
         if !upper.starts_with("EXDATE:") {
             continue;
         }
         let value = &trimmed["EXDATE:".len()..];
         for tok in value.split(',') {
             let tok = tok.trim();
-            if tok.is_empty() { continue; }
+            if tok.is_empty() {
+                continue;
+            }
             if let Ok(ts) = OffsetDateTime::parse(tok, &FMT) {
                 out.push(ts);
             }
@@ -4767,9 +5086,9 @@ struct CancelInstanceBody {
 /// calendário (assert_can_write). Retorna `{event_id, instance, added}`.
 async fn cancel_event_instance(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
-    Json(body):   Json<CancelInstanceBody>,
+    Json(body): Json<CancelInstanceBody>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
@@ -4778,9 +5097,14 @@ async fn cancel_event_instance(
     if ev.calendar_id != cal_id {
         return Err(CalendarError::EventNotFound(id));
     }
-    if ev.rrule.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+    if ev
+        .rrule
+        .as_deref()
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true)
+    {
         return Err(CalendarError::BadRequest(
-            "event has no rrule — use DELETE to remove single instance".into()
+            "event has no rrule — use DELETE to remove single instance".into(),
         ));
     }
 
@@ -4808,19 +5132,23 @@ async fn cancel_event_instance(
 
     if let Some(uid) = extract_uid(&ev.ical_raw) {
         if has_recurrence_id_override(&ev.ical_raw, &uid, &inst_str) {
-            return Err(CalendarError::Conflict(
-                format!("instance {inst_str} has a RECURRENCE-ID override — \
-                         remove via DELETE /overrides/:recurrence_id before cancelling")
-            ));
+            return Err(CalendarError::Conflict(format!(
+                "instance {inst_str} has a RECURRENCE-ID override — \
+                         remove via DELETE /overrides/:recurrence_id before cancelling"
+            )));
         }
     }
 
     let new_line = format!("EXDATE:{inst_str}");
     let new_raw = inject_exdate_line(&ev.ical_raw, &new_line);
 
-    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    let updated = EventRepo::new(pool)
+        .update(ctx.tenant_id, id, &new_raw)
+        .await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id, summary: updated.summary.clone(),
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
         sequence: updated.sequence,
     });
 
@@ -4835,7 +5163,7 @@ async fn cancel_event_instance(
 /// (CRLF se presente, LF caso contrário).
 fn inject_exdate_line(raw: &str, line: &str) -> String {
     let crlf = raw.contains("\r\n");
-    let eol  = if crlf { "\r\n" } else { "\n" };
+    let eol = if crlf { "\r\n" } else { "\n" };
     let mut out = String::with_capacity(raw.len() + line.len() + 2);
     let mut injected = false;
     for src_line in raw.split_inclusive('\n') {
@@ -4920,86 +5248,125 @@ struct ListExdatesQuery {
 /// 404 se evento não existe.
 async fn list_exdates(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((_cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<ListExdatesQuery>,
+    Query(q): Query<ListExdatesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let full = match q.detail.as_deref() {
         None | Some("") | Some("summary") => false,
         Some("full") => true,
-        Some(other) => return Err(CalendarError::BadRequest(
-            format!("detail must be 'summary' or 'full', got '{other}'")
-        )),
+        Some(other) => {
+            return Err(CalendarError::BadRequest(format!(
+                "detail must be 'summary' or 'full', got '{other}'"
+            )))
+        }
     };
     let kind_filter: Option<&str> = match q.kind.as_deref() {
         None | Some("") => None,
         Some(k @ ("utc" | "tzid" | "date-only" | "unknown")) => Some(k),
-        Some(other) => return Err(CalendarError::BadRequest(
-            format!("kind must be 'utc', 'tzid', 'date-only' or 'unknown', got '{other}'")
-        )),
+        Some(other) => {
+            return Err(CalendarError::BadRequest(format!(
+                "kind must be 'utc', 'tzid', 'date-only' or 'unknown', got '{other}'"
+            )))
+        }
     };
     if !full && matches!(kind_filter, Some(k) if k != "utc") {
         return Err(CalendarError::BadRequest(
-            "kind filter other than 'utc' requires detail=full".into()
+            "kind filter other than 'utc' requires detail=full".into(),
         ));
     }
     if !full && (q.with_tzid.is_some() || q.with_params.is_some()) {
         return Err(CalendarError::BadRequest(
-            "with_tzid/with_params filters require detail=full".into()
+            "with_tzid/with_params filters require detail=full".into(),
         ));
     }
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
 
     let items: Vec<serde_json::Value> = if full {
-        parse_exdates_rich(&ev.ical_raw).into_iter().filter(|info| {
-            if let Some(k) = kind_filter { if info.kind != k { return false; } }
-            if let Some(want) = q.with_tzid   { if info.tzid.is_some()   != want { return false; } }
-            if let Some(want) = q.with_params { if info.params.is_some() != want { return false; } }
-            true
-        }).map(|info| {
-            let (compact, rfc) = match info.parsed_utc {
-                Some(t) => {
-                    let utc = t.to_offset(time::UtcOffset::UTC);
-                    let c = format!(
-                        "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-                        utc.year(), u8::from(utc.month()), utc.day(),
-                        utc.hour(), utc.minute(), utc.second(),
-                    );
-                    let r = utc.format(&time::format_description::well_known::Rfc3339)
-                        .unwrap_or_default();
-                    (serde_json::Value::String(c), serde_json::Value::String(r))
+        parse_exdates_rich(&ev.ical_raw)
+            .into_iter()
+            .filter(|info| {
+                if let Some(k) = kind_filter {
+                    if info.kind != k {
+                        return false;
+                    }
                 }
-                None => (serde_json::Value::Null, serde_json::Value::Null),
-            };
-            let mut item = serde_json::json!({
-                "compact":   compact,
-                "rfc3339":   rfc,
-                "kind":      info.kind,
-                "raw_value": info.raw_value,
-            });
-            if let Some(obj) = item.as_object_mut() {
-                obj.insert("tzid".into(),
-                    info.tzid.map(serde_json::Value::String)
-                        .unwrap_or(serde_json::Value::Null));
-                obj.insert("params".into(),
-                    info.params.map(serde_json::Value::String)
-                        .unwrap_or(serde_json::Value::Null));
-            }
-            item
-        }).collect()
+                if let Some(want) = q.with_tzid {
+                    if info.tzid.is_some() != want {
+                        return false;
+                    }
+                }
+                if let Some(want) = q.with_params {
+                    if info.params.is_some() != want {
+                        return false;
+                    }
+                }
+                true
+            })
+            .map(|info| {
+                let (compact, rfc) = match info.parsed_utc {
+                    Some(t) => {
+                        let utc = t.to_offset(time::UtcOffset::UTC);
+                        let c = format!(
+                            "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+                            utc.year(),
+                            u8::from(utc.month()),
+                            utc.day(),
+                            utc.hour(),
+                            utc.minute(),
+                            utc.second(),
+                        );
+                        let r = utc
+                            .format(&time::format_description::well_known::Rfc3339)
+                            .unwrap_or_default();
+                        (serde_json::Value::String(c), serde_json::Value::String(r))
+                    }
+                    None => (serde_json::Value::Null, serde_json::Value::Null),
+                };
+                let mut item = serde_json::json!({
+                    "compact":   compact,
+                    "rfc3339":   rfc,
+                    "kind":      info.kind,
+                    "raw_value": info.raw_value,
+                });
+                if let Some(obj) = item.as_object_mut() {
+                    obj.insert(
+                        "tzid".into(),
+                        info.tzid
+                            .map(serde_json::Value::String)
+                            .unwrap_or(serde_json::Value::Null),
+                    );
+                    obj.insert(
+                        "params".into(),
+                        info.params
+                            .map(serde_json::Value::String)
+                            .unwrap_or(serde_json::Value::Null),
+                    );
+                }
+                item
+            })
+            .collect()
     } else {
-        parse_exdates(&ev.ical_raw).iter().map(|t| {
-            let utc = t.to_offset(time::UtcOffset::UTC);
-            let compact = format!(
-                "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-                utc.year(), u8::from(utc.month()), utc.day(),
-                utc.hour(), utc.minute(), utc.second(),
-            );
-            let rfc = utc.format(&time::format_description::well_known::Rfc3339)
-                .unwrap_or_default();
-            serde_json::json!({ "compact": compact, "rfc3339": rfc })
-        }).collect()
+        parse_exdates(&ev.ical_raw)
+            .iter()
+            .map(|t| {
+                let utc = t.to_offset(time::UtcOffset::UTC);
+                let compact = format!(
+                    "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+                    utc.year(),
+                    u8::from(utc.month()),
+                    utc.day(),
+                    utc.hour(),
+                    utc.minute(),
+                    utc.second(),
+                );
+                let rfc = utc
+                    .format(&time::format_description::well_known::Rfc3339)
+                    .unwrap_or_default();
+                serde_json::json!({ "compact": compact, "rfc3339": rfc })
+            })
+            .collect()
     };
 
     Ok(Json(serde_json::json!({
@@ -5018,7 +5385,7 @@ struct ExdatesStatsQuery {
     /// silenciosamente do agregado quando algum bound é dado — sem range,
     /// todos entram (shape original preservado). 400 se `after >= before`.
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     /// `?kind=utc|tzid|date-only|unknown` (sprint #522, paralelo simétrico
@@ -5163,9 +5530,9 @@ struct ExdatesStatsQuery {
 /// aceitas e retornam `total=0` consistente com #522 (`kind=tzid` + range).
 async fn exdates_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((_cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<ExdatesStatsQuery>,
+    Query(q): Query<ExdatesStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -5174,27 +5541,29 @@ async fn exdates_stats(
     }
     if q.top_tzid == Some(0) {
         return Err(CalendarError::BadRequest(
-            "top_tzid must be >= 1 (use kind=utc to force tzid_breakdown empty)".into()
+            "top_tzid must be >= 1 (use kind=utc to force tzid_breakdown empty)".into(),
         ));
     }
     if q.min_count == Some(0) {
         return Err(CalendarError::BadRequest(
-            "min_count must be >= 1 (omit flag for full breakdown)".into()
+            "min_count must be >= 1 (omit flag for full breakdown)".into(),
         ));
     }
     let sort_mode: Option<&str> = match q.sort_tzid.as_deref() {
         None | Some("") => None,
         Some(s @ ("count_desc" | "count_asc" | "name_asc" | "name_desc")) => Some(s),
-        Some(other) => return Err(CalendarError::BadRequest(
-            format!("sort_tzid must be 'count_desc', 'count_asc', 'name_asc' or 'name_desc', got '{other}'")
-        )),
+        Some(other) => return Err(CalendarError::BadRequest(format!(
+            "sort_tzid must be 'count_desc', 'count_asc', 'name_asc' or 'name_desc', got '{other}'"
+        ))),
     };
     let kind_filter: Option<&str> = match q.kind.as_deref() {
         None | Some("") => None,
         Some(k @ ("utc" | "tzid" | "date-only" | "unknown")) => Some(k),
-        Some(other) => return Err(CalendarError::BadRequest(
-            format!("kind must be 'utc', 'tzid', 'date-only' or 'unknown', got '{other}'")
-        )),
+        Some(other) => {
+            return Err(CalendarError::BadRequest(format!(
+                "kind must be 'utc', 'tzid', 'date-only' or 'unknown', got '{other}'"
+            )))
+        }
     };
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
@@ -5206,25 +5575,41 @@ async fn exdates_stats(
         items.retain(|info| {
             let parsed = match info.parsed_utc {
                 Some(t) => t,
-                None    => return false,
+                None => return false,
             };
-            if let Some(a) = q.after  { if parsed <  a { return false; } }
-            if let Some(b) = q.before { if parsed >= b { return false; } }
+            if let Some(a) = q.after {
+                if parsed < a {
+                    return false;
+                }
+            }
+            if let Some(b) = q.before {
+                if parsed >= b {
+                    return false;
+                }
+            }
             true
         });
     }
     if q.with_tzid.is_some() || q.with_params.is_some() {
         items.retain(|info| {
-            if let Some(want) = q.with_tzid   { if info.tzid.is_some()   != want { return false; } }
-            if let Some(want) = q.with_params { if info.params.is_some() != want { return false; } }
+            if let Some(want) = q.with_tzid {
+                if info.tzid.is_some() != want {
+                    return false;
+                }
+            }
+            if let Some(want) = q.with_params {
+                if info.params.is_some() != want {
+                    return false;
+                }
+            }
             true
         });
     }
     let total = items.len();
-    let mut k_utc       = 0usize;
-    let mut k_tzid      = 0usize;
+    let mut k_utc = 0usize;
+    let mut k_tzid = 0usize;
     let mut k_date_only = 0usize;
-    let mut k_unknown   = 0usize;
+    let mut k_unknown = 0usize;
     let include_kind_breakdown = q.include_kind_breakdown.unwrap_or(false);
     let mut tzid_breakdown: Vec<(String, usize)> = Vec::new();
     // (tzid, canonical_count, malformed_count) — populado só quando
@@ -5234,20 +5619,23 @@ async fn exdates_stats(
     let mut tzid_by_kind: Vec<(String, usize, usize)> = Vec::new();
     for info in &items {
         match info.kind {
-            "utc"       => k_utc       += 1,
-            "tzid"      => {
+            "utc" => k_utc += 1,
+            "tzid" => {
                 k_tzid += 1;
                 if let Some(tz) = info.tzid.as_deref() {
                     match tzid_breakdown.iter().position(|(k, _)| k == tz) {
                         Some(i) => tzid_breakdown[i].1 += 1,
-                        None    => tzid_breakdown.push((tz.to_string(), 1)),
+                        None => tzid_breakdown.push((tz.to_string(), 1)),
                     }
                     if include_kind_breakdown {
                         let canonical = is_canonical_local_datetime(&info.raw_value);
                         match tzid_by_kind.iter().position(|(k, _, _)| k == tz) {
                             Some(i) => {
-                                if canonical { tzid_by_kind[i].1 += 1; }
-                                else         { tzid_by_kind[i].2 += 1; }
+                                if canonical {
+                                    tzid_by_kind[i].1 += 1;
+                                } else {
+                                    tzid_by_kind[i].2 += 1;
+                                }
                             }
                             None => {
                                 let (c, u) = if canonical { (1, 0) } else { (0, 1) };
@@ -5258,7 +5646,7 @@ async fn exdates_stats(
                 }
             }
             "date-only" => k_date_only += 1,
-            _           => k_unknown   += 1,
+            _ => k_unknown += 1,
         }
     }
     let (filtered, filtered_count): (Vec<(String, usize)>, usize) = match q.min_count {
@@ -5266,7 +5654,11 @@ async fn exdates_stats(
             let mut keep = Vec::with_capacity(tzid_breakdown.len());
             let mut excluded = 0usize;
             for (tz, c) in &tzid_breakdown {
-                if *c >= m { keep.push((tz.clone(), *c)); } else { excluded += 1; }
+                if *c >= m {
+                    keep.push((tz.clone(), *c));
+                } else {
+                    excluded += 1;
+                }
             }
             (keep, excluded)
         }
@@ -5284,9 +5676,9 @@ async fn exdates_stats(
     };
     match sort_mode {
         Some("count_desc") => kept.sort_by(|a, b| b.1.cmp(&a.1)),
-        Some("count_asc")  => kept.sort_by(|a, b| a.1.cmp(&b.1)),
-        Some("name_asc")   => kept.sort_by(|a, b| a.0.cmp(&b.0)),
-        Some("name_desc")  => kept.sort_by(|a, b| b.0.cmp(&a.0)),
+        Some("count_asc") => kept.sort_by(|a, b| a.1.cmp(&b.1)),
+        Some("name_asc") => kept.sort_by(|a, b| a.0.cmp(&b.0)),
+        Some("name_desc") => kept.sort_by(|a, b| b.0.cmp(&a.0)),
         _ => {}
     }
     let mut breakdown_obj = serde_json::Map::new();
@@ -5311,7 +5703,8 @@ async fn exdates_stats(
         payload["tzid_filtered_count"] = serde_json::json!(filtered_count);
     }
     if sort_mode.is_some() {
-        let order: Vec<serde_json::Value> = kept.iter()
+        let order: Vec<serde_json::Value> = kept
+            .iter()
             .map(|(tz, _)| serde_json::Value::String(tz.clone()))
             .collect();
         payload["tzid_breakdown_order"] = serde_json::Value::Array(order);
@@ -5319,14 +5712,18 @@ async fn exdates_stats(
     if include_kind_breakdown {
         let mut by_kind_obj = serde_json::Map::new();
         for (tz, _) in &kept {
-            let (c, u) = tzid_by_kind.iter()
+            let (c, u) = tzid_by_kind
+                .iter()
                 .find(|(k, _, _)| k == tz)
                 .map(|(_, c, u)| (*c, *u))
                 .unwrap_or((0, 0));
-            by_kind_obj.insert(tz.clone(), serde_json::json!({
-                "tzid":    c,
-                "unknown": u,
-            }));
+            by_kind_obj.insert(
+                tz.clone(),
+                serde_json::json!({
+                    "tzid":    c,
+                    "unknown": u,
+                }),
+            );
         }
         payload["tzid_breakdown_by_kind"] = serde_json::Value::Object(by_kind_obj);
     }
@@ -5342,16 +5739,17 @@ async fn exdates_stats(
 fn parse_exdates_rich(ical_raw: &str) -> Vec<ExdateInfo> {
     use time::format_description::FormatItem;
     use time::macros::format_description;
-    static FMT_UTC: &[FormatItem<'static>] = format_description!(
-        "[year][month][day]T[hour][minute][second]Z"
-    );
-    static FMT_DATE: &[FormatItem<'static>] = format_description!(
-        "[year][month][day]"
-    );
+    static FMT_UTC: &[FormatItem<'static>] =
+        format_description!("[year][month][day]T[hour][minute][second]Z");
+    static FMT_DATE: &[FormatItem<'static>] = format_description!("[year][month][day]");
     let mut out = Vec::new();
     for line in ical_raw.lines() {
         let trimmed = line.trim_start();
-        let upper6: String = trimmed.chars().take(6).collect::<String>().to_ascii_uppercase();
+        let upper6: String = trimmed
+            .chars()
+            .take(6)
+            .collect::<String>()
+            .to_ascii_uppercase();
         if !upper6.starts_with("EXDATE") {
             continue;
         }
@@ -5361,7 +5759,10 @@ fn parse_exdates_rich(ical_raw: &str) -> Vec<ExdateInfo> {
             Some(':') => (None, &after_name[1..]),
             Some(';') => {
                 if let Some(colon_idx) = after_name.find(':') {
-                    (Some(after_name[1..colon_idx].to_string()), &after_name[colon_idx + 1..])
+                    (
+                        Some(after_name[1..colon_idx].to_string()),
+                        &after_name[colon_idx + 1..],
+                    )
                 } else {
                     continue;
                 }
@@ -5371,7 +5772,11 @@ fn parse_exdates_rich(ical_raw: &str) -> Vec<ExdateInfo> {
         let tzid = params_str.as_ref().and_then(|p| {
             for kv in p.split(';') {
                 let kv_trim = kv.trim();
-                let upper_kv: String = kv_trim.chars().take(5).collect::<String>().to_ascii_uppercase();
+                let upper_kv: String = kv_trim
+                    .chars()
+                    .take(5)
+                    .collect::<String>()
+                    .to_ascii_uppercase();
                 if upper_kv.starts_with("TZID=") {
                     return Some(kv_trim[5..].to_string());
                 }
@@ -5380,7 +5785,9 @@ fn parse_exdates_rich(ical_raw: &str) -> Vec<ExdateInfo> {
         });
         for tok in value.split(',') {
             let tok = tok.trim();
-            if tok.is_empty() { continue; }
+            if tok.is_empty() {
+                continue;
+            }
             let (kind, parsed): (&'static str, Option<OffsetDateTime>) =
                 if let Ok(ts) = OffsetDateTime::parse(tok, &FMT_UTC) {
                     ("utc", Some(ts))
@@ -5392,10 +5799,10 @@ fn parse_exdates_rich(ical_raw: &str) -> Vec<ExdateInfo> {
                     ("unknown", None)
                 };
             out.push(ExdateInfo {
-                raw_value:   tok.to_string(),
-                tzid:        tzid.clone(),
-                params:      params_str.clone(),
-                parsed_utc:  parsed,
+                raw_value: tok.to_string(),
+                tzid: tzid.clone(),
+                params: params_str.clone(),
+                parsed_utc: parsed,
                 kind,
             });
         }
@@ -5404,11 +5811,11 @@ fn parse_exdates_rich(ical_raw: &str) -> Vec<ExdateInfo> {
 }
 
 struct ExdateInfo {
-    raw_value:   String,
-    tzid:        Option<String>,
-    params:      Option<String>,
-    parsed_utc:  Option<OffsetDateTime>,
-    kind:        &'static str,
+    raw_value: String,
+    tzid: Option<String>,
+    params: Option<String>,
+    parsed_utc: Option<OffsetDateTime>,
+    kind: &'static str,
 }
 
 /// Sprint #536 — classifica raw_value de EXDATE com `kind="tzid"` em
@@ -5420,9 +5827,8 @@ struct ExdateInfo {
 fn is_canonical_local_datetime(s: &str) -> bool {
     use time::format_description::FormatItem;
     use time::macros::format_description;
-    static FMT_LOCAL: &[FormatItem<'static>] = format_description!(
-        "[year][month][day]T[hour][minute][second]"
-    );
+    static FMT_LOCAL: &[FormatItem<'static>] =
+        format_description!("[year][month][day]T[hour][minute][second]");
     time::PrimitiveDateTime::parse(s.trim(), &FMT_LOCAL).is_ok()
 }
 
@@ -5433,7 +5839,7 @@ fn is_canonical_local_datetime(s: &str) -> bool {
 /// instâncias pra restaurar). Re-salva via `EventRepo::update`.
 async fn clear_exdates(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
@@ -5452,10 +5858,14 @@ async fn clear_exdates(
     }
 
     let new_raw = strip_exdate_lines(&ev.ical_raw);
-    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    let updated = EventRepo::new(pool)
+        .update(ctx.tenant_id, id, &new_raw)
+        .await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
@@ -5472,7 +5882,7 @@ async fn clear_exdates(
 /// preservando outros valores na mesma linha (split por vírgula).
 async fn delete_exdate(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id, instance)): Path<(Uuid, Uuid, String)>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
@@ -5483,9 +5893,11 @@ async fn delete_exdate(
         return Err(CalendarError::EventNotFound(id));
     }
 
-    let target = parse_one_exdate(&instance).ok_or_else(|| CalendarError::BadRequest(
-        format!("instance must be RFC3339 or YYYYMMDDTHHMMSSZ, got {instance}")
-    ))?;
+    let target = parse_one_exdate(&instance).ok_or_else(|| {
+        CalendarError::BadRequest(format!(
+            "instance must be RFC3339 or YYYYMMDDTHHMMSSZ, got {instance}"
+        ))
+    })?;
     let target_utc = target.to_offset(time::UtcOffset::UTC);
 
     let exists: bool = parse_exdates(&ev.ical_raw)
@@ -5494,8 +5906,12 @@ async fn delete_exdate(
     if !exists {
         let compact = format!(
             "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-            target_utc.year(), u8::from(target_utc.month()), target_utc.day(),
-            target_utc.hour(), target_utc.minute(), target_utc.second(),
+            target_utc.year(),
+            u8::from(target_utc.month()),
+            target_utc.day(),
+            target_utc.hour(),
+            target_utc.minute(),
+            target_utc.second(),
         );
         return Ok(Json(serde_json::json!({
             "event_id": ev.id, "instance": compact, "removed": false,
@@ -5503,16 +5919,24 @@ async fn delete_exdate(
     }
 
     let new_raw = remove_exdate_value(&ev.ical_raw, target_utc);
-    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    let updated = EventRepo::new(pool)
+        .update(ctx.tenant_id, id, &new_raw)
+        .await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     let compact = format!(
         "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-        target_utc.year(), u8::from(target_utc.month()), target_utc.day(),
-        target_utc.hour(), target_utc.minute(), target_utc.second(),
+        target_utc.year(),
+        u8::from(target_utc.month()),
+        target_utc.day(),
+        target_utc.hour(),
+        target_utc.minute(),
+        target_utc.second(),
     );
     Ok(Json(serde_json::json!({
         "event_id": ev.id, "instance": compact, "removed": true,
@@ -5523,9 +5947,8 @@ async fn delete_exdate(
 fn parse_one_exdate(raw: &str) -> Option<OffsetDateTime> {
     use time::format_description::FormatItem;
     use time::macros::format_description;
-    static FMT: &[FormatItem<'static>] = format_description!(
-        "[year][month][day]T[hour][minute][second]Z"
-    );
+    static FMT: &[FormatItem<'static>] =
+        format_description!("[year][month][day]T[hour][minute][second]Z");
     let trimmed = raw.trim();
     if let Ok(t) = OffsetDateTime::parse(trimmed, &FMT) {
         return Some(t);
@@ -5539,7 +5962,12 @@ fn parse_one_exdate(raw: &str) -> Option<OffsetDateTime> {
 fn strip_exdate_lines(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     for src_line in raw.split_inclusive('\n') {
-        let probe: String = src_line.trim_start().chars().take(7).collect::<String>().to_ascii_uppercase();
+        let probe: String = src_line
+            .trim_start()
+            .chars()
+            .take(7)
+            .collect::<String>()
+            .to_ascii_uppercase();
         if probe.starts_with("EXDATE:") {
             continue;
         }
@@ -5555,13 +5983,16 @@ fn strip_exdate_lines(raw: &str) -> String {
 fn remove_exdate_value(raw: &str, target_utc: OffsetDateTime) -> String {
     use time::format_description::FormatItem;
     use time::macros::format_description;
-    static FMT: &[FormatItem<'static>] = format_description!(
-        "[year][month][day]T[hour][minute][second]Z"
-    );
+    static FMT: &[FormatItem<'static>] =
+        format_description!("[year][month][day]T[hour][minute][second]Z");
     let mut out = String::with_capacity(raw.len());
     for src_line in raw.split_inclusive('\n') {
         let trimmed_start = src_line.trim_start();
-        let probe: String = trimmed_start.chars().take(7).collect::<String>().to_ascii_uppercase();
+        let probe: String = trimmed_start
+            .chars()
+            .take(7)
+            .collect::<String>()
+            .to_ascii_uppercase();
         if !probe.starts_with("EXDATE:") {
             out.push_str(src_line);
             continue;
@@ -5578,10 +6009,13 @@ fn remove_exdate_value(raw: &str, target_utc: OffsetDateTime) -> String {
         let lead_len = body.len() - trimmed_start.len();
         let lead = &body[..lead_len];
         let value = &trimmed_start["EXDATE:".len()..];
-        let kept: Vec<&str> = value.split(',')
+        let kept: Vec<&str> = value
+            .split(',')
             .filter(|tok| {
                 let t = tok.trim();
-                if t.is_empty() { return false; }
+                if t.is_empty() {
+                    return false;
+                }
                 match OffsetDateTime::parse(t, &FMT) {
                     Ok(parsed) => parsed.to_offset(time::UtcOffset::UTC) != target_utc,
                     Err(_) => true,
@@ -5607,15 +6041,15 @@ struct OverrideInstanceBody {
     instance: OffsetDateTime,
     /// Campos opcionais a sobrescrever na occurrence — pelo menos um precisa
     /// vir, senão o override é no-op.
-    summary:     Option<String>,
+    summary: Option<String>,
     description: Option<String>,
-    location:    Option<String>,
+    location: Option<String>,
     /// Se omitido, override mantém dtstart=instance.
     #[serde(default, with = "time::serde::rfc3339::option")]
-    dtstart:     Option<OffsetDateTime>,
+    dtstart: Option<OffsetDateTime>,
     /// Se omitido, override não emite DTEND (cliente herda do master).
     #[serde(default, with = "time::serde::rfc3339::option")]
-    dtend:       Option<OffsetDateTime>,
+    dtend: Option<OffsetDateTime>,
 }
 
 /// POST /api/v1/calendars/:cal_id/events/:id/override-instance
@@ -5632,9 +6066,9 @@ struct OverrideInstanceBody {
 /// `{event_id, instance, recurrence_id, sequence}`.
 async fn override_event_instance(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
-    Json(body):   Json<OverrideInstanceBody>,
+    Json(body): Json<OverrideInstanceBody>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
@@ -5643,73 +6077,106 @@ async fn override_event_instance(
     if ev.calendar_id != cal_id {
         return Err(CalendarError::EventNotFound(id));
     }
-    if ev.rrule.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
-        return Err(CalendarError::BadRequest(
-            "event has no rrule — overrides only apply to recurring series".into()
-        ));
-    }
-    if body.summary.is_none() && body.description.is_none()
-        && body.location.is_none() && body.dtstart.is_none() && body.dtend.is_none()
+    if ev
+        .rrule
+        .as_deref()
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true)
     {
         return Err(CalendarError::BadRequest(
-            "at least one of summary/description/location/dtstart/dtend required".into()
+            "event has no rrule — overrides only apply to recurring series".into(),
+        ));
+    }
+    if body.summary.is_none()
+        && body.description.is_none()
+        && body.location.is_none()
+        && body.dtstart.is_none()
+        && body.dtend.is_none()
+    {
+        return Err(CalendarError::BadRequest(
+            "at least one of summary/description/location/dtstart/dtend required".into(),
         ));
     }
 
     let inst_utc = body.instance.to_offset(time::UtcOffset::UTC);
     let recurrence_id = format_compact_utc(inst_utc);
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot create override".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot create override".into())
+    })?;
 
     let exdated: bool = parse_exdates(&ev.ical_raw)
         .iter()
         .any(|t| t.to_offset(time::UtcOffset::UTC) == inst_utc);
     if exdated {
-        return Err(CalendarError::Conflict(
-            format!("instance {recurrence_id} is cancelled via EXDATE — \
-                     remove via DELETE /exdates/:instance before overriding")
-        ));
+        return Err(CalendarError::Conflict(format!(
+            "instance {recurrence_id} is cancelled via EXDATE — \
+                     remove via DELETE /exdates/:instance before overriding"
+        )));
     }
 
     if has_recurrence_id_override(&ev.ical_raw, &uid, &recurrence_id) {
-        return Err(CalendarError::Conflict(
-            format!("override for RECURRENCE-ID:{recurrence_id} already exists")
-        ));
+        return Err(CalendarError::Conflict(format!(
+            "override for RECURRENCE-ID:{recurrence_id} already exists"
+        )));
     }
 
-    let dtstart = body.dtstart.unwrap_or(inst_utc).to_offset(time::UtcOffset::UTC);
+    let dtstart = body
+        .dtstart
+        .unwrap_or(inst_utc)
+        .to_offset(time::UtcOffset::UTC);
     let mut block = String::new();
-    let eol = if ev.ical_raw.contains("\r\n") { "\r\n" } else { "\n" };
+    let eol = if ev.ical_raw.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
 
-    block.push_str("BEGIN:VEVENT");                block.push_str(eol);
-    block.push_str(&format!("UID:{uid}"));          block.push_str(eol);
-    block.push_str(&format!("RECURRENCE-ID:{recurrence_id}")); block.push_str(eol);
-    block.push_str(&format!("DTSTAMP:{}", format_compact_utc(OffsetDateTime::now_utc())));
+    block.push_str("BEGIN:VEVENT");
     block.push_str(eol);
-    block.push_str(&format!("DTSTART:{}", format_compact_utc(dtstart))); block.push_str(eol);
+    block.push_str(&format!("UID:{uid}"));
+    block.push_str(eol);
+    block.push_str(&format!("RECURRENCE-ID:{recurrence_id}"));
+    block.push_str(eol);
+    block.push_str(&format!(
+        "DTSTAMP:{}",
+        format_compact_utc(OffsetDateTime::now_utc())
+    ));
+    block.push_str(eol);
+    block.push_str(&format!("DTSTART:{}", format_compact_utc(dtstart)));
+    block.push_str(eol);
     if let Some(end) = body.dtend {
-        block.push_str(&format!("DTEND:{}", format_compact_utc(end.to_offset(time::UtcOffset::UTC))));
+        block.push_str(&format!(
+            "DTEND:{}",
+            format_compact_utc(end.to_offset(time::UtcOffset::UTC))
+        ));
         block.push_str(eol);
     }
     if let Some(s) = body.summary.as_deref() {
-        block.push_str(&format!("SUMMARY:{}", escape_ics_text(s))); block.push_str(eol);
+        block.push_str(&format!("SUMMARY:{}", escape_ics_text(s)));
+        block.push_str(eol);
     }
     if let Some(s) = body.description.as_deref() {
-        block.push_str(&format!("DESCRIPTION:{}", escape_ics_text(s))); block.push_str(eol);
+        block.push_str(&format!("DESCRIPTION:{}", escape_ics_text(s)));
+        block.push_str(eol);
     }
     if let Some(s) = body.location.as_deref() {
-        block.push_str(&format!("LOCATION:{}", escape_ics_text(s))); block.push_str(eol);
+        block.push_str(&format!("LOCATION:{}", escape_ics_text(s)));
+        block.push_str(eol);
     }
-    block.push_str("END:VEVENT"); block.push_str(eol);
+    block.push_str("END:VEVENT");
+    block.push_str(eol);
 
     let new_raw = inject_before_end_vcalendar(&ev.ical_raw, &block);
 
-    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    let updated = EventRepo::new(pool)
+        .update(ctx.tenant_id, id, &new_raw)
+        .await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
@@ -5725,8 +6192,12 @@ fn format_compact_utc(t: OffsetDateTime) -> String {
     let t = t.to_offset(time::UtcOffset::UTC);
     format!(
         "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-        t.year(), u8::from(t.month()), t.day(),
-        t.hour(), t.minute(), t.second(),
+        t.year(),
+        u8::from(t.month()),
+        t.day(),
+        t.hour(),
+        t.minute(),
+        t.second(),
     )
 }
 
@@ -5735,7 +6206,11 @@ fn format_compact_utc(t: OffsetDateTime) -> String {
 fn extract_uid(raw: &str) -> Option<String> {
     for line in raw.lines() {
         let trimmed = line.trim_start();
-        let upper: String = trimmed.chars().take(4).collect::<String>().to_ascii_uppercase();
+        let upper: String = trimmed
+            .chars()
+            .take(4)
+            .collect::<String>()
+            .to_ascii_uppercase();
         if upper.starts_with("UID:") {
             return Some(trimmed["UID:".len()..].trim().to_string());
         }
@@ -5753,24 +6228,48 @@ fn has_recurrence_id_override(raw: &str, uid: &str, recurrence_id: &str) -> bool
     let mut found_recid = false;
     for line in raw.lines() {
         let trimmed = line.trim_start();
-        let upper_head: String = trimmed.chars().take(14).collect::<String>().to_ascii_uppercase();
+        let upper_head: String = trimmed
+            .chars()
+            .take(14)
+            .collect::<String>()
+            .to_ascii_uppercase();
         if upper_head.starts_with("BEGIN:VEVENT") {
-            in_event = true; found_uid = false; found_recid = false; continue;
+            in_event = true;
+            found_uid = false;
+            found_recid = false;
+            continue;
         }
         if upper_head.starts_with("END:VEVENT") {
-            if in_event && found_uid && found_recid { return true; }
-            in_event = false; continue;
+            if in_event && found_uid && found_recid {
+                return true;
+            }
+            in_event = false;
+            continue;
         }
-        if !in_event { continue; }
-        let upper_short: String = trimmed.chars().take(4).collect::<String>().to_ascii_uppercase();
+        if !in_event {
+            continue;
+        }
+        let upper_short: String = trimmed
+            .chars()
+            .take(4)
+            .collect::<String>()
+            .to_ascii_uppercase();
         if upper_short.starts_with("UID:") {
             let v = trimmed["UID:".len()..].trim();
-            if v == uid { found_uid = true; }
+            if v == uid {
+                found_uid = true;
+            }
         } else {
-            let upper_long: String = trimmed.chars().take(14).collect::<String>().to_ascii_uppercase();
+            let upper_long: String = trimmed
+                .chars()
+                .take(14)
+                .collect::<String>()
+                .to_ascii_uppercase();
             if upper_long.starts_with("RECURRENCE-ID:") {
                 let v = trimmed["RECURRENCE-ID:".len()..].trim();
-                if v == recurrence_id { found_recid = true; }
+                if v == recurrence_id {
+                    found_recid = true;
+                }
             }
         }
     }
@@ -5780,7 +6279,7 @@ fn has_recurrence_id_override(raw: &str, uid: &str, recurrence_id: &str) -> bool
 /// Injeta `block` antes da última linha END:VCALENDAR. Mantém EOL original.
 fn inject_before_end_vcalendar(raw: &str, block: &str) -> String {
     let crlf = raw.contains("\r\n");
-    let eol  = if crlf { "\r\n" } else { "\n" };
+    let eol = if crlf { "\r\n" } else { "\n" };
     let mut out = String::with_capacity(raw.len() + block.len() + 2);
     let mut injected = false;
     for src_line in raw.split_inclusive('\n') {
@@ -5806,11 +6305,11 @@ fn escape_ics_text(s: &str) -> String {
     for ch in s.chars() {
         match ch {
             '\\' => out.push_str("\\\\"),
-            ';'  => out.push_str("\\;"),
-            ','  => out.push_str("\\,"),
+            ';' => out.push_str("\\;"),
+            ',' => out.push_str("\\,"),
             '\n' => out.push_str("\\n"),
             '\r' => {}
-            c    => out.push(c),
+            c => out.push(c),
         }
     }
     out
@@ -5830,7 +6329,7 @@ struct ListOverridesQuery {
     /// = sem filtro. RECURRENCE-IDs não-parseáveis (não-UTC) são pulados
     /// silenciosamente quando algum bound é dado. 400 se `after >= before`.
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     /// `?has_summary=&has_dtstart=&has_dtend=` (sprint #518) filtros
@@ -5844,7 +6343,7 @@ struct ListOverridesQuery {
     #[serde(default)]
     has_dtstart: Option<bool>,
     #[serde(default)]
-    has_dtend:   Option<bool>,
+    has_dtend: Option<bool>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/overrides — lista os
@@ -5879,16 +6378,18 @@ struct ListOverridesQuery {
 /// desconhecido ou `after >= before`.
 async fn list_overrides(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((_cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<ListOverridesQuery>,
+    Query(q): Query<ListOverridesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let full = match q.detail.as_deref() {
         None | Some("") | Some("summary") => false,
         Some("full") => true,
-        Some(other) => return Err(CalendarError::BadRequest(
-            format!("detail must be 'summary' or 'full', got '{other}'")
-        )),
+        Some(other) => {
+            return Err(CalendarError::BadRequest(format!(
+                "detail must be 'summary' or 'full', got '{other}'"
+            )))
+        }
     };
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -5903,23 +6404,43 @@ async fn list_overrides(
         items.retain(|item| {
             let compact = match item.get("compact").and_then(|v| v.as_str()) {
                 Some(s) => s,
-                None    => return false,
+                None => return false,
             };
             let parsed = match parse_one_exdate(compact) {
                 Some(t) => t,
-                None    => return false,
+                None => return false,
             };
-            if let Some(a) = q.after  { if parsed <  a { return false; } }
-            if let Some(b) = q.before { if parsed >= b { return false; } }
+            if let Some(a) = q.after {
+                if parsed < a {
+                    return false;
+                }
+            }
+            if let Some(b) = q.before {
+                if parsed >= b {
+                    return false;
+                }
+            }
             true
         });
     }
     if q.has_summary.is_some() || q.has_dtstart.is_some() || q.has_dtend.is_some() {
         items.retain(|item| {
             let present = |key: &str| item.get(key).map(|v| !v.is_null()).unwrap_or(false);
-            if let Some(want) = q.has_summary { if present("summary") != want { return false; } }
-            if let Some(want) = q.has_dtstart { if present("dtstart") != want { return false; } }
-            if let Some(want) = q.has_dtend   { if present("dtend")   != want { return false; } }
+            if let Some(want) = q.has_summary {
+                if present("summary") != want {
+                    return false;
+                }
+            }
+            if let Some(want) = q.has_dtstart {
+                if present("dtstart") != want {
+                    return false;
+                }
+            }
+            if let Some(want) = q.has_dtend {
+                if present("dtend") != want {
+                    return false;
+                }
+            }
             true
         });
     }
@@ -5939,7 +6460,7 @@ struct OverridesStatsQuery {
     /// — sem range, todos os overrides entram no agregado (shape original
     /// do #519 preservado). 400 se `after >= before`.
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     /// `?has_summary=&has_dtstart=&has_dtend=` (sprint #521, composição de
@@ -5955,7 +6476,7 @@ struct OverridesStatsQuery {
     #[serde(default)]
     has_dtstart: Option<bool>,
     #[serde(default)]
-    has_dtend:   Option<bool>,
+    has_dtend: Option<bool>,
     /// `?top_tzid=N` (sprint #539, paralelo do #532+#533 mas no overrides
     /// scope) trunca o `tzid_breakdown` do #538 pras N TZIDs mais frequentes
     /// (sort by count desc, ties broken por insertion order do `Vec`
@@ -5964,7 +6485,7 @@ struct OverridesStatsQuery {
     /// TZIDs descartadas. Flag opcional, ausência ≡ shape #538 (breakdown
     /// completo, sem `tzid_other_count`). `top_tzid=0` → 400 ("must be >= 1").
     #[serde(default)]
-    top_tzid:    Option<usize>,
+    top_tzid: Option<usize>,
     /// `?sort_tzid=count_desc|count_asc|name_asc|name_desc` (sprint #540,
     /// paralelo do #534 mas no overrides scope) ordena o `tzid_breakdown`
     /// via array adjacente `tzid_breakdown_order: [tz...]`. Necessário
@@ -5975,7 +6496,7 @@ struct OverridesStatsQuery {
     /// sort_mode escolhido. Flag ausente preserva shape #539 (sem array).
     /// String vazia ou None skip; outros valores -> 400 listando opções.
     #[serde(default)]
-    sort_tzid:   Option<String>,
+    sort_tzid: Option<String>,
     /// `?min_count=N` (sprint #541, paralelo do #535 mas no overrides scope)
     /// filtra a long-tail removendo do `tzid_breakdown` qualquer TZID com
     /// count < N + adiciona `tzid_filtered_count: usize` agregando soma das
@@ -5988,7 +6509,7 @@ struct OverridesStatsQuery {
     /// que filtered=0 — UI sabe que flag foi aceita); ausência preserva
     /// shape #540.
     #[serde(default)]
-    min_count:   Option<usize>,
+    min_count: Option<usize>,
     /// `?include_kind_breakdown=true` (sprint #542, paralelo do #536 mas
     /// no overrides scope — fechando port das 5 famílias EXDATE-stats em
     /// overrides_stats: inclusão, head truncation, cosmetic ordering, tail
@@ -6149,9 +6670,9 @@ struct OverridesStatsQuery {
 /// out) emite `{}` (semantics "flag aceita, sem dados").
 async fn overrides_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((_cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<OverridesStatsQuery>,
+    Query(q): Query<OverridesStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -6160,20 +6681,22 @@ async fn overrides_stats(
     }
     if q.top_tzid == Some(0) {
         return Err(CalendarError::BadRequest(
-            "top_tzid must be >= 1 (omit flag for full breakdown)".into()
+            "top_tzid must be >= 1 (omit flag for full breakdown)".into(),
         ));
     }
     if q.min_count == Some(0) {
         return Err(CalendarError::BadRequest(
-            "min_count must be >= 1 (omit flag for full breakdown)".into()
+            "min_count must be >= 1 (omit flag for full breakdown)".into(),
         ));
     }
     let sort_mode: Option<&str> = match q.sort_tzid.as_deref() {
         None | Some("") => None,
         Some(s @ ("count_desc" | "count_asc" | "name_asc" | "name_desc")) => Some(s),
-        Some(other) => return Err(CalendarError::BadRequest(format!(
-            "sort_tzid must be one of count_desc|count_asc|name_asc|name_desc, got '{other}'"
-        ))),
+        Some(other) => {
+            return Err(CalendarError::BadRequest(format!(
+                "sort_tzid must be one of count_desc|count_asc|name_asc|name_desc, got '{other}'"
+            )))
+        }
     };
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
@@ -6183,38 +6706,61 @@ async fn overrides_stats(
         items.retain(|item| {
             let compact = match item.get("compact").and_then(|v| v.as_str()) {
                 Some(s) => s,
-                None    => return false,
+                None => return false,
             };
             let parsed = match parse_one_exdate(compact) {
                 Some(t) => t,
-                None    => return false,
+                None => return false,
             };
-            if let Some(a) = q.after  { if parsed <  a { return false; } }
-            if let Some(b) = q.before { if parsed >= b { return false; } }
+            if let Some(a) = q.after {
+                if parsed < a {
+                    return false;
+                }
+            }
+            if let Some(b) = q.before {
+                if parsed >= b {
+                    return false;
+                }
+            }
             true
         });
     }
     if q.has_summary.is_some() || q.has_dtstart.is_some() || q.has_dtend.is_some() {
         items.retain(|item| {
             let present = |key: &str| item.get(key).map(|v| !v.is_null()).unwrap_or(false);
-            if let Some(want) = q.has_summary { if present("summary") != want { return false; } }
-            if let Some(want) = q.has_dtstart { if present("dtstart") != want { return false; } }
-            if let Some(want) = q.has_dtend   { if present("dtend")   != want { return false; } }
+            if let Some(want) = q.has_summary {
+                if present("summary") != want {
+                    return false;
+                }
+            }
+            if let Some(want) = q.has_dtstart {
+                if present("dtstart") != want {
+                    return false;
+                }
+            }
+            if let Some(want) = q.has_dtend {
+                if present("dtend") != want {
+                    return false;
+                }
+            }
             true
         });
     }
     let total = items.len();
-    let mut sum_p = 0usize; let mut sum_a = 0usize;
-    let mut ds_p  = 0usize; let mut ds_a  = 0usize;
-    let mut de_p  = 0usize; let mut de_a  = 0usize;
+    let mut sum_p = 0usize;
+    let mut sum_a = 0usize;
+    let mut ds_p = 0usize;
+    let mut ds_a = 0usize;
+    let mut de_p = 0usize;
+    let mut de_a = 0usize;
     let mut c_none = 0usize;
-    let mut c_s    = 0usize;
-    let mut c_ds   = 0usize;
-    let mut c_de   = 0usize;
+    let mut c_s = 0usize;
+    let mut c_ds = 0usize;
+    let mut c_de = 0usize;
     let mut c_s_ds = 0usize;
     let mut c_s_de = 0usize;
     let mut c_ds_de = 0usize;
-    let mut c_all  = 0usize;
+    let mut c_all = 0usize;
     let mut tzid_breakdown: Vec<(String, usize)> = Vec::new();
     let include_kind_breakdown = q.include_kind_breakdown.unwrap_or(false);
     // (tzid, canonical_count, malformed_count) — populado só quando
@@ -6226,41 +6772,57 @@ async fn overrides_stats(
     let mut tzid_by_kind: Vec<(String, usize, usize)> = Vec::new();
     for item in &items {
         let present = |key: &str| item.get(key).map(|v| !v.is_null()).unwrap_or(false);
-        let s  = present("summary");
+        let s = present("summary");
         let ds = present("dtstart");
         let de = present("dtend");
-        if s  { sum_p += 1; } else { sum_a += 1; }
-        if ds { ds_p  += 1; } else { ds_a  += 1; }
-        if de { de_p  += 1; } else { de_a  += 1; }
+        if s {
+            sum_p += 1;
+        } else {
+            sum_a += 1;
+        }
+        if ds {
+            ds_p += 1;
+        } else {
+            ds_a += 1;
+        }
+        if de {
+            de_p += 1;
+        } else {
+            de_a += 1;
+        }
         match (s, ds, de) {
-            (false, false, false) => c_none   += 1,
-            (true,  false, false) => c_s      += 1,
-            (false, true,  false) => c_ds     += 1,
-            (false, false, true ) => c_de     += 1,
-            (true,  true,  false) => c_s_ds   += 1,
-            (true,  false, true ) => c_s_de   += 1,
-            (false, true,  true ) => c_ds_de  += 1,
-            (true,  true,  true ) => c_all    += 1,
+            (false, false, false) => c_none += 1,
+            (true, false, false) => c_s += 1,
+            (false, true, false) => c_ds += 1,
+            (false, false, true) => c_de += 1,
+            (true, true, false) => c_s_ds += 1,
+            (true, false, true) => c_s_de += 1,
+            (false, true, true) => c_ds_de += 1,
+            (true, true, true) => c_all += 1,
         }
         for (tzid_key, value_key) in [
             ("dtstart_tzid", "dtstart_value"),
-            ("dtend_tzid",   "dtend_value"),
+            ("dtend_tzid", "dtend_value"),
         ] {
             if let Some(tz) = item.get(tzid_key).and_then(|v| v.as_str()) {
                 if !tz.is_empty() {
                     match tzid_breakdown.iter().position(|(k, _)| k == tz) {
                         Some(i) => tzid_breakdown[i].1 += 1,
-                        None    => tzid_breakdown.push((tz.to_string(), 1)),
+                        None => tzid_breakdown.push((tz.to_string(), 1)),
                     }
                     if include_kind_breakdown {
-                        let canonical = item.get(value_key)
+                        let canonical = item
+                            .get(value_key)
                             .and_then(|v| v.as_str())
                             .map(is_canonical_local_datetime)
                             .unwrap_or(false);
                         match tzid_by_kind.iter().position(|(k, _, _)| k == tz) {
                             Some(i) => {
-                                if canonical { tzid_by_kind[i].1 += 1; }
-                                else         { tzid_by_kind[i].2 += 1; }
+                                if canonical {
+                                    tzid_by_kind[i].1 += 1;
+                                } else {
+                                    tzid_by_kind[i].2 += 1;
+                                }
                             }
                             None => {
                                 let (c, u) = if canonical { (1, 0) } else { (0, 1) };
@@ -6277,11 +6839,13 @@ async fn overrides_stats(
         tzid_token_count += *c;
     }
     let (filtered_universe, tzid_filtered_count) = if let Some(n) = q.min_count {
-        let removed: usize = tzid_breakdown.iter()
+        let removed: usize = tzid_breakdown
+            .iter()
             .filter(|(_, c)| *c < n)
             .map(|(_, c)| *c)
             .sum();
-        let kept: Vec<(String, usize)> = tzid_breakdown.into_iter()
+        let kept: Vec<(String, usize)> = tzid_breakdown
+            .into_iter()
             .filter(|(_, c)| *c >= n)
             .collect();
         (kept, Some(removed))
@@ -6300,9 +6864,9 @@ async fn overrides_stats(
     if let Some(mode) = sort_mode {
         match mode {
             "count_desc" => kept.sort_by(|a, b| b.1.cmp(&a.1)),
-            "count_asc"  => kept.sort_by(|a, b| a.1.cmp(&b.1)),
-            "name_asc"   => kept.sort_by(|a, b| a.0.cmp(&b.0)),
-            "name_desc"  => kept.sort_by(|a, b| b.0.cmp(&a.0)),
+            "count_asc" => kept.sort_by(|a, b| a.1.cmp(&b.1)),
+            "name_asc" => kept.sort_by(|a, b| a.0.cmp(&b.0)),
+            "name_desc" => kept.sort_by(|a, b| b.0.cmp(&a.0)),
             _ => unreachable!(),
         }
     }
@@ -6332,19 +6896,20 @@ async fn overrides_stats(
         "tzid_token_count": tzid_token_count,
     });
     if let Some(other) = tzid_other_count {
-        payload.as_object_mut().unwrap().insert(
-            "tzid_other_count".into(),
-            serde_json::json!(other),
-        );
+        payload
+            .as_object_mut()
+            .unwrap()
+            .insert("tzid_other_count".into(), serde_json::json!(other));
     }
     if let Some(filtered) = tzid_filtered_count {
-        payload.as_object_mut().unwrap().insert(
-            "tzid_filtered_count".into(),
-            serde_json::json!(filtered),
-        );
+        payload
+            .as_object_mut()
+            .unwrap()
+            .insert("tzid_filtered_count".into(), serde_json::json!(filtered));
     }
     if sort_mode.is_some() {
-        let order: Vec<serde_json::Value> = kept.iter()
+        let order: Vec<serde_json::Value> = kept
+            .iter()
             .map(|(tz, _)| serde_json::Value::String(tz.clone()))
             .collect();
         payload.as_object_mut().unwrap().insert(
@@ -6355,14 +6920,18 @@ async fn overrides_stats(
     if include_kind_breakdown {
         let mut by_kind_obj = serde_json::Map::new();
         for (tz, _) in &kept {
-            let (c, u) = tzid_by_kind.iter()
+            let (c, u) = tzid_by_kind
+                .iter()
                 .find(|(k, _, _)| k == tz)
                 .map(|(_, c, u)| (*c, *u))
                 .unwrap_or((0, 0));
-            by_kind_obj.insert(tz.clone(), serde_json::json!({
-                "tzid":    c,
-                "unknown": u,
-            }));
+            by_kind_obj.insert(
+                tz.clone(),
+                serde_json::json!({
+                    "tzid":    c,
+                    "unknown": u,
+                }),
+            );
         }
         payload.as_object_mut().unwrap().insert(
             "tzid_breakdown_by_kind".into(),
@@ -6385,9 +6954,9 @@ async fn overrides_stats(
 /// Read-only, não exige WRITE+. 404 se override não existe.
 async fn get_one_override(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id, recurrence_id)): Path<(Uuid, Uuid, String)>,
-    req_headers:  HeaderMap,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
@@ -6401,10 +6970,15 @@ async fn get_one_override(
             return Ok(StatusCode::NOT_MODIFIED.into_response());
         }
     }
-    let lm = ev.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = ev
+        .updated_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if ev.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -6412,26 +6986,30 @@ async fn get_one_override(
         }
     }
 
-    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| CalendarError::BadRequest(
-        format!("recurrence_id must be RFC3339 or YYYYMMDDTHHMMSSZ, got {recurrence_id}")
-    ))?;
+    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| {
+        CalendarError::BadRequest(format!(
+            "recurrence_id must be RFC3339 or YYYYMMDDTHHMMSSZ, got {recurrence_id}"
+        ))
+    })?;
     let target_compact = format_compact_utc(target);
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot locate override".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot locate override".into())
+    })?;
 
     let snap = pick_recurrence_id_override(&ev.ical_raw, &uid, &target_compact)
         .ok_or(CalendarError::EventNotFound(id))?;
 
     use time::format_description::FormatItem;
     use time::macros::format_description;
-    static FMT: &[FormatItem<'static>] = format_description!(
-        "[year][month][day]T[hour][minute][second]Z"
-    );
-    let rfc = OffsetDateTime::parse(&target_compact, &FMT).ok().and_then(|t| {
-        t.format(&time::format_description::well_known::Rfc3339).ok()
-    });
+    static FMT: &[FormatItem<'static>] =
+        format_description!("[year][month][day]T[hour][minute][second]Z");
+    let rfc = OffsetDateTime::parse(&target_compact, &FMT)
+        .ok()
+        .and_then(|t| {
+            t.format(&time::format_description::well_known::Rfc3339)
+                .ok()
+        });
 
     let body = serde_json::json!({
         "event_id":      ev.id,
@@ -6447,8 +7025,10 @@ async fn get_one_override(
     });
 
     let mut resp = Json(body).into_response();
-    resp.headers_mut().insert(header::ETAG,          HeaderValue::from_str(&etag).unwrap());
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
@@ -6457,34 +7037,50 @@ async fn get_one_override(
 /// pelo GET single (#500) que precisa de description também (list #496
 /// só traz summary/dtstart/dtend).
 struct OverrideSnapshot {
-    summary:     Option<String>,
+    summary: Option<String>,
     description: Option<String>,
-    location:    Option<String>,
-    dtstart:     Option<String>,
-    dtend:       Option<String>,
-    dtstamp:     Option<String>,
+    location: Option<String>,
+    dtstart: Option<String>,
+    dtend: Option<String>,
+    dtstamp: Option<String>,
 }
 
-fn pick_recurrence_id_override(raw: &str, uid_master: &str, target_compact: &str) -> Option<OverrideSnapshot> {
-    let mut in_event   = false;
-    let mut found_uid  = false;
-    let mut found_rec  = false;
+fn pick_recurrence_id_override(
+    raw: &str,
+    uid_master: &str,
+    target_compact: &str,
+) -> Option<OverrideSnapshot> {
+    let mut in_event = false;
+    let mut found_uid = false;
+    let mut found_rec = false;
     let mut snap = OverrideSnapshot {
-        summary: None, description: None, location: None,
-        dtstart: None, dtend: None, dtstamp: None,
+        summary: None,
+        description: None,
+        location: None,
+        dtstart: None,
+        dtend: None,
+        dtstamp: None,
     };
 
     for line in raw.lines() {
         let trimmed = line.trim_start();
-        let head: String = trimmed.chars().take(16).collect::<String>().to_ascii_uppercase();
+        let head: String = trimmed
+            .chars()
+            .take(16)
+            .collect::<String>()
+            .to_ascii_uppercase();
 
         if head.starts_with("BEGIN:VEVENT") {
             in_event = true;
             found_uid = false;
             found_rec = false;
             snap = OverrideSnapshot {
-                summary: None, description: None, location: None,
-                dtstart: None, dtend: None, dtstamp: None,
+                summary: None,
+                description: None,
+                location: None,
+                dtstart: None,
+                dtend: None,
+                dtstamp: None,
             };
             continue;
         }
@@ -6495,14 +7091,20 @@ fn pick_recurrence_id_override(raw: &str, uid_master: &str, target_compact: &str
             in_event = false;
             continue;
         }
-        if !in_event { continue; }
+        if !in_event {
+            continue;
+        }
 
         if head.starts_with("UID:") {
             let v = trimmed["UID:".len()..].trim();
-            if v == uid_master { found_uid = true; }
+            if v == uid_master {
+                found_uid = true;
+            }
         } else if head.starts_with("RECURRENCE-ID:") {
             let v = trimmed["RECURRENCE-ID:".len()..].trim();
-            if v == target_compact { found_rec = true; }
+            if v == target_compact {
+                found_rec = true;
+            }
         } else if head.starts_with("SUMMARY:") {
             snap.summary = Some(trimmed["SUMMARY:".len()..].trim().to_string());
         } else if head.starts_with("DESCRIPTION:") {
@@ -6539,7 +7141,7 @@ fn pick_recurrence_id_override(raw: &str, uid_master: &str, target_compact: &str
 /// added_exdate:true, sequence}`.
 async fn migrate_override_to_cancel(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id, recurrence_id)): Path<(Uuid, Uuid, String)>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
@@ -6549,20 +7151,27 @@ async fn migrate_override_to_cancel(
     if ev.calendar_id != cal_id {
         return Err(CalendarError::EventNotFound(id));
     }
-    if ev.rrule.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+    if ev
+        .rrule
+        .as_deref()
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true)
+    {
         return Err(CalendarError::BadRequest(
-            "event has no rrule — overrides only apply to recurring series".into()
+            "event has no rrule — overrides only apply to recurring series".into(),
         ));
     }
 
-    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| CalendarError::BadRequest(
-        format!("recurrence_id must be RFC3339 or YYYYMMDDTHHMMSSZ, got {recurrence_id}")
-    ))?;
+    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| {
+        CalendarError::BadRequest(format!(
+            "recurrence_id must be RFC3339 or YYYYMMDDTHHMMSSZ, got {recurrence_id}"
+        ))
+    })?;
     let target_compact = format_compact_utc(target);
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot locate override".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot locate override".into())
+    })?;
 
     if !has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
         return Err(CalendarError::EventNotFound(id));
@@ -6573,21 +7182,25 @@ async fn migrate_override_to_cancel(
         .iter()
         .any(|t| t.to_offset(time::UtcOffset::UTC) == target_utc);
     if already_exdated {
-        return Err(CalendarError::Conflict(
-            format!("instance {target_compact} already has EXDATE — \
+        return Err(CalendarError::Conflict(format!(
+            "instance {target_compact} already has EXDATE — \
                      override and EXDATE coexisting is anomalous; \
-                     remove via DELETE /overrides/:recurrence_id alone")
-        ));
+                     remove via DELETE /overrides/:recurrence_id alone"
+        )));
     }
 
     let without_override = remove_recurrence_id_override_block(&ev.ical_raw, &uid, &target_compact);
     let new_line = format!("EXDATE:{target_compact}");
     let new_raw = inject_exdate_line(&without_override, &new_line);
 
-    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    let updated = EventRepo::new(pool)
+        .update(ctx.tenant_id, id, &new_raw)
+        .await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
@@ -6601,15 +7214,15 @@ async fn migrate_override_to_cancel(
 
 #[derive(Debug, serde::Deserialize)]
 struct MigrateCancelToOverrideBody {
-    summary:     Option<String>,
+    summary: Option<String>,
     description: Option<String>,
-    location:    Option<String>,
+    location: Option<String>,
     /// Se omitido, override mantém dtstart=instance original (a EXDATE alvo).
     #[serde(default, with = "time::serde::rfc3339::option")]
-    dtstart:     Option<OffsetDateTime>,
+    dtstart: Option<OffsetDateTime>,
     /// Se omitido, override não emite DTEND (cliente herda do master).
     #[serde(default, with = "time::serde::rfc3339::option")]
-    dtend:       Option<OffsetDateTime>,
+    dtend: Option<OffsetDateTime>,
 }
 
 /// POST /api/v1/calendars/:cal_id/events/:id/exdates/:instance/override —
@@ -6631,9 +7244,9 @@ struct MigrateCancelToOverrideBody {
 /// sequence}`.
 async fn migrate_cancel_to_override(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id, instance)): Path<(Uuid, Uuid, String)>,
-    Json(body):   Json<MigrateCancelToOverrideBody>,
+    Json(body): Json<MigrateCancelToOverrideBody>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
@@ -6642,22 +7255,32 @@ async fn migrate_cancel_to_override(
     if ev.calendar_id != cal_id {
         return Err(CalendarError::EventNotFound(id));
     }
-    if ev.rrule.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
-        return Err(CalendarError::BadRequest(
-            "event has no rrule — overrides only apply to recurring series".into()
-        ));
-    }
-    if body.summary.is_none() && body.description.is_none()
-        && body.location.is_none() && body.dtstart.is_none() && body.dtend.is_none()
+    if ev
+        .rrule
+        .as_deref()
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true)
     {
         return Err(CalendarError::BadRequest(
-            "at least one of summary/description/location/dtstart/dtend required".into()
+            "event has no rrule — overrides only apply to recurring series".into(),
+        ));
+    }
+    if body.summary.is_none()
+        && body.description.is_none()
+        && body.location.is_none()
+        && body.dtstart.is_none()
+        && body.dtend.is_none()
+    {
+        return Err(CalendarError::BadRequest(
+            "at least one of summary/description/location/dtstart/dtend required".into(),
         ));
     }
 
-    let target = parse_one_exdate(&instance).ok_or_else(|| CalendarError::BadRequest(
-        format!("instance must be RFC3339 or YYYYMMDDTHHMMSSZ, got {instance}")
-    ))?;
+    let target = parse_one_exdate(&instance).ok_or_else(|| {
+        CalendarError::BadRequest(format!(
+            "instance must be RFC3339 or YYYYMMDDTHHMMSSZ, got {instance}"
+        ))
+    })?;
     let target_utc = target.to_offset(time::UtcOffset::UTC);
     let target_compact = format_compact_utc(target_utc);
 
@@ -6668,51 +7291,76 @@ async fn migrate_cancel_to_override(
         return Err(CalendarError::EventNotFound(id));
     }
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot create override".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot create override".into())
+    })?;
 
     if has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
-        return Err(CalendarError::Conflict(
-            format!("override for RECURRENCE-ID:{target_compact} already exists — \
+        return Err(CalendarError::Conflict(format!(
+            "override for RECURRENCE-ID:{target_compact} already exists — \
                      EXDATE and override coexisting is anomalous; \
-                     remove via DELETE /exdates/:instance alone")
-        ));
+                     remove via DELETE /exdates/:instance alone"
+        )));
     }
 
     let without_exdate = remove_exdate_value(&ev.ical_raw, target_utc);
 
-    let dtstart = body.dtstart.unwrap_or(target_utc).to_offset(time::UtcOffset::UTC);
+    let dtstart = body
+        .dtstart
+        .unwrap_or(target_utc)
+        .to_offset(time::UtcOffset::UTC);
     let mut block = String::new();
-    let eol = if without_exdate.contains("\r\n") { "\r\n" } else { "\n" };
+    let eol = if without_exdate.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
 
-    block.push_str("BEGIN:VEVENT");                block.push_str(eol);
-    block.push_str(&format!("UID:{uid}"));          block.push_str(eol);
-    block.push_str(&format!("RECURRENCE-ID:{target_compact}")); block.push_str(eol);
-    block.push_str(&format!("DTSTAMP:{}", format_compact_utc(OffsetDateTime::now_utc())));
+    block.push_str("BEGIN:VEVENT");
     block.push_str(eol);
-    block.push_str(&format!("DTSTART:{}", format_compact_utc(dtstart))); block.push_str(eol);
+    block.push_str(&format!("UID:{uid}"));
+    block.push_str(eol);
+    block.push_str(&format!("RECURRENCE-ID:{target_compact}"));
+    block.push_str(eol);
+    block.push_str(&format!(
+        "DTSTAMP:{}",
+        format_compact_utc(OffsetDateTime::now_utc())
+    ));
+    block.push_str(eol);
+    block.push_str(&format!("DTSTART:{}", format_compact_utc(dtstart)));
+    block.push_str(eol);
     if let Some(end) = body.dtend {
-        block.push_str(&format!("DTEND:{}", format_compact_utc(end.to_offset(time::UtcOffset::UTC))));
+        block.push_str(&format!(
+            "DTEND:{}",
+            format_compact_utc(end.to_offset(time::UtcOffset::UTC))
+        ));
         block.push_str(eol);
     }
     if let Some(s) = body.summary.as_deref() {
-        block.push_str(&format!("SUMMARY:{}", escape_ics_text(s))); block.push_str(eol);
+        block.push_str(&format!("SUMMARY:{}", escape_ics_text(s)));
+        block.push_str(eol);
     }
     if let Some(s) = body.description.as_deref() {
-        block.push_str(&format!("DESCRIPTION:{}", escape_ics_text(s))); block.push_str(eol);
+        block.push_str(&format!("DESCRIPTION:{}", escape_ics_text(s)));
+        block.push_str(eol);
     }
     if let Some(s) = body.location.as_deref() {
-        block.push_str(&format!("LOCATION:{}", escape_ics_text(s))); block.push_str(eol);
+        block.push_str(&format!("LOCATION:{}", escape_ics_text(s)));
+        block.push_str(eol);
     }
-    block.push_str("END:VEVENT"); block.push_str(eol);
+    block.push_str("END:VEVENT");
+    block.push_str(eol);
 
     let new_raw = inject_before_end_vcalendar(&without_exdate, &block);
 
-    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    let updated = EventRepo::new(pool)
+        .update(ctx.tenant_id, id, &new_raw)
+        .await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
@@ -6733,7 +7381,7 @@ async fn migrate_cancel_to_override(
 /// RECURRENCE-ID == alvo.
 async fn delete_override(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id, recurrence_id)): Path<(Uuid, Uuid, String)>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
@@ -6744,14 +7392,16 @@ async fn delete_override(
         return Err(CalendarError::EventNotFound(id));
     }
 
-    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| CalendarError::BadRequest(
-        format!("recurrence_id must be RFC3339 or YYYYMMDDTHHMMSSZ, got {recurrence_id}")
-    ))?;
+    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| {
+        CalendarError::BadRequest(format!(
+            "recurrence_id must be RFC3339 or YYYYMMDDTHHMMSSZ, got {recurrence_id}"
+        ))
+    })?;
     let target_compact = format_compact_utc(target);
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot locate override".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot locate override".into())
+    })?;
 
     if !has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
         return Ok(Json(serde_json::json!({
@@ -6762,10 +7412,14 @@ async fn delete_override(
     }
 
     let new_raw = remove_recurrence_id_override_block(&ev.ical_raw, &uid, &target_compact);
-    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    let updated = EventRepo::new(pool)
+        .update(ctx.tenant_id, id, &new_raw)
+        .await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
@@ -6781,7 +7435,11 @@ async fn delete_override(
 /// Faz buffering por bloco: acumula linhas de um VEVENT, decide ao bater
 /// END:VEVENT se descarta ou flushea. Linhas fora de VEVENT (BEGIN:
 /// VCALENDAR, master event antes deste, etc.) passam direto.
-fn remove_recurrence_id_override_block(raw: &str, uid_master: &str, target_compact: &str) -> String {
+fn remove_recurrence_id_override_block(
+    raw: &str,
+    uid_master: &str,
+    target_compact: &str,
+) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut buf = String::new();
     let mut in_event = false;
@@ -6790,7 +7448,11 @@ fn remove_recurrence_id_override_block(raw: &str, uid_master: &str, target_compa
 
     for src_line in raw.split_inclusive('\n') {
         let trimmed = src_line.trim_start();
-        let upper14: String = trimmed.chars().take(14).collect::<String>().to_ascii_uppercase();
+        let upper14: String = trimmed
+            .chars()
+            .take(14)
+            .collect::<String>()
+            .to_ascii_uppercase();
 
         if upper14.starts_with("BEGIN:VEVENT") {
             in_event = true;
@@ -6816,13 +7478,21 @@ fn remove_recurrence_id_override_block(raw: &str, uid_master: &str, target_compa
             continue;
         }
 
-        let upper4:  String = trimmed.chars().take(4).collect::<String>().to_ascii_uppercase();
+        let upper4: String = trimmed
+            .chars()
+            .take(4)
+            .collect::<String>()
+            .to_ascii_uppercase();
         if upper4.starts_with("UID:") {
             let v = trimmed["UID:".len()..].trim();
-            if v == uid_master { found_uid = true; }
+            if v == uid_master {
+                found_uid = true;
+            }
         } else if upper14.starts_with("RECURRENCE-ID:") {
             let v = trimmed["RECURRENCE-ID:".len()..].trim();
-            if v == target_compact { found_recid_match = true; }
+            if v == target_compact {
+                found_recid_match = true;
+            }
         }
         buf.push_str(src_line);
     }
@@ -6842,9 +7512,8 @@ fn remove_recurrence_id_override_block(raw: &str, uid_master: &str, target_compa
 fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<serde_json::Value> {
     use time::format_description::FormatItem;
     use time::macros::format_description;
-    static FMT: &[FormatItem<'static>] = format_description!(
-        "[year][month][day]T[hour][minute][second]Z"
-    );
+    static FMT: &[FormatItem<'static>] =
+        format_description!("[year][month][day]T[hour][minute][second]Z");
 
     // Extrai TZID de uma linha tipo `DTSTART;TZID=Europe/Berlin;X=Y:value` —
     // retorna `Some("Europe/Berlin")` (case-preserved) ou `None` se linha
@@ -6855,9 +7524,11 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
             let upper = kv.to_ascii_uppercase();
             if let Some(rest) = upper.strip_prefix("TZID=") {
                 let take = rest.len();
-                let original = &kv[kv.len()-take..];
+                let original = &kv[kv.len() - take..];
                 let v = original.trim().trim_matches('"');
-                if !v.is_empty() { return Some(v.to_string()); }
+                if !v.is_empty() {
+                    return Some(v.to_string());
+                }
             }
         }
         None
@@ -6866,12 +7537,12 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
     let mut out = Vec::new();
     let mut in_event = false;
     let mut found_uid = false;
-    let mut cur_recid:        Option<String> = None;
-    let mut cur_summary:      Option<String> = None;
-    let mut cur_dtstart:      Option<String> = None;
-    let mut cur_dtend:        Option<String> = None;
+    let mut cur_recid: Option<String> = None;
+    let mut cur_summary: Option<String> = None;
+    let mut cur_dtstart: Option<String> = None;
+    let mut cur_dtend: Option<String> = None;
     let mut cur_dtstart_tzid: Option<String> = None;
-    let mut cur_dtend_tzid:   Option<String> = None;
+    let mut cur_dtend_tzid: Option<String> = None;
     // Sprint #542 — `*_value` capturam o token pós-colon de linhas
     // `DTSTART;TZID=…:value` / `DTEND;TZID=…:value`, separado de
     // `dtstart`/`dtend` (que continuam refletindo SÓ linhas sem params,
@@ -6879,27 +7550,38 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
     // pelo `tzid_breakdown_by_kind` em overrides_stats pra validar
     // canonicalidade do datetime local sem alterar filtros qualitativos.
     let mut cur_dtstart_value: Option<String> = None;
-    let mut cur_dtend_value:   Option<String> = None;
-    let mut cur_description:  Option<String> = None;
-    let mut cur_location:     Option<String> = None;
+    let mut cur_dtend_value: Option<String> = None;
+    let mut cur_description: Option<String> = None;
+    let mut cur_location: Option<String> = None;
 
     for line in raw.lines() {
         let trimmed = line.trim_start();
-        let upper16: String = trimmed.chars().take(16).collect::<String>().to_ascii_uppercase();
+        let upper16: String = trimmed
+            .chars()
+            .take(16)
+            .collect::<String>()
+            .to_ascii_uppercase();
         if upper16.starts_with("BEGIN:VEVENT") {
             in_event = true;
             found_uid = false;
-            cur_recid = None; cur_summary = None; cur_dtstart = None; cur_dtend = None;
-            cur_dtstart_tzid = None; cur_dtend_tzid = None;
-            cur_dtstart_value = None; cur_dtend_value = None;
-            cur_description = None; cur_location = None;
+            cur_recid = None;
+            cur_summary = None;
+            cur_dtstart = None;
+            cur_dtend = None;
+            cur_dtstart_tzid = None;
+            cur_dtend_tzid = None;
+            cur_dtstart_value = None;
+            cur_dtend_value = None;
+            cur_description = None;
+            cur_location = None;
             continue;
         }
         if upper16.starts_with("END:VEVENT") {
             if in_event && found_uid {
                 if let Some(rec) = cur_recid.take() {
                     let rfc = OffsetDateTime::parse(rec.trim(), &FMT).ok().and_then(|t| {
-                        t.format(&time::format_description::well_known::Rfc3339).ok()
+                        t.format(&time::format_description::well_known::Rfc3339)
+                            .ok()
                     });
                     let mut item = serde_json::json!({
                         "compact":       rec,
@@ -6914,12 +7596,20 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
                     });
                     if full {
                         let obj = item.as_object_mut().expect("json object");
-                        obj.insert("description".into(),
-                            cur_description.take().map(serde_json::Value::String)
-                                .unwrap_or(serde_json::Value::Null));
-                        obj.insert("location".into(),
-                            cur_location.take().map(serde_json::Value::String)
-                                .unwrap_or(serde_json::Value::Null));
+                        obj.insert(
+                            "description".into(),
+                            cur_description
+                                .take()
+                                .map(serde_json::Value::String)
+                                .unwrap_or(serde_json::Value::Null),
+                        );
+                        obj.insert(
+                            "location".into(),
+                            cur_location
+                                .take()
+                                .map(serde_json::Value::String)
+                                .unwrap_or(serde_json::Value::Null),
+                        );
                     }
                     out.push(item);
                 }
@@ -6927,11 +7617,15 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
             in_event = false;
             continue;
         }
-        if !in_event { continue; }
+        if !in_event {
+            continue;
+        }
 
         if upper16.starts_with("UID:") {
             let v = trimmed["UID:".len()..].trim();
-            if v == uid_master { found_uid = true; }
+            if v == uid_master {
+                found_uid = true;
+            }
         } else if upper16.starts_with("RECURRENCE-ID:") {
             cur_recid = Some(trimmed["RECURRENCE-ID:".len()..].trim().to_string());
         } else if upper16.starts_with("SUMMARY:") {
@@ -6945,14 +7639,14 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
                 let params = &trimmed["DTSTART".len()..colon_pos];
                 let params = params.strip_prefix(';').unwrap_or(params);
                 cur_dtstart_tzid = parse_tzid_from_params(params);
-                cur_dtstart_value = Some(trimmed[colon_pos+1..].trim().to_string());
+                cur_dtstart_value = Some(trimmed[colon_pos + 1..].trim().to_string());
             }
         } else if upper16.starts_with("DTEND;") {
             if let Some(colon_pos) = trimmed.find(':') {
                 let params = &trimmed["DTEND".len()..colon_pos];
                 let params = params.strip_prefix(';').unwrap_or(params);
                 cur_dtend_tzid = parse_tzid_from_params(params);
-                cur_dtend_value = Some(trimmed[colon_pos+1..].trim().to_string());
+                cur_dtend_value = Some(trimmed[colon_pos + 1..].trim().to_string());
             }
         } else if full && upper16.starts_with("DESCRIPTION:") {
             cur_description = Some(trimmed["DESCRIPTION:".len()..].trim().to_string());
@@ -6965,13 +7659,13 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
 
 #[derive(Debug, serde::Deserialize)]
 struct PatchOverrideBody {
-    summary:     Option<String>,
+    summary: Option<String>,
     description: Option<String>,
-    location:    Option<String>,
+    location: Option<String>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    dtstart:     Option<OffsetDateTime>,
+    dtstart: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    dtend:       Option<OffsetDateTime>,
+    dtend: Option<OffsetDateTime>,
 }
 
 /// PATCH /api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id —
@@ -6984,43 +7678,56 @@ struct PatchOverrideBody {
 /// 404 se override não existe (mesma checagem do delete).
 async fn patch_override(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id, recurrence_id)): Path<(Uuid, Uuid, String)>,
-    Json(body):   Json<PatchOverrideBody>,
+    Json(body): Json<PatchOverrideBody>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
 
-    if body.summary.is_none() && body.description.is_none()
-        && body.location.is_none() && body.dtstart.is_none() && body.dtend.is_none()
+    if body.summary.is_none()
+        && body.description.is_none()
+        && body.location.is_none()
+        && body.dtstart.is_none()
+        && body.dtend.is_none()
     {
         return Err(CalendarError::BadRequest(
-            "at least one of summary/description/location/dtstart/dtend required".into()
+            "at least one of summary/description/location/dtstart/dtend required".into(),
         ));
     }
 
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
 
-    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| CalendarError::BadRequest(
-        format!("invalid recurrence_id `{recurrence_id}` — expected RFC3339 or YYYYMMDDTHHMMSSZ")
-    ))?;
+    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| {
+        CalendarError::BadRequest(format!(
+            "invalid recurrence_id `{recurrence_id}` — expected RFC3339 or YYYYMMDDTHHMMSSZ"
+        ))
+    })?;
     let target_compact = format_compact_utc(target);
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot locate override".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot locate override".into())
+    })?;
 
     if !has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
         return Err(CalendarError::EventNotFound(id));
     }
 
-    let dtstart_str = body.dtstart.map(|d| format_compact_utc(d.to_offset(time::UtcOffset::UTC)));
-    let dtend_str   = body.dtend.map(|d| format_compact_utc(d.to_offset(time::UtcOffset::UTC)));
+    let dtstart_str = body
+        .dtstart
+        .map(|d| format_compact_utc(d.to_offset(time::UtcOffset::UTC)));
+    let dtend_str = body
+        .dtend
+        .map(|d| format_compact_utc(d.to_offset(time::UtcOffset::UTC)));
     let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
 
     let new_raw = patch_recurrence_id_override_block(
-        &ev.ical_raw, &uid, &target_compact,
+        &ev.ical_raw,
+        &uid,
+        &target_compact,
         body.summary.as_deref(),
         body.description.as_deref(),
         body.location.as_deref(),
@@ -7029,10 +7736,14 @@ async fn patch_override(
         &dtstamp_now,
     );
 
-    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    let updated = EventRepo::new(pool)
+        .update(ctx.tenant_id, id, &new_raw)
+        .await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
@@ -7066,24 +7777,28 @@ struct TouchSingleQuery {
 /// recurrence_id, touched:true, dtstamp, etag, sequence}`.
 async fn touch_override(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id, recurrence_id)): Path<(Uuid, Uuid, String)>,
-    Query(q):     Query<TouchSingleQuery>,
+    Query(q): Query<TouchSingleQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
 
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
 
-    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| CalendarError::BadRequest(
-        format!("invalid recurrence_id `{recurrence_id}` — expected RFC3339 or YYYYMMDDTHHMMSSZ")
-    ))?;
+    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| {
+        CalendarError::BadRequest(format!(
+            "invalid recurrence_id `{recurrence_id}` — expected RFC3339 or YYYYMMDDTHHMMSSZ"
+        ))
+    })?;
     let target_compact = format_compact_utc(target);
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot locate override".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot locate override".into())
+    })?;
 
     if !has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
         return Err(CalendarError::EventNotFound(id));
@@ -7101,15 +7816,25 @@ async fn touch_override(
     let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
 
     let new_raw = patch_recurrence_id_override_block(
-        &ev.ical_raw, &uid, &target_compact,
-        None, None, None, None, None,
+        &ev.ical_raw,
+        &uid,
+        &target_compact,
+        None,
+        None,
+        None,
+        None,
+        None,
         &dtstamp_now,
     );
 
-    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    let updated = EventRepo::new(pool)
+        .update(ctx.tenant_id, id, &new_raw)
+        .await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
@@ -7138,19 +7863,21 @@ async fn touch_override(
 /// dtstamp, etag, sequence}`.
 async fn touch_master(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<TouchSingleQuery>,
+    Query(q): Query<TouchSingleQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
 
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot locate master block".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot locate master block".into())
+    })?;
 
     if q.dry.unwrap_or(false) {
         return Ok(Json(serde_json::json!({
@@ -7163,10 +7890,14 @@ async fn touch_master(
     let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
     let new_raw = patch_master_dtstamp(&ev.ical_raw, &uid, &dtstamp_now);
 
-    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    let updated = EventRepo::new(pool)
+        .update(ctx.tenant_id, id, &new_raw)
+        .await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
@@ -7192,7 +7923,11 @@ fn patch_master_dtstamp(raw: &str, uid_master: &str, dtstamp_now: &str) -> Strin
 
     for src_line in raw.split_inclusive('\n') {
         let trimmed = src_line.trim_start();
-        let upper14: String = trimmed.chars().take(14).collect::<String>().to_ascii_uppercase();
+        let upper14: String = trimmed
+            .chars()
+            .take(14)
+            .collect::<String>()
+            .to_ascii_uppercase();
 
         if upper14.starts_with("BEGIN:VEVENT") {
             in_event = true;
@@ -7212,8 +7947,12 @@ fn patch_master_dtstamp(raw: &str, uid_master: &str, dtstamp_now: &str) -> Strin
             if found_uid && !has_recid {
                 let mut had_dtstamp = false;
                 for line in &buf {
-                    let head: String = line.trim_start().chars().take(8)
-                        .collect::<String>().to_ascii_uppercase();
+                    let head: String = line
+                        .trim_start()
+                        .chars()
+                        .take(8)
+                        .collect::<String>()
+                        .to_ascii_uppercase();
                     if head.starts_with("DTSTAMP:") {
                         out.push_str(&format!("DTSTAMP:{dtstamp_now}"));
                         out.push_str(eol);
@@ -7228,7 +7967,9 @@ fn patch_master_dtstamp(raw: &str, uid_master: &str, dtstamp_now: &str) -> Strin
                 }
                 out.push_str(src_line);
             } else {
-                for line in &buf { out.push_str(line); }
+                for line in &buf {
+                    out.push_str(line);
+                }
                 out.push_str(src_line);
             }
             in_event = false;
@@ -7236,10 +7977,16 @@ fn patch_master_dtstamp(raw: &str, uid_master: &str, dtstamp_now: &str) -> Strin
             continue;
         }
 
-        let upper4: String = trimmed.chars().take(4).collect::<String>().to_ascii_uppercase();
+        let upper4: String = trimmed
+            .chars()
+            .take(4)
+            .collect::<String>()
+            .to_ascii_uppercase();
         if upper4.starts_with("UID:") {
             let v = trimmed["UID:".len()..].trim();
-            if v == uid_master { found_uid = true; }
+            if v == uid_master {
+                found_uid = true;
+            }
         } else if upper14.starts_with("RECURRENCE-ID") {
             // RECURRENCE-ID: ou RECURRENCE-ID;TZID=…: — ambos marcam override
             has_recid = true;
@@ -7248,7 +7995,9 @@ fn patch_master_dtstamp(raw: &str, uid_master: &str, dtstamp_now: &str) -> Strin
     }
 
     if !buf.is_empty() {
-        for line in &buf { out.push_str(line); }
+        for line in &buf {
+            out.push_str(line);
+        }
     }
     out
 }
@@ -7288,39 +8037,46 @@ struct TouchOverridesBulkQuery {
 /// (sem etag/sequence/dtstamp).
 async fn touch_overrides_bulk(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<TouchOverridesBulkQuery>,
-    Json(body):   Json<TouchOverridesBulkBody>,
+    Query(q): Query<TouchOverridesBulkQuery>,
+    Json(body): Json<TouchOverridesBulkBody>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
 
     if body.instances.is_empty() || body.instances.len() > 256 {
         return Err(CalendarError::BadRequest(
-            "instances must have 1..256 entries".into()
+            "instances must have 1..256 entries".into(),
         ));
     }
 
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot locate overrides".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot locate overrides".into())
+    })?;
 
     let dry = q.dry.unwrap_or(false);
 
     if dry {
-        let mut touched:   Vec<String> = Vec::new();
+        let mut touched: Vec<String> = Vec::new();
         let mut not_found: Vec<String> = Vec::new();
         for inst in &body.instances {
             let target = match parse_one_exdate(inst) {
                 Some(t) => t,
-                None    => { not_found.push(inst.clone()); continue; }
+                None => {
+                    not_found.push(inst.clone());
+                    continue;
+                }
             };
             let target_compact = format_compact_utc(target);
-            if touched.iter().any(|c| c == &target_compact) { continue; }
+            if touched.iter().any(|c| c == &target_compact) {
+                continue;
+            }
             if !has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
                 not_found.push(target_compact);
                 continue;
@@ -7339,24 +8095,35 @@ async fn touch_overrides_bulk(
     }
 
     let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
-    let mut raw         = ev.ical_raw.clone();
-    let mut touched:    Vec<String> = Vec::new();
-    let mut not_found:  Vec<String> = Vec::new();
+    let mut raw = ev.ical_raw.clone();
+    let mut touched: Vec<String> = Vec::new();
+    let mut not_found: Vec<String> = Vec::new();
 
     for inst in &body.instances {
         let target = match parse_one_exdate(inst) {
             Some(t) => t,
-            None    => { not_found.push(inst.clone()); continue; }
+            None => {
+                not_found.push(inst.clone());
+                continue;
+            }
         };
         let target_compact = format_compact_utc(target);
-        if touched.iter().any(|c| c == &target_compact) { continue; }
+        if touched.iter().any(|c| c == &target_compact) {
+            continue;
+        }
         if !has_recurrence_id_override(&raw, &uid, &target_compact) {
             not_found.push(target_compact);
             continue;
         }
         raw = patch_recurrence_id_override_block(
-            &raw, &uid, &target_compact,
-            None, None, None, None, None,
+            &raw,
+            &uid,
+            &target_compact,
+            None,
+            None,
+            None,
+            None,
+            None,
             &dtstamp_now,
         );
         touched.push(target_compact);
@@ -7368,8 +8135,10 @@ async fn touch_overrides_bulk(
 
     let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &raw).await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
@@ -7413,19 +8182,21 @@ struct TouchAllQuery {
 /// overrides_touched:[…compact…]}` (sem etag/sequence/dtstamp).
 async fn touch_all(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<TouchAllQuery>,
+    Query(q): Query<TouchAllQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
 
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot locate overrides".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot locate overrides".into())
+    })?;
 
     let dry = q.dry.unwrap_or(false);
 
@@ -7435,9 +8206,11 @@ async fn touch_all(
         for item in &listed {
             let compact = match item.get("compact").and_then(|v| v.as_str()) {
                 Some(s) => s.to_string(),
-                None    => continue,
+                None => continue,
             };
-            if overrides_touched.iter().any(|c| c == &compact) { continue; }
+            if overrides_touched.iter().any(|c| c == &compact) {
+                continue;
+            }
             overrides_touched.push(compact);
         }
         return Ok(Json(serde_json::json!({
@@ -7456,12 +8229,20 @@ async fn touch_all(
     for item in &listed {
         let compact = match item.get("compact").and_then(|v| v.as_str()) {
             Some(s) => s.to_string(),
-            None    => continue,
+            None => continue,
         };
-        if overrides_touched.iter().any(|c| c == &compact) { continue; }
+        if overrides_touched.iter().any(|c| c == &compact) {
+            continue;
+        }
         raw = patch_recurrence_id_override_block(
-            &raw, &uid, &compact,
-            None, None, None, None, None,
+            &raw,
+            &uid,
+            &compact,
+            None,
+            None,
+            None,
+            None,
+            None,
             &dtstamp_now,
         );
         overrides_touched.push(compact);
@@ -7471,8 +8252,10 @@ async fn touch_all(
 
     let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &raw).await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
@@ -7488,12 +8271,12 @@ async fn touch_all(
 #[derive(Debug, serde::Deserialize)]
 struct TouchOverridesByRangeQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     /// `?dry=true` retorna o plano sem aplicar (sprint #512). Default false.
     #[serde(default)]
-    dry:    Option<bool>,
+    dry: Option<bool>,
 }
 
 /// POST /api/v1/calendars/:cal_id/events/:id/touch-overrides-by-range
@@ -7524,9 +8307,9 @@ struct TouchOverridesByRangeQuery {
 /// overrides em [after,before), N' fora, ok?" antes de rodar.
 async fn touch_overrides_by_range(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<TouchOverridesByRangeQuery>,
+    Query(q): Query<TouchOverridesByRangeQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
@@ -7538,11 +8321,13 @@ async fn touch_overrides_by_range(
     }
 
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot locate overrides".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot locate overrides".into())
+    })?;
 
     let dry = q.dry.unwrap_or(false);
 
@@ -7553,17 +8338,30 @@ async fn touch_overrides_by_range(
         for item in &listed {
             let compact = match item.get("compact").and_then(|v| v.as_str()) {
                 Some(s) => s.to_string(),
-                None    => continue,
+                None => continue,
             };
             if touched.iter().any(|c| c == &compact) || skipped.iter().any(|c| c == &compact) {
                 continue;
             }
             let parsed = match parse_one_exdate(&compact) {
                 Some(t) => t,
-                None    => { skipped.push(compact); continue; }
+                None => {
+                    skipped.push(compact);
+                    continue;
+                }
             };
-            if let Some(a) = q.after  { if parsed <  a { skipped.push(compact); continue; } }
-            if let Some(b) = q.before { if parsed >= b { skipped.push(compact); continue; } }
+            if let Some(a) = q.after {
+                if parsed < a {
+                    skipped.push(compact);
+                    continue;
+                }
+            }
+            if let Some(b) = q.before {
+                if parsed >= b {
+                    skipped.push(compact);
+                    continue;
+                }
+            }
             touched.push(compact);
         }
         if touched.is_empty() {
@@ -7586,21 +8384,40 @@ async fn touch_overrides_by_range(
     for item in &listed {
         let compact = match item.get("compact").and_then(|v| v.as_str()) {
             Some(s) => s.to_string(),
-            None    => continue,
+            None => continue,
         };
         if touched.iter().any(|c| c == &compact) || skipped.iter().any(|c| c == &compact) {
             continue;
         }
         let parsed = match parse_one_exdate(&compact) {
             Some(t) => t,
-            None    => { skipped.push(compact); continue; }
+            None => {
+                skipped.push(compact);
+                continue;
+            }
         };
-        if let Some(a) = q.after  { if parsed <  a { skipped.push(compact); continue; } }
-        if let Some(b) = q.before { if parsed >= b { skipped.push(compact); continue; } }
+        if let Some(a) = q.after {
+            if parsed < a {
+                skipped.push(compact);
+                continue;
+            }
+        }
+        if let Some(b) = q.before {
+            if parsed >= b {
+                skipped.push(compact);
+                continue;
+            }
+        }
 
         raw = patch_recurrence_id_override_block(
-            &raw, &uid, &compact,
-            None, None, None, None, None,
+            &raw,
+            &uid,
+            &compact,
+            None,
+            None,
+            None,
+            None,
+            None,
             &dtstamp_now,
         );
         touched.push(compact);
@@ -7612,8 +8429,10 @@ async fn touch_overrides_by_range(
 
     let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &raw).await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
@@ -7629,11 +8448,11 @@ async fn touch_overrides_by_range(
 #[derive(Debug, serde::Deserialize)]
 struct PatchOverridesByRangeQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     #[serde(default)]
-    dry:    Option<bool>,
+    dry: Option<bool>,
 }
 
 /// PATCH /api/v1/calendars/:cal_id/events/:id/overrides-by-range
@@ -7663,19 +8482,22 @@ struct PatchOverridesByRangeQuery {
 /// afetar N overrides em [after,before), N' fora, ok?" antes de rodar.
 async fn patch_overrides_by_range(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<PatchOverridesByRangeQuery>,
-    Json(body):   Json<PatchOverrideBody>,
+    Query(q): Query<PatchOverridesByRangeQuery>,
+    Json(body): Json<PatchOverrideBody>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
 
-    if body.summary.is_none() && body.description.is_none()
-        && body.location.is_none() && body.dtstart.is_none() && body.dtend.is_none()
+    if body.summary.is_none()
+        && body.description.is_none()
+        && body.location.is_none()
+        && body.dtstart.is_none()
+        && body.dtend.is_none()
     {
         return Err(CalendarError::BadRequest(
-            "at least one of summary/description/location/dtstart/dtend required".into()
+            "at least one of summary/description/location/dtstart/dtend required".into(),
         ));
     }
     if let (Some(a), Some(b)) = (q.after, q.before) {
@@ -7685,14 +8507,20 @@ async fn patch_overrides_by_range(
     }
 
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot locate overrides".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot locate overrides".into())
+    })?;
 
-    let dtstart_str = body.dtstart.map(|d| format_compact_utc(d.to_offset(time::UtcOffset::UTC)));
-    let dtend_str   = body.dtend.map(|d| format_compact_utc(d.to_offset(time::UtcOffset::UTC)));
+    let dtstart_str = body
+        .dtstart
+        .map(|d| format_compact_utc(d.to_offset(time::UtcOffset::UTC)));
+    let dtend_str = body
+        .dtend
+        .map(|d| format_compact_utc(d.to_offset(time::UtcOffset::UTC)));
     let dry = q.dry.unwrap_or(false);
 
     if dry {
@@ -7702,17 +8530,30 @@ async fn patch_overrides_by_range(
         for item in &listed {
             let compact = match item.get("compact").and_then(|v| v.as_str()) {
                 Some(s) => s.to_string(),
-                None    => continue,
+                None => continue,
             };
             if touched.iter().any(|c| c == &compact) || skipped.iter().any(|c| c == &compact) {
                 continue;
             }
             let parsed = match parse_one_exdate(&compact) {
                 Some(t) => t,
-                None    => { skipped.push(compact); continue; }
+                None => {
+                    skipped.push(compact);
+                    continue;
+                }
             };
-            if let Some(a) = q.after  { if parsed <  a { skipped.push(compact); continue; } }
-            if let Some(b) = q.before { if parsed >= b { skipped.push(compact); continue; } }
+            if let Some(a) = q.after {
+                if parsed < a {
+                    skipped.push(compact);
+                    continue;
+                }
+            }
+            if let Some(b) = q.before {
+                if parsed >= b {
+                    skipped.push(compact);
+                    continue;
+                }
+            }
             touched.push(compact);
         }
         if touched.is_empty() {
@@ -7735,20 +8576,35 @@ async fn patch_overrides_by_range(
     for item in &listed {
         let compact = match item.get("compact").and_then(|v| v.as_str()) {
             Some(s) => s.to_string(),
-            None    => continue,
+            None => continue,
         };
         if touched.iter().any(|c| c == &compact) || skipped.iter().any(|c| c == &compact) {
             continue;
         }
         let parsed = match parse_one_exdate(&compact) {
             Some(t) => t,
-            None    => { skipped.push(compact); continue; }
+            None => {
+                skipped.push(compact);
+                continue;
+            }
         };
-        if let Some(a) = q.after  { if parsed <  a { skipped.push(compact); continue; } }
-        if let Some(b) = q.before { if parsed >= b { skipped.push(compact); continue; } }
+        if let Some(a) = q.after {
+            if parsed < a {
+                skipped.push(compact);
+                continue;
+            }
+        }
+        if let Some(b) = q.before {
+            if parsed >= b {
+                skipped.push(compact);
+                continue;
+            }
+        }
 
         raw = patch_recurrence_id_override_block(
-            &raw, &uid, &compact,
+            &raw,
+            &uid,
+            &compact,
             body.summary.as_deref(),
             body.description.as_deref(),
             body.location.as_deref(),
@@ -7765,8 +8621,10 @@ async fn patch_overrides_by_range(
 
     let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &raw).await?;
     state.events().publish(crate::events::Event::EventUpdated {
-        tenant_id: ctx.tenant_id, event_id: updated.id,
-        summary: updated.summary.clone(), sequence: updated.sequence,
+        tenant_id: ctx.tenant_id,
+        event_id: updated.id,
+        summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
@@ -7782,7 +8640,7 @@ async fn patch_overrides_by_range(
 #[derive(Debug, serde::Deserialize)]
 struct PatchOverridesByRangePreviewQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
 }
@@ -7809,9 +8667,9 @@ struct PatchOverridesByRangePreviewQuery {
 /// `after >= before` ou master sem UID.
 async fn patch_overrides_by_range_preview(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<PatchOverridesByRangePreviewQuery>,
+    Query(q): Query<PatchOverridesByRangePreviewQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -7822,11 +8680,13 @@ async fn patch_overrides_by_range_preview(
     }
 
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot locate overrides".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot locate overrides".into())
+    })?;
 
     let mut touched: Vec<String> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
@@ -7834,17 +8694,30 @@ async fn patch_overrides_by_range_preview(
     for item in &listed {
         let compact = match item.get("compact").and_then(|v| v.as_str()) {
             Some(s) => s.to_string(),
-            None    => continue,
+            None => continue,
         };
         if touched.iter().any(|c| c == &compact) || skipped.iter().any(|c| c == &compact) {
             continue;
         }
         let parsed = match parse_one_exdate(&compact) {
             Some(t) => t,
-            None    => { skipped.push(compact); continue; }
+            None => {
+                skipped.push(compact);
+                continue;
+            }
         };
-        if let Some(a) = q.after  { if parsed <  a { skipped.push(compact); continue; } }
-        if let Some(b) = q.before { if parsed >= b { skipped.push(compact); continue; } }
+        if let Some(a) = q.after {
+            if parsed < a {
+                skipped.push(compact);
+                continue;
+            }
+        }
+        if let Some(b) = q.before {
+            if parsed >= b {
+                skipped.push(compact);
+                continue;
+            }
+        }
         touched.push(compact);
     }
 
@@ -7858,7 +8731,7 @@ async fn patch_overrides_by_range_preview(
 #[derive(Debug, serde::Deserialize)]
 struct TouchPreviewQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     /// `?include_unparseable=false` esconde a lista `unparseable` do payload
@@ -7908,9 +8781,9 @@ struct TouchPreviewQuery {
 /// por endpoint — preview agrega.
 async fn touch_preview(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<TouchPreviewQuery>,
+    Query(q): Query<TouchPreviewQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
 
@@ -7920,50 +8793,73 @@ async fn touch_preview(
         }
     }
 
-    let only_parseable      = q.only_parseable.unwrap_or(false);
+    let only_parseable = q.only_parseable.unwrap_or(false);
     let include_unparseable = q.include_unparseable.unwrap_or(true);
     if only_parseable && q.include_unparseable == Some(true) {
         return Err(CalendarError::BadRequest(
-            "only_parseable=true conflicts with include_unparseable=true".into()
+            "only_parseable=true conflicts with include_unparseable=true".into(),
         ));
     }
 
     let full = match q.detail.as_deref() {
         None | Some("") | Some("summary") => false,
-        Some("full")                      => true,
-        Some(other) => return Err(CalendarError::BadRequest(
-            format!("invalid detail `{other}` — expected `summary` or `full`")
-        )),
+        Some("full") => true,
+        Some(other) => {
+            return Err(CalendarError::BadRequest(format!(
+                "invalid detail `{other}` — expected `summary` or `full`"
+            )))
+        }
     };
 
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
 
-    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
-        "master event has no UID — cannot locate overrides".into()
-    ))?;
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| {
+        CalendarError::BadRequest("master event has no UID — cannot locate overrides".into())
+    })?;
 
-    let mut in_range:     Vec<serde_json::Value> = Vec::new();
+    let mut in_range: Vec<serde_json::Value> = Vec::new();
     let mut out_of_range: Vec<serde_json::Value> = Vec::new();
-    let mut unparseable:  Vec<String>            = Vec::new();
-    let mut seen:         Vec<String>            = Vec::new();
+    let mut unparseable: Vec<String> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
 
     let listed = list_recurrence_id_overrides(&ev.ical_raw, &uid, full);
     for item in &listed {
         let compact = match item.get("compact").and_then(|v| v.as_str()) {
             Some(s) => s.to_string(),
-            None    => continue,
+            None => continue,
         };
-        if seen.iter().any(|c| c == &compact) { continue; }
+        if seen.iter().any(|c| c == &compact) {
+            continue;
+        }
         seen.push(compact.clone());
 
         let parsed = match parse_one_exdate(&compact) {
             Some(t) => t,
-            None    => { unparseable.push(compact); continue; }
+            None => {
+                unparseable.push(compact);
+                continue;
+            }
         };
-        let bucket_item = if full { item.clone() } else { serde_json::Value::String(compact.clone()) };
-        if let Some(a) = q.after  { if parsed <  a { out_of_range.push(bucket_item); continue; } }
-        if let Some(b) = q.before { if parsed >= b { out_of_range.push(bucket_item); continue; } }
+        let bucket_item = if full {
+            item.clone()
+        } else {
+            serde_json::Value::String(compact.clone())
+        };
+        if let Some(a) = q.after {
+            if parsed < a {
+                out_of_range.push(bucket_item);
+                continue;
+            }
+        }
+        if let Some(b) = q.before {
+            if parsed >= b {
+                out_of_range.push(bucket_item);
+                continue;
+            }
+        }
         in_range.push(bucket_item);
     }
 
@@ -7992,7 +8888,7 @@ async fn touch_preview(
 #[derive(Debug, serde::Deserialize)]
 struct ExdatesPreviewQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     /// `?include_non_utc=false` esconde a lista `non_utc` do payload (ainda
@@ -8117,41 +9013,47 @@ struct ExdatesPreviewQuery {
 /// WRITE+, 404 se evento não existe.
 async fn exdates_preview(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<ExdatesPreviewQuery>,
+    Query(q): Query<ExdatesPreviewQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
             return Err(CalendarError::BadRequest("after must be < before".into()));
         }
     }
-    let only_utc        = q.only_utc.unwrap_or(false);
+    let only_utc = q.only_utc.unwrap_or(false);
     let include_non_utc = q.include_non_utc.unwrap_or(true);
     if only_utc && q.include_non_utc == Some(true) {
         return Err(CalendarError::BadRequest(
-            "only_utc=true conflicts with include_non_utc=true".into()
+            "only_utc=true conflicts with include_non_utc=true".into(),
         ));
     }
     let full = match q.detail.as_deref() {
         None | Some("") | Some("summary") => false,
-        Some("full")                      => true,
-        Some(other) => return Err(CalendarError::BadRequest(
-            format!("invalid detail `{other}` — expected `summary` or `full`")
-        )),
+        Some("full") => true,
+        Some(other) => {
+            return Err(CalendarError::BadRequest(format!(
+                "invalid detail `{other}` — expected `summary` or `full`"
+            )))
+        }
     };
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
 
-    let mut in_range:     Vec<serde_json::Value> = Vec::new();
+    let mut in_range: Vec<serde_json::Value> = Vec::new();
     let mut out_of_range: Vec<serde_json::Value> = Vec::new();
-    let mut non_utc:      Vec<serde_json::Value> = Vec::new();
-    let mut seen:         Vec<String>            = Vec::new();
+    let mut non_utc: Vec<serde_json::Value> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
 
     for info in parse_exdates_rich(&ev.ical_raw) {
         let key = info.raw_value.clone();
-        if seen.iter().any(|c| c == &key) { continue; }
+        if seen.iter().any(|c| c == &key) {
+            continue;
+        }
         seen.push(key.clone());
 
         let (compact_v, rfc_v, parsed_opt) = match info.parsed_utc {
@@ -8159,12 +9061,21 @@ async fn exdates_preview(
                 let utc = t.to_offset(time::UtcOffset::UTC);
                 let c = format!(
                     "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-                    utc.year(), u8::from(utc.month()), utc.day(),
-                    utc.hour(), utc.minute(), utc.second(),
+                    utc.year(),
+                    u8::from(utc.month()),
+                    utc.day(),
+                    utc.hour(),
+                    utc.minute(),
+                    utc.second(),
                 );
-                let r = utc.format(&time::format_description::well_known::Rfc3339)
+                let r = utc
+                    .format(&time::format_description::well_known::Rfc3339)
                     .unwrap_or_default();
-                (serde_json::Value::String(c), serde_json::Value::String(r), Some(t))
+                (
+                    serde_json::Value::String(c),
+                    serde_json::Value::String(r),
+                    Some(t),
+                )
             }
             None => (serde_json::Value::Null, serde_json::Value::Null, None),
         };
@@ -8184,10 +9095,23 @@ async fn exdates_preview(
 
         let parsed = match parsed_opt {
             Some(t) => t,
-            None    => { non_utc.push(bucket_item); continue; }
+            None => {
+                non_utc.push(bucket_item);
+                continue;
+            }
         };
-        if let Some(a) = q.after  { if parsed <  a { out_of_range.push(bucket_item); continue; } }
-        if let Some(b) = q.before { if parsed >= b { out_of_range.push(bucket_item); continue; } }
+        if let Some(a) = q.after {
+            if parsed < a {
+                out_of_range.push(bucket_item);
+                continue;
+            }
+        }
+        if let Some(b) = q.before {
+            if parsed >= b {
+                out_of_range.push(bucket_item);
+                continue;
+            }
+        }
         in_range.push(bucket_item);
     }
 
@@ -8264,61 +9188,65 @@ async fn exdates_preview(
 /// `include_non_utc=false` ou `only_utc=true`.
 async fn exdates_preview_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
-    Query(q):     Query<ExdatesPreviewQuery>,
+    Query(q): Query<ExdatesPreviewQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
             return Err(CalendarError::BadRequest("after must be < before".into()));
         }
     }
-    let only_utc        = q.only_utc.unwrap_or(false);
+    let only_utc = q.only_utc.unwrap_or(false);
     let include_non_utc = q.include_non_utc.unwrap_or(true);
     if only_utc && q.include_non_utc == Some(true) {
         return Err(CalendarError::BadRequest(
-            "only_utc=true conflicts with include_non_utc=true".into()
+            "only_utc=true conflicts with include_non_utc=true".into(),
         ));
     }
     if q.top_tzid == Some(0) {
         return Err(CalendarError::BadRequest(
-            "top_tzid must be >= 1 (use include_non_utc=false to omit breakdown entirely)".into()
+            "top_tzid must be >= 1 (use include_non_utc=false to omit breakdown entirely)".into(),
         ));
     }
     if q.min_count == Some(0) {
         return Err(CalendarError::BadRequest(
-            "min_count must be >= 1 (omit flag for full breakdown)".into()
+            "min_count must be >= 1 (omit flag for full breakdown)".into(),
         ));
     }
     let sort_mode: Option<&str> = match q.sort_tzid.as_deref() {
         None | Some("") => None,
         Some(s @ ("count_desc" | "count_asc" | "name_asc" | "name_desc")) => Some(s),
-        Some(other) => return Err(CalendarError::BadRequest(
-            format!("sort_tzid must be 'count_desc', 'count_asc', 'name_asc' or 'name_desc', got '{other}'")
-        )),
+        Some(other) => return Err(CalendarError::BadRequest(format!(
+            "sort_tzid must be 'count_desc', 'count_asc', 'name_asc' or 'name_desc', got '{other}'"
+        ))),
     };
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
 
-    let mut seen:         Vec<String> = Vec::new();
-    let mut in_range_n:     usize = 0;
+    let mut seen: Vec<String> = Vec::new();
+    let mut in_range_n: usize = 0;
     let mut out_of_range_n: usize = 0;
-    let mut non_utc_n:      usize = 0;
-    let mut k_tzid:         usize = 0;
-    let mut k_date_only:    usize = 0;
-    let mut k_unknown:      usize = 0;
+    let mut non_utc_n: usize = 0;
+    let mut k_tzid: usize = 0;
+    let mut k_date_only: usize = 0;
+    let mut k_unknown: usize = 0;
     let include_kind_breakdown = q.include_kind_breakdown.unwrap_or(false);
     let mut tzid_breakdown: Vec<(String, usize)> = Vec::new();
     let mut tzid_by_kind: Vec<(String, usize, usize)> = Vec::new();
 
     for info in parse_exdates_rich(&ev.ical_raw) {
         let key = info.raw_value.clone();
-        if seen.iter().any(|c| c == &key) { continue; }
+        if seen.iter().any(|c| c == &key) {
+            continue;
+        }
         seen.push(key);
         let parsed = match info.parsed_utc {
             Some(t) => t,
-            None    => {
+            None => {
                 non_utc_n += 1;
                 match info.kind {
                     "tzid" => {
@@ -8326,14 +9254,17 @@ async fn exdates_preview_stats(
                         if let Some(tz) = info.tzid.as_deref() {
                             match tzid_breakdown.iter().position(|(k, _)| k == tz) {
                                 Some(i) => tzid_breakdown[i].1 += 1,
-                                None    => tzid_breakdown.push((tz.to_string(), 1)),
+                                None => tzid_breakdown.push((tz.to_string(), 1)),
                             }
                             if include_kind_breakdown {
                                 let canonical = is_canonical_local_datetime(&info.raw_value);
                                 match tzid_by_kind.iter().position(|(k, _, _)| k == tz) {
                                     Some(i) => {
-                                        if canonical { tzid_by_kind[i].1 += 1; }
-                                        else         { tzid_by_kind[i].2 += 1; }
+                                        if canonical {
+                                            tzid_by_kind[i].1 += 1;
+                                        } else {
+                                            tzid_by_kind[i].2 += 1;
+                                        }
                                     }
                                     None => {
                                         let (c, u) = if canonical { (1, 0) } else { (0, 1) };
@@ -8344,13 +9275,23 @@ async fn exdates_preview_stats(
                         }
                     }
                     "date-only" => k_date_only += 1,
-                    _           => k_unknown   += 1,
+                    _ => k_unknown += 1,
                 }
                 continue;
             }
         };
-        if let Some(a) = q.after  { if parsed <  a { out_of_range_n += 1; continue; } }
-        if let Some(b) = q.before { if parsed >= b { out_of_range_n += 1; continue; } }
+        if let Some(a) = q.after {
+            if parsed < a {
+                out_of_range_n += 1;
+                continue;
+            }
+        }
+        if let Some(b) = q.before {
+            if parsed >= b {
+                out_of_range_n += 1;
+                continue;
+            }
+        }
         in_range_n += 1;
     }
 
@@ -8367,7 +9308,7 @@ async fn exdates_preview_stats(
         "out_of_range_count": out_of_range_n,
     });
     if include_non_utc && !only_utc {
-        payload["non_utc_count"]   = serde_json::json!(non_utc_n);
+        payload["non_utc_count"] = serde_json::json!(non_utc_n);
         payload["non_utc_by_kind"] = serde_json::json!({
             "tzid":      k_tzid,
             "date_only": k_date_only,
@@ -8378,7 +9319,11 @@ async fn exdates_preview_stats(
                 let mut keep = Vec::with_capacity(tzid_breakdown.len());
                 let mut excluded = 0usize;
                 for (tz, c) in &tzid_breakdown {
-                    if *c >= m { keep.push((tz.clone(), *c)); } else { excluded += 1; }
+                    if *c >= m {
+                        keep.push((tz.clone(), *c));
+                    } else {
+                        excluded += 1;
+                    }
                 }
                 (keep, excluded)
             }
@@ -8396,9 +9341,9 @@ async fn exdates_preview_stats(
         };
         match sort_mode {
             Some("count_desc") => kept.sort_by(|a, b| b.1.cmp(&a.1)),
-            Some("count_asc")  => kept.sort_by(|a, b| a.1.cmp(&b.1)),
-            Some("name_asc")   => kept.sort_by(|a, b| a.0.cmp(&b.0)),
-            Some("name_desc")  => kept.sort_by(|a, b| b.0.cmp(&a.0)),
+            Some("count_asc") => kept.sort_by(|a, b| a.1.cmp(&b.1)),
+            Some("name_asc") => kept.sort_by(|a, b| a.0.cmp(&b.0)),
+            Some("name_desc") => kept.sort_by(|a, b| b.0.cmp(&a.0)),
             _ => {}
         }
         let mut breakdown_obj = serde_json::Map::new();
@@ -8413,7 +9358,8 @@ async fn exdates_preview_stats(
             payload["tzid_filtered_count"] = serde_json::json!(filtered_count);
         }
         if sort_mode.is_some() {
-            let order: Vec<serde_json::Value> = kept.iter()
+            let order: Vec<serde_json::Value> = kept
+                .iter()
                 .map(|(tz, _)| serde_json::Value::String(tz.clone()))
                 .collect();
             payload["tzid_breakdown_order"] = serde_json::Value::Array(order);
@@ -8421,14 +9367,18 @@ async fn exdates_preview_stats(
         if include_kind_breakdown {
             let mut by_kind_obj = serde_json::Map::new();
             for (tz, _) in &kept {
-                let (c, u) = tzid_by_kind.iter()
+                let (c, u) = tzid_by_kind
+                    .iter()
                     .find(|(k, _, _)| k == tz)
                     .map(|(_, c, u)| (*c, *u))
                     .unwrap_or((0, 0));
-                by_kind_obj.insert(tz.clone(), serde_json::json!({
-                    "tzid":    c,
-                    "unknown": u,
-                }));
+                by_kind_obj.insert(
+                    tz.clone(),
+                    serde_json::json!({
+                        "tzid":    c,
+                        "unknown": u,
+                    }),
+                );
             }
             payload["tzid_breakdown_by_kind"] = serde_json::Value::Object(by_kind_obj);
         }
@@ -8444,14 +9394,14 @@ async fn exdates_preview_stats(
 /// RRULE residual etc.) preservadas. Outros blocos VEVENT inalterados.
 fn patch_recurrence_id_override_block(
     raw: &str,
-    uid_master:     &str,
+    uid_master: &str,
     target_compact: &str,
-    new_summary:     Option<&str>,
+    new_summary: Option<&str>,
     new_description: Option<&str>,
-    new_location:    Option<&str>,
-    new_dtstart:     Option<&str>,
-    new_dtend:       Option<&str>,
-    dtstamp_now:    &str,
+    new_location: Option<&str>,
+    new_dtstart: Option<&str>,
+    new_dtend: Option<&str>,
+    dtstamp_now: &str,
 ) -> String {
     let eol = if raw.contains("\r\n") { "\r\n" } else { "\n" };
     let mut out = String::with_capacity(raw.len() + 256);
@@ -8462,7 +9412,11 @@ fn patch_recurrence_id_override_block(
 
     for src_line in raw.split_inclusive('\n') {
         let trimmed = src_line.trim_start();
-        let upper14: String = trimmed.chars().take(14).collect::<String>().to_ascii_uppercase();
+        let upper14: String = trimmed
+            .chars()
+            .take(14)
+            .collect::<String>()
+            .to_ascii_uppercase();
 
         if upper14.starts_with("BEGIN:VEVENT") {
             in_event = true;
@@ -8484,10 +9438,14 @@ fn patch_recurrence_id_override_block(
                 let mut had_description = false;
                 let mut had_location = false;
                 let mut had_dtstart = false;
-                let mut had_dtend   = false;
+                let mut had_dtend = false;
                 for line in &buf {
-                    let head: String = line.trim_start().chars().take(16)
-                        .collect::<String>().to_ascii_uppercase();
+                    let head: String = line
+                        .trim_start()
+                        .chars()
+                        .take(16)
+                        .collect::<String>()
+                        .to_ascii_uppercase();
                     if head.starts_with("DTSTAMP:") {
                         out.push_str(&format!("DTSTAMP:{dtstamp_now}"));
                         out.push_str(eol);
@@ -8567,7 +9525,9 @@ fn patch_recurrence_id_override_block(
                 }
                 out.push_str(src_line);
             } else {
-                for line in &buf { out.push_str(line); }
+                for line in &buf {
+                    out.push_str(line);
+                }
                 out.push_str(src_line);
             }
             in_event = false;
@@ -8575,19 +9535,29 @@ fn patch_recurrence_id_override_block(
             continue;
         }
 
-        let upper4: String = trimmed.chars().take(4).collect::<String>().to_ascii_uppercase();
+        let upper4: String = trimmed
+            .chars()
+            .take(4)
+            .collect::<String>()
+            .to_ascii_uppercase();
         if upper4.starts_with("UID:") {
             let v = trimmed["UID:".len()..].trim();
-            if v == uid_master { found_uid = true; }
+            if v == uid_master {
+                found_uid = true;
+            }
         } else if upper14.starts_with("RECURRENCE-ID:") {
             let v = trimmed["RECURRENCE-ID:".len()..].trim();
-            if v == target_compact { found_recid = true; }
+            if v == target_compact {
+                found_recid = true;
+            }
         }
         buf.push(src_line.to_string());
     }
 
     if !buf.is_empty() {
-        for line in &buf { out.push_str(line); }
+        for line in &buf {
+            out.push_str(line);
+        }
     }
     out
 }
@@ -8595,13 +9565,13 @@ fn patch_recurrence_id_override_block(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeSetAttendeesQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     /// `?op=add|remove` — operação a aplicar por evento. Obrigatório.
-    op:     Option<String>,
+    op: Option<String>,
     /// `?email=` — endereço do attendee a adicionar ou remover. Obrigatório.
-    email:  Option<String>,
+    email: Option<String>,
 }
 
 /// PATCH /api/v1/calendars/:cal_id/events-by-range/set-attendees?after=&before=&op=add|remove&email=
@@ -8631,9 +9601,9 @@ struct EventsByRangeSetAttendeesQuery {
 /// `email` e `op` obrigatórios → 400 se ausentes. Email vazio → 400.
 async fn events_by_range_set_attendees(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeSetAttendeesQuery>,
+    Query(q): Query<EventsByRangeSetAttendeesQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -8641,16 +9611,18 @@ async fn events_by_range_set_attendees(
         }
     }
     let op = match q.op.as_deref() {
-        Some("add")    => "add",
+        Some("add") => "add",
         Some("remove") => "remove",
-        Some(other)    => return Err(CalendarError::BadRequest(
-            format!("op must be 'add' or 'remove', got '{other}'")
-        )),
+        Some(other) => {
+            return Err(CalendarError::BadRequest(format!(
+                "op must be 'add' or 'remove', got '{other}'"
+            )))
+        }
         None => return Err(CalendarError::BadRequest("op is required".into())),
     };
     let email = match q.email.as_deref().filter(|s| !s.trim().is_empty()) {
         Some(e) => e.trim().to_ascii_lowercase(),
-        None    => return Err(CalendarError::BadRequest("email is required".into())),
+        None => return Err(CalendarError::BadRequest("email is required".into())),
     };
 
     let pool = state.db_or_unavailable()?;
@@ -8660,7 +9632,11 @@ async fn events_by_range_set_attendees(
         .list(
             ctx.tenant_id,
             cal_id,
-            &EventQuery { from: q.after, to: q.before, limit: None },
+            &EventQuery {
+                from: q.after,
+                to: q.before,
+                limit: None,
+            },
         )
         .await?;
 
@@ -8672,22 +9648,36 @@ async fn events_by_range_set_attendees(
             Some(ds) => ds,
             None => continue,
         };
-        if let Some(a) = q.after  { if dtstart <  a { continue; } }
-        if let Some(b) = q.before { if dtstart >= b { continue; } }
+        if let Some(a) = q.after {
+            if dtstart < a {
+                continue;
+            }
+        }
+        if let Some(b) = q.before {
+            if dtstart >= b {
+                continue;
+            }
+        }
 
         events_scanned += 1;
 
         // Check current attendees from ical_raw.
         let attendees = crate::domain::itip::parse_attendees(&ev.ical_raw);
-        let already_present = attendees.iter().any(|a| a.email.to_ascii_lowercase() == email);
+        let already_present = attendees
+            .iter()
+            .any(|a| a.email.to_ascii_lowercase() == email);
 
         let new_raw = if op == "add" {
-            if already_present { continue; } // idempotent skip
+            if already_present {
+                continue;
+            } // idempotent skip
             let line = format!("ATTENDEE;RSVP=TRUE:mailto:{email}");
             inject_exdate_line(&ev.ical_raw, &line) // same injection point: before END:VEVENT
         } else {
             // op == "remove"
-            if !already_present { continue; } // idempotent skip
+            if !already_present {
+                continue;
+            } // idempotent skip
             remove_attendee_line(&ev.ical_raw, &email)
         };
 
@@ -8717,7 +9707,11 @@ fn remove_attendee_line(raw: &str, target_email: &str) -> String {
     let mut removed = false;
     for src_line in raw.split_inclusive('\n') {
         let trimmed = src_line.trim_start();
-        let upper9: String = trimmed.chars().take(9).collect::<String>().to_ascii_uppercase();
+        let upper9: String = trimmed
+            .chars()
+            .take(9)
+            .collect::<String>()
+            .to_ascii_uppercase();
         if !removed && upper9.starts_with("ATTENDEE") {
             // Line is "ATTENDEE[;params]:mailto:email" or "ATTENDEE:mailto:email"
             if let Some(colon_pos) = trimmed.find(':') {
@@ -8740,7 +9734,7 @@ fn remove_attendee_line(raw: &str, target_email: &str) -> String {
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeResendItipQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     /// `?kind=request|cancel` — método iMIP a disparar. `request` (default)
@@ -8776,9 +9770,9 @@ struct EventsByRangeResendItipQuery {
 /// via `assert_can_write`. `after >= before` → 400.
 async fn events_by_range_resend_itip(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeResendItipQuery>,
+    Query(q): Query<EventsByRangeResendItipQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -8787,10 +9781,12 @@ async fn events_by_range_resend_itip(
     }
     let method: &'static str = match q.kind.as_deref() {
         None | Some("") | Some("request") => "REQUEST",
-        Some("cancel")                    => "CANCEL",
-        Some(other) => return Err(CalendarError::BadRequest(
-            format!("kind must be 'request' or 'cancel', got '{other}'")
-        )),
+        Some("cancel") => "CANCEL",
+        Some(other) => {
+            return Err(CalendarError::BadRequest(format!(
+                "kind must be 'request' or 'cancel', got '{other}'"
+            )))
+        }
     };
 
     let pool = state.db_or_unavailable()?;
@@ -8800,20 +9796,37 @@ async fn events_by_range_resend_itip(
         .list(
             ctx.tenant_id,
             cal_id,
-            &EventQuery { from: q.after, to: q.before, limit: None },
+            &EventQuery {
+                from: q.after,
+                to: q.before,
+                limit: None,
+            },
         )
         .await?;
 
     let mut dispatched: u64 = 0;
-    let mut skipped:    u64 = 0;
+    let mut skipped: u64 = 0;
 
     for ev in events {
         let dtstart = match ev.dtstart {
             Some(ds) => ds,
-            None => { skipped += 1; continue; }
+            None => {
+                skipped += 1;
+                continue;
+            }
         };
-        if let Some(a) = q.after  { if dtstart <  a { skipped += 1; continue; } }
-        if let Some(b) = q.before { if dtstart >= b { skipped += 1; continue; } }
+        if let Some(a) = q.after {
+            if dtstart < a {
+                skipped += 1;
+                continue;
+            }
+        }
+        if let Some(b) = q.before {
+            if dtstart >= b {
+                skipped += 1;
+                continue;
+            }
+        }
 
         if state.events().publish_imip(ev, method) {
             dispatched += 1;
@@ -8839,7 +9852,7 @@ async fn events_by_range_resend_itip(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeReindexFtsQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
 }
@@ -8863,9 +9876,9 @@ struct EventsByRangeReindexFtsQuery {
 /// fire-and-forget individuais pra UI que precisa de confirmação de freshness).
 async fn events_by_range_reindex_fts(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeReindexFtsQuery>,
+    Query(q): Query<EventsByRangeReindexFtsQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -8889,7 +9902,11 @@ async fn events_by_range_reindex_fts(
         .list(
             ctx.tenant_id,
             cal_id,
-            &EventQuery { from: q.after, to: q.before, limit: None },
+            &EventQuery {
+                from: q.after,
+                to: q.before,
+                limit: None,
+            },
         )
         .await?;
 
@@ -8899,10 +9916,23 @@ async fn events_by_range_reindex_fts(
     for ev in &events {
         let dtstart = match ev.dtstart {
             Some(ds) => ds,
-            None => { skipped += 1; continue; }
+            None => {
+                skipped += 1;
+                continue;
+            }
         };
-        if let Some(a) = q.after  { if dtstart <  a { skipped += 1; continue; } }
-        if let Some(b) = q.before { if dtstart >= b { skipped += 1; continue; } }
+        if let Some(a) = q.after {
+            if dtstart < a {
+                skipped += 1;
+                continue;
+            }
+        }
+        if let Some(b) = q.before {
+            if dtstart >= b {
+                skipped += 1;
+                continue;
+            }
+        }
 
         docs.push(serde_json::json!({
             "document_id": format!("calendar/{}", ev.id),
@@ -8940,7 +9970,7 @@ async fn events_by_range_reindex_fts(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeCleanupOrphansQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
     #[serde(default)]
@@ -8976,9 +10006,9 @@ struct EventsByRangeCleanupOrphansQuery {
 /// não em `events_cleaned`.
 async fn events_by_range_cleanup_orphans(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
-    Query(q):     Query<EventsByRangeCleanupOrphansQuery>,
+    Query(q): Query<EventsByRangeCleanupOrphansQuery>,
 ) -> Result<Json<serde_json::Value>> {
     if let (Some(a), Some(b)) = (q.after, q.before) {
         if a >= b {
@@ -8993,40 +10023,53 @@ async fn events_by_range_cleanup_orphans(
         .list(
             ctx.tenant_id,
             cal_id,
-            &EventQuery { from: q.after, to: q.before, limit: None },
+            &EventQuery {
+                from: q.after,
+                to: q.before,
+                limit: None,
+            },
         )
         .await?;
 
     // Window for RRULE expansion: 2 years from now, capped by Rrule::expand's 1000-iter guard.
     let win_from = time::OffsetDateTime::UNIX_EPOCH;
-    let win_to   = time::OffsetDateTime::now_utc() + time::Duration::days(365 * 2);
+    let win_to = time::OffsetDateTime::now_utc() + time::Duration::days(365 * 2);
 
-    let mut events_scanned:          u64 = 0;
-    let mut events_cleaned:          u64 = 0;
-    let mut orphan_exdates_removed:  u64 = 0;
+    let mut events_scanned: u64 = 0;
+    let mut events_cleaned: u64 = 0;
+    let mut orphan_exdates_removed: u64 = 0;
     let mut orphan_overrides_removed: u64 = 0;
 
     for ev in events {
         // Only master events with dtstart in the requested range.
         let dtstart = match ev.dtstart {
             Some(ds) => ds,
-            None     => continue,
+            None => continue,
         };
-        if let Some(a) = q.after  { if dtstart <  a { continue; } }
-        if let Some(b) = q.before { if dtstart >= b { continue; } }
+        if let Some(a) = q.after {
+            if dtstart < a {
+                continue;
+            }
+        }
+        if let Some(b) = q.before {
+            if dtstart >= b {
+                continue;
+            }
+        }
 
         events_scanned += 1;
 
         let rrule_str = match ev.rrule.as_deref().filter(|s| !s.trim().is_empty()) {
             Some(s) => s,
-            None    => continue, // no recurrence → no orphans possible
+            None => continue, // no recurrence → no orphans possible
         };
         let rrule = match crate::domain::rrule::Rrule::parse(rrule_str) {
             Some(r) => r,
-            None    => continue, // unsupported FREQ — can't expand; skip safely
+            None => continue, // unsupported FREQ — can't expand; skip safely
         };
 
-        let duration = ev.dtend
+        let duration = ev
+            .dtend
             .map(|e| e - dtstart)
             .unwrap_or(time::Duration::ZERO);
         let occurrences = rrule.expand(dtstart, duration, win_from, win_to);
@@ -9049,11 +10092,15 @@ async fn events_by_range_cleanup_orphans(
         let overrides = list_recurrence_id_overrides(&ev.ical_raw, &uid, false);
         let orphan_overrides: Vec<String> = overrides
             .iter()
-            .filter_map(|item| item.get("compact").and_then(|v| v.as_str()).map(|s| s.to_owned()))
+            .filter_map(|item| {
+                item.get("compact")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned())
+            })
             .filter(|compact| {
                 match parse_one_exdate(compact) {
                     Some(t) => !occ_set.contains(&t.unix_timestamp_nanos()),
-                    None    => false, // non-UTC recurrence-id: can't compare → keep
+                    None => false, // non-UTC recurrence-id: can't compare → keep
                 }
             })
             .collect();
@@ -9062,9 +10109,9 @@ async fn events_by_range_cleanup_orphans(
             continue;
         }
 
-        orphan_exdates_removed  += orphan_exdates.len() as u64;
+        orphan_exdates_removed += orphan_exdates.len() as u64;
         orphan_overrides_removed += orphan_overrides.len() as u64;
-        events_cleaned           += 1;
+        events_cleaned += 1;
 
         if !dry {
             // Apply removals in-memory then persist once per event.
@@ -9099,7 +10146,7 @@ async fn events_by_range_cleanup_orphans(
 /// (default 20, máx 200), `offset` (default 0). Sprint #588.
 async fn events_search(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Query(params): Query<EventsSearchParams>,
 ) -> Result<Json<serde_json::Value>> {
     use serde_json::json;
@@ -9115,12 +10162,12 @@ async fn events_search(
         return Err(CalendarError::BadRequest("q is required".into()));
     }
 
-    let limit  = params.limit.unwrap_or(20).min(200);
+    let limit = params.limit.unwrap_or(20).min(200);
     let offset = params.offset.unwrap_or(0);
 
     let url = format!(
         "{search_url}/api/v1/search?q={q}&tenant_id={tenant}&limit={limit}&offset={offset}",
-        q      = urlencoding::encode(params.q.trim()),
+        q = urlencoding::encode(params.q.trim()),
         tenant = ctx.tenant_id,
     );
 
@@ -9131,9 +10178,10 @@ async fn events_search(
         req = req.bearer_auth(&token);
     }
 
-    let resp = req.send().await.map_err(|e| {
-        CalendarError::BadRequest(format!("search service unreachable: {e}"))
-    })?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| CalendarError::BadRequest(format!("search service unreachable: {e}")))?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
@@ -9143,9 +10191,10 @@ async fn events_search(
         )));
     }
 
-    let result: serde_json::Value = resp.json().await.map_err(|e| {
-        CalendarError::BadRequest(format!("failed to parse search response: {e}"))
-    })?;
+    let result: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| CalendarError::BadRequest(format!("failed to parse search response: {e}")))?;
 
     Ok(Json(json!({
         "q":      params.q.trim(),
@@ -9157,8 +10206,8 @@ async fn events_search(
 
 #[derive(Debug, serde::Deserialize)]
 struct EventsSearchParams {
-    q:      String,
-    limit:  Option<u32>,
+    q: String,
+    limit: Option<u32>,
     offset: Option<u32>,
 }
 
@@ -9170,7 +10219,10 @@ mod tests {
     fn rejects_empty() {
         let err = format!("{:?}", validate_ics("", MAX_EVENT_ICS_BYTES).unwrap_err());
         assert!(err.contains("empty body"), "got: {err}");
-        let err = format!("{:?}", validate_ics("   \n  ", MAX_EVENT_ICS_BYTES).unwrap_err());
+        let err = format!(
+            "{:?}",
+            validate_ics("   \n  ", MAX_EVENT_ICS_BYTES).unwrap_err()
+        );
         assert!(err.contains("empty body"), "got: {err}");
     }
 

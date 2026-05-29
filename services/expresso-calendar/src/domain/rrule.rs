@@ -21,11 +21,11 @@ pub enum Freq {
 
 #[derive(Debug, Clone)]
 pub struct Rrule {
-    pub freq:     Freq,
+    pub freq: Freq,
     pub interval: u32,
-    pub count:    Option<u32>,
-    pub until:    Option<OffsetDateTime>,
-    pub byday:    Vec<Weekday>,
+    pub count: Option<u32>,
+    pub until: Option<OffsetDateTime>,
+    pub byday: Vec<Weekday>,
 }
 
 impl Rrule {
@@ -33,27 +33,27 @@ impl Rrule {
     /// syntax so caller can fall back to single-instance expansion.
     pub fn parse(raw: &str) -> Option<Self> {
         let mut freq: Option<Freq> = None;
-        let mut interval: u32     = 1;
-        let mut count:    Option<u32>               = None;
-        let mut until:    Option<OffsetDateTime>    = None;
-        let mut byday:    Vec<Weekday>              = Vec::new();
+        let mut interval: u32 = 1;
+        let mut count: Option<u32> = None;
+        let mut until: Option<OffsetDateTime> = None;
+        let mut byday: Vec<Weekday> = Vec::new();
 
         for part in raw.split(';') {
             let (k, v) = part.split_once('=')?;
             match k.trim().to_ascii_uppercase().as_str() {
                 "FREQ" => {
                     freq = Some(match v.trim().to_ascii_uppercase().as_str() {
-                        "DAILY"   => Freq::Daily,
-                        "WEEKLY"  => Freq::Weekly,
+                        "DAILY" => Freq::Daily,
+                        "WEEKLY" => Freq::Weekly,
                         "MONTHLY" => Freq::Monthly,
-                        "YEARLY"  => Freq::Yearly,
+                        "YEARLY" => Freq::Yearly,
                         _ => return None,
                     });
                 }
                 "INTERVAL" => interval = v.parse().ok()?,
-                "COUNT"    => count    = Some(v.parse().ok()?),
-                "UNTIL"    => until    = parse_until(v),
-                "BYDAY"    => {
+                "COUNT" => count = Some(v.parse().ok()?),
+                "UNTIL" => until = parse_until(v),
+                "BYDAY" => {
                     for d in v.split(',') {
                         byday.push(weekday_from(d.trim())?);
                     }
@@ -80,11 +80,11 @@ impl Rrule {
         dtstart: OffsetDateTime,
         duration: Duration,
         win_from: OffsetDateTime,
-        win_to:   OffsetDateTime,
+        win_to: OffsetDateTime,
     ) -> Vec<(OffsetDateTime, OffsetDateTime)> {
         let mut out: Vec<(OffsetDateTime, OffsetDateTime)> = Vec::new();
         let limit_count = self.count.unwrap_or(u32::MAX);
-        let hard_until  = self.until;
+        let hard_until = self.until;
 
         let mut emitted: u32 = 0;
         let mut current = dtstart;
@@ -93,38 +93,52 @@ impl Rrule {
         while iters < MAX_ITER && emitted < limit_count {
             iters += 1;
             if let Some(u) = hard_until {
-                if current > u { break; }
+                if current > u {
+                    break;
+                }
             }
-            if current >= win_to { break; }
+            if current >= win_to {
+                break;
+            }
 
             // WEEKLY + BYDAY: emit multiple days per iteration (one per weekday).
-            let candidates: Vec<OffsetDateTime> = if self.freq == Freq::Weekly && !self.byday.is_empty() {
-                let week_start = start_of_week(current.date());
-                self.byday.iter()
-                    .map(|wd| {
-                        let d = week_start + Duration::days(weekday_index(*wd) as i64);
-                        current.replace_date(d)
-                    })
-                    .filter(|c| *c >= dtstart)
-                    .collect()
-            } else {
-                vec![current]
-            };
+            let candidates: Vec<OffsetDateTime> =
+                if self.freq == Freq::Weekly && !self.byday.is_empty() {
+                    let week_start = start_of_week(current.date());
+                    self.byday
+                        .iter()
+                        .map(|wd| {
+                            let d = week_start + Duration::days(weekday_index(*wd) as i64);
+                            current.replace_date(d)
+                        })
+                        .filter(|c| *c >= dtstart)
+                        .collect()
+                } else {
+                    vec![current]
+                };
 
             for c in candidates {
-                if emitted >= limit_count { break; }
-                if let Some(u) = hard_until { if c > u { continue; } }
+                if emitted >= limit_count {
+                    break;
+                }
+                if let Some(u) = hard_until {
+                    if c > u {
+                        continue;
+                    }
+                }
                 let end = c + duration;
                 // Intersect window.
                 if end > win_from && c < win_to {
                     out.push((c, end));
                 }
-                if c >= dtstart { emitted += 1; }
+                if c >= dtstart {
+                    emitted += 1;
+                }
             }
 
             current = match advance(current, self.freq, self.interval) {
                 Some(n) => n,
-                None    => break,
+                None => break,
             };
         }
         out
@@ -134,20 +148,28 @@ impl Rrule {
 /// Single-instance fallback clamped to [win_from, win_to]. Used when there's
 /// no rrule or parse fails.
 pub fn single_instance(
-    dtstart:  OffsetDateTime,
-    dtend:    Option<OffsetDateTime>,
+    dtstart: OffsetDateTime,
+    dtend: Option<OffsetDateTime>,
     win_from: OffsetDateTime,
-    win_to:   OffsetDateTime,
+    win_to: OffsetDateTime,
 ) -> Option<(OffsetDateTime, OffsetDateTime)> {
     let end = dtend.unwrap_or(dtstart);
     // Zero-duration instant (no DTEND): present iff [win_from, win_to) contains it.
     if end == dtstart {
         return (dtstart >= win_from && dtstart < win_to).then_some((dtstart, dtstart));
     }
-    if end <= win_from || dtstart >= win_to { return None; }
-    let s = if dtstart < win_from { win_from } else { dtstart };
-    let e = if end    > win_to   { win_to   } else { end };
-    if e <= s { return None; }
+    if end <= win_from || dtstart >= win_to {
+        return None;
+    }
+    let s = if dtstart < win_from {
+        win_from
+    } else {
+        dtstart
+    };
+    let e = if end > win_to { win_to } else { end };
+    if e <= s {
+        return None;
+    }
     Some((s, e))
 }
 
@@ -155,9 +177,8 @@ fn parse_until(raw: &str) -> Option<OffsetDateTime> {
     // Accept "YYYYMMDDTHHMMSSZ" (common) or "YYYYMMDD".
     let s = raw.trim();
     if s.len() == 16 && s.ends_with('Z') {
-        let fmt = time::format_description::parse(
-            "[year][month][day]T[hour][minute][second]Z",
-        ).ok()?;
+        let fmt =
+            time::format_description::parse("[year][month][day]T[hour][minute][second]Z").ok()?;
         let dt = time::PrimitiveDateTime::parse(s, &fmt).ok()?;
         return Some(dt.assume_utc());
     }
@@ -184,13 +205,13 @@ fn weekday_from(code: &str) -> Option<Weekday> {
 
 fn weekday_index(w: Weekday) -> u8 {
     match w {
-        Weekday::Monday    => 0,
-        Weekday::Tuesday   => 1,
+        Weekday::Monday => 0,
+        Weekday::Tuesday => 1,
         Weekday::Wednesday => 2,
-        Weekday::Thursday  => 3,
-        Weekday::Friday    => 4,
-        Weekday::Saturday  => 5,
-        Weekday::Sunday    => 6,
+        Weekday::Thursday => 3,
+        Weekday::Friday => 4,
+        Weekday::Saturday => 5,
+        Weekday::Sunday => 6,
     }
 }
 
@@ -202,10 +223,10 @@ fn start_of_week(d: Date) -> Date {
 fn advance(current: OffsetDateTime, freq: Freq, interval: u32) -> Option<OffsetDateTime> {
     let i = interval as i64;
     match freq {
-        Freq::Daily   => Some(current + Duration::days(i)),
-        Freq::Weekly  => Some(current + Duration::weeks(i)),
+        Freq::Daily => Some(current + Duration::days(i)),
+        Freq::Weekly => Some(current + Duration::weeks(i)),
         Freq::Monthly => add_months(current, i),
-        Freq::Yearly  => add_months(current, i * 12),
+        Freq::Yearly => add_months(current, i * 12),
     }
 }
 
@@ -219,8 +240,8 @@ fn add_months(dt: OffsetDateTime, months: i64) -> Option<OffsetDateTime> {
     let nm: Month = Month::try_from(nm_idx).ok()?;
     // Clamp day to month length.
     let last = days_in_month(ny, nm);
-    let day  = d.day().min(last);
-    let nd   = Date::from_calendar_date(ny, nm, day).ok()?;
+    let day = d.day().min(last);
+    let nd = Date::from_calendar_date(ny, nm, day).ok()?;
     Some(dt.replace_date(nd))
 }
 
@@ -264,8 +285,11 @@ mod tests {
         let start = datetime!(2026-05-11 09:00 UTC);
         let r = Rrule::parse("FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4").unwrap();
         let occ = r.expand(start, Duration::hours(1), start, start + Duration::weeks(3));
-        let days: Vec<_> = occ.iter().map(|(s,_)| s.date().to_string()).collect();
-        assert_eq!(days, vec!["2026-05-11","2026-05-13","2026-05-18","2026-05-20"]);
+        let days: Vec<_> = occ.iter().map(|(s, _)| s.date().to_string()).collect();
+        assert_eq!(
+            days,
+            vec!["2026-05-11", "2026-05-13", "2026-05-18", "2026-05-20"]
+        );
     }
 
     #[test]
@@ -291,7 +315,7 @@ mod tests {
         let start = datetime!(2026-05-01 00:00 UTC);
         let r = Rrule::parse("FREQ=DAILY;COUNT=10").unwrap();
         let win_from = start + Duration::days(3);
-        let win_to   = start + Duration::days(6);
+        let win_to = start + Duration::days(6);
         let occ = r.expand(start, Duration::hours(1), win_from, win_to);
         // Days 3,4,5 → 3 occurrences inside window.
         assert_eq!(occ.len(), 3);

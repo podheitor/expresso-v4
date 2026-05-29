@@ -20,7 +20,11 @@ pub fn spawn(pool: DbPool, retention_days: i32, interval_hours: u64) {
         loop {
             tick.tick().await;
             match purge_once(&pool, days).await {
-                Ok(n) => info!(deleted = n, retention_days = days, "tombstone GC cycle completed"),
+                Ok(n) => info!(
+                    deleted = n,
+                    retention_days = days,
+                    "tombstone GC cycle completed"
+                ),
                 Err(e) => warn!(error = %e, "tombstone GC failed"),
             }
         }

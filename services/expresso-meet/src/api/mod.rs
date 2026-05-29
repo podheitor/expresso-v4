@@ -1,6 +1,6 @@
 pub mod context;
-mod meetings;
 mod health;
+mod meetings;
 
 use std::sync::Arc;
 
@@ -24,8 +24,14 @@ pub fn router(
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
         .with_state(state);
-    if let Some(v) = oidc     { router = router.layer(Extension(v)); }
-    if let Some(m) = multi    { router = router.layer(Extension(m)); }
-    if let Some(r) = resolver { router = router.layer(Extension(r)); }
+    if let Some(v) = oidc {
+        router = router.layer(Extension(v));
+    }
+    if let Some(m) = multi {
+        router = router.layer(Extension(m));
+    }
+    if let Some(r) = resolver {
+        router = router.layer(Extension(r));
+    }
     router
 }

@@ -25,11 +25,11 @@ const MAX_COMMENT_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct FileComment {
-    pub id:         Uuid,
-    pub file_id:    Uuid,
-    pub tenant_id:  Uuid,
-    pub user_id:    Uuid,
-    pub body:       String,
+    pub id: Uuid,
+    pub file_id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub body: String,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
@@ -56,8 +56,8 @@ pub fn routes() -> Router<AppState> {
 /// GET /api/v1/drive/files/:id/comments — list comments on a file (tenant-scoped).
 async fn list_comments(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
 
@@ -90,9 +90,9 @@ async fn list_comments(
 /// POST /api/v1/drive/files/:id/comments — add a comment.
 async fn create_comment(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<CreateCommentBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<CreateCommentBody>,
 ) -> Result<impl IntoResponse> {
     if body.body.trim().is_empty() {
         return Err(DriveError::BadRequest("body must not be empty".into()));
@@ -137,7 +137,7 @@ async fn create_comment(
 /// DELETE /api/v1/drive/files/:id/comments/:comment_id — delete a comment (author only).
 async fn delete_comment(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, comment_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
@@ -168,8 +168,11 @@ mod tests {
     #[test]
     fn file_comment_serde_roundtrip() {
         let c = FileComment {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), body: "Great work!".into(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            body: "Great work!".into(),
             created_at: datetime!(2026-05-22 09:00:00 UTC),
             updated_at: datetime!(2026-05-22 09:01:00 UTC),
         };
@@ -181,8 +184,11 @@ mod tests {
     #[test]
     fn file_comment_timestamps_in_rfc3339() {
         let c = FileComment {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), body: "note".into(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            body: "note".into(),
             created_at: datetime!(2026-05-22 08:00:00 UTC),
             updated_at: datetime!(2026-05-22 08:00:00 UTC),
         };
@@ -207,8 +213,11 @@ mod tests {
     fn file_comment_clone_preserves_body() {
         use time::macros::datetime;
         let c = FileComment {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), body: "test comment".into(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            body: "test comment".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             updated_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -222,8 +231,11 @@ mod tests {
         use uuid::Uuid;
         let uid = Uuid::new_v4();
         let c = FileComment {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: uid, body: "x".into(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: uid,
+            body: "x".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             updated_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -240,8 +252,11 @@ mod tests {
     fn file_comment_body_field_accessible() {
         use time::macros::datetime;
         let c = FileComment {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), body: "hello world".into(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            body: "hello world".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             updated_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -252,8 +267,11 @@ mod tests {
     fn file_comment_body_unicode_preserved() {
         use time::macros::datetime;
         let c = FileComment {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), body: "Olá 👋".into(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            body: "Olá 👋".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             updated_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -262,11 +280,14 @@ mod tests {
 
     #[test]
     fn file_comment_body_accessible() {
-        use uuid::Uuid;
         use time::macros::datetime;
+        use uuid::Uuid;
         let c = FileComment {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), body: "test comment".into(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            body: "test comment".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             updated_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -278,8 +299,11 @@ mod tests {
         use time::macros::datetime;
         let uid = Uuid::new_v4();
         let c = FileComment {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: uid, body: "x".into(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: uid,
+            body: "x".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             updated_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -290,8 +314,11 @@ mod tests {
     fn file_comment_body_preserved() {
         use time::macros::datetime;
         let c = FileComment {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), body: "Great doc!".into(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            body: "Great doc!".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             updated_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -302,8 +329,11 @@ mod tests {
     fn file_comment_body_empty_string_allowed() {
         use time::macros::datetime;
         let c = FileComment {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), body: String::new(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            body: String::new(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             updated_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -315,8 +345,11 @@ mod tests {
         use time::macros::datetime;
         let uid = Uuid::new_v4();
         let c = FileComment {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            user_id: uid, body: "hello".into(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: uid,
+            body: "hello".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             updated_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -328,8 +361,11 @@ mod tests {
         use time::macros::datetime;
         let fid = Uuid::new_v4();
         let c = FileComment {
-            id: Uuid::nil(), file_id: fid, tenant_id: Uuid::nil(),
-            user_id: Uuid::nil(), body: "note".into(),
+            id: Uuid::nil(),
+            file_id: fid,
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            body: "note".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             updated_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -368,8 +404,11 @@ mod tests {
         use time::macros::datetime;
         let tid = Uuid::new_v4();
         let c = FileComment {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: tid,
-            user_id: Uuid::nil(), body: "note".into(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: tid,
+            user_id: Uuid::nil(),
+            body: "note".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             updated_at: datetime!(2026-01-01 00:00:00 UTC),
         };

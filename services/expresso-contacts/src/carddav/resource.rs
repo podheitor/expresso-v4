@@ -16,20 +16,21 @@ use crate::error::Result;
 use crate::state::AppState;
 
 /// GET → return the stored vCard payload.
-pub async fn get(
-    state: AppState,
-    principal: CardDavPrincipal,
-    path: &str,
-) -> Result<Response> {
+pub async fn get(state: AppState, principal: CardDavPrincipal, path: &str) -> Result<Response> {
     let (cal_id, uid) = match uri::classify(path) {
-        Target::Contact { user_id, addressbook_id, uid } if user_id == principal.user_id =>
-            (addressbook_id, uid),
+        Target::Contact {
+            user_id,
+            addressbook_id,
+            uid,
+        } if user_id == principal.user_id => (addressbook_id, uid),
         Target::Contact { .. } => return Ok(forbidden()),
         _ => return Ok(not_found()),
     };
 
     let pool = state.db_or_unavailable()?;
-    let c = ContactRepo::new(pool).get_by_uid(principal.tenant_id, cal_id, &uid).await?;
+    let c = ContactRepo::new(pool)
+        .get_by_uid(principal.tenant_id, cal_id, &uid)
+        .await?;
 
     let resp = Response::builder()
         .status(StatusCode::OK)
@@ -48,8 +49,11 @@ pub async fn put(
     body: String,
 ) -> Result<Response> {
     let cal_id = match uri::classify(path) {
-        Target::Contact { user_id, addressbook_id, .. } if user_id == principal.user_id =>
+        Target::Contact {
+            user_id,
             addressbook_id,
+            ..
+        } if user_id == principal.user_id => addressbook_id,
         Target::Contact { .. } => return Ok(forbidden()),
         _ => return Ok(not_found()),
     };
@@ -69,20 +73,21 @@ pub async fn put(
 }
 
 /// DELETE → remove contact.
-pub async fn delete(
-    state: AppState,
-    principal: CardDavPrincipal,
-    path: &str,
-) -> Result<Response> {
+pub async fn delete(state: AppState, principal: CardDavPrincipal, path: &str) -> Result<Response> {
     let (cal_id, uid) = match uri::classify(path) {
-        Target::Contact { user_id, addressbook_id, uid } if user_id == principal.user_id =>
-            (addressbook_id, uid),
+        Target::Contact {
+            user_id,
+            addressbook_id,
+            uid,
+        } if user_id == principal.user_id => (addressbook_id, uid),
         Target::Contact { .. } => return Ok(forbidden()),
         _ => return Ok(not_found()),
     };
 
     let pool = state.db_or_unavailable()?;
-    ContactRepo::new(pool).delete_by_uid(principal.tenant_id, cal_id, &uid).await?;
+    ContactRepo::new(pool)
+        .delete_by_uid(principal.tenant_id, cal_id, &uid)
+        .await?;
 
     Ok(Response::builder()
         .status(StatusCode::NO_CONTENT)
@@ -100,10 +105,8 @@ pub fn options() -> Response {
         )
         .body(Body::empty())
         .unwrap();
-    resp.headers_mut().insert(
-        "DAV",
-        HeaderValue::from_static("1, 2, 3, addressbook"),
-    );
+    resp.headers_mut()
+        .insert("DAV", HeaderValue::from_static("1, 2, 3, addressbook"));
     resp
 }
 

@@ -8,7 +8,7 @@ use crate::error::{DriveError, Result};
 pub struct AppState(Arc<Inner>);
 
 struct Inner {
-    db:        Option<DbPool>,
+    db: Option<DbPool>,
     data_root: PathBuf,
 }
 

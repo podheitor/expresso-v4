@@ -18,9 +18,9 @@ use crate::error::Result;
 
 #[derive(Debug, Clone)]
 pub struct DeadProp {
-    pub namespace:  String,
+    pub namespace: String,
     pub local_name: String,
-    pub xml_value:  String,
+    pub xml_value: String,
 }
 
 pub struct DeadPropRepo<'a> {
@@ -28,16 +28,18 @@ pub struct DeadPropRepo<'a> {
 }
 
 impl<'a> DeadPropRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     /// Upsert a dead property. `value` is escaped text content.
     pub async fn upsert_calendar(
         &self,
-        tenant_id:   Uuid,
+        tenant_id: Uuid,
         calendar_id: Uuid,
-        namespace:   &str,
-        local_name:  &str,
-        value:       &str,
+        namespace: &str,
+        local_name: &str,
+        value: &str,
     ) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         sqlx::query(
@@ -64,10 +66,10 @@ impl<'a> DeadPropRepo<'a> {
     /// API: `tenant_id` now required — antes filtrava só por calendar_id.
     pub async fn remove_calendar(
         &self,
-        tenant_id:   Uuid,
+        tenant_id: Uuid,
         calendar_id: Uuid,
-        namespace:   &str,
-        local_name:  &str,
+        namespace: &str,
+        local_name: &str,
     ) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         sqlx::query(
@@ -91,7 +93,7 @@ impl<'a> DeadPropRepo<'a> {
     /// API: `tenant_id` now required — antes filtrava só por calendar_id.
     pub async fn list_for_calendar(
         &self,
-        tenant_id:   Uuid,
+        tenant_id: Uuid,
         calendar_id: Uuid,
     ) -> Result<Vec<DeadProp>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
@@ -111,9 +113,9 @@ impl<'a> DeadPropRepo<'a> {
         Ok(rows
             .into_iter()
             .map(|r| DeadProp {
-                namespace:  r.get("namespace"),
+                namespace: r.get("namespace"),
                 local_name: r.get("local_name"),
-                xml_value:  r.get("xml_value"),
+                xml_value: r.get("xml_value"),
             })
             .collect())
     }
@@ -126,9 +128,9 @@ mod tests {
     #[test]
     fn dead_prop_clone_preserves_fields() {
         let p = DeadProp {
-            namespace:  "urn:ietf:params:xml:ns:caldav".into(),
+            namespace: "urn:ietf:params:xml:ns:caldav".into(),
             local_name: "calendar-color".into(),
-            xml_value:  "#ff0000".into(),
+            xml_value: "#ff0000".into(),
         };
         let cloned = p.clone();
         assert_eq!(cloned.namespace, p.namespace);
@@ -139,9 +141,9 @@ mod tests {
     #[test]
     fn dead_prop_debug_contains_local_name() {
         let p = DeadProp {
-            namespace:  "DAV:".into(),
+            namespace: "DAV:".into(),
             local_name: "displayname".into(),
-            xml_value:  "My Calendar".into(),
+            xml_value: "My Calendar".into(),
         };
         let dbg = format!("{p:?}");
         assert!(dbg.contains("displayname"));

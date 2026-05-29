@@ -23,13 +23,13 @@ use crate::{auth, AppState};
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct GovbrMapping {
-    pub cpf_hash:      String,
-    pub tenant_id:     Uuid,
-    pub user_id:       Uuid,
-    pub assurance:     Option<String>,
-    pub created_at:    OffsetDateTime,
+    pub cpf_hash: String,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub assurance: Option<String>,
+    pub created_at: OffsetDateTime,
     pub last_login_at: Option<OffsetDateTime>,
-    pub updated_at:    OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,43 +39,45 @@ pub struct ListQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct UpsertBody {
-    pub cpf_hash:  String,
+    pub cpf_hash: String,
     pub tenant_id: Uuid,
-    pub user_id:   Uuid,
+    pub user_id: Uuid,
     pub assurance: Option<String>,
 }
 
 fn db_or_503(st: &Arc<AppState>) -> Result<&expresso_core::DbPool, Response> {
-    st.db.as_ref().ok_or_else(|| StatusCode::SERVICE_UNAVAILABLE.into_response())
+    st.db
+        .as_ref()
+        .ok_or_else(|| StatusCode::SERVICE_UNAVAILABLE.into_response())
 }
 
 pub async fn list(
-    State(st):   State<Arc<AppState>>,
-    headers:     HeaderMap,
-    Query(q):    Query<ListQuery>,
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<ListQuery>,
 ) -> Result<Response, Response> {
-    if let Some(r) = auth::require_super_admin(&st, &headers).await { return Err(r); }
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return Err(r);
+    }
     let pool = db_or_503(&st)?;
     let max_ts: Option<OffsetDateTime> = if let Some(tid) = q.tenant_id {
-        sqlx::query_scalar(
-            "SELECT MAX(updated_at) FROM govbr_user_map WHERE tenant_id = $1",
-        )
-        .bind(tid)
-        .fetch_one(pool)
-        .await
-        .unwrap_or(None)
+        sqlx::query_scalar("SELECT MAX(updated_at) FROM govbr_user_map WHERE tenant_id = $1")
+            .bind(tid)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(None)
     } else {
-        sqlx::query_scalar(
-            "SELECT MAX(updated_at) FROM govbr_user_map",
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(None)
+        sqlx::query_scalar("SELECT MAX(updated_at) FROM govbr_user_map")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(None)
     };
     if let Some(ts) = max_ts {
         if let Some(ims_val) = headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -103,18 +105,23 @@ pub async fn list(
     };
     let mut resp = Json(rows).into_response();
     if let Some(ts) = max_ts {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
 
 pub async fn get_one(
-    State(st):         State<Arc<AppState>>,
-    headers:           HeaderMap,
-    Path(cpf_hash):    Path<String>,
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(cpf_hash): Path<String>,
 ) -> Result<Response, Response> {
-    if let Some(r) = auth::require_super_admin(&st, &headers).await { return Err(r); }
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return Err(r);
+    }
     let pool = db_or_503(&st)?;
     let row: Option<GovbrMapping> = sqlx::query_as(
         "SELECT cpf_hash, tenant_id, user_id, assurance, created_at, last_login_at, updated_at \
@@ -126,9 +133,11 @@ pub async fn get_one(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
 
     let r = row.ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
-    let ts   = r.updated_at;
+    let ts = r.updated_at;
     let etag = format!("\"{}-{}\"", ts.unix_timestamp(), r.cpf_hash);
-    let lm   = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = ts
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
     if let Some(inm) = headers.get(header::IF_NONE_MATCH) {
         if inm.as_bytes() == etag.as_bytes() {
             return Ok(StatusCode::NOT_MODIFIED.into_response());
@@ -136,7 +145,9 @@ pub async fn get_one(
     }
     if let Some(ims_val) = headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if ts <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -144,17 +155,21 @@ pub async fn get_one(
         }
     }
     let mut resp = Json(r).into_response();
-    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
 pub async fn upsert(
-    State(st):  State<Arc<AppState>>,
-    headers:    HeaderMap,
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
     Json(body): Json<UpsertBody>,
 ) -> Result<(StatusCode, Json<GovbrMapping>), Response> {
-    if let Some(r) = auth::require_super_admin(&st, &headers).await { return Err(r); }
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return Err(r);
+    }
     if body.cpf_hash.trim().is_empty() {
         return Err((StatusCode::BAD_REQUEST, "cpf_hash must not be empty").into_response());
     }
@@ -186,20 +201,20 @@ pub async fn upsert(
 }
 
 pub async fn delete(
-    State(st):      State<Arc<AppState>>,
-    headers:        HeaderMap,
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(cpf_hash): Path<String>,
 ) -> Result<StatusCode, Response> {
-    if let Some(r) = auth::require_super_admin(&st, &headers).await { return Err(r); }
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return Err(r);
+    }
     let pool = db_or_503(&st)?;
-    let affected = sqlx::query(
-        "DELETE FROM govbr_user_map WHERE cpf_hash = $1",
-    )
-    .bind(&cpf_hash)
-    .execute(pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?
-    .rows_affected();
+    let affected = sqlx::query("DELETE FROM govbr_user_map WHERE cpf_hash = $1")
+        .bind(&cpf_hash)
+        .execute(pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?
+        .rows_affected();
 
     if affected == 0 {
         return Err(StatusCode::NOT_FOUND.into_response());
@@ -218,7 +233,9 @@ mod tests {
     fn upsert_body_deser() {
         let t = Uuid::new_v4();
         let u = Uuid::new_v4();
-        let json = format!(r#"{{"cpf_hash":"abc123","tenant_id":"{t}","user_id":"{u}","assurance":"bronze"}}"#);
+        let json = format!(
+            r#"{{"cpf_hash":"abc123","tenant_id":"{t}","user_id":"{u}","assurance":"bronze"}}"#
+        );
         let b: UpsertBody = serde_json::from_str(&json).unwrap();
         assert_eq!(b.cpf_hash, "abc123");
         assert_eq!(b.tenant_id, t);
@@ -244,7 +261,12 @@ mod tests {
     fn upsert_body_cpf_hash_preserved() {
         let t = Uuid::new_v4();
         let u = Uuid::new_v4();
-        let body = UpsertBody { cpf_hash: "sha256abc".into(), tenant_id: t, user_id: u, assurance: Some("ouro".into()) };
+        let body = UpsertBody {
+            cpf_hash: "sha256abc".into(),
+            tenant_id: t,
+            user_id: u,
+            assurance: Some("ouro".into()),
+        };
         assert_eq!(body.cpf_hash, "sha256abc");
         assert_eq!(body.assurance.as_deref(), Some("ouro"));
     }
@@ -261,7 +283,12 @@ mod tests {
     fn upsert_body_no_assurance() {
         let t = Uuid::new_v4();
         let u = Uuid::new_v4();
-        let b = UpsertBody { cpf_hash: "hash".into(), tenant_id: t, user_id: u, assurance: None };
+        let b = UpsertBody {
+            cpf_hash: "hash".into(),
+            tenant_id: t,
+            user_id: u,
+            assurance: None,
+        };
         assert!(b.assurance.is_none());
     }
 
@@ -269,7 +296,12 @@ mod tests {
     fn upsert_body_user_id_preserved() {
         let t = Uuid::new_v4();
         let u = Uuid::new_v4();
-        let b = UpsertBody { cpf_hash: "h".into(), tenant_id: t, user_id: u, assurance: None };
+        let b = UpsertBody {
+            cpf_hash: "h".into(),
+            tenant_id: t,
+            user_id: u,
+            assurance: None,
+        };
         assert_eq!(b.user_id, u);
         assert_eq!(b.tenant_id, t);
     }
@@ -278,7 +310,12 @@ mod tests {
     fn upsert_body_assurance_ouro_preserved() {
         let t = Uuid::new_v4();
         let u = Uuid::new_v4();
-        let b = UpsertBody { cpf_hash: "sha256hashvalue".into(), tenant_id: t, user_id: u, assurance: Some("ouro".into()) };
+        let b = UpsertBody {
+            cpf_hash: "sha256hashvalue".into(),
+            tenant_id: t,
+            user_id: u,
+            assurance: Some("ouro".into()),
+        };
         assert_eq!(b.cpf_hash, "sha256hashvalue");
         assert_eq!(b.assurance.as_deref(), Some("ouro"));
     }
@@ -286,7 +323,9 @@ mod tests {
     #[test]
     fn list_query_tenant_id_some() {
         let tid = Uuid::new_v4();
-        let q = ListQuery { tenant_id: Some(tid) };
+        let q = ListQuery {
+            tenant_id: Some(tid),
+        };
         assert_eq!(q.tenant_id, Some(tid));
     }
 
@@ -370,7 +409,12 @@ mod tests {
     fn upsert_body_tenant_id_preserved() {
         let t = Uuid::new_v4();
         let u = Uuid::new_v4();
-        let b = UpsertBody { cpf_hash: "h".into(), tenant_id: t, user_id: u, assurance: None };
+        let b = UpsertBody {
+            cpf_hash: "h".into(),
+            tenant_id: t,
+            user_id: u,
+            assurance: None,
+        };
         assert_eq!(b.tenant_id, t);
     }
 
@@ -388,7 +432,9 @@ mod tests {
     #[test]
     fn list_query_tenant_id_round_trip_via_struct() {
         let tid = Uuid::new_v4();
-        let q = ListQuery { tenant_id: Some(tid) };
+        let q = ListQuery {
+            tenant_id: Some(tid),
+        };
         assert!(q.tenant_id.is_some());
         assert_eq!(q.tenant_id.unwrap(), tid);
     }
@@ -447,7 +493,12 @@ mod tests {
     fn upsert_body_cpf_hash_is_preserved_verbatim() {
         let t = uuid::Uuid::new_v4();
         let u = uuid::Uuid::new_v4();
-        let b = UpsertBody { cpf_hash: "deadbeef1234".into(), tenant_id: t, user_id: u, assurance: None };
+        let b = UpsertBody {
+            cpf_hash: "deadbeef1234".into(),
+            tenant_id: t,
+            user_id: u,
+            assurance: None,
+        };
         assert_eq!(b.cpf_hash, "deadbeef1234");
     }
 }

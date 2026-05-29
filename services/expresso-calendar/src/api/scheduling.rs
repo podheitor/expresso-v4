@@ -17,8 +17,8 @@ use uuid::Uuid;
 use crate::api::context::RequestCtx;
 use crate::caldav::schedule;
 use crate::domain::counter::CounterRepo;
-use crate::domain::freebusy::{BusyInterval, FreeBusyRepo};
 use crate::domain::event::EventRepo;
+use crate::domain::freebusy::{BusyInterval, FreeBusyRepo};
 use crate::domain::{ical, itip};
 use crate::error::{CalendarError, Result};
 use crate::state::AppState;
@@ -26,12 +26,18 @@ use crate::state::AppState;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/scheduling/freebusy", get(freebusy))
-        .route("/api/v1/scheduling/send",     post(send))
-        .route("/api/v1/scheduling/inbox",    post(inbox))
+        .route("/api/v1/scheduling/send", post(send))
+        .route("/api/v1/scheduling/inbox", post(inbox))
         .route("/api/v1/scheduling/counters", get(list_counters))
         .route("/api/v1/scheduling/counters/:id", get(get_counter))
-        .route("/api/v1/scheduling/counters/:id/accept", post(accept_counter))
-        .route("/api/v1/scheduling/counters/:id/reject", post(reject_counter))
+        .route(
+            "/api/v1/scheduling/counters/:id/accept",
+            post(accept_counter),
+        )
+        .route(
+            "/api/v1/scheduling/counters/:id/reject",
+            post(reject_counter),
+        )
 }
 
 /// Query shape: comma-separated `attendees`, rfc3339 `from`/`to`.
@@ -45,7 +51,7 @@ struct FreeBusyParams {
     #[serde(with = "time::serde::rfc3339")]
     from: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    to:   OffsetDateTime,
+    to: OffsetDateTime,
     #[serde(default)]
     include_transparent: bool,
 }
@@ -55,7 +61,7 @@ struct FreeBusyResp {
     #[serde(with = "time::serde::rfc3339")]
     from: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    to:   OffsetDateTime,
+    to: OffsetDateTime,
     attendees: std::collections::BTreeMap<String, Vec<BusyInterval>>,
 }
 
@@ -65,7 +71,9 @@ async fn freebusy(
     Query(p): Query<FreeBusyParams>,
 ) -> Result<impl IntoResponse> {
     if p.to <= p.from {
-        return Err(CalendarError::BadRequest("`to` must be strictly after `from`".into()));
+        return Err(CalendarError::BadRequest(
+            "`to` must be strictly after `from`".into(),
+        ));
     }
     // Cap window at 370 days → bounds scan cost; covers "next year" UI needs.
     let span = p.to - p.from;
@@ -73,7 +81,8 @@ async fn freebusy(
         return Err(CalendarError::BadRequest("range exceeds 370 days".into()));
     }
 
-    let attendees: Vec<String> = p.attendees
+    let attendees: Vec<String> = p
+        .attendees
         .split(',')
         .map(|s| s.trim().to_owned())
         .filter(|s| !s.is_empty())
@@ -82,20 +91,32 @@ async fn freebusy(
         return Err(CalendarError::BadRequest("`attendees` required".into()));
     }
     if attendees.len() > 50 {
-        return Err(CalendarError::BadRequest("max 50 attendees per query".into()));
+        return Err(CalendarError::BadRequest(
+            "max 50 attendees per query".into(),
+        ));
     }
 
     let pool = state.db_or_unavailable()?;
     let map = FreeBusyRepo::new(pool)
-        .lookup(ctx.tenant_id, &attendees, p.from, p.to, p.include_transparent)
+        .lookup(
+            ctx.tenant_id,
+            &attendees,
+            p.from,
+            p.to,
+            p.include_transparent,
+        )
         .await?;
 
-    Ok(Json(FreeBusyResp { from: p.from, to: p.to, attendees: map }))
+    Ok(Json(FreeBusyResp {
+        from: p.from,
+        to: p.to,
+        attendees: map,
+    }))
 }
 
 #[derive(Debug, Serialize)]
 struct SendRecipient {
-    email:  String,
+    email: String,
     status: &'static str,
     message: &'static str,
 }
@@ -108,42 +129,53 @@ struct SendResp {
 /// POST /api/v1/scheduling/send — relay iTIP to attendees via iMIP (SMTP).
 /// Body: VCALENDAR (text/calendar) with METHOD + ATTENDEE lines. Auth via
 /// x-tenant-id / x-user-id (`RequestCtx`).
-async fn send(
-    _ctx: RequestCtx,
-    body: String,
-) -> std::result::Result<Json<SendResp>, StatusCode> {
+async fn send(_ctx: RequestCtx, body: String) -> std::result::Result<Json<SendResp>, StatusCode> {
     let statuses = schedule::dispatch_itip(&body).await?;
     Ok(Json(SendResp {
-        recipients: statuses.into_iter().map(|(email, status, message)| {
-            SendRecipient { email, status, message }
-        }).collect(),
+        recipients: statuses
+            .into_iter()
+            .map(|(email, status, message)| SendRecipient {
+                email,
+                status,
+                message,
+            })
+            .collect(),
     }))
 }
 
 #[derive(Debug, Serialize)]
 struct InboxResp {
-    method:    Option<String>,
-    uid:       Option<String>,
-    attendee:  Option<String>,
-    partstat:  Option<String>,
-    matched:   bool,
-    updated:   bool,
+    method: Option<String>,
+    uid: Option<String>,
+    attendee: Option<String>,
+    partstat: Option<String>,
+    matched: bool,
+    updated: bool,
     /// True when REPLY rejected due to stale SEQUENCE/DTSTAMP (RFC 5546 §3.2.3).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    stale:     bool,
+    stale: bool,
     /// True when a CANCEL was applied to the stored event (STATUS:CANCELLED).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     cancelled: bool,
-    message:   String,
+    message: String,
 }
 
 impl InboxResp {
-    fn skeleton(method: &str, uid: String, attendee: Option<String>, partstat: Option<String>) -> Self {
+    fn skeleton(
+        method: &str,
+        uid: String,
+        attendee: Option<String>,
+        partstat: Option<String>,
+    ) -> Self {
         Self {
-            method: Some(method.into()), uid: Some(uid),
-            attendee, partstat,
-            matched: false, updated: false,
-            stale: false, cancelled: false,
+            method: Some(method.into()),
+            uid: Some(uid),
+            attendee,
+            partstat,
+            matched: false,
+            updated: false,
+            stale: false,
+            cancelled: false,
             message: String::new(),
         }
     }
@@ -169,11 +201,14 @@ async fn inbox(
     body: String,
 ) -> Result<Json<InboxResp>> {
     // Detect METHOD line (case-insensitive, scoped to the VCALENDAR wrapper).
-    let method = body.lines()
+    let method = body
+        .lines()
         .map(|l| l.trim_end_matches('\r'))
         .find_map(|l| {
             let u = l.to_ascii_uppercase();
-            u.strip_prefix("METHOD:").map(str::trim).map(str::to_ascii_uppercase)
+            u.strip_prefix("METHOD:")
+                .map(str::trim)
+                .map(str::to_ascii_uppercase)
         })
         .ok_or_else(|| CalendarError::BadRequest("missing METHOD".into()))?;
 
@@ -182,29 +217,36 @@ async fn inbox(
     let repo = EventRepo::new(pool);
 
     match method.as_str() {
-        "REPLY"   => handle_reply(ctx, repo, parsed, &body).await,
+        "REPLY" => handle_reply(ctx, repo, parsed, &body).await,
         "COUNTER" => handle_counter(&state, ctx, repo, parsed, &body).await,
         "REFRESH" => handle_refresh(&state, ctx, repo, parsed).await,
-        "CANCEL"  => handle_cancel(ctx, repo, parsed).await,
-        other     => Err(CalendarError::BadRequest(format!(
+        "CANCEL" => handle_cancel(ctx, repo, parsed).await,
+        other => Err(CalendarError::BadRequest(format!(
             "unsupported METHOD: {other} (expected REPLY|COUNTER|REFRESH|CANCEL)"
         ))),
     }
 }
 
 async fn handle_reply(
-    ctx:    RequestCtx,
-    repo:   EventRepo<'_>,
+    ctx: RequestCtx,
+    repo: EventRepo<'_>,
     parsed: ical::ParsedEvent,
-    body:   &str,
+    body: &str,
 ) -> Result<Json<InboxResp>> {
     let attendees = itip::parse_attendees(body);
     let Some(att) = attendees.into_iter().find(|a| a.partstat.is_some()) else {
-        return Err(CalendarError::BadRequest("REPLY has no ATTENDEE with PARTSTAT".into()));
+        return Err(CalendarError::BadRequest(
+            "REPLY has no ATTENDEE with PARTSTAT".into(),
+        ));
     };
-    let partstat = att.partstat.clone().unwrap_or_else(|| "NEEDS-ACTION".into());
+    let partstat = att
+        .partstat
+        .clone()
+        .unwrap_or_else(|| "NEEDS-ACTION".into());
 
-    let event_opt = repo.find_by_uid_in_tenant(ctx.tenant_id, &parsed.uid).await?;
+    let event_opt = repo
+        .find_by_uid_in_tenant(ctx.tenant_id, &parsed.uid)
+        .await?;
     let Some(ev) = event_opt else {
         let mut r = InboxResp::skeleton("REPLY", parsed.uid, Some(att.email), Some(partstat));
         r.message = "uid not found in tenant".into();
@@ -219,9 +261,10 @@ async fn handle_reply(
             && matches!((parsed.dtstamp, stored.dtstamp),
                         (Some(r), Some(s)) if r < s))
     {
-        let mut r = InboxResp::skeleton("REPLY", parsed.uid, Some(att.email), Some(partstat.clone()));
+        let mut r =
+            InboxResp::skeleton("REPLY", parsed.uid, Some(att.email), Some(partstat.clone()));
         r.matched = true;
-        r.stale   = true;
+        r.stale = true;
         r.message = format!(
             "stale REPLY ignored (reply SEQUENCE={} DTSTAMP={:?} < stored SEQUENCE={} DTSTAMP={:?})",
             parsed.sequence, parsed.dtstamp, stored.sequence, stored.dtstamp
@@ -232,21 +275,27 @@ async fn handle_reply(
     let new_raw = itip::apply_rsvp(&ev.ical_raw, &att.email, &partstat)?;
     let already = new_raw == ev.ical_raw;
     if !already {
-        let _ = repo.replace_by_uid(ctx.tenant_id, ev.calendar_id, &new_raw).await?;
+        let _ = repo
+            .replace_by_uid(ctx.tenant_id, ev.calendar_id, &new_raw)
+            .await?;
     }
     let mut r = InboxResp::skeleton("REPLY", parsed.uid, Some(att.email), Some(partstat));
     r.matched = true;
     r.updated = !already;
-    r.message = if already { "no change".into() } else { "PARTSTAT updated".into() };
+    r.message = if already {
+        "no change".into()
+    } else {
+        "PARTSTAT updated".into()
+    };
     Ok(Json(r))
 }
 
 async fn handle_counter(
-    state:  &AppState,
-    ctx:    RequestCtx,
-    repo:   EventRepo<'_>,
+    state: &AppState,
+    ctx: RequestCtx,
+    repo: EventRepo<'_>,
     parsed: ical::ParsedEvent,
-    body:   &str,
+    body: &str,
 ) -> Result<Json<InboxResp>> {
     // RFC 5546 §3.2.7: organizer receives a proposal; MUST NOT auto-apply.
     // We persist the proposal (with the attendee's COMMENT, if any) so the
@@ -256,34 +305,43 @@ async fn handle_counter(
     let attendees = itip::parse_attendees(body);
     let att = attendees.into_iter().next();
     let comment = itip::parse_comment(body);
-    let event_opt = repo.find_by_uid_in_tenant(ctx.tenant_id, &parsed.uid).await?;
+    let event_opt = repo
+        .find_by_uid_in_tenant(ctx.tenant_id, &parsed.uid)
+        .await?;
     let matched = event_opt.is_some();
 
     // Persist proposal so admin can accept/reject (RFC 5546 §3.2.7).
     let mut proposal_id: Option<uuid::Uuid> = None;
     if let (Some(ev), Some(ref a)) = (event_opt.as_ref(), att.as_ref()) {
         let crepo = CounterRepo::new(repo.pool());
-        match crepo.insert(
-            ctx.tenant_id,
-            ev.id,
-            &a.email,
-            parsed.dtstart,
-            parsed.dtend,
-            comment.as_deref(),
-            Some(parsed.sequence),
-            Some(body),
-        ).await {
+        match crepo
+            .insert(
+                ctx.tenant_id,
+                ev.id,
+                &a.email,
+                parsed.dtstart,
+                parsed.dtend,
+                comment.as_deref(),
+                Some(parsed.sequence),
+                Some(body),
+            )
+            .await
+        {
             Ok(p) => {
                 proposal_id = Some(p.id);
-                state.events().publish(crate::events::Event::CounterReceived {
-                    tenant_id:      ctx.tenant_id,
-                    event_id:       ev.id,
-                    proposal_id:    p.id,
-                    attendee_email: a.email.clone(),
-                    comment:        comment.clone(),
-                });
+                state
+                    .events()
+                    .publish(crate::events::Event::CounterReceived {
+                        tenant_id: ctx.tenant_id,
+                        event_id: ev.id,
+                        proposal_id: p.id,
+                        attendee_email: a.email.clone(),
+                        comment: comment.clone(),
+                    });
             }
-            Err(e) => tracing::warn!(error=%e, uid=%parsed.uid, "COUNTER persist failed (non-fatal)"),
+            Err(e) => {
+                tracing::warn!(error=%e, uid=%parsed.uid, "COUNTER persist failed (non-fatal)")
+            }
         }
     }
 
@@ -303,8 +361,12 @@ async fn handle_counter(
     );
     r.matched = matched;
     r.message = if matched {
-        format!("COUNTER received (proposal_id={}); organizer must decide (RFC 5546 §3.2.7)",
-            proposal_id.map(|u| u.to_string()).unwrap_or_else(|| "none".into()))
+        format!(
+            "COUNTER received (proposal_id={}); organizer must decide (RFC 5546 §3.2.7)",
+            proposal_id
+                .map(|u| u.to_string())
+                .unwrap_or_else(|| "none".into())
+        )
     } else {
         "uid not found in tenant; COUNTER ignored".into()
     };
@@ -312,9 +374,9 @@ async fn handle_counter(
 }
 
 async fn handle_refresh(
-    state:  &AppState,
-    ctx:    RequestCtx,
-    repo:   EventRepo<'_>,
+    state: &AppState,
+    ctx: RequestCtx,
+    repo: EventRepo<'_>,
     parsed: ical::ParsedEvent,
 ) -> Result<Json<InboxResp>> {
     // RFC 5546 §3.2.6: attendee requests latest event state — organizer
@@ -322,7 +384,9 @@ async fn handle_refresh(
     // JetStream (`expresso.imip.request`); `expresso-imip-dispatch` fans it
     // out to all current attendees. Targeted resend (only to the requester)
     // is a future refinement; for now a broadcast keeps everyone in sync.
-    let event_opt = repo.find_by_uid_in_tenant(ctx.tenant_id, &parsed.uid).await?;
+    let event_opt = repo
+        .find_by_uid_in_tenant(ctx.tenant_id, &parsed.uid)
+        .await?;
     let matched = event_opt.is_some();
     let mut republished = false;
     if let Some(ev) = event_opt {
@@ -348,14 +412,16 @@ async fn handle_refresh(
 }
 
 async fn handle_cancel(
-    ctx:    RequestCtx,
-    repo:   EventRepo<'_>,
+    ctx: RequestCtx,
+    repo: EventRepo<'_>,
     parsed: ical::ParsedEvent,
 ) -> Result<Json<InboxResp>> {
     // RFC 5546 §3.2.5: attendee-side receipt of CANCEL → mark the event as
     // STATUS:CANCELLED in the stored ical_raw. We keep the row for audit
     // (deletion is out of scope; tombstone GC handles long-term cleanup).
-    let event_opt = repo.find_by_uid_in_tenant(ctx.tenant_id, &parsed.uid).await?;
+    let event_opt = repo
+        .find_by_uid_in_tenant(ctx.tenant_id, &parsed.uid)
+        .await?;
     let Some(ev) = event_opt else {
         let mut r = InboxResp::skeleton("CANCEL", parsed.uid, None, None);
         r.message = "uid not found in tenant".into();
@@ -368,7 +434,7 @@ async fn handle_cancel(
     if parsed.sequence < stored.sequence {
         let mut r = InboxResp::skeleton("CANCEL", parsed.uid, None, None);
         r.matched = true;
-        r.stale   = true;
+        r.stale = true;
         r.message = format!(
             "stale CANCEL ignored (reply SEQUENCE={} < stored SEQUENCE={})",
             parsed.sequence, stored.sequence
@@ -379,13 +445,19 @@ async fn handle_cancel(
     let new_raw = itip::set_status(&ev.ical_raw, "CANCELLED")?;
     let already = new_raw == ev.ical_raw;
     if !already {
-        let _ = repo.replace_by_uid(ctx.tenant_id, ev.calendar_id, &new_raw).await?;
+        let _ = repo
+            .replace_by_uid(ctx.tenant_id, ev.calendar_id, &new_raw)
+            .await?;
     }
     let mut r = InboxResp::skeleton("CANCEL", parsed.uid, None, None);
-    r.matched   = true;
-    r.updated   = !already;
+    r.matched = true;
+    r.updated = !already;
     r.cancelled = true;
-    r.message   = if already { "already cancelled".into() } else { "STATUS:CANCELLED applied".into() };
+    r.message = if already {
+        "already cancelled".into()
+    } else {
+        "STATUS:CANCELLED applied".into()
+    };
     Ok(Json(r))
 }
 
@@ -399,48 +471,62 @@ struct CounterListQuery {
 /// GET /api/v1/scheduling/counters — list pending COUNTER proposals for tenant.
 async fn list_counters(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<CounterListQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<CounterListQuery>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
     let limit = q.limit.unwrap_or(50).min(200).max(1);
-    let rows = CounterRepo::new(pool).list_pending(ctx.tenant_id, limit).await?;
+    let rows = CounterRepo::new(pool)
+        .list_pending(ctx.tenant_id, limit)
+        .await?;
     Ok(Json(rows))
 }
 
 /// GET /api/v1/scheduling/counters/:id — fetch one proposal.
 async fn get_counter(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
     match CounterRepo::new(pool).get(ctx.tenant_id, id).await? {
         Some(p) => Ok(Json(p).into_response()),
-        None    => Err(CalendarError::BadRequest(format!("counter proposal {id} not found"))),
+        None => Err(CalendarError::BadRequest(format!(
+            "counter proposal {id} not found"
+        ))),
     }
 }
 
 /// POST /api/v1/scheduling/counters/:id/accept — accept: patch event times, mark resolved.
 async fn accept_counter(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let crepo = CounterRepo::new(pool);
-    let prop  = crepo.get(ctx.tenant_id, id).await?
+    let prop = crepo
+        .get(ctx.tenant_id, id)
+        .await?
         .ok_or_else(|| CalendarError::BadRequest(format!("counter proposal {id} not found")))?;
     if prop.status != "pending" {
-        return Err(CalendarError::BadRequest(format!("proposal is already {}", prop.status)));
+        return Err(CalendarError::BadRequest(format!(
+            "proposal is already {}",
+            prop.status
+        )));
     }
 
-    let erepo   = EventRepo::new(pool);
-    let event   = erepo.get(ctx.tenant_id, prop.event_id).await
+    let erepo = EventRepo::new(pool);
+    let event = erepo
+        .get(ctx.tenant_id, prop.event_id)
+        .await
         .map_err(|_| CalendarError::EventNotFound(prop.event_id))?;
-    let new_raw = itip::apply_proposed_times(&event.ical_raw, prop.proposed_dtstart, prop.proposed_dtend)?;
+    let new_raw =
+        itip::apply_proposed_times(&event.ical_raw, prop.proposed_dtstart, prop.proposed_dtend)?;
     erepo.update(ctx.tenant_id, event.id, &new_raw).await?;
-    crepo.resolve(ctx.tenant_id, id, "accepted", Some(ctx.user_id)).await?;
+    crepo
+        .resolve(ctx.tenant_id, id, "accepted", Some(ctx.user_id))
+        .await?;
 
     tracing::info!(
         tenant_id   = %ctx.tenant_id,
@@ -454,17 +540,24 @@ async fn accept_counter(
 /// POST /api/v1/scheduling/counters/:id/reject — reject: mark resolved, event unchanged.
 async fn reject_counter(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let crepo = CounterRepo::new(pool);
-    let prop  = crepo.get(ctx.tenant_id, id).await?
+    let prop = crepo
+        .get(ctx.tenant_id, id)
+        .await?
         .ok_or_else(|| CalendarError::BadRequest(format!("counter proposal {id} not found")))?;
     if prop.status != "pending" {
-        return Err(CalendarError::BadRequest(format!("proposal is already {}", prop.status)));
+        return Err(CalendarError::BadRequest(format!(
+            "proposal is already {}",
+            prop.status
+        )));
     }
-    crepo.resolve(ctx.tenant_id, id, "rejected", Some(ctx.user_id)).await?;
+    crepo
+        .resolve(ctx.tenant_id, id, "rejected", Some(ctx.user_id))
+        .await?;
 
     tracing::info!(
         tenant_id   = %ctx.tenant_id,
@@ -499,7 +592,8 @@ mod tests {
 
     #[test]
     fn freebusy_params_include_transparent_defaults_false() {
-        let json = r#"{"attendees":"a@ex.com","from":"2026-01-01T00:00:00Z","to":"2026-01-02T00:00:00Z"}"#;
+        let json =
+            r#"{"attendees":"a@ex.com","from":"2026-01-01T00:00:00Z","to":"2026-01-02T00:00:00Z"}"#;
         let p: super::FreeBusyParams = serde_json::from_str(json).unwrap();
         assert!(!p.include_transparent);
     }
@@ -587,7 +681,8 @@ mod tests {
 
     #[test]
     fn freebusy_params_include_transparent_false_when_absent() {
-        let json = r#"{"attendees":"x@ex.com","from":"2026-06-01T00:00:00Z","to":"2026-06-02T00:00:00Z"}"#;
+        let json =
+            r#"{"attendees":"x@ex.com","from":"2026-06-01T00:00:00Z","to":"2026-06-02T00:00:00Z"}"#;
         let p: super::FreeBusyParams = serde_json::from_str(json).unwrap();
         assert!(!p.include_transparent);
     }

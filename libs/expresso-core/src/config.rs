@@ -147,24 +147,60 @@ pub struct MailServerConfig {
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
 
-fn default_host() -> String          { "0.0.0.0".into() }
-fn default_port() -> u16             { 8000 }
-fn default_shutdown_timeout() -> u64 { 30 }
-fn default_db_max_connections() -> u32  { 20 }
-fn default_db_min_connections() -> u32  { 2 }
-fn default_db_acquire_timeout() -> u64  { 5 }
-fn default_redis_pool_size() -> usize   { 10 }
-fn default_s3_region() -> String        { "us-east-1".into() }
-fn default_otlp_endpoint() -> String    { "http://localhost:4317".into() }
-fn default_log_filter() -> String       { "info".into() }
-fn default_smtp_port() -> u16           { 25 }
-fn default_submission_port() -> u16     { 587 }
-fn default_lmtp_port() -> u16           { 24 }
-fn default_imap_port() -> u16           { 143 }
-fn default_imaps_port() -> u16          { 993 }
-fn default_smtps_port() -> u16          { 465 }
-fn default_relay_host() -> String     { "127.0.0.1".into() }
-fn default_relay_port() -> u16          { 587 }
+fn default_host() -> String {
+    "0.0.0.0".into()
+}
+fn default_port() -> u16 {
+    8000
+}
+fn default_shutdown_timeout() -> u64 {
+    30
+}
+fn default_db_max_connections() -> u32 {
+    20
+}
+fn default_db_min_connections() -> u32 {
+    2
+}
+fn default_db_acquire_timeout() -> u64 {
+    5
+}
+fn default_redis_pool_size() -> usize {
+    10
+}
+fn default_s3_region() -> String {
+    "us-east-1".into()
+}
+fn default_otlp_endpoint() -> String {
+    "http://localhost:4317".into()
+}
+fn default_log_filter() -> String {
+    "info".into()
+}
+fn default_smtp_port() -> u16 {
+    25
+}
+fn default_submission_port() -> u16 {
+    587
+}
+fn default_lmtp_port() -> u16 {
+    24
+}
+fn default_imap_port() -> u16 {
+    143
+}
+fn default_imaps_port() -> u16 {
+    993
+}
+fn default_smtps_port() -> u16 {
+    465
+}
+fn default_relay_host() -> String {
+    "127.0.0.1".into()
+}
+fn default_relay_port() -> u16 {
+    587
+}
 
 // ─── Loader ──────────────────────────────────────────────────────────────────
 

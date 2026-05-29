@@ -23,17 +23,20 @@ use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/mail/flag-presets",     get(list_presets).post(create_preset))
-        .route("/mail/flag-presets/:id", get(get_preset).put(update_preset).delete(delete_preset))
+        .route("/mail/flag-presets", get(list_presets).post(create_preset))
+        .route(
+            "/mail/flag-presets/:id",
+            get(get_preset).put(update_preset).delete(delete_preset),
+        )
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct FlagPreset {
-    pub id:         Uuid,
-    pub tenant_id:  Uuid,
-    pub user_id:    Uuid,
-    pub name:       String,
-    pub flags:      SqlxJson<Vec<String>>,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub name: String,
+    pub flags: SqlxJson<Vec<String>>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
@@ -42,13 +45,13 @@ pub struct FlagPreset {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PresetBody {
-    pub name:  String,
+    pub name: String,
     pub flags: Vec<String>,
 }
 
 async fn list_presets(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<Vec<FlagPreset>>> {
     let pool = state.db();
     let rows: Vec<FlagPreset> = sqlx::query_as(
@@ -66,8 +69,8 @@ async fn list_presets(
 
 async fn create_preset(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(body):   Json<PresetBody>,
+    ctx: RequestCtx,
+    Json(body): Json<PresetBody>,
 ) -> Result<(StatusCode, Json<FlagPreset>)> {
     validate_preset(&body)?;
     let pool = state.db();
@@ -87,8 +90,8 @@ async fn create_preset(
 
 async fn get_preset(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<FlagPreset>> {
     let pool = state.db();
     let row: Option<FlagPreset> = sqlx::query_as(
@@ -106,9 +109,9 @@ async fn get_preset(
 
 async fn update_preset(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<PresetBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<PresetBody>,
 ) -> Result<Json<FlagPreset>> {
     validate_preset(&body)?;
     let pool = state.db();
@@ -130,8 +133,8 @@ async fn update_preset(
 
 async fn delete_preset(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     let pool = state.db();
     let r = sqlx::query(
@@ -154,7 +157,9 @@ fn validate_preset(body: &PresetBody) -> Result<()> {
         return Err(MailError::BadRequest("name must not be empty".into()));
     }
     if body.name.len() > 100 {
-        return Err(MailError::BadRequest("name must be <= 100 characters".into()));
+        return Err(MailError::BadRequest(
+            "name must be <= 100 characters".into(),
+        ));
     }
     if body.flags.len() > 50 {
         return Err(MailError::BadRequest("at most 50 flags per preset".into()));
@@ -168,7 +173,7 @@ mod tests {
 
     fn body(name: &str, flag_count: usize) -> PresetBody {
         PresetBody {
-            name:  name.into(),
+            name: name.into(),
             flags: vec!["\\Flagged".into(); flag_count],
         }
     }
@@ -222,49 +227,73 @@ mod tests {
 
     #[test]
     fn preset_body_flags_empty_is_valid() {
-        let b = PresetBody { name: "Starred".into(), flags: vec![] };
+        let b = PresetBody {
+            name: "Starred".into(),
+            flags: vec![],
+        };
         assert!(validate_preset(&b).is_ok());
     }
 
     #[test]
     fn preset_body_name_preserved() {
-        let b = PresetBody { name: "Important".into(), flags: vec!["\\Flagged".into()] };
+        let b = PresetBody {
+            name: "Important".into(),
+            flags: vec!["\\Flagged".into()],
+        };
         assert_eq!(b.name, "Important");
     }
 
     #[test]
     fn preset_body_flags_count_preserved() {
-        let b = PresetBody { name: "X".into(), flags: vec!["\\Seen".into(), "\\Flagged".into()] };
+        let b = PresetBody {
+            name: "X".into(),
+            flags: vec!["\\Seen".into(), "\\Flagged".into()],
+        };
         assert_eq!(b.flags.len(), 2);
     }
 
     #[test]
     fn validate_preset_valid_name_and_flag() {
-        let b = PresetBody { name: "Work".into(), flags: vec!["\\Seen".into()] };
+        let b = PresetBody {
+            name: "Work".into(),
+            flags: vec!["\\Seen".into()],
+        };
         assert!(validate_preset(&b).is_ok());
     }
 
     #[test]
     fn validate_preset_multiple_flags_ok() {
-        let b = PresetBody { name: "Flagged".into(), flags: vec!["\\Seen".into(), "\\Flagged".into()] };
+        let b = PresetBody {
+            name: "Flagged".into(),
+            flags: vec!["\\Seen".into(), "\\Flagged".into()],
+        };
         assert!(validate_preset(&b).is_ok());
     }
 
     #[test]
     fn preset_body_single_flag_count_is_one() {
-        let b = PresetBody { name: "Minimal".into(), flags: vec!["\\Seen".into()] };
+        let b = PresetBody {
+            name: "Minimal".into(),
+            flags: vec!["\\Seen".into()],
+        };
         assert_eq!(b.flags.len(), 1);
     }
 
     #[test]
     fn validate_preset_name_only_whitespace_rejected() {
-        let b = PresetBody { name: "  ".into(), flags: vec![] };
+        let b = PresetBody {
+            name: "  ".into(),
+            flags: vec![],
+        };
         assert!(validate_preset(&b).is_err());
     }
 
     #[test]
     fn preset_body_serialises_and_deserialises() {
-        let b = PresetBody { name: "Urgent".into(), flags: vec!["\\Flagged".into()] };
+        let b = PresetBody {
+            name: "Urgent".into(),
+            flags: vec!["\\Flagged".into()],
+        };
         let s = serde_json::to_string(&b).unwrap();
         let back: PresetBody = serde_json::from_str(&s).unwrap();
         assert_eq!(back.name, "Urgent");
@@ -273,44 +302,65 @@ mod tests {
 
     #[test]
     fn preset_body_two_flags_count() {
-        let b = PresetBody { name: "Work".into(), flags: vec!["\\Seen".into(), "\\Flagged".into()] };
+        let b = PresetBody {
+            name: "Work".into(),
+            flags: vec!["\\Seen".into(), "\\Flagged".into()],
+        };
         assert_eq!(b.flags.len(), 2);
     }
 
     #[test]
     fn preset_body_name_not_empty_after_set() {
-        let b = PresetBody { name: "Priority".into(), flags: vec![] };
+        let b = PresetBody {
+            name: "Priority".into(),
+            flags: vec![],
+        };
         assert!(!b.name.is_empty());
     }
 
     #[test]
     fn preset_body_flags_contain_seen_flag() {
-        let b = PresetBody { name: "Read".into(), flags: vec!["\\Seen".into()] };
+        let b = PresetBody {
+            name: "Read".into(),
+            flags: vec!["\\Seen".into()],
+        };
         assert!(b.flags.contains(&"\\Seen".to_string()));
     }
 
     #[test]
     fn preset_body_name_max_length_boundary() {
         let name = "A".repeat(100);
-        let b = PresetBody { name: name.clone(), flags: vec![] };
+        let b = PresetBody {
+            name: name.clone(),
+            flags: vec![],
+        };
         assert_eq!(b.name.len(), 100);
     }
 
     #[test]
     fn preset_body_empty_flags_has_zero_length() {
-        let b = PresetBody { name: "My preset".into(), flags: vec![] };
+        let b = PresetBody {
+            name: "My preset".into(),
+            flags: vec![],
+        };
         assert_eq!(b.flags.len(), 0);
     }
 
     #[test]
     fn preset_body_name_preserved_after_construction() {
-        let b = PresetBody { name: "inbox-unread".into(), flags: vec!["\\Seen".into()] };
+        let b = PresetBody {
+            name: "inbox-unread".into(),
+            flags: vec!["\\Seen".into()],
+        };
         assert_eq!(b.name, "inbox-unread");
     }
 
     #[test]
     fn preset_body_flags_count_matches_input() {
-        let b = PresetBody { name: "starred".into(), flags: vec!["\\Flagged".into(), "\\Seen".into()] };
+        let b = PresetBody {
+            name: "starred".into(),
+            flags: vec!["\\Flagged".into(), "\\Seen".into()],
+        };
         assert_eq!(b.flags.len(), 2);
     }
 }

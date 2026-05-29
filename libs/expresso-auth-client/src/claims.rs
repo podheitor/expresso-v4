@@ -10,31 +10,34 @@ use uuid::Uuid;
 
 use crate::error::{AuthError, Result};
 
-
 /// Extract realm name from a Keycloak `iss` claim of the form
 /// `https://host[:port]/realms/<realm>` (with optional trailing slash).
 /// Returns `None` if the string does not contain `/realms/`.
 pub(crate) fn realm_from_iss(iss: &str) -> Option<&str> {
     let (_, tail) = iss.rsplit_once("/realms/")?;
     let realm = tail.split('/').next()?;
-    if realm.is_empty() { None } else { Some(realm) }
+    if realm.is_empty() {
+        None
+    } else {
+        Some(realm)
+    }
 }
 
 /// Raw OIDC claims as emitted by Keycloak. Extra fields are preserved in
 /// `extra` for downstream inspection without changing this struct.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RawClaims {
-    pub sub:       String,
-    pub iss:       String,
+    pub sub: String,
+    pub iss: String,
     #[serde(default)]
-    pub aud:       AudClaim,
-    pub exp:       i64,
+    pub aud: AudClaim,
+    pub exp: i64,
     #[serde(default)]
-    pub email:     Option<String>,
+    pub email: Option<String>,
     #[serde(default)]
     pub preferred_username: Option<String>,
     #[serde(default)]
-    pub name:      Option<String>,
+    pub name: Option<String>,
     #[serde(default, rename = "tenant_id")]
     pub tenant_id: Option<String>,
     #[serde(default)]
@@ -43,10 +46,10 @@ pub struct RawClaims {
     pub resource_access: HashMap<String, RolesBlock>,
     /// Authentication Context Class Reference (OIDC §2). e.g. "1", "urn:govbr:loa:ouro".
     #[serde(default)]
-    pub acr:       Option<String>,
+    pub acr: Option<String>,
     /// Authentication Methods References (RFC 8176). e.g. ["pwd","otp"], ["pwd","hwk"].
     #[serde(default)]
-    pub amr:       Option<Vec<String>>,
+    pub amr: Option<Vec<String>>,
     /// gov.br federated identity — CPF hash (set by KC IdP mapper).
     #[serde(default)]
     pub govbr_cpf_hash: Option<String>,
@@ -68,8 +71,8 @@ pub enum AudClaim {
 impl AudClaim {
     pub fn contains(&self, needle: &str) -> bool {
         match self {
-            Self::Empty   => false,
-            Self::One(v)  => v == needle,
+            Self::Empty => false,
+            Self::One(v) => v == needle,
             Self::Many(v) => v.iter().any(|s| s == needle),
         }
     }
@@ -89,16 +92,16 @@ pub struct RolesBlock {
 ///   the primary audience — callers see a single flat role set.
 #[derive(Debug, Clone)]
 pub struct AuthContext {
-    pub user_id:      Uuid,
-    pub tenant_id:    Uuid,
-    pub email:        String,
+    pub user_id: Uuid,
+    pub tenant_id: Uuid,
+    pub email: String,
     pub display_name: String,
-    pub roles:        Vec<String>,
-    pub expires_at:   i64,
+    pub roles: Vec<String>,
+    pub expires_at: i64,
     /// Raw ACR string from IdP (OIDC §2).
-    pub acr:          Option<String>,
+    pub acr: Option<String>,
     /// Raw AMR list from IdP (RFC 8176).
-    pub amr:          Vec<String>,
+    pub amr: Vec<String>,
     /// gov.br CPF hash when federated via gov.br IdP.
     pub govbr_cpf_hash: Option<String>,
     /// gov.br confiabilidades list (empty when not federated via gov.br).
@@ -126,26 +129,35 @@ impl AuthContext {
         // deployments that still carry the hardcoded-claim mapper.
         let tenant_id = realm_from_iss(&raw.iss)
             .and_then(|r| Uuid::parse_str(r.trim()).ok())
-            .or_else(|| raw.tenant_id.as_deref().and_then(|s| Uuid::parse_str(s.trim()).ok()))
+            .or_else(|| {
+                raw.tenant_id
+                    .as_deref()
+                    .and_then(|s| Uuid::parse_str(s.trim()).ok())
+            })
             .ok_or(AuthError::MissingClaim("tenant_id"))?;
 
         let email = raw.email.clone().unwrap_or_default();
-        let display_name = raw.name
+        let display_name = raw
+            .name
             .or(raw.preferred_username.clone())
             .unwrap_or_else(|| format!("user-{}", &user_id.to_string()[..8]));
 
-        let mut roles: Vec<String> = raw.realm_access
-            .map(|b| b.roles)
-            .unwrap_or_default();
+        let mut roles: Vec<String> = raw.realm_access.map(|b| b.roles).unwrap_or_default();
         if let Some(block) = raw.resource_access.get(primary_audience) {
             for r in &block.roles {
-                if !roles.iter().any(|x| x == r) { roles.push(r.clone()); }
+                if !roles.iter().any(|x| x == r) {
+                    roles.push(r.clone());
+                }
             }
         }
 
         Ok(Self {
-            user_id, tenant_id, email, display_name,
-            roles, expires_at: raw.exp,
+            user_id,
+            tenant_id,
+            email,
+            display_name,
+            roles,
+            expires_at: raw.exp,
             acr: raw.acr,
             amr: raw.amr.unwrap_or_default(),
             govbr_cpf_hash: raw.govbr_cpf_hash,
@@ -160,14 +172,14 @@ mod tests {
 
     fn ctx(roles: &[&str]) -> AuthContext {
         AuthContext {
-            user_id:      Uuid::nil(),
-            tenant_id:    Uuid::nil(),
-            email:        "x@y".into(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            email: "x@y".into(),
             display_name: "x".into(),
-            roles:        roles.iter().map(|r| r.to_string()).collect(),
-            expires_at:   0,
-            acr:          None,
-            amr:          Vec::new(),
+            roles: roles.iter().map(|r| r.to_string()).collect(),
+            expires_at: 0,
+            acr: None,
+            amr: Vec::new(),
             govbr_cpf_hash: None,
             govbr_confiabilidades: Vec::new(),
         }
@@ -200,10 +212,22 @@ mod tests {
 
     #[test]
     fn realm_from_iss_extracts_last_segment() {
-        assert_eq!(super::realm_from_iss("https://kc/realms/acme"), Some("acme"));
-        assert_eq!(super::realm_from_iss("https://kc:8443/realms/acme/"), Some("acme"));
-        assert_eq!(super::realm_from_iss("http://kc:8080/realms/acme/protocol/openid-connect"), Some("acme"));
-        assert_eq!(super::realm_from_iss("https://kc/auth/realms/acme"), Some("acme"));
+        assert_eq!(
+            super::realm_from_iss("https://kc/realms/acme"),
+            Some("acme")
+        );
+        assert_eq!(
+            super::realm_from_iss("https://kc:8443/realms/acme/"),
+            Some("acme")
+        );
+        assert_eq!(
+            super::realm_from_iss("http://kc:8080/realms/acme/protocol/openid-connect"),
+            Some("acme")
+        );
+        assert_eq!(
+            super::realm_from_iss("https://kc/auth/realms/acme"),
+            Some("acme")
+        );
     }
 
     #[test]
@@ -222,12 +246,16 @@ mod tests {
             iss: format!("https://kc/realms/{tid}"),
             aud: AudClaim::One("expresso-web".into()),
             exp: 0,
-            email: None, preferred_username: None, name: None,
+            email: None,
+            preferred_username: None,
+            name: None,
             tenant_id: None,
             realm_access: None,
             resource_access: HashMap::new(),
-            acr: None, amr: None,
-            govbr_cpf_hash: None, govbr_confiabilidades: None,
+            acr: None,
+            amr: None,
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: None,
         };
         let c = AuthContext::from_raw(raw, "expresso-web").unwrap();
         assert_eq!(c.tenant_id, tid);
@@ -242,12 +270,16 @@ mod tests {
             iss: "https://kc/not-a-realm-url".into(),
             aud: AudClaim::One("expresso-web".into()),
             exp: 0,
-            email: None, preferred_username: None, name: None,
+            email: None,
+            preferred_username: None,
+            name: None,
             tenant_id: Some(tid.to_string()),
             realm_access: None,
             resource_access: HashMap::new(),
-            acr: None, amr: None,
-            govbr_cpf_hash: None, govbr_confiabilidades: None,
+            acr: None,
+            amr: None,
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: None,
         };
         let c = AuthContext::from_raw(raw, "expresso-web").unwrap();
         assert_eq!(c.tenant_id, tid);
@@ -261,12 +293,16 @@ mod tests {
             iss: "https://kc/realms/not-a-uuid".into(),
             aud: AudClaim::Empty,
             exp: 0,
-            email: None, preferred_username: None, name: None,
+            email: None,
+            preferred_username: None,
+            name: None,
             tenant_id: None,
             realm_access: None,
             resource_access: HashMap::new(),
-            acr: None, amr: None,
-            govbr_cpf_hash: None, govbr_confiabilidades: None,
+            acr: None,
+            amr: None,
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: None,
         };
         let r = AuthContext::from_raw(raw, "expresso-web");
         assert!(matches!(r, Err(AuthError::MissingClaim("tenant_id"))));
@@ -279,19 +315,27 @@ mod tests {
         let mut resource_access = HashMap::new();
         resource_access.insert(
             "expresso-web".into(),
-            RolesBlock { roles: vec!["editor".into(), "user".into()] },
+            RolesBlock {
+                roles: vec!["editor".into(), "user".into()],
+            },
         );
         let raw = RawClaims {
             sub: uid.to_string(),
             iss: format!("https://kc/realms/{tid}"),
             aud: AudClaim::One("expresso-web".into()),
             exp: 9_999_999,
-            email: None, preferred_username: None, name: None,
+            email: None,
+            preferred_username: None,
+            name: None,
             tenant_id: None,
-            realm_access: Some(RolesBlock { roles: vec!["user".into(), "viewer".into()] }),
+            realm_access: Some(RolesBlock {
+                roles: vec!["user".into(), "viewer".into()],
+            }),
             resource_access,
-            acr: None, amr: None,
-            govbr_cpf_hash: None, govbr_confiabilidades: None,
+            acr: None,
+            amr: None,
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: None,
         };
         let c = AuthContext::from_raw(raw, "expresso-web").unwrap();
         // "user" from realm_access; "editor" from resource_access; "user" deduped.
@@ -342,7 +386,10 @@ mod tests {
     #[test]
     fn realm_from_iss_handles_auth_prefix() {
         // Keycloak legacy path with /auth/realms/ prefix.
-        assert_eq!(super::realm_from_iss("https://sso.corp.com/auth/realms/corp"), Some("corp"));
+        assert_eq!(
+            super::realm_from_iss("https://sso.corp.com/auth/realms/corp"),
+            Some("corp")
+        );
     }
 
     #[test]
@@ -378,13 +425,16 @@ mod tests {
             iss: format!("https://kc/realms/{tid}"),
             aud: AudClaim::Empty,
             exp: 0,
-            email: None, preferred_username: Some("fallback".into()),
+            email: None,
+            preferred_username: Some("fallback".into()),
             name: Some("Full Name".into()),
             tenant_id: None,
             realm_access: None,
             resource_access: HashMap::new(),
-            acr: None, amr: None,
-            govbr_cpf_hash: None, govbr_confiabilidades: None,
+            acr: None,
+            amr: None,
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert_eq!(c.display_name, "Full Name");
@@ -405,8 +455,10 @@ mod tests {
             tenant_id: None,
             realm_access: None,
             resource_access: HashMap::new(),
-            acr: None, amr: None,
-            govbr_cpf_hash: None, govbr_confiabilidades: None,
+            acr: None,
+            amr: None,
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert_eq!(c.display_name, "alice_u");
@@ -428,12 +480,16 @@ mod tests {
             iss: format!("https://kc/realms/{tid}"),
             aud: AudClaim::Empty,
             exp: 0,
-            email: None, preferred_username: None, name: None,
+            email: None,
+            preferred_username: None,
+            name: None,
             tenant_id: None,
             realm_access: None,
             resource_access: HashMap::new(),
-            acr: None, amr: None,
-            govbr_cpf_hash: None, govbr_confiabilidades: None,
+            acr: None,
+            amr: None,
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert!(c.amr.is_empty());
@@ -455,7 +511,9 @@ mod tests {
             iss: format!("https://kc/realms/{tid}"),
             aud: AudClaim::Empty,
             exp: 0,
-            email: None, preferred_username: None, name: None,
+            email: None,
+            preferred_username: None,
+            name: None,
             tenant_id: None,
             realm_access: None,
             resource_access: HashMap::new(),

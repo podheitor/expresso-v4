@@ -14,19 +14,19 @@ use crate::error::{CalendarError, Result};
 /// Properties extracted from a single VEVENT.
 #[derive(Debug, Clone, Default)]
 pub struct ParsedEvent {
-    pub uid:             String,
-    pub summary:         Option<String>,
-    pub description:     Option<String>,
-    pub location:        Option<String>,
-    pub dtstart:         Option<OffsetDateTime>,
-    pub dtend:           Option<OffsetDateTime>,
-    pub dtstamp:         Option<OffsetDateTime>,
-    pub rrule:           Option<String>,
-    pub status:          Option<String>,
-    pub class:           Option<String>,
-    pub transp:          Option<String>,
+    pub uid: String,
+    pub summary: Option<String>,
+    pub description: Option<String>,
+    pub location: Option<String>,
+    pub dtstart: Option<OffsetDateTime>,
+    pub dtend: Option<OffsetDateTime>,
+    pub dtstamp: Option<OffsetDateTime>,
+    pub rrule: Option<String>,
+    pub status: Option<String>,
+    pub class: Option<String>,
+    pub transp: Option<String>,
     pub organizer_email: Option<String>,
-    pub sequence:        i32,
+    pub sequence: i32,
 }
 
 /// Parse minimal VEVENT properties from raw VCALENDAR text.
@@ -62,23 +62,23 @@ pub fn parse_vevent(raw: &str) -> Result<ParsedEvent> {
         };
         let (name, params) = match head.split_once(';') {
             Some((n, p)) => (n.to_ascii_uppercase(), Some(p)),
-            None         => (head.to_ascii_uppercase(), None),
+            None => (head.to_ascii_uppercase(), None),
         };
 
         match name.as_str() {
-            "UID"         => ev.uid = value.to_owned(),
-            "SUMMARY"     => ev.summary = Some(unescape_text(value)),
+            "UID" => ev.uid = value.to_owned(),
+            "SUMMARY" => ev.summary = Some(unescape_text(value)),
             "DESCRIPTION" => ev.description = Some(unescape_text(value)),
-            "LOCATION"    => ev.location = Some(unescape_text(value)),
-            "RRULE"       => ev.rrule = Some(value.to_owned()),
-            "STATUS"      => ev.status = Some(value.to_ascii_uppercase()),
-            "CLASS"       => ev.class  = Some(value.to_ascii_uppercase()),
-            "TRANSP"      => ev.transp = Some(value.to_ascii_uppercase()),
-            "ORGANIZER"   => ev.organizer_email = extract_mailto(value),
-            "SEQUENCE"    => ev.sequence = value.parse().unwrap_or(0),
-            "DTSTART"     => ev.dtstart = parse_dt(params, value),
-            "DTEND"       => ev.dtend   = parse_dt(params, value),
-            "DTSTAMP"     => ev.dtstamp = parse_dt(params, value),
+            "LOCATION" => ev.location = Some(unescape_text(value)),
+            "RRULE" => ev.rrule = Some(value.to_owned()),
+            "STATUS" => ev.status = Some(value.to_ascii_uppercase()),
+            "CLASS" => ev.class = Some(value.to_ascii_uppercase()),
+            "TRANSP" => ev.transp = Some(value.to_ascii_uppercase()),
+            "ORGANIZER" => ev.organizer_email = extract_mailto(value),
+            "SEQUENCE" => ev.sequence = value.parse().unwrap_or(0),
+            "DTSTART" => ev.dtstart = parse_dt(params, value),
+            "DTEND" => ev.dtend = parse_dt(params, value),
+            "DTSTAMP" => ev.dtstamp = parse_dt(params, value),
             _ => {}
         }
     }
@@ -128,11 +128,14 @@ fn unescape_text(v: &str) -> String {
         if c == '\\' {
             match chars.next() {
                 Some('n') | Some('N') => out.push('\n'),
-                Some(',')             => out.push(','),
-                Some(';')             => out.push(';'),
-                Some('\\')            => out.push('\\'),
-                Some(other)           => { out.push('\\'); out.push(other); }
-                None                  => out.push('\\'),
+                Some(',') => out.push(','),
+                Some(';') => out.push(';'),
+                Some('\\') => out.push('\\'),
+                Some(other) => {
+                    out.push('\\');
+                    out.push(other);
+                }
+                None => out.push('\\'),
             }
         } else {
             out.push(c);
@@ -239,7 +242,11 @@ pub fn extract_vevent_block(raw: &str) -> Option<String> {
             break;
         }
     }
-    if buf.is_empty() { None } else { Some(buf.join("\r\n")) }
+    if buf.is_empty() {
+        None
+    } else {
+        Some(buf.join("\r\n"))
+    }
 }
 
 /// Build a single VCALENDAR payload wrapping multiple VEVENT blocks (for export).
@@ -249,7 +256,9 @@ pub fn wrap_vcalendar(vevent_blocks: &[String]) -> String {
     let mut s = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Expresso//Export//EN\r\nCALSCALE:GREGORIAN\r\n");
     for b in vevent_blocks {
         s.push_str(b);
-        if !b.ends_with("\r\n") { s.push_str("\r\n"); }
+        if !b.ends_with("\r\n") {
+            s.push_str("\r\n");
+        }
     }
     s.push_str("END:VCALENDAR\r\n");
     s

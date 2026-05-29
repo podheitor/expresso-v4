@@ -19,53 +19,67 @@ use crate::error::Result;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
-pub enum ChannelKind { Team, Direct, Announcement, Project }
+pub enum ChannelKind {
+    Team,
+    Direct,
+    Announcement,
+    Project,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
-pub enum MemberRole { Owner, Admin, Member, Guest }
+pub enum MemberRole {
+    Owner,
+    Admin,
+    Member,
+    Guest,
+}
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Channel {
-    pub id:              Uuid,
-    pub tenant_id:       Uuid,
-    pub matrix_room_id:  String,
-    pub name:            String,
-    pub topic:           Option<String>,
-    pub kind:            ChannelKind,
-    pub team_id:         Option<Uuid>,
-    pub created_by:      Uuid,
-    pub is_archived:     bool,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub matrix_room_id: String,
+    pub name: String,
+    pub topic: Option<String>,
+    pub kind: ChannelKind,
+    pub team_id: Option<Uuid>,
+    pub created_by: Uuid,
+    pub is_archived: bool,
     #[serde(with = "time::serde::rfc3339")]
-    pub created_at:      OffsetDateTime,
+    pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    pub updated_at:      OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct ChannelMember {
     pub channel_id: Uuid,
-    pub tenant_id:  Uuid,
-    pub user_id:    Uuid,
-    pub role:       MemberRole,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub role: MemberRole,
     #[serde(with = "time::serde::rfc3339")]
-    pub joined_at:  OffsetDateTime,
+    pub joined_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct NewChannel {
     pub matrix_room_id: String,
-    pub name:           String,
-    pub topic:          Option<String>,
-    pub kind:           ChannelKind,
-    pub team_id:        Option<Uuid>,
+    pub name: String,
+    pub topic: Option<String>,
+    pub kind: ChannelKind,
+    pub team_id: Option<Uuid>,
 }
 
-pub struct ChannelRepo<'a> { pool: &'a DbPool }
+pub struct ChannelRepo<'a> {
+    pool: &'a DbPool,
+}
 
 impl<'a> ChannelRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     pub async fn create(&self, tenant: Uuid, owner: Uuid, n: NewChannel) -> Result<Channel> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
@@ -81,9 +95,13 @@ impl<'a> ChannelRepo<'a> {
         // here rolls back the channel insert (no orphan rooms).
         sqlx::query(
             r#"INSERT INTO chat_channel_members (channel_id, tenant_id, user_id, role)
-               VALUES ($1,$2,$3,'owner')"#)
-            .bind(row.id).bind(tenant).bind(owner)
-            .execute(&mut *tx).await?;
+               VALUES ($1,$2,$3,'owner')"#,
+        )
+        .bind(row.id)
+        .bind(tenant)
+        .bind(owner)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -96,9 +114,12 @@ impl<'a> ChannelRepo<'a> {
                FROM chat_channels c
                JOIN chat_channel_members m ON m.channel_id = c.id
                WHERE c.tenant_id = $1 AND m.user_id = $2 AND c.is_archived = FALSE
-               ORDER BY c.updated_at DESC"#)
-            .bind(tenant).bind(user)
-            .fetch_all(&mut *tx).await?;
+               ORDER BY c.updated_at DESC"#,
+        )
+        .bind(tenant)
+        .bind(user)
+        .fetch_all(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(rows)
     }
@@ -108,9 +129,12 @@ impl<'a> ChannelRepo<'a> {
         let row: Channel = sqlx::query_as(
             r#"SELECT id, tenant_id, matrix_room_id, name, topic, kind, team_id,
                       created_by, is_archived, created_at, updated_at
-               FROM chat_channels WHERE tenant_id=$1 AND id=$2"#)
-            .bind(tenant).bind(id)
-            .fetch_one(&mut *tx).await?;
+               FROM chat_channels WHERE tenant_id=$1 AND id=$2"#,
+        )
+        .bind(tenant)
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -124,9 +148,13 @@ impl<'a> ChannelRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let row: Option<(MemberRole,)> = sqlx::query_as(
             r#"SELECT role FROM chat_channel_members
-               WHERE tenant_id=$1 AND channel_id=$2 AND user_id=$3"#)
-            .bind(tenant).bind(channel).bind(user)
-            .fetch_optional(&mut *tx).await?;
+               WHERE tenant_id=$1 AND channel_id=$2 AND user_id=$3"#,
+        )
+        .bind(tenant)
+        .bind(channel)
+        .bind(user)
+        .fetch_optional(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row.map(|(r,)| r))
     }
@@ -135,21 +163,36 @@ impl<'a> ChannelRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let cnt: i64 = sqlx::query_scalar(
             r#"SELECT COUNT(*) FROM chat_channel_members
-               WHERE tenant_id=$1 AND channel_id=$2 AND user_id=$3"#)
-            .bind(tenant).bind(channel).bind(user)
-            .fetch_one(&mut *tx).await?;
+               WHERE tenant_id=$1 AND channel_id=$2 AND user_id=$3"#,
+        )
+        .bind(tenant)
+        .bind(channel)
+        .bind(user)
+        .fetch_one(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(cnt > 0)
     }
 
-    pub async fn add_member(&self, tenant: Uuid, channel: Uuid, user: Uuid, role: MemberRole) -> Result<()> {
+    pub async fn add_member(
+        &self,
+        tenant: Uuid,
+        channel: Uuid,
+        user: Uuid,
+        role: MemberRole,
+    ) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         sqlx::query(
             r#"INSERT INTO chat_channel_members (channel_id, tenant_id, user_id, role)
                VALUES ($1,$2,$3,$4)
-               ON CONFLICT (channel_id, user_id) DO UPDATE SET role = EXCLUDED.role"#)
-            .bind(channel).bind(tenant).bind(user).bind(role)
-            .execute(&mut *tx).await?;
+               ON CONFLICT (channel_id, user_id) DO UPDATE SET role = EXCLUDED.role"#,
+        )
+        .bind(channel)
+        .bind(tenant)
+        .bind(user)
+        .bind(role)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -158,18 +201,23 @@ impl<'a> ChannelRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows: Vec<ChannelMember> = sqlx::query_as(
             r#"SELECT channel_id, tenant_id, user_id, role, joined_at
-               FROM chat_channel_members WHERE tenant_id=$1 AND channel_id=$2"#)
-            .bind(tenant).bind(channel)
-            .fetch_all(&mut *tx).await?;
+               FROM chat_channel_members WHERE tenant_id=$1 AND channel_id=$2"#,
+        )
+        .bind(tenant)
+        .bind(channel)
+        .fetch_all(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(rows)
     }
 
     pub async fn archive(&self, tenant: Uuid, id: Uuid) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
-        sqlx::query(
-            r#"UPDATE chat_channels SET is_archived = TRUE WHERE tenant_id=$1 AND id=$2"#)
-            .bind(tenant).bind(id).execute(&mut *tx).await?;
+        sqlx::query(r#"UPDATE chat_channels SET is_archived = TRUE WHERE tenant_id=$1 AND id=$2"#)
+            .bind(tenant)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -181,7 +229,12 @@ mod tests {
 
     #[test]
     fn channel_kind_serde_roundtrip() {
-        for kind in [ChannelKind::Team, ChannelKind::Direct, ChannelKind::Announcement, ChannelKind::Project] {
+        for kind in [
+            ChannelKind::Team,
+            ChannelKind::Direct,
+            ChannelKind::Announcement,
+            ChannelKind::Project,
+        ] {
             let s = serde_json::to_string(&kind).unwrap();
             let back: ChannelKind = serde_json::from_str(&s).unwrap();
             assert_eq!(kind, back);
@@ -190,13 +243,24 @@ mod tests {
 
     #[test]
     fn channel_kind_serializes_lowercase() {
-        assert_eq!(serde_json::to_string(&ChannelKind::Team).unwrap(), r#""team""#);
-        assert_eq!(serde_json::to_string(&ChannelKind::Direct).unwrap(), r#""direct""#);
+        assert_eq!(
+            serde_json::to_string(&ChannelKind::Team).unwrap(),
+            r#""team""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ChannelKind::Direct).unwrap(),
+            r#""direct""#
+        );
     }
 
     #[test]
     fn member_role_serde_roundtrip() {
-        for role in [MemberRole::Owner, MemberRole::Admin, MemberRole::Member, MemberRole::Guest] {
+        for role in [
+            MemberRole::Owner,
+            MemberRole::Admin,
+            MemberRole::Member,
+            MemberRole::Guest,
+        ] {
             let s = serde_json::to_string(&role).unwrap();
             let back: MemberRole = serde_json::from_str(&s).unwrap();
             assert_eq!(role, back);
@@ -205,8 +269,14 @@ mod tests {
 
     #[test]
     fn member_role_serializes_lowercase() {
-        assert_eq!(serde_json::to_string(&MemberRole::Owner).unwrap(), r#""owner""#);
-        assert_eq!(serde_json::to_string(&MemberRole::Guest).unwrap(), r#""guest""#);
+        assert_eq!(
+            serde_json::to_string(&MemberRole::Owner).unwrap(),
+            r#""owner""#
+        );
+        assert_eq!(
+            serde_json::to_string(&MemberRole::Guest).unwrap(),
+            r#""guest""#
+        );
     }
 
     #[test]
@@ -241,32 +311,50 @@ mod tests {
 
     #[test]
     fn channel_kind_team_serializes() {
-        assert_eq!(serde_json::to_string(&ChannelKind::Team).unwrap(), r#""team""#);
+        assert_eq!(
+            serde_json::to_string(&ChannelKind::Team).unwrap(),
+            r#""team""#
+        );
     }
 
     #[test]
     fn channel_kind_direct_serializes() {
-        assert_eq!(serde_json::to_string(&ChannelKind::Direct).unwrap(), r#""direct""#);
+        assert_eq!(
+            serde_json::to_string(&ChannelKind::Direct).unwrap(),
+            r#""direct""#
+        );
     }
 
     #[test]
     fn member_role_guest_serializes() {
-        assert_eq!(serde_json::to_string(&MemberRole::Guest).unwrap(), r#""guest""#);
+        assert_eq!(
+            serde_json::to_string(&MemberRole::Guest).unwrap(),
+            r#""guest""#
+        );
     }
 
     #[test]
     fn member_role_owner_serializes() {
-        assert_eq!(serde_json::to_string(&MemberRole::Owner).unwrap(), r#""owner""#);
+        assert_eq!(
+            serde_json::to_string(&MemberRole::Owner).unwrap(),
+            r#""owner""#
+        );
     }
 
     #[test]
     fn channel_kind_announcement_serializes() {
-        assert_eq!(serde_json::to_string(&ChannelKind::Announcement).unwrap(), r#""announcement""#);
+        assert_eq!(
+            serde_json::to_string(&ChannelKind::Announcement).unwrap(),
+            r#""announcement""#
+        );
     }
 
     #[test]
     fn member_role_admin_serializes() {
-        assert_eq!(serde_json::to_string(&MemberRole::Admin).unwrap(), r#""admin""#);
+        assert_eq!(
+            serde_json::to_string(&MemberRole::Admin).unwrap(),
+            r#""admin""#
+        );
     }
 
     #[test]

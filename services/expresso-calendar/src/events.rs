@@ -39,48 +39,48 @@ const BUS_CAPACITY: usize = 1024;
 pub enum Event {
     EventCreated {
         tenant_id: Uuid,
-        event_id:  Uuid,
-        summary:   Option<String>,
+        event_id: Uuid,
+        summary: Option<String>,
     },
     EventUpdated {
         tenant_id: Uuid,
-        event_id:  Uuid,
-        summary:   Option<String>,
-        sequence:  i32,
+        event_id: Uuid,
+        summary: Option<String>,
+        sequence: i32,
     },
     EventCancelled {
         tenant_id: Uuid,
-        event_id:  Uuid,
+        event_id: Uuid,
     },
     CounterReceived {
-        tenant_id:      Uuid,
-        event_id:       Uuid,
-        proposal_id:    Uuid,
+        tenant_id: Uuid,
+        event_id: Uuid,
+        proposal_id: Uuid,
         attendee_email: String,
         /// Free-form rationale parsed from the iCal COMMENT property
         /// (RFC 5546 §3.2.7 + RFC 5545 §3.8.1.4). Skipped from the JSON
         /// envelope when absent so older SSE/JetStream consumers that
         /// don't know the field stay forward-compatible.
         #[serde(skip_serializing_if = "Option::is_none")]
-        comment:        Option<String>,
+        comment: Option<String>,
     },
 }
 
 impl Event {
     pub fn tenant_id(&self) -> Uuid {
         match self {
-            Event::EventCreated    { tenant_id, .. } => *tenant_id,
-            Event::EventUpdated    { tenant_id, .. } => *tenant_id,
-            Event::EventCancelled  { tenant_id, .. } => *tenant_id,
+            Event::EventCreated { tenant_id, .. } => *tenant_id,
+            Event::EventUpdated { tenant_id, .. } => *tenant_id,
+            Event::EventCancelled { tenant_id, .. } => *tenant_id,
             Event::CounterReceived { tenant_id, .. } => *tenant_id,
         }
     }
 
     pub fn kind_str(&self) -> &'static str {
         match self {
-            Event::EventCreated    { .. } => "event_created",
-            Event::EventUpdated    { .. } => "event_updated",
-            Event::EventCancelled  { .. } => "event_cancelled",
+            Event::EventCreated { .. } => "event_created",
+            Event::EventUpdated { .. } => "event_updated",
+            Event::EventCancelled { .. } => "event_cancelled",
             Event::CounterReceived { .. } => "counter_received",
         }
     }
@@ -96,7 +96,10 @@ pub struct EventBus {
 impl EventBus {
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel(BUS_CAPACITY);
-        Self { tx, jetstream: None }
+        Self {
+            tx,
+            jetstream: None,
+        }
     }
 
     /// Connect to NATS, ensure stream, return bus with JetStream publishing enabled.
@@ -111,17 +114,28 @@ impl EventBus {
             max_age: std::time::Duration::from_secs(60 * 60 * 24 * 7),
             ..Default::default()
         };
-        js.get_or_create_stream(cfg).await
+        js.get_or_create_stream(cfg)
+            .await
             .map_err(|e| anyhow::anyhow!("jetstream ensure: {e}"))?;
         Lazy::force(&NATS_PUBLISH_TOTAL);
         // Pre-populate zero-valued series so rate() works before first publish.
-        for kind in ["event_created","event_updated","event_cancelled","counter_received"] {
-            for result in ["ok","err","serialize_err"] {
-                NATS_PUBLISH_TOTAL.with_label_values(&[kind, result]).inc_by(0);
+        for kind in [
+            "event_created",
+            "event_updated",
+            "event_cancelled",
+            "counter_received",
+        ] {
+            for result in ["ok", "err", "serialize_err"] {
+                NATS_PUBLISH_TOTAL
+                    .with_label_values(&[kind, result])
+                    .inc_by(0);
             }
         }
         tracing::info!(nats_url=%url, "jetstream EXPRESSO_CALENDAR ready");
-        Ok(Self { tx, jetstream: Some(js) })
+        Ok(Self {
+            tx,
+            jetstream: Some(js),
+        })
     }
 
     /// Best-effort publish to broadcast + (optional) JetStream.
@@ -132,26 +146,25 @@ impl EventBus {
             let subject = format!("expresso.calendar.{}.{}", ev.tenant_id(), kind);
             tokio::spawn(async move {
                 match serde_json::to_vec(&ev) {
-                    Ok(payload) => {
-                        match js.publish(subject.clone(), payload.into()).await {
-                            Ok(_) => {
-                                NATS_PUBLISH_TOTAL.with_label_values(&[kind, "ok"]).inc();
-                            }
-                            Err(e) => {
-                                NATS_PUBLISH_TOTAL.with_label_values(&[kind, "err"]).inc();
-                                tracing::warn!(error=%e, %subject, "nats publish failed");
-                            }
+                    Ok(payload) => match js.publish(subject.clone(), payload.into()).await {
+                        Ok(_) => {
+                            NATS_PUBLISH_TOTAL.with_label_values(&[kind, "ok"]).inc();
                         }
-                    }
+                        Err(e) => {
+                            NATS_PUBLISH_TOTAL.with_label_values(&[kind, "err"]).inc();
+                            tracing::warn!(error=%e, %subject, "nats publish failed");
+                        }
+                    },
                     Err(e) => {
-                        NATS_PUBLISH_TOTAL.with_label_values(&[kind, "serialize_err"]).inc();
+                        NATS_PUBLISH_TOTAL
+                            .with_label_values(&[kind, "serialize_err"])
+                            .inc();
                         tracing::warn!(error=%e, "event serialize failed");
                     }
                 }
             });
         }
     }
-
 
     /// Publish iMIP envelope to `expresso.imip.request` for the given stored event.
     /// Fire-and-forget; silently skipped when JetStream not connected or event
@@ -173,34 +186,53 @@ impl EventBus {
 }
 
 impl Default for EventBus {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn tid() -> Uuid { Uuid::new_v4() }
-    fn eid() -> Uuid { Uuid::new_v4() }
+    fn tid() -> Uuid {
+        Uuid::new_v4()
+    }
+    fn eid() -> Uuid {
+        Uuid::new_v4()
+    }
 
     #[test]
     fn event_created_tenant_id() {
-        let t = tid(); let e = eid();
-        let ev = Event::EventCreated { tenant_id: t, event_id: e, summary: None };
+        let t = tid();
+        let e = eid();
+        let ev = Event::EventCreated {
+            tenant_id: t,
+            event_id: e,
+            summary: None,
+        };
         assert_eq!(ev.tenant_id(), t);
     }
 
     #[test]
     fn event_updated_tenant_id() {
         let t = tid();
-        let ev = Event::EventUpdated { tenant_id: t, event_id: eid(), summary: None, sequence: 1 };
+        let ev = Event::EventUpdated {
+            tenant_id: t,
+            event_id: eid(),
+            summary: None,
+            sequence: 1,
+        };
         assert_eq!(ev.tenant_id(), t);
     }
 
     #[test]
     fn event_cancelled_tenant_id() {
         let t = tid();
-        let ev = Event::EventCancelled { tenant_id: t, event_id: eid() };
+        let ev = Event::EventCancelled {
+            tenant_id: t,
+            event_id: eid(),
+        };
         assert_eq!(ev.tenant_id(), t);
     }
 
@@ -208,26 +240,64 @@ mod tests {
     fn counter_received_tenant_id() {
         let t = tid();
         let ev = Event::CounterReceived {
-            tenant_id: t, event_id: eid(), proposal_id: eid(),
-            attendee_email: "a@b.com".into(), comment: None,
+            tenant_id: t,
+            event_id: eid(),
+            proposal_id: eid(),
+            attendee_email: "a@b.com".into(),
+            comment: None,
         };
         assert_eq!(ev.tenant_id(), t);
     }
 
     #[test]
     fn kind_str_values() {
-        assert_eq!(Event::EventCreated    { tenant_id: tid(), event_id: eid(), summary: None }.kind_str(), "event_created");
-        assert_eq!(Event::EventUpdated    { tenant_id: tid(), event_id: eid(), summary: None, sequence: 0 }.kind_str(), "event_updated");
-        assert_eq!(Event::EventCancelled  { tenant_id: tid(), event_id: eid() }.kind_str(), "event_cancelled");
-        assert_eq!(Event::CounterReceived {
-            tenant_id: tid(), event_id: eid(), proposal_id: eid(),
-            attendee_email: "x@y".into(), comment: None,
-        }.kind_str(), "counter_received");
+        assert_eq!(
+            Event::EventCreated {
+                tenant_id: tid(),
+                event_id: eid(),
+                summary: None
+            }
+            .kind_str(),
+            "event_created"
+        );
+        assert_eq!(
+            Event::EventUpdated {
+                tenant_id: tid(),
+                event_id: eid(),
+                summary: None,
+                sequence: 0
+            }
+            .kind_str(),
+            "event_updated"
+        );
+        assert_eq!(
+            Event::EventCancelled {
+                tenant_id: tid(),
+                event_id: eid()
+            }
+            .kind_str(),
+            "event_cancelled"
+        );
+        assert_eq!(
+            Event::CounterReceived {
+                tenant_id: tid(),
+                event_id: eid(),
+                proposal_id: eid(),
+                attendee_email: "x@y".into(),
+                comment: None,
+            }
+            .kind_str(),
+            "counter_received"
+        );
     }
 
     #[test]
     fn event_created_serializes_tag() {
-        let ev = Event::EventCreated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None };
+        let ev = Event::EventCreated {
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            summary: None,
+        };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains(r#""kind":"event_created""#));
     }
@@ -235,8 +305,11 @@ mod tests {
     #[test]
     fn counter_received_comment_skipped_when_none() {
         let ev = Event::CounterReceived {
-            tenant_id: Uuid::nil(), event_id: Uuid::nil(), proposal_id: Uuid::nil(),
-            attendee_email: "a@b.com".into(), comment: None,
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            proposal_id: Uuid::nil(),
+            attendee_email: "a@b.com".into(),
+            comment: None,
         };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(!s.contains("comment"));
@@ -245,8 +318,11 @@ mod tests {
     #[test]
     fn counter_received_comment_present_when_some() {
         let ev = Event::CounterReceived {
-            tenant_id: Uuid::nil(), event_id: Uuid::nil(), proposal_id: Uuid::nil(),
-            attendee_email: "a@b.com".into(), comment: Some("later?".into()),
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            proposal_id: Uuid::nil(),
+            attendee_email: "a@b.com".into(),
+            comment: Some("later?".into()),
         };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("comment") && s.contains("later?"));
@@ -255,8 +331,11 @@ mod tests {
     #[test]
     fn counter_received_event_contains_attendee_email() {
         let ev = Event::CounterReceived {
-            tenant_id: Uuid::nil(), event_id: Uuid::nil(), proposal_id: Uuid::nil(),
-            attendee_email: "organizer@corp.com".into(), comment: None,
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            proposal_id: Uuid::nil(),
+            attendee_email: "organizer@corp.com".into(),
+            comment: None,
         };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("organizer@corp.com"));
@@ -264,25 +343,41 @@ mod tests {
 
     #[test]
     fn event_created_kind_str_is_event_created() {
-        let ev = Event::EventCreated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None };
+        let ev = Event::EventCreated {
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            summary: None,
+        };
         assert_eq!(ev.kind_str(), "event_created");
     }
 
     #[test]
     fn event_updated_kind_str_is_event_updated() {
-        let ev = Event::EventUpdated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None, sequence: 0 };
+        let ev = Event::EventUpdated {
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            summary: None,
+            sequence: 0,
+        };
         assert_eq!(ev.kind_str(), "event_updated");
     }
 
     #[test]
     fn event_created_kind_str_second_instance_is_event_created() {
-        let ev = Event::EventCreated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None };
+        let ev = Event::EventCreated {
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            summary: None,
+        };
         assert_eq!(ev.kind_str(), "event_created");
     }
 
     #[test]
     fn event_cancelled_kind_str() {
-        let ev = Event::EventCancelled { tenant_id: Uuid::nil(), event_id: Uuid::nil() };
+        let ev = Event::EventCancelled {
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+        };
         assert_eq!(ev.kind_str(), "event_cancelled");
     }
 
@@ -301,13 +396,19 @@ mod tests {
     #[test]
     fn event_cancelled_tenant_id_accessible() {
         let t = Uuid::nil();
-        let ev = Event::EventCancelled { tenant_id: t, event_id: Uuid::nil() };
+        let ev = Event::EventCancelled {
+            tenant_id: t,
+            event_id: Uuid::nil(),
+        };
         assert_eq!(ev.tenant_id(), t);
     }
 
     #[test]
     fn event_cancelled_kind_str_is_event_cancelled() {
-        let ev = Event::EventCancelled { tenant_id: Uuid::nil(), event_id: Uuid::nil() };
+        let ev = Event::EventCancelled {
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+        };
         assert_eq!(ev.kind_str(), "event_cancelled");
     }
 
@@ -335,19 +436,31 @@ mod tests {
 
     #[test]
     fn event_created_kind_str_ne_counter_received() {
-        let e = Event::EventCreated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None };
+        let e = Event::EventCreated {
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            summary: None,
+        };
         assert_ne!(e.kind_str(), "counter_received");
     }
 
     #[test]
     fn event_updated_kind_str_ne_event_created() {
-        let e = Event::EventUpdated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None, sequence: 0 };
+        let e = Event::EventUpdated {
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            summary: None,
+            sequence: 0,
+        };
         assert_ne!(e.kind_str(), "event_created");
     }
 
     #[test]
     fn event_cancelled_kind_str_ne_event_updated() {
-        let e = Event::EventCancelled { tenant_id: Uuid::nil(), event_id: Uuid::nil() };
+        let e = Event::EventCancelled {
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+        };
         assert_ne!(e.kind_str(), "event_updated");
     }
 

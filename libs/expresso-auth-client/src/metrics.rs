@@ -5,9 +5,7 @@
 //! Gauge:   `auth_realm_cache_size` — validators cached in MultiRealmValidator.
 
 use once_cell::sync::Lazy;
-use prometheus::{
-    register_int_counter_vec, register_int_gauge, IntCounterVec, IntGauge,
-};
+use prometheus::{register_int_counter_vec, register_int_gauge, IntCounterVec, IntGauge};
 
 pub static VALIDATION_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     register_int_counter_vec!(
@@ -30,14 +28,14 @@ pub static REALM_CACHE_SIZE: Lazy<IntGauge> = Lazy::new(|| {
 pub fn result_label(err: &crate::error::AuthError) -> &'static str {
     use crate::error::AuthError::*;
     match err {
-        Expired            => "expired",
-        MissingBearer      => "missing_bearer",
-        InvalidToken(_)    => "invalid",
-        KidNotFound(_)     => "unknown_key",
+        Expired => "expired",
+        MissingBearer => "missing_bearer",
+        InvalidToken(_) => "invalid",
+        KidNotFound(_) => "unknown_key",
         MalformedClaim(..) => "malformed",
-        MissingClaim(_)    => "forbidden",
-        Config(_)          => "misconfigured",
-        JwksFetch(_)       => "jwks_fetch",
+        MissingClaim(_) => "forbidden",
+        Config(_) => "misconfigured",
+        JwksFetch(_) => "jwks_fetch",
     }
 }
 
@@ -58,17 +56,26 @@ mod tests {
 
     #[test]
     fn result_label_invalid_token() {
-        assert_eq!(result_label(&AuthError::InvalidToken("bad sig".into())), "invalid");
+        assert_eq!(
+            result_label(&AuthError::InvalidToken("bad sig".into())),
+            "invalid"
+        );
     }
 
     #[test]
     fn result_label_kid_not_found() {
-        assert_eq!(result_label(&AuthError::KidNotFound(Some("k1".into()))), "unknown_key");
+        assert_eq!(
+            result_label(&AuthError::KidNotFound(Some("k1".into()))),
+            "unknown_key"
+        );
     }
 
     #[test]
     fn result_label_malformed_claim() {
-        assert_eq!(result_label(&AuthError::MalformedClaim("exp", "nan".into())), "malformed");
+        assert_eq!(
+            result_label(&AuthError::MalformedClaim("exp", "nan".into())),
+            "malformed"
+        );
     }
 
     #[test]
@@ -78,12 +85,18 @@ mod tests {
 
     #[test]
     fn result_label_config() {
-        assert_eq!(result_label(&AuthError::Config("bad url".into())), "misconfigured");
+        assert_eq!(
+            result_label(&AuthError::Config("bad url".into())),
+            "misconfigured"
+        );
     }
 
     #[test]
     fn result_label_jwks_fetch() {
-        assert_eq!(result_label(&AuthError::JwksFetch("timeout".into())), "jwks_fetch");
+        assert_eq!(
+            result_label(&AuthError::JwksFetch("timeout".into())),
+            "jwks_fetch"
+        );
     }
 
     #[test]
@@ -110,17 +123,26 @@ mod tests {
 
     #[test]
     fn result_label_malformed_claim_maps_malformed() {
-        assert_eq!(result_label(&AuthError::MalformedClaim("iat", "not-a-number".into())), "malformed");
+        assert_eq!(
+            result_label(&AuthError::MalformedClaim("iat", "not-a-number".into())),
+            "malformed"
+        );
     }
 
     #[test]
     fn result_label_config_maps_misconfigured() {
-        assert_eq!(result_label(&AuthError::Config("bad jwks url".into())), "misconfigured");
+        assert_eq!(
+            result_label(&AuthError::Config("bad jwks url".into())),
+            "misconfigured"
+        );
     }
 
     #[test]
     fn result_label_jwks_fetch_maps_jwks_fetch() {
-        assert_eq!(result_label(&AuthError::JwksFetch("timeout".into())), "jwks_fetch");
+        assert_eq!(
+            result_label(&AuthError::JwksFetch("timeout".into())),
+            "jwks_fetch"
+        );
     }
 
     #[test]
@@ -130,7 +152,10 @@ mod tests {
 
     #[test]
     fn result_label_missing_claim_maps_forbidden() {
-        assert_eq!(result_label(&AuthError::MissingClaim("tenant_id")), "forbidden");
+        assert_eq!(
+            result_label(&AuthError::MissingClaim("tenant_id")),
+            "forbidden"
+        );
     }
 
     #[test]
@@ -145,12 +170,18 @@ mod tests {
 
     #[test]
     fn result_label_kid_not_found_some_is_unknown_key() {
-        assert_eq!(result_label(&AuthError::KidNotFound(Some("k1".into()))), "unknown_key");
+        assert_eq!(
+            result_label(&AuthError::KidNotFound(Some("k1".into()))),
+            "unknown_key"
+        );
     }
 
     #[test]
     fn result_label_invalid_token_is_invalid() {
-        assert_eq!(result_label(&AuthError::InvalidToken("x".into())), "invalid");
+        assert_eq!(
+            result_label(&AuthError::InvalidToken("x".into())),
+            "invalid"
+        );
     }
 
     #[test]
@@ -165,7 +196,9 @@ mod tests {
             result_label(&AuthError::Config("c".into())),
             result_label(&AuthError::JwksFetch("e".into())),
         ];
-        for l in labels { assert!(!l.is_empty()); }
+        for l in labels {
+            assert!(!l.is_empty());
+        }
     }
 
     #[test]

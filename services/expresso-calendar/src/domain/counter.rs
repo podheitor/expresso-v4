@@ -24,41 +24,45 @@ use crate::error::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct CounterProposal {
-    pub id:                Uuid,
-    pub tenant_id:         Uuid,
-    pub event_id:          Uuid,
-    pub attendee_email:    String,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub event_id: Uuid,
+    pub attendee_email: String,
     #[serde(with = "time::serde::rfc3339::option")]
-    pub proposed_dtstart:  Option<OffsetDateTime>,
+    pub proposed_dtstart: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option")]
-    pub proposed_dtend:    Option<OffsetDateTime>,
-    pub comment:           Option<String>,
-    pub status:            String,
+    pub proposed_dtend: Option<OffsetDateTime>,
+    pub comment: Option<String>,
+    pub status: String,
     pub received_sequence: Option<i32>,
     #[serde(with = "time::serde::rfc3339")]
-    pub created_at:        OffsetDateTime,
+    pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339::option")]
-    pub resolved_at:       Option<OffsetDateTime>,
-    pub resolved_by:       Option<Uuid>,
+    pub resolved_at: Option<OffsetDateTime>,
+    pub resolved_by: Option<Uuid>,
 }
 
-pub struct CounterRepo<'a> { pool: &'a PgPool }
+pub struct CounterRepo<'a> {
+    pool: &'a PgPool,
+}
 
 impl<'a> CounterRepo<'a> {
-    pub fn new(pool: &'a PgPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a PgPool) -> Self {
+        Self { pool }
+    }
 
     /// Insert a new pending proposal.
     #[allow(clippy::too_many_arguments)]
     pub async fn insert(
         &self,
-        tenant_id:         Uuid,
-        event_id:          Uuid,
-        attendee_email:    &str,
-        proposed_dtstart:  Option<OffsetDateTime>,
-        proposed_dtend:    Option<OffsetDateTime>,
-        comment:           Option<&str>,
+        tenant_id: Uuid,
+        event_id: Uuid,
+        attendee_email: &str,
+        proposed_dtstart: Option<OffsetDateTime>,
+        proposed_dtend: Option<OffsetDateTime>,
+        comment: Option<&str>,
         received_sequence: Option<i32>,
-        raw_ical:          Option<&str>,
+        raw_ical: Option<&str>,
     ) -> Result<CounterProposal> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let p = sqlx::query_as::<_, CounterProposal>(
@@ -80,7 +84,8 @@ impl<'a> CounterRepo<'a> {
         .bind(comment)
         .bind(received_sequence)
         .bind(raw_ical)
-        .fetch_one(&mut *tx).await?;
+        .fetch_one(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(p)
     }
@@ -101,7 +106,8 @@ impl<'a> CounterRepo<'a> {
         )
         .bind(tenant_id)
         .bind(limit)
-        .fetch_all(&mut *tx).await?;
+        .fetch_all(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(rows)
     }
@@ -120,7 +126,8 @@ impl<'a> CounterRepo<'a> {
         )
         .bind(tenant_id)
         .bind(id)
-        .fetch_optional(&mut *tx).await?;
+        .fetch_optional(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(r)
     }
@@ -128,7 +135,13 @@ impl<'a> CounterRepo<'a> {
     /// Mark proposal as resolved (accepted or rejected).
     /// API: `tenant_id` now required (was missing — no guardrail on cross-tenant
     /// id collisions). Sem call sites externos no momento.
-    pub async fn resolve(&self, tenant_id: Uuid, id: Uuid, new_status: &str, resolved_by: Option<Uuid>) -> Result<()> {
+    pub async fn resolve(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        new_status: &str,
+        resolved_by: Option<Uuid>,
+    ) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         sqlx::query(
             r#"UPDATE scheduling_counter_proposals
@@ -139,7 +152,8 @@ impl<'a> CounterRepo<'a> {
         .bind(id)
         .bind(new_status)
         .bind(resolved_by)
-        .execute(&mut *tx).await?;
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -153,18 +167,18 @@ mod tests {
     #[test]
     fn counter_proposal_serde_roundtrip() {
         let p = CounterProposal {
-            id:                Uuid::nil(),
-            tenant_id:         Uuid::nil(),
-            event_id:          Uuid::nil(),
-            attendee_email:    "att@example.com".into(),
-            proposed_dtstart:  Some(datetime!(2026-06-02 10:00:00 UTC)),
-            proposed_dtend:    Some(datetime!(2026-06-02 11:00:00 UTC)),
-            comment:           Some("Can we push it?".into()),
-            status:            "pending".into(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            attendee_email: "att@example.com".into(),
+            proposed_dtstart: Some(datetime!(2026-06-02 10:00:00 UTC)),
+            proposed_dtend: Some(datetime!(2026-06-02 11:00:00 UTC)),
+            comment: Some("Can we push it?".into()),
+            status: "pending".into(),
             received_sequence: Some(1),
-            created_at:        datetime!(2026-05-22 08:00:00 UTC),
-            resolved_at:       None,
-            resolved_by:       None,
+            created_at: datetime!(2026-05-22 08:00:00 UTC),
+            resolved_at: None,
+            resolved_by: None,
         };
         let s = serde_json::to_string(&p).unwrap();
         let back: CounterProposal = serde_json::from_str(&s).unwrap();
@@ -176,11 +190,15 @@ mod tests {
     #[test]
     fn counter_proposal_proposed_dtstart_in_rfc3339() {
         let p = CounterProposal {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
             attendee_email: "a@b.com".into(),
             proposed_dtstart: Some(datetime!(2026-07-01 14:00:00 UTC)),
-            proposed_dtend:   None, comment: None,
-            status: "accepted".into(), received_sequence: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "accepted".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 08:00:00 UTC),
             resolved_at: Some(datetime!(2026-05-23 09:00:00 UTC)),
             resolved_by: Some(Uuid::nil()),
@@ -195,12 +213,18 @@ mod tests {
         // The INSERT always writes status='pending'; verify that a freshly-
         // constructed struct carries the expected string value.
         let p = CounterProposal {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
             attendee_email: "x@x.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert_eq!(p.status, "pending");
     }
@@ -208,14 +232,21 @@ mod tests {
     #[test]
     fn counter_proposal_no_proposed_times_null_in_json() {
         let p = CounterProposal {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
             attendee_email: "y@x.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
-        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
         assert!(v["proposed_dtstart"].is_null());
         assert!(v["proposed_dtend"].is_null());
     }
@@ -223,13 +254,18 @@ mod tests {
     #[test]
     fn counter_proposal_comment_optional() {
         let p = CounterProposal {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
             attendee_email: "z@x.com".into(),
-            proposed_dtstart: None, proposed_dtend: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
             comment: Some("Please reschedule".into()),
-            status: "pending".into(), received_sequence: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert_eq!(p.comment.as_deref(), Some("Please reschedule"));
     }
@@ -237,12 +273,18 @@ mod tests {
     #[test]
     fn counter_proposal_resolved_by_none() {
         let p = CounterProposal {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
             attendee_email: "w@x.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "resolved".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "resolved".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert!(p.resolved_by.is_none());
     }
@@ -250,12 +292,18 @@ mod tests {
     #[test]
     fn counter_proposal_status_field_accessible() {
         let p = CounterProposal {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
             attendee_email: "a@b.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert_eq!(p.status, "pending");
     }
@@ -263,12 +311,18 @@ mod tests {
     #[test]
     fn counter_proposal_email_unicode() {
         let p = CounterProposal {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
             attendee_email: "usuário@empresa.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "new".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "new".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert!(p.attendee_email.contains("usuário"));
     }
@@ -276,12 +330,18 @@ mod tests {
     #[test]
     fn counter_proposal_status_preserved() {
         let p = CounterProposal {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
             attendee_email: "a@ex.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "accepted".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "accepted".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert_eq!(p.status, "accepted");
     }
@@ -290,12 +350,18 @@ mod tests {
     fn counter_proposal_comment_none_by_default() {
         use time::macros::datetime;
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             attendee_email: "a@x.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-06-01 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert!(p.comment.is_none());
     }
@@ -304,12 +370,18 @@ mod tests {
     fn counter_proposal_status_pending_by_default() {
         use time::macros::datetime;
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             attendee_email: "a@x.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-06-01 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert_eq!(p.status, "pending");
     }
@@ -318,12 +390,18 @@ mod tests {
     fn counter_proposal_received_sequence_preserved() {
         use time::macros::datetime;
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             attendee_email: "b@x.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: Some(3),
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: Some(3),
             created_at: datetime!(2026-06-01 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert_eq!(p.received_sequence, Some(3));
     }
@@ -332,12 +410,18 @@ mod tests {
     fn counter_proposal_attendee_email_preserved() {
         use time::macros::datetime;
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             attendee_email: "attendee@example.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-06-01 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert_eq!(p.attendee_email, "attendee@example.com");
     }
@@ -346,12 +430,18 @@ mod tests {
     fn counter_proposal_resolved_by_none_by_default() {
         use time::macros::datetime;
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             attendee_email: "c@d.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-06-01 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert!(p.resolved_by.is_none());
     }
@@ -360,12 +450,18 @@ mod tests {
     fn counter_proposal_status_pending_preserved() {
         use time::macros::datetime;
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             attendee_email: "a@ex.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert_eq!(p.status, "pending");
     }
@@ -374,13 +470,18 @@ mod tests {
     fn counter_proposal_comment_preserved_when_set() {
         use time::macros::datetime;
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             attendee_email: "z@ex.com".into(),
-            proposed_dtstart: None, proposed_dtend: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
             comment: Some("Please shift by one hour".into()),
-            status: "pending".into(), received_sequence: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert_eq!(p.comment.as_deref(), Some("Please shift by one hour"));
     }
@@ -390,12 +491,18 @@ mod tests {
         use time::macros::datetime;
         let tid = Uuid::nil();
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: tid,
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: tid,
             attendee_email: "x@x.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert_eq!(p.tenant_id, tid);
     }
@@ -405,12 +512,18 @@ mod tests {
         use time::macros::datetime;
         let eid = Uuid::nil();
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: eid, tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: eid,
+            tenant_id: Uuid::nil(),
             attendee_email: "e@e.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert_eq!(p.event_id, eid);
     }
@@ -419,12 +532,18 @@ mod tests {
     fn counter_proposal_received_sequence_none_by_default() {
         use time::macros::datetime;
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             attendee_email: "a@b.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert!(p.received_sequence.is_none());
     }
@@ -433,12 +552,18 @@ mod tests {
     fn counter_proposal_resolved_at_none_by_default() {
         use time::macros::datetime;
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             attendee_email: "z@z.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert!(p.resolved_at.is_none());
     }
@@ -447,12 +572,18 @@ mod tests {
     fn counter_proposal_resolved_by_none_preserved() {
         use time::macros::datetime;
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             attendee_email: "a@b.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert!(p.resolved_by.is_none());
     }
@@ -461,12 +592,18 @@ mod tests {
     fn counter_proposal_received_sequence_some_preserved() {
         use time::macros::datetime;
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             attendee_email: "x@y.com".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: Some(3),
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: Some(3),
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert_eq!(p.received_sequence, Some(3));
     }
@@ -475,12 +612,18 @@ mod tests {
     fn counter_proposal_attendee_email_not_empty() {
         use time::macros::datetime;
         let p = CounterProposal {
-            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             attendee_email: "attendee@corp.example".into(),
-            proposed_dtstart: None, proposed_dtend: None, comment: None,
-            status: "pending".into(), received_sequence: None,
+            proposed_dtstart: None,
+            proposed_dtend: None,
+            comment: None,
+            status: "pending".into(),
+            received_sequence: None,
             created_at: datetime!(2026-05-22 00:00:00 UTC),
-            resolved_at: None, resolved_by: None,
+            resolved_at: None,
+            resolved_by: None,
         };
         assert!(!p.attendee_email.is_empty());
     }

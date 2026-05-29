@@ -29,7 +29,13 @@ static IMIP_PUBLISH_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
 pub fn init_metrics() {
     Lazy::force(&IMIP_PUBLISH_TOTAL);
     for m in ["REQUEST", "CANCEL"] {
-        for r in ["ok", "err", "serialize_err", "skipped_no_attendees", "skipped_no_times"] {
+        for r in [
+            "ok",
+            "err",
+            "serialize_err",
+            "skipped_no_attendees",
+            "skipped_no_times",
+        ] {
             IMIP_PUBLISH_TOTAL.with_label_values(&[m, r]).inc_by(0);
         }
     }
@@ -77,29 +83,38 @@ pub fn build_envelope_bytes(
 ) -> Result<Option<Vec<u8>>, serde_json::Error> {
     let attendees = itip::parse_attendees(&ev.ical_raw);
     if attendees.is_empty() {
-        IMIP_PUBLISH_TOTAL.with_label_values(&[method, "skipped_no_attendees"]).inc();
+        IMIP_PUBLISH_TOTAL
+            .with_label_values(&[method, "skipped_no_attendees"])
+            .inc();
         return Ok(None);
     }
     let (Some(dtstart), Some(dtend)) = (ev.dtstart, ev.dtend) else {
-        IMIP_PUBLISH_TOTAL.with_label_values(&[method, "skipped_no_times"]).inc();
+        IMIP_PUBLISH_TOTAL
+            .with_label_values(&[method, "skipped_no_times"])
+            .inc();
         return Ok(None);
     };
     let Some(organizer_email) = ev.organizer_email.as_deref() else {
-        IMIP_PUBLISH_TOTAL.with_label_values(&[method, "skipped_no_times"]).inc();
+        IMIP_PUBLISH_TOTAL
+            .with_label_values(&[method, "skipped_no_times"])
+            .inc();
         return Ok(None);
     };
 
     let summary = ev.summary.as_deref().unwrap_or("(sem título)");
     let subject_hint = Some(match method {
         "CANCEL" => format!("Cancelado: {summary}"),
-        _        => format!("Convite: {summary}"),
+        _ => format!("Convite: {summary}"),
     });
 
-    let attendees_wire: Vec<AttendeeWire> = attendees.iter().map(|a| AttendeeWire {
-        email: &a.email,
-        common_name: a.cn.as_deref(),
-        rsvp: a.rsvp.unwrap_or(true),
-    }).collect();
+    let attendees_wire: Vec<AttendeeWire> = attendees
+        .iter()
+        .map(|a| AttendeeWire {
+            email: &a.email,
+            common_name: a.cn.as_deref(),
+            rsvp: a.rsvp.unwrap_or(true),
+        })
+        .collect();
 
     let invite = InviteWire {
         uid: &ev.uid,
@@ -108,12 +123,16 @@ pub fn build_envelope_bytes(
         description: ev.description.as_deref(),
         location: ev.location.as_deref(),
         dtstart: dtstart.format(&Rfc3339).unwrap_or_default(),
-        dtend:   dtend.format(&Rfc3339).unwrap_or_default(),
+        dtend: dtend.format(&Rfc3339).unwrap_or_default(),
         organizer_email,
         organizer_cn: None,
         attendees: attendees_wire,
     };
-    let envelope = Envelope { method, invite, subject_hint };
+    let envelope = Envelope {
+        method,
+        invite,
+        subject_hint,
+    };
     Ok(Some(serde_json::to_vec(&envelope)?))
 }
 
@@ -125,7 +144,9 @@ pub fn publish_imip(js: JsCtx, ev: StoredEvent, method: &'static str) {
             Ok(Some(b)) => b,
             Ok(None) => return,
             Err(e) => {
-                IMIP_PUBLISH_TOTAL.with_label_values(&[method, "serialize_err"]).inc();
+                IMIP_PUBLISH_TOTAL
+                    .with_label_values(&[method, "serialize_err"])
+                    .inc();
                 tracing::warn!(error=%e, "imip envelope serialize failed");
                 return;
             }
@@ -161,7 +182,7 @@ mod tests {
             description: Some("Alinhamento trimestral".into()),
             location: Some("Sala A".into()),
             dtstart: Some(datetime!(2026-05-10 13:00 UTC)),
-            dtend:   Some(datetime!(2026-05-10 14:00 UTC)),
+            dtend: Some(datetime!(2026-05-10 14:00 UTC)),
             rrule: None,
             status: None,
             class: None,
@@ -180,7 +201,9 @@ mod tests {
     #[test]
     fn envelope_contains_method_and_attendees() {
         let ev = sample_event(ICAL_WITH_ATTENDEES);
-        let bytes = build_envelope_bytes(&ev, "REQUEST").unwrap().expect("should build");
+        let bytes = build_envelope_bytes(&ev, "REQUEST")
+            .unwrap()
+            .expect("should build");
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["method"], "REQUEST");
         assert_eq!(v["invite"]["uid"], "uid-1@x");
@@ -200,7 +223,10 @@ mod tests {
         let bytes = build_envelope_bytes(&ev, "CANCEL").unwrap().unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["method"], "CANCEL");
-        assert!(v["subject_hint"].as_str().unwrap().starts_with("Cancelado:"));
+        assert!(v["subject_hint"]
+            .as_str()
+            .unwrap()
+            .starts_with("Cancelado:"));
     }
 
     #[test]
@@ -222,7 +248,7 @@ mod tests {
         let bytes = build_envelope_bytes(&ev, "REQUEST").unwrap().unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["invite"]["dtstart"], "2026-05-10T13:00:00Z");
-        assert_eq!(v["invite"]["dtend"],   "2026-05-10T14:00:00Z");
+        assert_eq!(v["invite"]["dtend"], "2026-05-10T14:00:00Z");
     }
 
     #[test]
@@ -368,7 +394,7 @@ mod tests {
         use time::macros::datetime;
         let mut ev = sample_event(ICAL_WITH_ATTENDEES);
         ev.dtstart = None;
-        ev.dtend   = None;
+        ev.dtend = None;
         let result = build_envelope_bytes(&ev, "REQUEST").unwrap();
         assert!(result.is_none());
     }

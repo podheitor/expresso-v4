@@ -1,6 +1,10 @@
 //! expresso-chat error types.
 
-use axum::{response::{IntoResponse, Response}, http::StatusCode, Json};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use serde_json::json;
 use thiserror::Error;
 use uuid::Uuid;
@@ -41,19 +45,43 @@ pub enum ChatError {
 impl IntoResponse for ChatError {
     fn into_response(self) -> Response {
         let (status, code, msg) = match &self {
-            Self::ChannelNotFound(_)  => (StatusCode::NOT_FOUND,           "channel_not_found", self.to_string()),
-            Self::BadRequest(_)       => (StatusCode::BAD_REQUEST,         "bad_request",       self.to_string()),
-            Self::NotMember           => (StatusCode::FORBIDDEN,           "not_member",        self.to_string()),
-            Self::Forbidden           => (StatusCode::FORBIDDEN,           "forbidden",         self.to_string()),
-            Self::DatabaseUnavailable => (StatusCode::SERVICE_UNAVAILABLE, "db_unavailable",    self.to_string()),
-            Self::MatrixUnavailable   => (StatusCode::SERVICE_UNAVAILABLE, "matrix_unavailable",self.to_string()),
-            Self::Matrix(_)           => (StatusCode::BAD_GATEWAY,         "matrix_backend",    self.to_string()),
-            Self::Database(sqlx::Error::Database(db_err)) if db_err.is_unique_violation()
-                                      => (StatusCode::CONFLICT,            "unique_violation",  "recurso duplicado".into()),
-            Self::Database(sqlx::Error::RowNotFound)
-                                      => (StatusCode::NOT_FOUND,           "not_found",         "recurso não encontrado".into()),
-            Self::Database(_)         => (StatusCode::INTERNAL_SERVER_ERROR,"database",         "erro interno".into()),
-            Self::Core(_)             => (StatusCode::INTERNAL_SERVER_ERROR,"internal",         "erro interno".into()),
+            Self::ChannelNotFound(_) => {
+                (StatusCode::NOT_FOUND, "channel_not_found", self.to_string())
+            }
+            Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", self.to_string()),
+            Self::NotMember => (StatusCode::FORBIDDEN, "not_member", self.to_string()),
+            Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),
+            Self::DatabaseUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "db_unavailable",
+                self.to_string(),
+            ),
+            Self::MatrixUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "matrix_unavailable",
+                self.to_string(),
+            ),
+            Self::Matrix(_) => (StatusCode::BAD_GATEWAY, "matrix_backend", self.to_string()),
+            Self::Database(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => (
+                StatusCode::CONFLICT,
+                "unique_violation",
+                "recurso duplicado".into(),
+            ),
+            Self::Database(sqlx::Error::RowNotFound) => (
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "recurso não encontrado".into(),
+            ),
+            Self::Database(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "database",
+                "erro interno".into(),
+            ),
+            Self::Core(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                "erro interno".into(),
+            ),
         };
         (status, Json(json!({"error": code, "message": msg}))).into_response()
     }
@@ -148,7 +176,12 @@ mod tests {
     #[test]
     fn internal_status_is_500() {
         // No `Internal` variant; Core(_) is the internal-error path (→ 500).
-        assert_eq!(status(ChatError::Core(expresso_core::CoreError::NotFound { resource: "x" })), 500);
+        assert_eq!(
+            status(ChatError::Core(expresso_core::CoreError::NotFound {
+                resource: "x"
+            })),
+            500
+        );
     }
 
     #[test]

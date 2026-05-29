@@ -12,25 +12,26 @@ use axum::{
 use crate::caldav::auth::CalDavPrincipal;
 use crate::caldav::uri::{self, Target};
 use crate::domain::EventRepo;
-use crate::events::Event;
 use crate::error::Result;
+use crate::events::Event;
 use crate::state::AppState;
 
 /// GET → return the stored iCalendar payload.
-pub async fn get(
-    state: AppState,
-    principal: CalDavPrincipal,
-    path: &str,
-) -> Result<Response> {
+pub async fn get(state: AppState, principal: CalDavPrincipal, path: &str) -> Result<Response> {
     let (cal_id, uid) = match uri::classify(path) {
-        Target::Event { user_id, calendar_id, uid } if user_id == principal.user_id =>
-            (calendar_id, uid),
+        Target::Event {
+            user_id,
+            calendar_id,
+            uid,
+        } if user_id == principal.user_id => (calendar_id, uid),
         Target::Event { .. } => return Ok(forbidden()),
         _ => return Ok(not_found()),
     };
 
     let pool = state.db_or_unavailable()?;
-    let ev = EventRepo::new(pool).get_by_uid(principal.tenant_id, cal_id, &uid).await?;
+    let ev = EventRepo::new(pool)
+        .get_by_uid(principal.tenant_id, cal_id, &uid)
+        .await?;
 
     let resp = Response::builder()
         .status(StatusCode::OK)
@@ -49,8 +50,11 @@ pub async fn put(
     body: String,
 ) -> Result<Response> {
     let cal_id = match uri::classify(path) {
-        Target::Event { user_id, calendar_id, .. } if user_id == principal.user_id =>
+        Target::Event {
+            user_id,
             calendar_id,
+            ..
+        } if user_id == principal.user_id => calendar_id,
         Target::Event { .. } => return Ok(forbidden()),
         _ => return Ok(not_found()),
     };
@@ -63,9 +67,9 @@ pub async fn put(
     // Publish event (CalDAV PUT = upsert; emit as Updated with ev.sequence).
     state.events().publish(Event::EventUpdated {
         tenant_id: principal.tenant_id,
-        event_id:  ev.id,
-        summary:   ev.summary.clone(),
-        sequence:  ev.sequence,
+        event_id: ev.id,
+        summary: ev.summary.clone(),
+        sequence: ev.sequence,
     });
     state.events().publish_imip(ev.clone(), "REQUEST");
 
@@ -79,14 +83,13 @@ pub async fn put(
 }
 
 /// DELETE → remove event.
-pub async fn delete(
-    state: AppState,
-    principal: CalDavPrincipal,
-    path: &str,
-) -> Result<Response> {
+pub async fn delete(state: AppState, principal: CalDavPrincipal, path: &str) -> Result<Response> {
     let (cal_id, uid) = match uri::classify(path) {
-        Target::Event { user_id, calendar_id, uid } if user_id == principal.user_id =>
-            (calendar_id, uid),
+        Target::Event {
+            user_id,
+            calendar_id,
+            uid,
+        } if user_id == principal.user_id => (calendar_id, uid),
         Target::Event { .. } => return Ok(forbidden()),
         _ => return Ok(not_found()),
     };
@@ -97,7 +100,9 @@ pub async fn delete(
         .await
         .ok()
         .map(|e| e.id);
-    EventRepo::new(pool).delete_by_uid(principal.tenant_id, cal_id, &uid).await?;
+    EventRepo::new(pool)
+        .delete_by_uid(principal.tenant_id, cal_id, &uid)
+        .await?;
     if let Some(event_id) = ev_id {
         state.events().publish(Event::EventCancelled {
             tenant_id: principal.tenant_id,

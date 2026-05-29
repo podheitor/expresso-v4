@@ -31,7 +31,7 @@ use crate::state::AppState;
 /// cada delivery copia o body inteiro pro reply outbound, então sem
 /// limite vira amplificador de bandwidth via mailing-lists/spam.
 pub const MAX_VACATION_SUBJECT_BYTES: usize = 998;
-pub const MAX_VACATION_BODY_BYTES:    usize = 8 * 1024;
+pub const MAX_VACATION_BODY_BYTES: usize = 8 * 1024;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -53,13 +53,14 @@ pub fn spawn_deactivation_worker(pool: expresso_core::DbPool) {
                  SET enabled = false, sieve_script = '', updated_at = now() \
                  WHERE enabled = true \
                    AND deactivate_at IS NOT NULL \
-                   AND deactivate_at <= now()"
+                   AND deactivate_at <= now()",
             )
             .execute(&pool)
             .await;
             match res {
-                Ok(r) if r.rows_affected() > 0 =>
-                    tracing::info!(rows = r.rows_affected(), "vacation auto-deactivation done"),
+                Ok(r) if r.rows_affected() > 0 => {
+                    tracing::info!(rows = r.rows_affected(), "vacation auto-deactivation done")
+                }
                 Ok(_) => {}
                 Err(e) => tracing::warn!(error = %e, "vacation auto-deactivation failed"),
             }
@@ -69,32 +70,32 @@ pub fn spawn_deactivation_worker(pool: expresso_core::DbPool) {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Vacation {
-    pub enabled:        bool,
+    pub enabled: bool,
     #[serde(with = "time::serde::rfc3339::option", default)]
-    pub starts_at:      Option<OffsetDateTime>,
+    pub starts_at: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option", default)]
-    pub ends_at:        Option<OffsetDateTime>,
+    pub ends_at: Option<OffsetDateTime>,
     /// When set, the worker auto-sets `enabled=false` at this timestamp.
     #[serde(with = "time::serde::rfc3339::option", default)]
-    pub deactivate_at:  Option<OffsetDateTime>,
-    pub subject:        String,
-    pub body:           String,
-    pub interval_days:  i32,
+    pub deactivate_at: Option<OffsetDateTime>,
+    pub subject: String,
+    pub body: String,
+    pub interval_days: i32,
     #[serde(default)]
-    pub sieve_script:   String,
+    pub sieve_script: String,
 }
 
 impl Default for Vacation {
     fn default() -> Self {
         Self {
-            enabled:       false,
-            starts_at:     None,
-            ends_at:       None,
+            enabled: false,
+            starts_at: None,
+            ends_at: None,
             deactivate_at: None,
-            subject:       "Out of office".into(),
-            body:          String::new(),
+            subject: "Out of office".into(),
+            body: String::new(),
             interval_days: 7,
-            sieve_script:  String::new(),
+            sieve_script: String::new(),
         }
     }
 }
@@ -122,8 +123,8 @@ fn escape(s: &str) -> String {
 
 async fn get_vacation(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row = sqlx::query(
@@ -137,24 +138,31 @@ async fn get_vacation(
     let (v, updated_at) = match row {
         Some(r) => {
             let ua: Option<OffsetDateTime> = r.try_get("updated_at").ok();
-            (Vacation {
-                enabled:       r.get("enabled"),
-                starts_at:     r.try_get("starts_at").ok(),
-                ends_at:       r.try_get("ends_at").ok(),
-                deactivate_at: r.try_get("deactivate_at").ok(),
-                subject:       r.get("subject"),
-                body:          r.get("body"),
-                interval_days: r.get("interval_days"),
-                sieve_script:  r.get("sieve_script"),
-            }, ua)
-        },
+            (
+                Vacation {
+                    enabled: r.get("enabled"),
+                    starts_at: r.try_get("starts_at").ok(),
+                    ends_at: r.try_get("ends_at").ok(),
+                    deactivate_at: r.try_get("deactivate_at").ok(),
+                    subject: r.get("subject"),
+                    body: r.get("body"),
+                    interval_days: r.get("interval_days"),
+                    sieve_script: r.get("sieve_script"),
+                },
+                ua,
+            )
+        }
         None => (Vacation::default(), None),
     };
     if let Some(ts) = updated_at {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -162,7 +170,8 @@ async fn get_vacation(
             }
         }
         let mut resp = Json(v).into_response();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
         return Ok(resp);
     }
     Ok(Json(v).into_response())
@@ -218,8 +227,8 @@ struct ToggleBody {
 /// If no vacation row exists yet, creates one with defaults (enabled = is_active).
 async fn toggle_vacation(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(body):   Json<ToggleBody>,
+    ctx: RequestCtx,
+    Json(body): Json<ToggleBody>,
 ) -> Result<Json<Vacation>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -233,14 +242,14 @@ async fn toggle_vacation(
 
     let mut v = match row {
         Some(r) => Vacation {
-            enabled:       r.get("enabled"),
-            starts_at:     r.try_get("starts_at").ok(),
-            ends_at:       r.try_get("ends_at").ok(),
+            enabled: r.get("enabled"),
+            starts_at: r.try_get("starts_at").ok(),
+            ends_at: r.try_get("ends_at").ok(),
             deactivate_at: r.try_get("deactivate_at").ok(),
-            subject:       r.get("subject"),
-            body:          r.get("body"),
+            subject: r.get("subject"),
+            body: r.get("body"),
             interval_days: r.get("interval_days"),
-            sieve_script:  r.get("sieve_script"),
+            sieve_script: r.get("sieve_script"),
         },
         None => Vacation::default(),
     };
@@ -280,18 +289,20 @@ fn validate(v: &Vacation) -> Result<()> {
     if v.subject.len() > MAX_VACATION_SUBJECT_BYTES {
         return Err(MailError::BadRequest(format!(
             "subject too large: {} bytes (max {})",
-            v.subject.len(), MAX_VACATION_SUBJECT_BYTES
+            v.subject.len(),
+            MAX_VACATION_SUBJECT_BYTES
         )));
     }
     if v.body.len() > MAX_VACATION_BODY_BYTES {
         return Err(MailError::BadRequest(format!(
             "body too large: {} bytes (max {})",
-            v.body.len(), MAX_VACATION_BODY_BYTES
+            v.body.len(),
+            MAX_VACATION_BODY_BYTES
         )));
     }
     if v.subject.contains('\r') || v.subject.contains('\n') {
         return Err(MailError::BadRequest(
-            "subject must not contain CR or LF".into()
+            "subject must not contain CR or LF".into(),
         ));
     }
     if v.interval_days < 1 || v.interval_days > 365 {
@@ -305,12 +316,18 @@ mod tests {
     use super::*;
 
     fn ok_vacation() -> Vacation {
-        Vacation { enabled: true, ..Vacation::default() }
+        Vacation {
+            enabled: true,
+            ..Vacation::default()
+        }
     }
 
     #[test]
     fn disabled_renders_empty() {
-        let v = Vacation { enabled: false, ..Vacation::default() };
+        let v = Vacation {
+            enabled: false,
+            ..Vacation::default()
+        };
         assert_eq!(render_script(&v), "");
     }
 
@@ -332,7 +349,11 @@ mod tests {
 
     #[test]
     fn clamps_interval_days() {
-        let v = Vacation { enabled: true, interval_days: 999, ..Vacation::default() };
+        let v = Vacation {
+            enabled: true,
+            interval_days: 999,
+            ..Vacation::default()
+        };
         assert!(render_script(&v).contains(":days 365"));
     }
 
@@ -372,15 +393,24 @@ mod tests {
         let err = format!("{:?}", validate(&v).unwrap_err());
         assert!(err.contains("CR or LF"), "got: {err}");
 
-        let v = Vacation { subject: "line1\nline2".into(), ..ok_vacation() };
+        let v = Vacation {
+            subject: "line1\nline2".into(),
+            ..ok_vacation()
+        };
         assert!(validate(&v).is_err());
     }
 
     #[test]
     fn validate_rejects_bad_interval() {
-        let v = Vacation { interval_days: 0,    ..ok_vacation() };
+        let v = Vacation {
+            interval_days: 0,
+            ..ok_vacation()
+        };
         assert!(validate(&v).is_err());
-        let v = Vacation { interval_days: 1000, ..ok_vacation() };
+        let v = Vacation {
+            interval_days: 1000,
+            ..ok_vacation()
+        };
         assert!(validate(&v).is_err());
     }
 
@@ -388,7 +418,7 @@ mod tests {
     fn validate_accepts_boundary_subject_and_body() {
         let v = Vacation {
             subject: "x".repeat(MAX_VACATION_SUBJECT_BYTES),
-            body:    "y".repeat(MAX_VACATION_BODY_BYTES),
+            body: "y".repeat(MAX_VACATION_BODY_BYTES),
             ..ok_vacation()
         };
         assert!(validate(&v).is_ok());
@@ -439,7 +469,10 @@ mod tests {
 
     #[test]
     fn render_script_contains_vacation_require_when_enabled() {
-        let v = Vacation { enabled: true, ..Vacation::default() };
+        let v = Vacation {
+            enabled: true,
+            ..Vacation::default()
+        };
         let s = render_script(&v);
         assert!(s.contains("vacation"));
     }

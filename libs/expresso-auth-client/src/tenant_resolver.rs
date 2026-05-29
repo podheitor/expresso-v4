@@ -33,7 +33,9 @@ impl TenantResolver {
 
     /// Build from env var. Returns empty resolver if var unset/empty.
     pub fn from_env(var: &str) -> Self {
-        std::env::var(var).map(|v| Self::parse(&v)).unwrap_or_default()
+        std::env::var(var)
+            .map(|v| Self::parse(&v))
+            .unwrap_or_default()
     }
 
     /// Resolve host → realm name. Aceita "acme.example.com:443" etc.
@@ -41,8 +43,12 @@ impl TenantResolver {
         self.map.get(&normalize_host(host)).map(String::as_str)
     }
 
-    pub fn len(&self) -> usize { self.map.len() }
-    pub fn is_empty(&self) -> bool { self.map.is_empty() }
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
 
     /// All known hosts (for debug/metrics).
     pub fn hosts(&self) -> impl Iterator<Item = &str> {

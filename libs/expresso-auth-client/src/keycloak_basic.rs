@@ -22,36 +22,38 @@ use sha2::{Digest, Sha256};
 #[derive(Debug, Clone)]
 pub struct KcBasicConfig {
     /// Keycloak base URL, e.g. `http://expresso-keycloak:8080`.
-    pub url:           String,
-    pub realm:         String,
-    pub client_id:     String,
+    pub url: String,
+    pub realm: String,
+    pub client_id: String,
     /// Required only for confidential clients.
     pub client_secret: Option<String>,
-    pub cache_ttl:     Duration,
-    pub http_timeout:  Duration,
+    pub cache_ttl: Duration,
+    pub http_timeout: Duration,
     /// Falhas consecutivas (na janela `failure_window`) antes do
     /// lockout disparar. Default 10 — alto o suficiente pra usuários
     /// reais não serem prejudicados por typo, baixo pra throttle KC.
-    pub max_failures:     u32,
+    pub max_failures: u32,
     /// Janela de contagem das falhas. Default 60s.
-    pub failure_window:   Duration,
+    pub failure_window: Duration,
     /// Duração do lockout depois de atingir `max_failures`. Default 5min.
     pub lockout_duration: Duration,
 }
 
 impl KcBasicConfig {
     pub fn from_env_prefix(prefix: &str) -> Option<Self> {
-        let url   = std::env::var(format!("{prefix}_URL")).ok()?;
+        let url = std::env::var(format!("{prefix}_URL")).ok()?;
         let realm = std::env::var(format!("{prefix}_REALM")).ok()?;
-        let client_id =
-            std::env::var(format!("{prefix}_CLIENT_ID")).ok()?;
+        let client_id = std::env::var(format!("{prefix}_CLIENT_ID")).ok()?;
         let client_secret = std::env::var(format!("{prefix}_CLIENT_SECRET")).ok();
         Some(Self {
-            url, realm, client_id, client_secret,
-            cache_ttl:        Duration::from_secs(60),
-            http_timeout:     Duration::from_secs(5),
-            max_failures:     10,
-            failure_window:   Duration::from_secs(60),
+            url,
+            realm,
+            client_id,
+            client_secret,
+            cache_ttl: Duration::from_secs(60),
+            http_timeout: Duration::from_secs(5),
+            max_failures: 10,
+            failure_window: Duration::from_secs(60),
             lockout_duration: Duration::from_secs(5 * 60),
         })
     }
@@ -69,11 +71,13 @@ pub enum KcBasicError {
 
 #[derive(Deserialize)]
 #[allow(dead_code)] // deserialized from the token endpoint; field read elsewhere
-struct TokenResp { access_token: String }
+struct TokenResp {
+    access_token: String,
+}
 
 struct CacheEntry {
     username: String,
-    expires:  Instant,
+    expires: Instant,
 }
 
 /// Tracker per-username de falhas recentes. Usar lowercased username
@@ -82,14 +86,14 @@ struct CacheEntry {
 #[derive(Debug)]
 struct FailureTracker {
     window_start: Instant,
-    failures:     u32,
+    failures: u32,
     locked_until: Option<Instant>,
 }
 
 pub struct KcBasicAuthenticator {
-    cfg:      KcBasicConfig,
-    http:     reqwest::Client,
-    cache:    Mutex<HashMap<String, CacheEntry>>,
+    cfg: KcBasicConfig,
+    http: reqwest::Client,
+    cache: Mutex<HashMap<String, CacheEntry>>,
     failures: Mutex<HashMap<String, FailureTracker>>,
 }
 
@@ -102,7 +106,7 @@ impl KcBasicAuthenticator {
         Self {
             cfg,
             http,
-            cache:    Mutex::new(HashMap::new()),
+            cache: Mutex::new(HashMap::new()),
             failures: Mutex::new(HashMap::new()),
         }
     }
@@ -132,21 +136,28 @@ impl KcBasicAuthenticator {
         );
         let mut form: Vec<(&str, &str)> = vec![
             ("grant_type", "password"),
-            ("client_id",  &self.cfg.client_id),
-            ("username",   user),
-            ("password",   pass),
-            ("scope",      "openid"),
+            ("client_id", &self.cfg.client_id),
+            ("username", user),
+            ("password", pass),
+            ("scope", "openid"),
         ];
         if let Some(s) = self.cfg.client_secret.as_deref() {
             form.push(("client_secret", s));
         }
 
-        let resp = self.http.post(&url).form(&form).send().await
+        let resp = self
+            .http
+            .post(&url)
+            .form(&form)
+            .send()
+            .await
             .map_err(|e| KcBasicError::Unreachable(e.to_string()))?;
 
         match resp.status() {
             StatusCode::OK => {
-                let _body: TokenResp = resp.json().await
+                let _body: TokenResp = resp
+                    .json()
+                    .await
                     .map_err(|e| KcBasicError::Upstream(e.to_string()))?;
                 self.clear_failures(&user_key);
                 self.cache_insert(key, user);
@@ -161,25 +172,30 @@ impl KcBasicAuthenticator {
     }
 
     fn is_locked_out(&self, user_key: &str) -> bool {
-        let Ok(guard) = self.failures.lock() else { return false; };
+        let Ok(guard) = self.failures.lock() else {
+            return false;
+        };
         let now = Instant::now();
-        guard.get(user_key)
+        guard
+            .get(user_key)
             .and_then(|t| t.locked_until)
             .is_some_and(|until| until > now)
     }
 
     fn record_failure(&self, user_key: &str) {
-        let Ok(mut guard) = self.failures.lock() else { return; };
+        let Ok(mut guard) = self.failures.lock() else {
+            return;
+        };
         let now = Instant::now();
         let entry = guard.entry(user_key.to_string()).or_insert(FailureTracker {
             window_start: now,
-            failures:     0,
+            failures: 0,
             locked_until: None,
         });
         // Janela expirou → reseta o counter.
         if now.duration_since(entry.window_start) > self.cfg.failure_window {
             entry.window_start = now;
-            entry.failures     = 0;
+            entry.failures = 0;
             entry.locked_until = None;
         }
         entry.failures += 1;
@@ -204,10 +220,13 @@ impl KcBasicAuthenticator {
 
     fn cache_insert(&self, key: String, username: &str) {
         if let Ok(mut guard) = self.cache.lock() {
-            guard.insert(key, CacheEntry {
-                username: username.to_owned(),
-                expires:  Instant::now() + self.cfg.cache_ttl,
-            });
+            guard.insert(
+                key,
+                CacheEntry {
+                    username: username.to_owned(),
+                    expires: Instant::now() + self.cfg.cache_ttl,
+                },
+            );
         }
     }
 }
@@ -239,14 +258,14 @@ mod tests {
 
     fn fixture_auth(max: u32, window: Duration, lock: Duration) -> KcBasicAuthenticator {
         let cfg = KcBasicConfig {
-            url:              "http://x".into(),
-            realm:            "r".into(),
-            client_id:        "c".into(),
-            client_secret:    None,
-            cache_ttl:        Duration::from_secs(60),
-            http_timeout:     Duration::from_secs(5),
-            max_failures:     max,
-            failure_window:   window,
+            url: "http://x".into(),
+            realm: "r".into(),
+            client_id: "c".into(),
+            client_secret: None,
+            cache_ttl: Duration::from_secs(60),
+            http_timeout: Duration::from_secs(5),
+            max_failures: max,
+            failure_window: window,
             lockout_duration: lock,
         };
         KcBasicAuthenticator::new(cfg)

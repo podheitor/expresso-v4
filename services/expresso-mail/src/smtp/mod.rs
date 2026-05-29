@@ -7,30 +7,35 @@ pub mod submission;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
-use tracing::{info, error, warn};
+use tracing::{error, info, warn};
 
 use crate::state::AppState;
 
 fn load_tls(cert: &str, key: &str) -> anyhow::Result<rustls::ServerConfig> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let cert_pem = std::fs::read(cert)?;
-    let key_pem  = std::fs::read(key)?;
+    let key_pem = std::fs::read(key)?;
     use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
     use rustls_pki_types::{CertificateDer, PrivateKeyDer};
-    let chain: Vec<CertificateDer<'static>> = certs(&mut cert_pem.as_slice())
-        .collect::<Result<Vec<_>, _>>()?;
+    let chain: Vec<CertificateDer<'static>> =
+        certs(&mut cert_pem.as_slice()).collect::<Result<Vec<_>, _>>()?;
     anyhow::ensure!(!chain.is_empty(), "no certs in {cert}");
-    let pkcs8: Vec<_> = pkcs8_private_keys(&mut key_pem.as_slice())
-        .collect::<Result<Vec<_>, _>>()?;
+    let pkcs8: Vec<_> =
+        pkcs8_private_keys(&mut key_pem.as_slice()).collect::<Result<Vec<_>, _>>()?;
     let key: PrivateKeyDer<'static> = if let Some(k) = pkcs8.into_iter().next() {
         PrivateKeyDer::Pkcs8(k)
     } else {
-        let rsa: Vec<_> = rsa_private_keys(&mut key_pem.as_slice())
-            .collect::<Result<Vec<_>, _>>()?;
-        PrivateKeyDer::Pkcs1(rsa.into_iter().next()
-            .ok_or_else(|| anyhow::anyhow!("no private key in {key}"))?)
+        let rsa: Vec<_> =
+            rsa_private_keys(&mut key_pem.as_slice()).collect::<Result<Vec<_>, _>>()?;
+        PrivateKeyDer::Pkcs1(
+            rsa.into_iter()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("no private key in {key}"))?,
+        )
     };
-    Ok(rustls::ServerConfig::builder().with_no_client_auth().with_single_cert(chain, key)?)
+    Ok(rustls::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(chain, key)?)
 }
 
 /// Start listening for plain SMTP connections (port 25).
@@ -62,9 +67,15 @@ pub async fn serve(state: AppState, addr: SocketAddr) -> anyhow::Result<()> {
 pub async fn serve_smtps(state: AppState, addr: SocketAddr) -> anyhow::Result<()> {
     let (cert, key) = {
         let cfg = state.cfg();
-        let c = cfg.mail_server.tls_cert.clone()
+        let c = cfg
+            .mail_server
+            .tls_cert
+            .clone()
             .ok_or_else(|| anyhow::anyhow!("smtps: mail_server.tls_cert required"))?;
-        let k = cfg.mail_server.tls_key.clone()
+        let k = cfg
+            .mail_server
+            .tls_key
+            .clone()
             .ok_or_else(|| anyhow::anyhow!("smtps: mail_server.tls_key required"))?;
         (c, k)
     };

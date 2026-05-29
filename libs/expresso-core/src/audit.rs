@@ -15,29 +15,34 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntry {
-    pub tenant_id:   Option<Uuid>,
+    pub tenant_id: Option<Uuid>,
     /// Parsed as UUID → `user_id`. Non-UUID strings fold into metadata.
-    pub actor_sub:   Option<String>,
+    pub actor_sub: Option<String>,
     pub actor_email: Option<String>,
     pub actor_roles: Vec<String>,
-    pub action:      String,
+    pub action: String,
     pub target_type: Option<String>,
-    pub target_id:   Option<String>,
+    pub target_id: Option<String>,
     pub http_method: Option<String>,
-    pub http_path:   Option<String>,
+    pub http_path: Option<String>,
     /// HTTP status code → folded into metadata + mapped to `status` enum.
     pub status_code: Option<i16>,
-    pub metadata:    JsonValue,
+    pub metadata: JsonValue,
 }
 
 impl AuditEntry {
     pub fn new(action: impl Into<String>) -> Self {
         Self {
-            tenant_id: None, actor_sub: None, actor_email: None,
+            tenant_id: None,
+            actor_sub: None,
+            actor_email: None,
             actor_roles: Vec::new(),
             action: action.into(),
-            target_type: None, target_id: None,
-            http_method: None, http_path: None, status_code: None,
+            target_type: None,
+            target_id: None,
+            http_method: None,
+            http_path: None,
+            status_code: None,
             metadata: JsonValue::Object(Default::default()),
         }
     }
@@ -59,12 +64,24 @@ fn enrich_metadata(e: &AuditEntry) -> JsonValue {
         other => json!({ "data": other }),
     };
     let obj = base.as_object_mut().expect("metadata object");
-    if let Some(v) = &e.actor_email   { obj.insert("actor_email".into(), json!(v)); }
-    if !e.actor_roles.is_empty()      { obj.insert("actor_roles".into(), json!(e.actor_roles)); }
-    if let Some(v) = &e.target_type   { obj.insert("target_type".into(), json!(v)); }
-    if let Some(v) = &e.http_method   { obj.insert("http_method".into(), json!(v)); }
-    if let Some(v) = &e.http_path     { obj.insert("http_path".into(), json!(v)); }
-    if let Some(v) = e.status_code    { obj.insert("status_code".into(), json!(v)); }
+    if let Some(v) = &e.actor_email {
+        obj.insert("actor_email".into(), json!(v));
+    }
+    if !e.actor_roles.is_empty() {
+        obj.insert("actor_roles".into(), json!(e.actor_roles));
+    }
+    if let Some(v) = &e.target_type {
+        obj.insert("target_type".into(), json!(v));
+    }
+    if let Some(v) = &e.http_method {
+        obj.insert("http_method".into(), json!(v));
+    }
+    if let Some(v) = &e.http_path {
+        obj.insert("http_path".into(), json!(v));
+    }
+    if let Some(v) = e.status_code {
+        obj.insert("status_code".into(), json!(v));
+    }
     // When actor_sub is not UUID-parseable, still preserve the raw string.
     if let Some(v) = &e.actor_sub {
         if Uuid::parse_str(v).is_err() {
@@ -82,8 +99,8 @@ pub async fn record(pool: &PgPool, e: AuditEntry) -> Result<(), sqlx::Error> {
     // resource encodes target_type:target_id (both optional) for quick filtering.
     let resource = match (&e.target_type, &e.target_id) {
         (Some(t), Some(i)) => Some(format!("{t}:{i}")),
-        (Some(t), None)    => Some(t.clone()),
-        (None,    Some(i)) => Some(i.clone()),
+        (Some(t), None) => Some(t.clone()),
+        (None, Some(i)) => Some(i.clone()),
         _ => None,
     };
     let metadata = enrich_metadata(&e);
@@ -199,7 +216,9 @@ mod tests {
     #[test]
     fn audit_entry_metadata_is_empty_by_default() {
         let e = AuditEntry::new("mail.sent");
-        assert!(e.metadata.is_null() || e.metadata.as_object().map(|m| m.is_empty()).unwrap_or(true));
+        assert!(
+            e.metadata.is_null() || e.metadata.as_object().map(|m| m.is_empty()).unwrap_or(true)
+        );
     }
 
     #[test]

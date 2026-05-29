@@ -16,33 +16,49 @@ use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Op { AllOf, AnyOf }
+pub enum Op {
+    AllOf,
+    AnyOf,
+}
 
-impl Default for Op { fn default() -> Self { Op::AnyOf } }
+impl Default for Op {
+    fn default() -> Self {
+        Op::AnyOf
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MatchType { Contains, StartsWith, EndsWith, Equals }
+pub enum MatchType {
+    Contains,
+    StartsWith,
+    EndsWith,
+    Equals,
+}
 
-impl Default for MatchType { fn default() -> Self { Self::Contains } }
+impl Default for MatchType {
+    fn default() -> Self {
+        Self::Contains
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct TextMatch {
-    pub value:      String,
+    pub value: String,
     pub match_type: MatchType,
-    pub negate:     bool,
+    pub negate: bool,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct PropFilter {
-    pub name:           String,
-    pub op:             Op,
+    pub name: String,
+    pub op: Op,
     pub is_not_defined: bool,
-    pub text_matches:   Vec<TextMatch>,
+    pub text_matches: Vec<TextMatch>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Filter {
-    pub op:    Op,
+    pub op: Op,
     pub props: Vec<PropFilter>,
 }
 
@@ -56,7 +72,7 @@ pub fn parse(body: &str) -> Option<Filter> {
     let mut filter = Filter::default();
     // stack of current prop-filter being built
     let mut cur_pf: Option<PropFilter> = None;
-    let mut cur_tm: Option<TextMatch>  = None;
+    let mut cur_tm: Option<TextMatch> = None;
     let mut tm_text = String::new();
 
     loop {
@@ -87,7 +103,9 @@ pub fn parse(body: &str) -> Option<Filter> {
                         }
                     }
                     "is-not-defined" => {
-                        if let Some(pf) = cur_pf.as_mut() { pf.is_not_defined = true; }
+                        if let Some(pf) = cur_pf.as_mut() {
+                            pf.is_not_defined = true;
+                        }
                     }
                     "text-match" => {
                         let tm = TextMatch {
@@ -96,7 +114,9 @@ pub fn parse(body: &str) -> Option<Filter> {
                             negate: parse_negate(&e),
                         };
                         if is_empty {
-                            if let Some(pf) = cur_pf.as_mut() { pf.text_matches.push(tm); }
+                            if let Some(pf) = cur_pf.as_mut() {
+                                pf.text_matches.push(tm);
+                            }
                         } else {
                             cur_tm = Some(tm);
                             tm_text.clear();
@@ -107,40 +127,47 @@ pub fn parse(body: &str) -> Option<Filter> {
             }
             Ok(Event::Text(t)) => {
                 if cur_tm.is_some() {
-                    if let Ok(s) = t.decode() { tm_text.push_str(&s); }
+                    if let Ok(s) = t.decode() {
+                        tm_text.push_str(&s);
+                    }
                 }
             }
-            Ok(Event::End(e)) => {
-                match local(e.name().as_ref()).as_str() {
-                    "text-match" => {
-                        if let (Some(mut tm), Some(pf)) = (cur_tm.take(), cur_pf.as_mut()) {
-                            tm.value = tm_text.trim().to_owned();
-                            pf.text_matches.push(tm);
-                        }
-                        tm_text.clear();
+            Ok(Event::End(e)) => match local(e.name().as_ref()).as_str() {
+                "text-match" => {
+                    if let (Some(mut tm), Some(pf)) = (cur_tm.take(), cur_pf.as_mut()) {
+                        tm.value = tm_text.trim().to_owned();
+                        pf.text_matches.push(tm);
                     }
-                    "prop-filter" => {
-                        if let Some(pf) = cur_pf.take() {
-                            filter.props.push(pf);
-                        }
-                    }
-                    "filter" => break,
-                    _ => {}
+                    tm_text.clear();
                 }
-            }
+                "prop-filter" => {
+                    if let Some(pf) = cur_pf.take() {
+                        filter.props.push(pf);
+                    }
+                }
+                "filter" => break,
+                _ => {}
+            },
             Ok(Event::Eof) | Err(_) => break,
             _ => {}
         }
     }
 
-    if found { Some(filter) } else { None }
+    if found {
+        Some(filter)
+    } else {
+        None
+    }
 }
 
 // ─── attribute helpers ─────────────────────────────────────────────────────
 
 fn local(bytes: &[u8]) -> String {
     let raw = std::str::from_utf8(bytes).unwrap_or("");
-    raw.rsplit_once(':').map(|(_, l)| l).unwrap_or(raw).to_ascii_lowercase()
+    raw.rsplit_once(':')
+        .map(|(_, l)| l)
+        .unwrap_or(raw)
+        .to_ascii_lowercase()
 }
 
 fn attr(e: &quick_xml::events::BytesStart, key: &str) -> Option<String> {
@@ -158,16 +185,16 @@ fn parse_test_attr(e: &quick_xml::events::BytesStart, default: Op) -> Op {
     match attr(e, "test").as_deref() {
         Some("anyof") => Op::AnyOf,
         Some("allof") => Op::AllOf,
-        _             => default,
+        _ => default,
     }
 }
 
 fn parse_match_type(e: &quick_xml::events::BytesStart) -> MatchType {
     match attr(e, "match-type").as_deref() {
         Some("starts-with") => MatchType::StartsWith,
-        Some("ends-with")   => MatchType::EndsWith,
-        Some("equals")      => MatchType::Equals,
-        _                   => MatchType::Contains,
+        Some("ends-with") => MatchType::EndsWith,
+        Some("equals") => MatchType::Equals,
+        _ => MatchType::Contains,
     }
 }
 
@@ -179,9 +206,7 @@ fn parse_negate(e: &quick_xml::events::BytesStart) -> bool {
 
 /// Evaluate a `Filter` against a raw vCard 3.0/4.0 body.
 pub fn matches(vcard: &str, f: &Filter) -> bool {
-    let results: Vec<bool> = f.props.iter()
-        .map(|pf| matches_prop(vcard, pf))
-        .collect();
+    let results: Vec<bool> = f.props.iter().map(|pf| matches_prop(vcard, pf)).collect();
     combine(f.op, &results)
 }
 
@@ -208,12 +233,16 @@ fn tm_match(value: &str, tm: &TextMatch) -> bool {
     let hay = value.to_ascii_lowercase();
     let needle = tm.value.to_ascii_lowercase();
     let hit = match tm.match_type {
-        MatchType::Contains   => hay.contains(&needle),
+        MatchType::Contains => hay.contains(&needle),
         MatchType::StartsWith => hay.starts_with(&needle),
-        MatchType::EndsWith   => hay.ends_with(&needle),
-        MatchType::Equals     => hay == needle,
+        MatchType::EndsWith => hay.ends_with(&needle),
+        MatchType::Equals => hay == needle,
     };
-    if tm.negate { !hit } else { hit }
+    if tm.negate {
+        !hit
+    } else {
+        hit
+    }
 }
 
 fn combine(op: Op, results: &[bool]) -> bool {
@@ -229,11 +258,16 @@ fn combine(op: Op, results: &[bool]) -> bool {
 /// props like FN/EMAIL and we only match on those.
 fn vcard_values(vcard: &str, name: &str) -> Vec<String> {
     let upper = name.to_ascii_uppercase();
-    vcard.lines()
+    vcard
+        .lines()
         .filter_map(|line| {
             let (head, val) = line.split_once(':')?;
             let prop = head.split(';').next()?.trim().to_ascii_uppercase();
-            if prop == upper { Some(val.to_owned()) } else { None }
+            if prop == upper {
+                Some(val.to_owned())
+            } else {
+                None
+            }
         })
         .collect()
 }
@@ -409,19 +443,28 @@ mod tests {
 
     #[test]
     fn empty_prop_filters_matches_any_vcard() {
-        let f = Filter { op: Op::AllOf, props: vec![] };
+        let f = Filter {
+            op: Op::AllOf,
+            props: vec![],
+        };
         assert!(matches(SAMPLE, &f));
     }
 
     #[test]
     fn filter_anyof_op_is_anyof() {
-        let f = Filter { op: Op::AnyOf, props: vec![] };
+        let f = Filter {
+            op: Op::AnyOf,
+            props: vec![],
+        };
         assert_eq!(f.op, Op::AnyOf);
     }
 
     #[test]
     fn filter_allof_op_is_allof() {
-        let f = Filter { op: Op::AllOf, props: vec![] };
+        let f = Filter {
+            op: Op::AllOf,
+            props: vec![],
+        };
         assert_eq!(f.op, Op::AllOf);
     }
 

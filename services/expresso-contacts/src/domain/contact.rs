@@ -18,22 +18,22 @@ use crate::error::{ContactsError, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Contact {
-    pub id:             Uuid,
+    pub id: Uuid,
     pub addressbook_id: Uuid,
-    pub tenant_id:      Uuid,
-    pub uid:            String,
-    pub etag:           String,
-    pub vcard_raw:      String,
-    pub full_name:      Option<String>,
-    pub family_name:    Option<String>,
-    pub given_name:     Option<String>,
-    pub organization:   Option<String>,
-    pub email_primary:  Option<String>,
-    pub phone_primary:  Option<String>,
+    pub tenant_id: Uuid,
+    pub uid: String,
+    pub etag: String,
+    pub vcard_raw: String,
+    pub full_name: Option<String>,
+    pub family_name: Option<String>,
+    pub given_name: Option<String>,
+    pub organization: Option<String>,
+    pub email_primary: Option<String>,
+    pub phone_primary: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
-    pub created_at:     OffsetDateTime,
+    pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    pub updated_at:     OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Clone)]
@@ -42,17 +42,19 @@ pub struct ContactRepo<'a> {
 }
 
 impl<'a> ContactRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     /// Insert parsing raw vCard; UID uniqueness enforced by DB index.
     pub async fn create(
         &self,
-        tenant_id:      Uuid,
+        tenant_id: Uuid,
         addressbook_id: Uuid,
-        raw:            &str,
+        raw: &str,
     ) -> Result<Contact> {
         let parsed = vcard::parse(raw).map_err(ContactsError::InvalidVCard)?;
-        let etag   = vcard::compute_etag(raw);
+        let etag = vcard::compute_etag(raw);
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
             r#"
@@ -112,14 +114,9 @@ impl<'a> ContactRepo<'a> {
         Ok(rows)
     }
 
-    pub async fn update(
-        &self,
-        tenant_id: Uuid,
-        id:        Uuid,
-        raw:       &str,
-    ) -> Result<Contact> {
+    pub async fn update(&self, tenant_id: Uuid, id: Uuid, raw: &str) -> Result<Contact> {
         let parsed = vcard::parse(raw).map_err(ContactsError::InvalidVCard)?;
-        let etag   = vcard::compute_etag(raw);
+        let etag = vcard::compute_etag(raw);
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
             r#"
@@ -168,9 +165,9 @@ impl<'a> ContactRepo<'a> {
     // ─── CardDAV path-addressing helpers ────────────────────────────────
     pub async fn get_by_uid(
         &self,
-        tenant_id:      Uuid,
+        tenant_id: Uuid,
         addressbook_id: Uuid,
-        uid:            &str,
+        uid: &str,
     ) -> Result<Contact> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
@@ -188,9 +185,9 @@ impl<'a> ContactRepo<'a> {
 
     pub async fn list_by_uids(
         &self,
-        tenant_id:      Uuid,
+        tenant_id: Uuid,
         addressbook_id: Uuid,
-        uids:           &[String],
+        uids: &[String],
     ) -> Result<Vec<Contact>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query_as::<_, Contact>(
@@ -210,12 +207,12 @@ impl<'a> ContactRepo<'a> {
     /// UPSERT by (addressbook_id, uid) — used by CardDAV PUT.
     pub async fn replace_by_uid(
         &self,
-        tenant_id:      Uuid,
+        tenant_id: Uuid,
         addressbook_id: Uuid,
-        raw:            &str,
+        raw: &str,
     ) -> Result<Contact> {
         let parsed = vcard::parse(raw).map_err(ContactsError::InvalidVCard)?;
-        let etag   = vcard::compute_etag(raw);
+        let etag = vcard::compute_etag(raw);
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
             r#"
@@ -256,9 +253,9 @@ impl<'a> ContactRepo<'a> {
 
     pub async fn delete_by_uid(
         &self,
-        tenant_id:      Uuid,
+        tenant_id: Uuid,
         addressbook_id: Uuid,
-        uid:            &str,
+        uid: &str,
     ) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         sqlx::query(
@@ -282,20 +279,20 @@ mod tests {
 
     fn sample() -> Contact {
         Contact {
-            id:             Uuid::nil(),
+            id: Uuid::nil(),
             addressbook_id: Uuid::nil(),
-            tenant_id:      Uuid::nil(),
-            uid:            "uid-xyz@example.com".into(),
-            etag:           "etag42".into(),
-            vcard_raw:      "BEGIN:VCARD\r\nEND:VCARD".into(),
-            full_name:      Some("Alice Smith".into()),
-            family_name:    Some("Smith".into()),
-            given_name:     Some("Alice".into()),
-            organization:   Some("Acme Inc.".into()),
-            email_primary:  Some("alice@example.com".into()),
-            phone_primary:  Some("+55 11 9999-9999".into()),
-            created_at:     datetime!(2026-05-22 08:00:00 UTC),
-            updated_at:     datetime!(2026-05-22 08:00:00 UTC),
+            tenant_id: Uuid::nil(),
+            uid: "uid-xyz@example.com".into(),
+            etag: "etag42".into(),
+            vcard_raw: "BEGIN:VCARD\r\nEND:VCARD".into(),
+            full_name: Some("Alice Smith".into()),
+            family_name: Some("Smith".into()),
+            given_name: Some("Alice".into()),
+            organization: Some("Acme Inc.".into()),
+            email_primary: Some("alice@example.com".into()),
+            phone_primary: Some("+55 11 9999-9999".into()),
+            created_at: datetime!(2026-05-22 08:00:00 UTC),
+            updated_at: datetime!(2026-05-22 08:00:00 UTC),
         }
     }
 
@@ -319,7 +316,8 @@ mod tests {
     fn contact_optional_null_when_absent() {
         let mut c = sample();
         c.organization = None;
-        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
         assert!(v["organization"].is_null());
     }
 

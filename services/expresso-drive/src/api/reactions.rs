@@ -22,12 +22,12 @@ use crate::state::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct CommentReaction {
-    pub id:         Uuid,
+    pub id: Uuid,
     pub comment_id: Uuid,
-    pub file_id:    Uuid,
-    pub tenant_id:  Uuid,
-    pub user_id:    Uuid,
-    pub emoji:      String,
+    pub file_id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub emoji: String,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
@@ -47,13 +47,15 @@ pub fn routes() -> Router<AppState> {
 /// POST /api/v1/drive/files/:id/comments/:comment_id/reactions — add or update a reaction.
 async fn add_reaction(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((file_id, comment_id)): Path<(Uuid, Uuid)>,
-    Json(body):   Json<ReactionBody>,
+    Json(body): Json<ReactionBody>,
 ) -> Result<impl IntoResponse> {
     let emoji = body.emoji.trim().to_string();
     if emoji.is_empty() || emoji.chars().count() > 8 {
-        return Err(DriveError::BadRequest("emoji must be 1-8 characters".into()));
+        return Err(DriveError::BadRequest(
+            "emoji must be 1-8 characters".into(),
+        ));
     }
 
     let pool = state.db_or_unavailable()?;
@@ -94,9 +96,9 @@ async fn add_reaction(
 /// DELETE /api/v1/drive/files/:id/comments/:comment_id/reactions — remove a reaction.
 async fn remove_reaction(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((file_id, comment_id)): Path<(Uuid, Uuid)>,
-    Json(body):   Json<ReactionBody>,
+    Json(body): Json<ReactionBody>,
 ) -> Result<impl IntoResponse> {
     let emoji = body.emoji.trim().to_string();
     if emoji.is_empty() {
@@ -133,8 +135,11 @@ mod tests {
     #[test]
     fn comment_reaction_serde_roundtrip() {
         let r = CommentReaction {
-            id: Uuid::nil(), comment_id: Uuid::nil(), file_id: Uuid::nil(),
-            tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            id: Uuid::nil(),
+            comment_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
             emoji: "👍".into(),
             created_at: datetime!(2026-05-22 10:00:00 UTC),
         };
@@ -154,8 +159,11 @@ mod tests {
     fn comment_reaction_created_at_rfc3339() {
         use time::macros::datetime;
         let r = CommentReaction {
-            id: Uuid::nil(), comment_id: Uuid::nil(), file_id: Uuid::nil(),
-            tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            id: Uuid::nil(),
+            comment_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
             emoji: "🔥".into(),
             created_at: datetime!(2026-03-15 12:00:00 UTC),
         };
@@ -167,8 +175,11 @@ mod tests {
     fn comment_reaction_clone_preserves_emoji() {
         use time::macros::datetime;
         let r = CommentReaction {
-            id: Uuid::nil(), comment_id: Uuid::nil(), file_id: Uuid::nil(),
-            tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            id: Uuid::nil(),
+            comment_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
             emoji: "✅".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -182,8 +193,11 @@ mod tests {
         use uuid::Uuid;
         let uid = Uuid::new_v4();
         let r = CommentReaction {
-            id: Uuid::nil(), comment_id: Uuid::nil(), file_id: Uuid::nil(),
-            tenant_id: Uuid::nil(), user_id: uid,
+            id: Uuid::nil(),
+            comment_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: uid,
             emoji: "👍".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -194,8 +208,11 @@ mod tests {
     fn comment_reaction_serializes_emoji_as_string() {
         use time::macros::datetime;
         let r = CommentReaction {
-            id: Uuid::nil(), comment_id: Uuid::nil(), file_id: Uuid::nil(),
-            tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            id: Uuid::nil(),
+            comment_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
             emoji: "🎉".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -263,8 +280,11 @@ mod tests {
         use time::macros::datetime;
         let cid = Uuid::new_v4();
         let r = CommentReaction {
-            id: Uuid::nil(), comment_id: cid, file_id: Uuid::nil(),
-            tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            id: Uuid::nil(),
+            comment_id: cid,
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
             emoji: "👍".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
         };
@@ -300,8 +320,11 @@ mod tests {
         use time::macros::datetime;
         let fid = Uuid::new_v4();
         let r = CommentReaction {
-            id: Uuid::nil(), comment_id: Uuid::nil(), file_id: fid,
-            tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            id: Uuid::nil(),
+            comment_id: Uuid::nil(),
+            file_id: fid,
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
             emoji: "👍".into(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
         };

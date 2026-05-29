@@ -41,8 +41,7 @@ async fn main() -> Result<()> {
 
     let nats_url = env::var("NATS_URL").context("NATS_URL required")?;
     let durable = env::var("NATS_DURABLE").unwrap_or_else(|_| "event-audit".into());
-    let subject_filter =
-        env::var("NATS_SUBJECT_FILTER").unwrap_or_else(|_| "expresso.>".into());
+    let subject_filter = env::var("NATS_SUBJECT_FILTER").unwrap_or_else(|_| "expresso.>".into());
     let metrics_addr = env::var("METRICS_ADDR").unwrap_or_else(|_| "0.0.0.0:9090".into());
 
     // Spawn ops HTTP (healthz + metrics) first; survives NATS outages.
@@ -96,11 +95,7 @@ async fn metrics_handler() -> impl IntoResponse {
         )
             .into_response();
     }
-    (
-        [(axum::http::header::CONTENT_TYPE, enc.format_type())],
-        buf,
-    )
-        .into_response()
+    ([(axum::http::header::CONTENT_TYPE, enc.format_type())], buf).into_response()
 }
 
 async fn run_consumer(

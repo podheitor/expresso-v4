@@ -25,27 +25,27 @@ use serde::Serialize;
 use sqlx::Row;
 use uuid::Uuid;
 
-use expresso_core::begin_tenant_tx;
 use crate::api::context::RequestCtx;
 use crate::error::Result;
 use crate::state::AppState;
+use expresso_core::begin_tenant_tx;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/mail/threads/:thread_id/mute", put(mute).delete(unmute))
-        .route("/mail/threads/:thread_id/pin",  put(pin).delete(unpin))
+        .route("/mail/threads/:thread_id/pin", put(pin).delete(unpin))
         .route("/mail/threads/:thread_id/state", get(get_state))
 }
 
 #[derive(Debug, Serialize, PartialEq)]
 pub struct ThreadState {
-    pub muted:  bool,
+    pub muted: bool,
     pub pinned: bool,
 }
 
 async fn get_state(
-    State(state):    State<AppState>,
-    ctx:             RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Path(thread_id): Path<Uuid>,
 ) -> Result<Json<ThreadState>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -68,41 +68,57 @@ async fn unpin(s: State<AppState>, ctx: RequestCtx, id: Path<Uuid>) -> Result<Js
 }
 
 #[derive(Clone, Copy)]
-enum Flag { Muted, Pinned }
+enum Flag {
+    Muted,
+    Pinned,
+}
 
 /// Apply one flag, then garbage-collect the row if both flags are false.
 /// Idempotent: muting an already-muted thread returns the same state.
 async fn set_flag(
-    State(state):    State<AppState>,
-    ctx:             RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Path(thread_id): Path<Uuid>,
-    flag:            Flag,
-    value:           bool,
+    flag: Flag,
+    value: bool,
 ) -> Result<Json<ThreadState>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let cur = load(&mut tx, ctx.tenant_id, ctx.user_id, thread_id).await?;
     let next = match flag {
-        Flag::Muted  => ThreadState { muted: value,      pinned: cur.pinned },
-        Flag::Pinned => ThreadState { muted: cur.muted,  pinned: value },
+        Flag::Muted => ThreadState {
+            muted: value,
+            pinned: cur.pinned,
+        },
+        Flag::Pinned => ThreadState {
+            muted: cur.muted,
+            pinned: value,
+        },
     };
 
     if !next.muted && !next.pinned {
         sqlx::query(
             "DELETE FROM mail_thread_state \
-             WHERE tenant_id = $1 AND user_id = $2 AND thread_id = $3"
+             WHERE tenant_id = $1 AND user_id = $2 AND thread_id = $3",
         )
-        .bind(ctx.tenant_id).bind(ctx.user_id).bind(thread_id)
-        .execute(&mut *tx).await?;
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .bind(thread_id)
+        .execute(&mut *tx)
+        .await?;
     } else {
         sqlx::query(
             "INSERT INTO mail_thread_state (tenant_id, user_id, thread_id, muted, pinned) \
              VALUES ($1, $2, $3, $4, $5) \
              ON CONFLICT (tenant_id, user_id, thread_id) DO UPDATE SET \
-                muted = EXCLUDED.muted, pinned = EXCLUDED.pinned, updated_at = now()"
+                muted = EXCLUDED.muted, pinned = EXCLUDED.pinned, updated_at = now()",
         )
-        .bind(ctx.tenant_id).bind(ctx.user_id).bind(thread_id)
-        .bind(next.muted).bind(next.pinned)
-        .execute(&mut *tx).await?;
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .bind(thread_id)
+        .bind(next.muted)
+        .bind(next.pinned)
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await?;
     Ok(Json(next))
@@ -110,20 +126,29 @@ async fn set_flag(
 
 /// Read current state; a missing row means neither flag is set.
 async fn load(
-    tx:        &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     tenant_id: Uuid,
-    user_id:   Uuid,
+    user_id: Uuid,
     thread_id: Uuid,
 ) -> Result<ThreadState> {
     let row = sqlx::query(
         "SELECT muted, pinned FROM mail_thread_state \
-         WHERE tenant_id = $1 AND user_id = $2 AND thread_id = $3"
+         WHERE tenant_id = $1 AND user_id = $2 AND thread_id = $3",
     )
-    .bind(tenant_id).bind(user_id).bind(thread_id)
-    .fetch_optional(&mut **tx).await?;
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(thread_id)
+    .fetch_optional(&mut **tx)
+    .await?;
     Ok(match row {
-        Some(r) => ThreadState { muted: r.get("muted"), pinned: r.get("pinned") },
-        None    => ThreadState { muted: false, pinned: false },
+        Some(r) => ThreadState {
+            muted: r.get("muted"),
+            pinned: r.get("pinned"),
+        },
+        None => ThreadState {
+            muted: false,
+            pinned: false,
+        },
     })
 }
 
@@ -133,45 +158,79 @@ mod tests {
 
     #[test]
     fn default_state_is_unset() {
-        let s = ThreadState { muted: false, pinned: false };
+        let s = ThreadState {
+            muted: false,
+            pinned: false,
+        };
         assert!(!s.muted && !s.pinned);
     }
 
     #[test]
     fn muting_preserves_pinned() {
-        let cur = ThreadState { muted: false, pinned: true };
-        let next = ThreadState { muted: true, pinned: cur.pinned };
+        let cur = ThreadState {
+            muted: false,
+            pinned: true,
+        };
+        let next = ThreadState {
+            muted: true,
+            pinned: cur.pinned,
+        };
         assert!(next.muted && next.pinned);
     }
 
     #[test]
     fn pinning_preserves_muted() {
-        let cur = ThreadState { muted: true, pinned: false };
-        let next = ThreadState { muted: cur.muted, pinned: true };
+        let cur = ThreadState {
+            muted: true,
+            pinned: false,
+        };
+        let next = ThreadState {
+            muted: cur.muted,
+            pinned: true,
+        };
         assert!(next.muted && next.pinned);
     }
 
     #[test]
     fn both_false_triggers_gc_branch() {
-        let next = ThreadState { muted: false, pinned: false };
+        let next = ThreadState {
+            muted: false,
+            pinned: false,
+        };
         assert!(!next.muted && !next.pinned);
     }
 
     #[test]
     fn state_serializes_keys() {
-        let s = serde_json::to_string(&ThreadState { muted: true, pinned: false }).unwrap();
+        let s = serde_json::to_string(&ThreadState {
+            muted: true,
+            pinned: false,
+        })
+        .unwrap();
         assert!(s.contains("muted") && s.contains("pinned"));
     }
 
     #[test]
     fn state_equality() {
         assert_eq!(
-            ThreadState { muted: true, pinned: true },
-            ThreadState { muted: true, pinned: true },
+            ThreadState {
+                muted: true,
+                pinned: true
+            },
+            ThreadState {
+                muted: true,
+                pinned: true
+            },
         );
         assert_ne!(
-            ThreadState { muted: true, pinned: false },
-            ThreadState { muted: false, pinned: false },
+            ThreadState {
+                muted: true,
+                pinned: false
+            },
+            ThreadState {
+                muted: false,
+                pinned: false
+            },
         );
     }
 }

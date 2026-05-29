@@ -6,19 +6,28 @@
 //! `assert_from_is_authenticated_user` verifica que `req.from` bate com o
 //! email do usuário autenticado (case-insensitive) antes de enviar.
 
-use axum::{Router, routing::{get, post}, extract::{Path, State}, Json, http::StatusCode};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
 use expresso_core::begin_tenant_tx;
 use lettre::{
-    AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
     message::{header::ContentType, Mailbox, Message, MultiPart, SinglePart},
-    Address,
+    Address, AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
 };
 use serde::{Deserialize, Serialize};
 use serde_json;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{api::context::RequestCtx, error::{MailError, Result}, ingest, state::AppState};
+use crate::{
+    api::context::RequestCtx,
+    error::{MailError, Result},
+    ingest,
+    state::AppState,
+};
 
 /// Limites duros pro endpoint de envio.
 ///
@@ -31,8 +40,8 @@ use crate::{api::context::RequestCtx, error::{MailError, Result}, ingest, state:
 /// anexos grandes vão por outro fluxo. 998 bytes de subject = limite
 /// de linha do RFC 5322.
 pub const MAX_RECIPIENTS_PER_MESSAGE: usize = 100;
-pub const MAX_BODY_BYTES:             usize = 1024 * 1024;
-pub const MAX_SUBJECT_BYTES:          usize = 998;
+pub const MAX_BODY_BYTES: usize = 1024 * 1024;
+pub const MAX_SUBJECT_BYTES: usize = 998;
 
 /// VCALENDAR payload cap pro send_itip. Convites reais (com participantes,
 /// VALARM, recurrence rules) ficam em poucos KiB; 256 KiB cobre até
@@ -45,8 +54,8 @@ pub const MAX_ICS_BYTES: usize = 256 * 1024;
 /// + `WHERE tenant_id = $1 AND id = $2` — defense-in-depth contra RLS
 /// NULL-bypass em `users`.
 async fn assert_from_is_authenticated_user(
-    state:       &AppState,
-    ctx:         &RequestCtx,
+    state: &AppState,
+    ctx: &RequestCtx,
     claimed_from: &str,
 ) -> Result<()> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -71,43 +80,48 @@ async fn assert_from_is_authenticated_user(
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/mail/send",              post(send_message))
-        .route("/mail/send-with-undo",    post(send_with_undo))
-        .route("/mail/send-itip",         post(send_itip))
-        .route("/mail/messages/schedule",          post(schedule_message))
-        .route("/mail/messages/scheduled",         get(list_scheduled))
-        .route("/mail/messages/scheduled/count",   get(count_scheduled))
-        .route("/mail/messages/scheduled/cancel-all", post(cancel_all_scheduled))
-        .route("/mail/messages/sent/count",        get(count_sent))
-        .route("/mail/messages/drafts/count",      get(count_drafts))
-        .route("/mail/messages/trash/count",       get(count_trash))
-        .route("/mail/messages/spam/count",        get(count_spam))
-        .route("/mail/messages/:id/cancel-send",   post(cancel_send))
+        .route("/mail/send", post(send_message))
+        .route("/mail/send-with-undo", post(send_with_undo))
+        .route("/mail/send-itip", post(send_itip))
+        .route("/mail/messages/schedule", post(schedule_message))
+        .route("/mail/messages/scheduled", get(list_scheduled))
+        .route("/mail/messages/scheduled/count", get(count_scheduled))
+        .route(
+            "/mail/messages/scheduled/cancel-all",
+            post(cancel_all_scheduled),
+        )
+        .route("/mail/messages/sent/count", get(count_sent))
+        .route("/mail/messages/drafts/count", get(count_drafts))
+        .route("/mail/messages/trash/count", get(count_trash))
+        .route("/mail/messages/spam/count", get(count_spam))
+        .route("/mail/messages/:id/cancel-send", post(cancel_send))
 }
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 pub struct SendRequest {
-    pub from:        String,
-    pub to:          Vec<String>,
-    pub cc:          Option<Vec<String>>,
-    pub bcc:         Option<Vec<String>>,
-    pub subject:     String,
-    pub body_text:   Option<String>,
-    pub body_html:   Option<String>,
+    pub from: String,
+    pub to: Vec<String>,
+    pub cc: Option<Vec<String>>,
+    pub bcc: Option<Vec<String>>,
+    pub subject: String,
+    pub body_text: Option<String>,
+    pub body_html: Option<String>,
     pub reply_to_id: Option<Uuid>,
 }
 
 /// POST /api/v1/mail/send
 pub async fn send_message(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(req):    Json<SendRequest>,
+    ctx: RequestCtx,
+    Json(req): Json<SendRequest>,
 ) -> Result<StatusCode> {
     validate_send_request(&req)?;
     assert_from_is_authenticated_user(&state, &ctx, &req.from).await?;
 
-    let from_addr: Address = req.from.parse()
+    let from_addr: Address = req
+        .from
+        .parse()
         .map_err(|_| MailError::InvalidMessage(format!("invalid from: {}", req.from)))?;
 
     let mut builder = Message::builder()
@@ -115,17 +129,20 @@ pub async fn send_message(
         .subject(&req.subject);
 
     for addr_str in &req.to {
-        let a: Address = addr_str.parse()
+        let a: Address = addr_str
+            .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid to: {addr_str}")))?;
         builder = builder.to(Mailbox::new(None, a));
     }
     for addr_str in req.cc.iter().flatten() {
-        let a: Address = addr_str.parse()
+        let a: Address = addr_str
+            .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid cc: {addr_str}")))?;
         builder = builder.cc(Mailbox::new(None, a));
     }
     for addr_str in req.bcc.iter().flatten() {
-        let a: Address = addr_str.parse()
+        let a: Address = addr_str
+            .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid bcc: {addr_str}")))?;
         builder = builder.bcc(Mailbox::new(None, a));
     }
@@ -166,11 +183,21 @@ pub async fn send_message(
     let email = match (req.body_html.as_deref(), req.body_text.as_deref()) {
         (Some(html), Some(plain)) => builder.multipart(
             MultiPart::alternative()
-                .singlepart(SinglePart::builder().header(ContentType::TEXT_PLAIN).body(plain.to_string()))
-                .singlepart(SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string())),
+                .singlepart(
+                    SinglePart::builder()
+                        .header(ContentType::TEXT_PLAIN)
+                        .body(plain.to_string()),
+                )
+                .singlepart(
+                    SinglePart::builder()
+                        .header(ContentType::TEXT_HTML)
+                        .body(html.to_string()),
+                ),
         ),
         (Some(html), None) => builder.singlepart(
-            SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string()),
+            SinglePart::builder()
+                .header(ContentType::TEXT_HTML)
+                .body(html.to_string()),
         ),
         (None, plain_opt) => builder.singlepart(
             SinglePart::builder()
@@ -207,7 +234,9 @@ pub async fn send_message(
     };
 
     let envelope = email.envelope().clone();
-    mailer.send_raw(&envelope, &to_relay).await
+    mailer
+        .send_raw(&envelope, &to_relay)
+        .await
         .map_err(|e| MailError::SendFailed(e.to_string()))?;
 
     tracing::info!(from = %req.from, to = ?req.to, subject = %req.subject, dkim, "message sent");
@@ -221,7 +250,6 @@ pub async fn send_message(
     Ok(StatusCode::ACCEPTED)
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Scheduled send: store a draft message with deliver_at; background worker sends it.
 
@@ -232,8 +260,8 @@ const MIN_SCHEDULE_SECONDS: i64 = 60;
 /// Undo-send window bounds. The client holds the message this long before it is
 /// relayed; the user may `cancel-send` within the window. Capped at 30 s
 /// (Gmail's max) so a forgotten send still goes out promptly.
-const UNDO_MIN_SECONDS:     i64 = 5;
-const UNDO_MAX_SECONDS:     i64 = 30;
+const UNDO_MIN_SECONDS: i64 = 5;
+const UNDO_MAX_SECONDS: i64 = 30;
 const UNDO_DEFAULT_SECONDS: i64 = 10;
 
 /// Build the MIME message from a SendRequest and persist it as a Draft-flagged
@@ -241,12 +269,14 @@ const UNDO_DEFAULT_SECONDS: i64 = 10;
 /// `schedule_message` and `send_with_undo` — the only difference between them
 /// is how `deliver_at` is chosen and validated by the caller.
 async fn persist_for_delivery(
-    state:      &AppState,
-    ctx:        &RequestCtx,
-    req:        &SendRequest,
+    state: &AppState,
+    ctx: &RequestCtx,
+    req: &SendRequest,
     deliver_at: OffsetDateTime,
 ) -> Result<Uuid> {
-    let from_addr: Address = req.from.parse()
+    let from_addr: Address = req
+        .from
+        .parse()
         .map_err(|_| MailError::InvalidMessage(format!("invalid from: {}", req.from)))?;
 
     let mut builder = Message::builder()
@@ -254,17 +284,20 @@ async fn persist_for_delivery(
         .subject(&req.subject);
 
     for addr_str in &req.to {
-        let a: Address = addr_str.parse()
+        let a: Address = addr_str
+            .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid to: {addr_str}")))?;
         builder = builder.to(Mailbox::new(None, a));
     }
     for addr_str in req.cc.iter().flatten() {
-        let a: Address = addr_str.parse()
+        let a: Address = addr_str
+            .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid cc: {addr_str}")))?;
         builder = builder.cc(Mailbox::new(None, a));
     }
     for addr_str in req.bcc.iter().flatten() {
-        let a: Address = addr_str.parse()
+        let a: Address = addr_str
+            .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid bcc: {addr_str}")))?;
         builder = builder.bcc(Mailbox::new(None, a));
     }
@@ -272,11 +305,21 @@ async fn persist_for_delivery(
     let email = match (req.body_html.as_deref(), req.body_text.as_deref()) {
         (Some(html), Some(plain)) => builder.multipart(
             MultiPart::alternative()
-                .singlepart(SinglePart::builder().header(ContentType::TEXT_PLAIN).body(plain.to_string()))
-                .singlepart(SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string())),
+                .singlepart(
+                    SinglePart::builder()
+                        .header(ContentType::TEXT_PLAIN)
+                        .body(plain.to_string()),
+                )
+                .singlepart(
+                    SinglePart::builder()
+                        .header(ContentType::TEXT_HTML)
+                        .body(html.to_string()),
+                ),
         ),
         (Some(html), None) => builder.singlepart(
-            SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string()),
+            SinglePart::builder()
+                .header(ContentType::TEXT_HTML)
+                .body(html.to_string()),
         ),
         (None, plain_opt) => builder.singlepart(
             SinglePart::builder()
@@ -287,7 +330,8 @@ async fn persist_for_delivery(
     .map_err(|e| MailError::InvalidMessage(e.to_string()))?;
 
     let raw = email.formatted();
-    let body_path = ingest::write_raw_message(state, &raw).await
+    let body_path = ingest::write_raw_message(state, &raw)
+        .await
         .map_err(|e| MailError::SendFailed(e.to_string()))?;
     let size_bytes = raw.len().min(i32::MAX as usize) as i32;
     let msg_id = Uuid::now_v7();
@@ -298,8 +342,11 @@ async fn persist_for_delivery(
         "SELECT id, next_uid FROM mailboxes \
          WHERE user_id = $1 AND tenant_id = $2 AND special_use = $3 FOR UPDATE",
     )
-    .bind(ctx.user_id).bind(ctx.tenant_id).bind(r"\Drafts")
-    .fetch_optional(&mut *tx).await?;
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .bind(r"\Drafts")
+    .fetch_optional(&mut *tx)
+    .await?;
 
     let (mbox_id, uid) = if let Some(r) = row {
         r
@@ -310,14 +357,18 @@ async fn persist_for_delivery(
              VALUES ($1, $2, 'Drafts', $3, EXTRACT(EPOCH FROM now())::BIGINT, 1, true) \
              RETURNING id",
         )
-        .bind(ctx.user_id).bind(ctx.tenant_id).bind(r"\Drafts")
-        .fetch_one(&mut *tx).await?;
+        .bind(ctx.user_id)
+        .bind(ctx.tenant_id)
+        .bind(r"\Drafts")
+        .fetch_one(&mut *tx)
+        .await?;
         (mid, 1i64)
     };
 
     sqlx::query("UPDATE mailboxes SET next_uid = next_uid + 1 WHERE id = $1")
         .bind(mbox_id)
-        .execute(&mut *tx).await?;
+        .execute(&mut *tx)
+        .await?;
 
     let to_json = serde_json::to_value(&req.to).unwrap_or(serde_json::Value::Array(vec![]));
     sqlx::query(
@@ -326,10 +377,18 @@ async fn persist_for_delivery(
             received_at, deliver_at, from_addr, to_addrs) \
          VALUES ($1, $2, $3, $4, ARRAY[$5::text], $6, $7, now(), $8, $9, $10)",
     )
-    .bind(msg_id).bind(mbox_id).bind(ctx.tenant_id).bind(uid)
-    .bind(r"\Draft").bind(size_bytes).bind(&body_path).bind(deliver_at)
-    .bind(&req.from).bind(to_json)
-    .execute(&mut *tx).await?;
+    .bind(msg_id)
+    .bind(mbox_id)
+    .bind(ctx.tenant_id)
+    .bind(uid)
+    .bind(r"\Draft")
+    .bind(size_bytes)
+    .bind(&body_path)
+    .bind(deliver_at)
+    .bind(&req.from)
+    .bind(to_json)
+    .execute(&mut *tx)
+    .await?;
 
     tx.commit().await?;
     Ok(msg_id)
@@ -338,22 +397,22 @@ async fn persist_for_delivery(
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 pub struct ScheduleRequest {
-    pub from:        String,
-    pub to:          Vec<String>,
-    pub cc:          Option<Vec<String>>,
-    pub bcc:         Option<Vec<String>>,
-    pub subject:     String,
-    pub body_text:   Option<String>,
-    pub body_html:   Option<String>,
+    pub from: String,
+    pub to: Vec<String>,
+    pub cc: Option<Vec<String>>,
+    pub bcc: Option<Vec<String>>,
+    pub subject: String,
+    pub body_text: Option<String>,
+    pub body_html: Option<String>,
     pub reply_to_id: Option<Uuid>,
     /// RFC 3339 timestamp — must be at least 60 s in the future.
     #[serde(with = "time::serde::rfc3339")]
-    pub deliver_at:  OffsetDateTime,
+    pub deliver_at: OffsetDateTime,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ScheduleResp {
-    pub id:         Uuid,
+    pub id: Uuid,
     #[serde(with = "time::serde::rfc3339")]
     pub deliver_at: OffsetDateTime,
 }
@@ -364,17 +423,17 @@ pub struct ScheduleResp {
 /// `scheduled_send_worker` picks it up and relays it when the time comes.
 pub async fn schedule_message(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(req):    Json<ScheduleRequest>,
+    ctx: RequestCtx,
+    Json(req): Json<ScheduleRequest>,
 ) -> Result<(StatusCode, Json<ScheduleResp>)> {
     let send_req = SendRequest {
-        from:        req.from.clone(),
-        to:          req.to.clone(),
-        cc:          req.cc.clone(),
-        bcc:         req.bcc.clone(),
-        subject:     req.subject.clone(),
-        body_text:   req.body_text.clone(),
-        body_html:   req.body_html.clone(),
+        from: req.from.clone(),
+        to: req.to.clone(),
+        cc: req.cc.clone(),
+        bcc: req.bcc.clone(),
+        subject: req.subject.clone(),
+        body_text: req.body_text.clone(),
+        body_html: req.body_html.clone(),
         reply_to_id: req.reply_to_id,
     };
     validate_send_request(&send_req)?;
@@ -394,18 +453,24 @@ pub async fn schedule_message(
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
         msg_id = %msg_id, deliver_at = %req.deliver_at);
 
-    Ok((StatusCode::CREATED, Json(ScheduleResp { id: msg_id, deliver_at: req.deliver_at })))
+    Ok((
+        StatusCode::CREATED,
+        Json(ScheduleResp {
+            id: msg_id,
+            deliver_at: req.deliver_at,
+        }),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UndoSendRequest {
-    pub from:        String,
-    pub to:          Vec<String>,
-    pub cc:          Option<Vec<String>>,
-    pub bcc:         Option<Vec<String>>,
-    pub subject:     String,
-    pub body_text:   Option<String>,
-    pub body_html:   Option<String>,
+    pub from: String,
+    pub to: Vec<String>,
+    pub cc: Option<Vec<String>>,
+    pub bcc: Option<Vec<String>>,
+    pub subject: String,
+    pub body_text: Option<String>,
+    pub body_html: Option<String>,
     pub reply_to_id: Option<Uuid>,
     /// Seconds to hold before relaying (clamped to [UNDO_MIN, UNDO_MAX]).
     /// Omitted → UNDO_DEFAULT_SECONDS.
@@ -420,23 +485,24 @@ pub struct UndoSendRequest {
 /// an "Undo" toast counting down to it.
 pub async fn send_with_undo(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(req):    Json<UndoSendRequest>,
+    ctx: RequestCtx,
+    Json(req): Json<UndoSendRequest>,
 ) -> Result<(StatusCode, Json<ScheduleResp>)> {
     let send_req = SendRequest {
-        from:        req.from.clone(),
-        to:          req.to.clone(),
-        cc:          req.cc.clone(),
-        bcc:         req.bcc.clone(),
-        subject:     req.subject.clone(),
-        body_text:   req.body_text.clone(),
-        body_html:   req.body_html.clone(),
+        from: req.from.clone(),
+        to: req.to.clone(),
+        cc: req.cc.clone(),
+        bcc: req.bcc.clone(),
+        subject: req.subject.clone(),
+        body_text: req.body_text.clone(),
+        body_html: req.body_html.clone(),
         reply_to_id: req.reply_to_id,
     };
     validate_send_request(&send_req)?;
     assert_from_is_authenticated_user(&state, &ctx, &req.from).await?;
 
-    let window = req.undo_seconds
+    let window = req
+        .undo_seconds
         .unwrap_or(UNDO_DEFAULT_SECONDS)
         .clamp(UNDO_MIN_SECONDS, UNDO_MAX_SECONDS);
     let deliver_at = OffsetDateTime::now_utc() + time::Duration::seconds(window);
@@ -448,7 +514,13 @@ pub async fn send_with_undo(
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
         msg_id = %msg_id, undo_seconds = window);
 
-    Ok((StatusCode::CREATED, Json(ScheduleResp { id: msg_id, deliver_at })))
+    Ok((
+        StatusCode::CREATED,
+        Json(ScheduleResp {
+            id: msg_id,
+            deliver_at,
+        }),
+    ))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -461,21 +533,21 @@ use lettre::message::Attachment;
 
 #[derive(Debug, Deserialize)]
 pub struct SendItipRequest {
-    pub from:     String,
-    pub to:       Vec<String>,
-    pub subject:  String,
+    pub from: String,
+    pub to: Vec<String>,
+    pub subject: String,
     /// iTIP method: REQUEST, REPLY, CANCEL, REFRESH.
-    pub method:   String,
+    pub method: String,
     /// Plain-text fallback body; ICS-only clients still render from the ics part.
     pub body_text: Option<String>,
     /// Raw VCALENDAR payload (CRLF-terminated per RFC 5545).
-    pub ics:      String,
+    pub ics: String,
 }
 
 pub async fn send_itip(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(req):    Json<SendItipRequest>,
+    ctx: RequestCtx,
+    Json(req): Json<SendItipRequest>,
 ) -> Result<StatusCode> {
     validate_itip_request(&req)?;
     assert_from_is_authenticated_user(&state, &ctx, &req.from).await?;
@@ -483,10 +555,16 @@ pub async fn send_itip(
     let method = req.method.trim().to_ascii_uppercase();
     match method.as_str() {
         "REQUEST" | "REPLY" | "CANCEL" | "REFRESH" => {}
-        _ => return Err(MailError::InvalidMessage(format!("unsupported iTIP method: {method}"))),
+        _ => {
+            return Err(MailError::InvalidMessage(format!(
+                "unsupported iTIP method: {method}"
+            )))
+        }
     }
 
-    let from_addr: Address = req.from.parse()
+    let from_addr: Address = req
+        .from
+        .parse()
         .map_err(|_| MailError::InvalidMessage(format!("invalid from: {}", req.from)))?;
 
     let mut builder = Message::builder()
@@ -494,7 +572,8 @@ pub async fn send_itip(
         .subject(&req.subject);
 
     for addr_str in &req.to {
-        let a: Address = addr_str.parse()
+        let a: Address = addr_str
+            .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid to: {addr_str}")))?;
         builder = builder.to(Mailbox::new(None, a));
     }
@@ -502,16 +581,18 @@ pub async fn send_itip(
     // RFC 6047 §2.1: text/calendar with method=<METHOD> parameter.
     let calendar_ct: ContentType = format!("text/calendar; method={method}; charset=utf-8")
         .parse()
-        .map_err(|e: lettre::message::header::ContentTypeErr| MailError::InvalidMessage(e.to_string()))?;
+        .map_err(|e: lettre::message::header::ContentTypeErr| {
+            MailError::InvalidMessage(e.to_string())
+        })?;
 
     // Build multipart/alternative: plain text + text/calendar. Use attachment
     // form so that MUAs that don't render inline still offer the ics as a file.
-    let plain = req.body_text.unwrap_or_else(|| format!(
-        "This is an iTIP {method} invitation. Your mail client should display it inline."
-    ));
+    let plain = req.body_text.unwrap_or_else(|| {
+        format!("This is an iTIP {method} invitation. Your mail client should display it inline.")
+    });
 
-    let ics_part = Attachment::new("invite.ics".to_string())
-        .body(req.ics.into_bytes(), calendar_ct);
+    let ics_part =
+        Attachment::new("invite.ics".to_string()).body(req.ics.into_bytes(), calendar_ct);
 
     let email = builder
         .multipart(
@@ -532,7 +613,9 @@ pub async fn send_itip(
         .port(smtp_port)
         .build();
 
-    mailer.send(email).await
+    mailer
+        .send(email)
+        .await
         .map_err(|e| MailError::SendFailed(e.to_string()))?;
 
     tracing::info!(from=%req.from, to=?req.to, method=%method, "itip dispatched");
@@ -542,9 +625,9 @@ pub async fn send_itip(
 /// Store raw RFC 2822 bytes to the user's Sent mailbox with `\Seen` flag.
 /// Returns Ok even when the mailbox doesn't exist — it is auto-created.
 async fn save_to_sent(
-    state:       &AppState,
-    ctx:         &RequestCtx,
-    raw:         &[u8],
+    state: &AppState,
+    ctx: &RequestCtx,
+    raw: &[u8],
     special_use: &str,
 ) -> anyhow::Result<()> {
     let body_path = ingest::write_raw_message(state, raw).await?;
@@ -567,9 +650,9 @@ async fn save_to_sent(
         (mid, nu)
     } else {
         let folder_name = match special_use {
-            r"\Sent"   => "Sent",
+            r"\Sent" => "Sent",
             r"\Drafts" => "Drafts",
-            other      => other,
+            other => other,
         };
         let mid: Uuid = sqlx::query_scalar(
             "INSERT INTO mailboxes \
@@ -616,17 +699,17 @@ fn validate_send_request(req: &SendRequest) -> Result<()> {
     if req.subject.len() > MAX_SUBJECT_BYTES {
         return Err(MailError::InvalidMessage(format!(
             "subject too large: {} bytes (max {})",
-            req.subject.len(), MAX_SUBJECT_BYTES
+            req.subject.len(),
+            MAX_SUBJECT_BYTES
         )));
     }
     if req.subject.contains('\r') || req.subject.contains('\n') {
         return Err(MailError::InvalidMessage(
-            "subject must not contain CR or LF".into()
+            "subject must not contain CR or LF".into(),
         ));
     }
-    let recipient_count = req.to.len()
-        + req.cc.as_ref().map_or(0, Vec::len)
-        + req.bcc.as_ref().map_or(0, Vec::len);
+    let recipient_count =
+        req.to.len() + req.cc.as_ref().map_or(0, Vec::len) + req.bcc.as_ref().map_or(0, Vec::len);
     if recipient_count == 0 {
         return Err(MailError::InvalidMessage("no recipients".into()));
     }
@@ -636,8 +719,8 @@ fn validate_send_request(req: &SendRequest) -> Result<()> {
             recipient_count, MAX_RECIPIENTS_PER_MESSAGE
         )));
     }
-    let body_total = req.body_text.as_deref().map_or(0, str::len)
-        + req.body_html.as_deref().map_or(0, str::len);
+    let body_total =
+        req.body_text.as_deref().map_or(0, str::len) + req.body_html.as_deref().map_or(0, str::len);
     if body_total > MAX_BODY_BYTES {
         return Err(MailError::InvalidMessage(format!(
             "body too large: {} bytes (max {})",
@@ -653,12 +736,13 @@ fn validate_itip_request(req: &SendItipRequest) -> Result<()> {
     if req.subject.len() > MAX_SUBJECT_BYTES {
         return Err(MailError::InvalidMessage(format!(
             "subject too large: {} bytes (max {})",
-            req.subject.len(), MAX_SUBJECT_BYTES
+            req.subject.len(),
+            MAX_SUBJECT_BYTES
         )));
     }
     if req.subject.contains('\r') || req.subject.contains('\n') {
         return Err(MailError::InvalidMessage(
-            "subject must not contain CR or LF".into()
+            "subject must not contain CR or LF".into(),
         ));
     }
     if req.to.is_empty() {
@@ -667,20 +751,23 @@ fn validate_itip_request(req: &SendItipRequest) -> Result<()> {
     if req.to.len() > MAX_RECIPIENTS_PER_MESSAGE {
         return Err(MailError::InvalidMessage(format!(
             "too many recipients: {} (max {})",
-            req.to.len(), MAX_RECIPIENTS_PER_MESSAGE
+            req.to.len(),
+            MAX_RECIPIENTS_PER_MESSAGE
         )));
     }
     if req.ics.len() > MAX_ICS_BYTES {
         return Err(MailError::InvalidMessage(format!(
             "ics payload too large: {} bytes (max {})",
-            req.ics.len(), MAX_ICS_BYTES
+            req.ics.len(),
+            MAX_ICS_BYTES
         )));
     }
     if let Some(b) = req.body_text.as_deref() {
         if b.len() > MAX_BODY_BYTES {
             return Err(MailError::InvalidMessage(format!(
                 "body too large: {} bytes (max {})",
-                b.len(), MAX_BODY_BYTES
+                b.len(),
+                MAX_BODY_BYTES
             )));
         }
     }
@@ -689,10 +776,10 @@ fn validate_itip_request(req: &SendItipRequest) -> Result<()> {
 
 #[derive(Debug, Serialize)]
 struct ScheduledItem {
-    id:         Uuid,
-    subject:    Option<String>,
-    from_addr:  Option<String>,
-    to_addrs:   serde_json::Value,
+    id: Uuid,
+    subject: Option<String>,
+    from_addr: Option<String>,
+    to_addrs: serde_json::Value,
     #[serde(with = "time::serde::rfc3339")]
     deliver_at: OffsetDateTime,
     size_bytes: i32,
@@ -702,31 +789,45 @@ struct ScheduledItem {
 /// futuro) do usuário autenticado, ordenadas por horário de entrega (sprint #419).
 async fn list_scheduled(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<Vec<ScheduledItem>>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
-    let rows: Vec<(Uuid, Option<String>, Option<String>, serde_json::Value, OffsetDateTime, i32)> =
-        sqlx::query_as(
-            "SELECT m.id, m.subject, m.from_addr, m.to_addrs, m.deliver_at, m.size_bytes \
+    let rows: Vec<(
+        Uuid,
+        Option<String>,
+        Option<String>,
+        serde_json::Value,
+        OffsetDateTime,
+        i32,
+    )> = sqlx::query_as(
+        "SELECT m.id, m.subject, m.from_addr, m.to_addrs, m.deliver_at, m.size_bytes \
              FROM messages m \
              JOIN mailboxes mb ON mb.id = m.mailbox_id \
              WHERE m.tenant_id = $1 \
                AND mb.user_id = $2 \
                AND m.deliver_at IS NOT NULL \
              ORDER BY m.deliver_at ASC",
-        )
-        .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
-        .fetch_all(&mut *tx)
-        .await?;
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
 
     tx.commit().await?;
 
-    let items = rows.into_iter()
-        .map(|(id, subject, from_addr, to_addrs, deliver_at, size_bytes)| ScheduledItem {
-            id, subject, from_addr, to_addrs, deliver_at, size_bytes,
-        })
+    let items = rows
+        .into_iter()
+        .map(
+            |(id, subject, from_addr, to_addrs, deliver_at, size_bytes)| ScheduledItem {
+                id,
+                subject,
+                from_addr,
+                to_addrs,
+                deliver_at,
+                size_bytes,
+            },
+        )
         .collect();
 
     Ok(Json(items))
@@ -742,7 +843,7 @@ struct ScheduledCount {
 /// sem o custo de serializar o body completo de list_scheduled.
 async fn count_scheduled(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<ScheduledCount>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -775,10 +876,7 @@ struct SentCount {
 /// special_use. Retorna 0 quando o user nunca teve Sent criada (auto-criação
 /// rola só no primeiro send via save_to_sent). Útil pra badge "X enviadas hoje"
 /// num futuro filtro temporal — por ora é total all-time.
-async fn count_sent(
-    State(state): State<AppState>,
-    ctx:          RequestCtx,
-) -> Result<Json<SentCount>> {
+async fn count_sent(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<SentCount>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     let (count,): (i64,) = sqlx::query_as(
@@ -810,10 +908,7 @@ struct DraftsCount {
 /// do count_sent (#434) — JOIN messages → mailboxes filtrando por user_id +
 /// special_use. Retorna 0 se o user nunca abriu compose (Drafts é auto-criada
 /// no primeiro save). Útil pra badge "X rascunhos" no UI sem listar.
-async fn count_drafts(
-    State(state): State<AppState>,
-    ctx:          RequestCtx,
-) -> Result<Json<DraftsCount>> {
+async fn count_drafts(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<DraftsCount>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     let (count,): (i64,) = sqlx::query_as(
@@ -845,10 +940,7 @@ struct TrashCount {
 /// count_drafts (#439) e count_sent (#434). Retorna 0 se o user nunca apagou
 /// nada (Trash é auto-criada no primeiro move-to-trash). Útil pra badge "X na
 /// lixeira" e pra confirmar antes de empty-trash.
-async fn count_trash(
-    State(state): State<AppState>,
-    ctx:          RequestCtx,
-) -> Result<Json<TrashCount>> {
+async fn count_trash(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<TrashCount>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     let (count,): (i64,) = sqlx::query_as(
@@ -880,10 +972,7 @@ struct SpamCount {
 /// count_trash (#444). Retorna 0 se o filtro nunca marcou nada (Junk é auto-criada
 /// no primeiro move-to-spam). Útil pra badge "X em spam" e pra alertar usuários
 /// que estão perdendo legítimos no filtro.
-async fn count_spam(
-    State(state): State<AppState>,
-    ctx:          RequestCtx,
-) -> Result<Json<SpamCount>> {
+async fn count_spam(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<SpamCount>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     let (count,): (i64,) = sqlx::query_as(
@@ -916,7 +1005,7 @@ struct CancelAllResult {
 /// efetivamente afetada (0 se não havia nenhuma agendada).
 async fn cancel_all_scheduled(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<CancelAllResult>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -954,8 +1043,8 @@ async fn cancel_all_scheduled(
 /// Returns 404 if the message doesn't belong to this user/tenant.
 async fn cancel_send(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -973,9 +1062,9 @@ async fn cancel_send(
     .await?;
 
     match row {
-        None              => return Err(MailError::MessageNotFound(id)),
-        Some((false,))    => return Err(MailError::Conflict("message already sent".into())),
-        Some((true,))     => {}
+        None => return Err(MailError::MessageNotFound(id)),
+        Some((false,)) => return Err(MailError::Conflict("message already sent".into())),
+        Some((true,)) => {}
     }
 
     sqlx::query("UPDATE messages SET deliver_at = NULL WHERE id = $1")
@@ -996,13 +1085,13 @@ mod tests {
 
     fn req() -> SendRequest {
         SendRequest {
-            from:        "alice@acme.test".into(),
-            to:          vec!["bob@acme.test".into()],
-            cc:          None,
-            bcc:         None,
-            subject:     "hi".into(),
-            body_text:   Some("hello".into()),
-            body_html:   None,
+            from: "alice@acme.test".into(),
+            to: vec!["bob@acme.test".into()],
+            cc: None,
+            bcc: None,
+            subject: "hi".into(),
+            body_text: Some("hello".into()),
+            body_html: None,
             reply_to_id: None,
         }
     }
@@ -1023,8 +1112,8 @@ mod tests {
     #[test]
     fn rejects_excess_recipients() {
         let mut r = req();
-        r.to  = vec!["x@y.z".to_string(); 60];
-        r.cc  = Some(vec!["x@y.z".to_string(); 30]);
+        r.to = vec!["x@y.z".to_string(); 60];
+        r.cc = Some(vec!["x@y.z".to_string(); 30]);
         r.bcc = Some(vec!["x@y.z".to_string(); 20]); // total 110 > 100
         let err = format!("{:?}", validate_send_request(&r).unwrap_err());
         assert!(err.contains("too many recipients"), "got: {err}");
@@ -1033,8 +1122,8 @@ mod tests {
     #[test]
     fn accepts_max_recipients_exact() {
         let mut r = req();
-        r.to  = vec!["x@y.z".to_string(); 50];
-        r.cc  = Some(vec!["x@y.z".to_string(); 30]);
+        r.to = vec!["x@y.z".to_string(); 50];
+        r.cc = Some(vec!["x@y.z".to_string(); 30]);
         r.bcc = Some(vec!["x@y.z".to_string(); 20]); // total 100
         assert!(validate_send_request(&r).is_ok());
     }
@@ -1069,7 +1158,9 @@ mod tests {
     /// Mirror of the clamp used in `send_with_undo` so the window bounds are
     /// unit-tested without standing up the DB/SMTP path.
     fn undo_window(requested: Option<i64>) -> i64 {
-        requested.unwrap_or(UNDO_DEFAULT_SECONDS).clamp(UNDO_MIN_SECONDS, UNDO_MAX_SECONDS)
+        requested
+            .unwrap_or(UNDO_DEFAULT_SECONDS)
+            .clamp(UNDO_MIN_SECONDS, UNDO_MAX_SECONDS)
     }
 
     #[test]
@@ -1102,12 +1193,12 @@ mod tests {
 
     fn itip_req() -> SendItipRequest {
         SendItipRequest {
-            from:      "alice@acme.test".into(),
-            to:        vec!["bob@acme.test".into()],
-            subject:   "Meeting".into(),
-            method:    "REQUEST".into(),
+            from: "alice@acme.test".into(),
+            to: vec!["bob@acme.test".into()],
+            subject: "Meeting".into(),
+            method: "REQUEST".into(),
             body_text: None,
-            ics:       "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n".into(),
+            ics: "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n".into(),
         }
     }
 

@@ -30,22 +30,22 @@ use crate::state::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct EventAlarm {
-    pub id:          Uuid,
-    pub event_id:    Uuid,
+    pub id: Uuid,
+    pub event_id: Uuid,
     pub calendar_id: Uuid,
-    pub tenant_id:   Uuid,
-    pub uid:         String,
-    pub action:      String,
+    pub tenant_id: Uuid,
+    pub uid: String,
+    pub action: String,
     pub trigger_rel: Option<String>,
     pub trigger_abs: Option<OffsetDateTime>,
     pub description: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
-    pub created_at:  OffsetDateTime,
+    pub created_at: OffsetDateTime,
 }
 
 #[derive(Debug, Deserialize)]
 struct PatchAlarmBody {
-    action:      Option<String>,
+    action: Option<String>,
     trigger_rel: Option<String>,
     trigger_abs: Option<OffsetDateTime>,
     description: Option<String>,
@@ -53,8 +53,8 @@ struct PatchAlarmBody {
 
 #[derive(Debug, Deserialize)]
 struct CreateAlarmBody {
-    uid:         Option<String>,
-    action:      Option<String>,
+    uid: Option<String>,
+    action: Option<String>,
     trigger_rel: Option<String>,
     trigger_abs: Option<OffsetDateTime>,
     description: Option<String>,
@@ -64,7 +64,9 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
             "/api/v1/calendars/:cal_id/events/:event_id/alarms",
-            get(list_alarms).post(create_alarm).delete(delete_all_alarms),
+            get(list_alarms)
+                .post(create_alarm)
+                .delete(delete_all_alarms),
         )
         .route(
             "/api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid",
@@ -74,10 +76,7 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/alarms/upcoming",
             get(list_upcoming_alarms),
         )
-        .route(
-            "/api/v1/calendars/:cal_id/alarms/count",
-            get(count_alarms),
-        )
+        .route("/api/v1/calendars/:cal_id/alarms/count", get(count_alarms))
 }
 
 #[derive(Debug, Deserialize)]
@@ -104,21 +103,20 @@ async fn count_alarms(
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
 
-    let cal_exists: Option<(Uuid,)> = sqlx::query_as(
-        "SELECT id FROM calendars WHERE id = $1 AND tenant_id = $2",
-    )
-    .bind(cal_id)
-    .bind(ctx.tenant_id)
-    .fetch_optional(pool)
-    .await?;
+    let cal_exists: Option<(Uuid,)> =
+        sqlx::query_as("SELECT id FROM calendars WHERE id = $1 AND tenant_id = $2")
+            .bind(cal_id)
+            .bind(ctx.tenant_id)
+            .fetch_optional(pool)
+            .await?;
     if cal_exists.is_none() {
         return Err(CalendarError::CalendarNotFound(cal_id.to_string()));
     }
 
     let delivered_filter = match q.delivered {
-        Some(true)  => "AND delivered_at IS NOT NULL",
+        Some(true) => "AND delivered_at IS NOT NULL",
         Some(false) => "AND delivered_at IS NULL",
-        None        => "",
+        None => "",
     };
 
     let sql = format!(
@@ -151,13 +149,12 @@ async fn list_upcoming_alarms(
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
 
-    let cal_exists: Option<(Uuid,)> = sqlx::query_as(
-        "SELECT id FROM calendars WHERE id = $1 AND tenant_id = $2",
-    )
-    .bind(cal_id)
-    .bind(ctx.tenant_id)
-    .fetch_optional(pool)
-    .await?;
+    let cal_exists: Option<(Uuid,)> =
+        sqlx::query_as("SELECT id FROM calendars WHERE id = $1 AND tenant_id = $2")
+            .bind(cal_id)
+            .bind(ctx.tenant_id)
+            .fetch_optional(pool)
+            .await?;
     if cal_exists.is_none() {
         return Err(CalendarError::CalendarNotFound(cal_id.to_string()));
     }
@@ -363,7 +360,7 @@ async fn get_alarm(
 
     match alarm {
         Some(a) => Ok(Json(a)),
-        None    => Err(CalendarError::AlarmNotFound(event_id)),
+        None => Err(CalendarError::AlarmNotFound(event_id)),
     }
 }
 
@@ -408,7 +405,7 @@ async fn patch_alarm(
 
     match updated {
         Some(a) => Ok(Json(a)),
-        None    => Err(CalendarError::AlarmNotFound(event_id)),
+        None => Err(CalendarError::AlarmNotFound(event_id)),
     }
 }
 
@@ -502,7 +499,8 @@ mod tests {
 
     #[test]
     fn patch_alarm_body_description_preserved() {
-        let b: PatchAlarmBody = serde_json::from_str(r#"{"description":"Meeting reminder"}"#).unwrap();
+        let b: PatchAlarmBody =
+            serde_json::from_str(r#"{"description":"Meeting reminder"}"#).unwrap();
         assert_eq!(b.description.as_deref(), Some("Meeting reminder"));
     }
 

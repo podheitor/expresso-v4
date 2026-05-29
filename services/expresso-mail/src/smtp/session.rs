@@ -15,30 +15,34 @@ use rustls::ServerConfig;
 use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 
-use crate::{dkim, ingest, state::AppState};
 use crate::smtp::metrics::{command_label, SMTP_COMMANDS_TOTAL, SMTP_SESSIONS_TOTAL};
+use crate::{dkim, ingest, state::AppState};
 
 fn load_tls_config(cert_path: &str, key_path: &str) -> anyhow::Result<ServerConfig> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let cert_pem = std::fs::read(cert_path)?;
-    let key_pem  = std::fs::read(key_path)?;
-    let cert_chain: Vec<CertificateDer<'static>> = certs(&mut cert_pem.as_slice())
-        .collect::<Result<Vec<_>, _>>()?;
+    let key_pem = std::fs::read(key_path)?;
+    let cert_chain: Vec<CertificateDer<'static>> =
+        certs(&mut cert_pem.as_slice()).collect::<Result<Vec<_>, _>>()?;
     if cert_chain.is_empty() {
         anyhow::bail!("no certs found in {}", cert_path);
     }
-    let pkcs8: Vec<_> = pkcs8_private_keys(&mut key_pem.as_slice())
-        .collect::<Result<Vec<_>, _>>()?;
+    let pkcs8: Vec<_> =
+        pkcs8_private_keys(&mut key_pem.as_slice()).collect::<Result<Vec<_>, _>>()?;
     let key: PrivateKeyDer<'static> = if let Some(k) = pkcs8.into_iter().next() {
         PrivateKeyDer::Pkcs8(k)
     } else {
-        let rsa: Vec<_> = rsa_private_keys(&mut key_pem.as_slice())
-            .collect::<Result<Vec<_>, _>>()?;
-        let k = rsa.into_iter().next()
+        let rsa: Vec<_> =
+            rsa_private_keys(&mut key_pem.as_slice()).collect::<Result<Vec<_>, _>>()?;
+        let k = rsa
+            .into_iter()
+            .next()
             .ok_or_else(|| anyhow::anyhow!("no private key in {}", key_path))?;
         PrivateKeyDer::Pkcs1(k)
     };
-    Ok(ServerConfig::builder().with_no_client_auth().with_single_cert(cert_chain, key)?)
+    Ok(ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(cert_chain, key)?)
 }
 
 const MAX_MSG_BYTES: usize = 50 * 1024 * 1024; // 50 MiB
@@ -59,14 +63,19 @@ struct Envelope {
 /// and upgrades the connection to TLS before continuing the session.
 #[instrument(skip(stream, state), fields(peer = %peer))]
 pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow::Result<()> {
-    SMTP_SESSIONS_TOTAL.with_label_values(&["smtp25", "accepted"]).inc();
+    SMTP_SESSIONS_TOTAL
+        .with_label_values(&["smtp25", "accepted"])
+        .inc();
 
     let domain = state.cfg().mail_server.domain.clone();
 
     // Build TLS acceptor (if configured).
     let acceptor: Option<TlsAcceptor> = {
         let cfg = state.cfg();
-        match (cfg.mail_server.tls_cert.as_deref(), cfg.mail_server.tls_key.as_deref()) {
+        match (
+            cfg.mail_server.tls_cert.as_deref(),
+            cfg.mail_server.tls_key.as_deref(),
+        ) {
             (Some(cert), Some(key)) => match load_tls_config(cert, key) {
                 Ok(c) => Some(TlsAcceptor::from(Arc::new(c))),
                 Err(e) => {
@@ -260,8 +269,12 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
     }.await;
 
     match &result {
-        Ok(()) => SMTP_SESSIONS_TOTAL.with_label_values(&["smtp25", "closed"]).inc(),
-        Err(_) => SMTP_SESSIONS_TOTAL.with_label_values(&["smtp25", "error"]).inc(),
+        Ok(()) => SMTP_SESSIONS_TOTAL
+            .with_label_values(&["smtp25", "closed"])
+            .inc(),
+        Err(_) => SMTP_SESSIONS_TOTAL
+            .with_label_values(&["smtp25", "error"])
+            .inc(),
     }
     result
 }
@@ -273,14 +286,21 @@ pub async fn handle_smtps(
     peer: SocketAddr,
     state: AppState,
 ) -> anyhow::Result<()> {
-    SMTP_SESSIONS_TOTAL.with_label_values(&["smtps465", "accepted"]).inc();
+    SMTP_SESSIONS_TOTAL
+        .with_label_values(&["smtps465", "accepted"])
+        .inc();
     let domain = state.cfg().mail_server.domain.clone();
     let (r, mut w) = tokio::io::split(stream);
-    w.write_all(format!("220 {domain} ESMTP Expresso\r\n").as_bytes()).await?;
+    w.write_all(format!("220 {domain} ESMTP Expresso\r\n").as_bytes())
+        .await?;
     let result = session_loop(r, w, &domain, &state, peer, Envelope::default(), true).await;
     match &result {
-        Ok(()) => SMTP_SESSIONS_TOTAL.with_label_values(&["smtps465", "closed"]).inc(),
-        Err(_) => SMTP_SESSIONS_TOTAL.with_label_values(&["smtps465", "error"]).inc(),
+        Ok(()) => SMTP_SESSIONS_TOTAL
+            .with_label_values(&["smtps465", "closed"])
+            .inc(),
+        Err(_) => SMTP_SESSIONS_TOTAL
+            .with_label_values(&["smtps465", "error"])
+            .inc(),
     }
     result
 }
@@ -320,26 +340,68 @@ where
                 let mail_from = env.from.as_deref().unwrap_or("");
                 let auth = dkim::verify_inbound(peer.ip(), helo, mail_from, domain, raw).await;
                 if auth.should_reject() {
-                    expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL.with_label_values(&["reject"]).inc();
-                    writer.write_all(b"550 5.7.1 DMARC policy: message rejected (p=reject)\r\n").await?;
-                    SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp25", "reject"]).inc();
-                    data_buf.clear(); env = Envelope::default(); continue;
+                    expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL
+                        .with_label_values(&["reject"])
+                        .inc();
+                    writer
+                        .write_all(b"550 5.7.1 DMARC policy: message rejected (p=reject)\r\n")
+                        .await?;
+                    SMTP_COMMANDS_TOTAL
+                        .with_label_values(&["DATA", "smtp25", "reject"])
+                        .inc();
+                    data_buf.clear();
+                    env = Envelope::default();
+                    continue;
                 }
-                expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL.with_label_values(&["accept"]).inc();
-                let signed_raw = format!("{}{}{}", auth.to_received_spf_header(domain), auth.to_header(domain), data_buf);
-                match ingest::process(state, env.from.as_deref(), &env.rcpts, signed_raw.as_bytes()).await {
-                    Ok(n) if n > 0 => { writer.write_all(b"250 OK message accepted\r\n").await?; SMTP_COMMANDS_TOTAL.with_label_values(&["DATA","smtp25","ok"]).inc(); }
-                    Ok(_) => { writer.write_all(b"550 No valid recipients\r\n").await?; SMTP_COMMANDS_TOTAL.with_label_values(&["DATA","smtp25","reject"]).inc(); }
-                    Err(e) => { error!(error = %e, "ingest failed"); writer.write_all(b"451 Local error\r\n").await?; SMTP_COMMANDS_TOTAL.with_label_values(&["DATA","smtp25","error"]).inc(); }
+                expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL
+                    .with_label_values(&["accept"])
+                    .inc();
+                let signed_raw = format!(
+                    "{}{}{}",
+                    auth.to_received_spf_header(domain),
+                    auth.to_header(domain),
+                    data_buf
+                );
+                match ingest::process(
+                    state,
+                    env.from.as_deref(),
+                    &env.rcpts,
+                    signed_raw.as_bytes(),
+                )
+                .await
+                {
+                    Ok(n) if n > 0 => {
+                        writer.write_all(b"250 OK message accepted\r\n").await?;
+                        SMTP_COMMANDS_TOTAL
+                            .with_label_values(&["DATA", "smtp25", "ok"])
+                            .inc();
+                    }
+                    Ok(_) => {
+                        writer.write_all(b"550 No valid recipients\r\n").await?;
+                        SMTP_COMMANDS_TOTAL
+                            .with_label_values(&["DATA", "smtp25", "reject"])
+                            .inc();
+                    }
+                    Err(e) => {
+                        error!(error = %e, "ingest failed");
+                        writer.write_all(b"451 Local error\r\n").await?;
+                        SMTP_COMMANDS_TOTAL
+                            .with_label_values(&["DATA", "smtp25", "error"])
+                            .inc();
+                    }
                 }
-                data_buf.clear(); env = Envelope::default();
+                data_buf.clear();
+                env = Envelope::default();
             } else {
                 let l = line.strip_prefix('.').unwrap_or(&line);
                 if data_buf.len() + l.len() + 2 > MAX_MSG_BYTES {
                     writer.write_all(b"552 Message too large\r\n").await?;
-                    data_mode = false; data_buf.clear(); env = Envelope::default();
+                    data_mode = false;
+                    data_buf.clear();
+                    env = Envelope::default();
                 } else {
-                    data_buf.push_str(l); data_buf.push_str("\r\n");
+                    data_buf.push_str(l);
+                    data_buf.push_str("\r\n");
                 }
             }
             continue;
@@ -347,32 +409,100 @@ where
 
         let upper = line.to_ascii_uppercase();
         if upper.starts_with("EHLO") || upper.starts_with("HELO") {
-            let verb = if upper.starts_with("EHLO") { "EHLO" } else { "HELO" };
+            let verb = if upper.starts_with("EHLO") {
+                "EHLO"
+            } else {
+                "HELO"
+            };
             env.helo = Some(line[4..].trim().to_string());
             writer.write_all(format!("250-{domain} Hello\r\n250-SIZE {MAX_MSG_BYTES}\r\n250-8BITMIME\r\n250-PIPELINING\r\n250 OK\r\n").as_bytes()).await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&[verb, "smtp25", "ok"]).inc();
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&[verb, "smtp25", "ok"])
+                .inc();
         } else if upper.starts_with("MAIL FROM:") {
             let rest = &line[10..];
             let declared = extract_size_param(rest);
-            if let Some(sz) = declared { if sz > MAX_MSG_BYTES { writer.write_all(b"552 5.3.4 Message size exceeds maximum\r\n").await?; SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL","smtp25","reject"]).inc(); continue; } }
-            env.from = Some(extract_angle(rest)); env.declared_size = declared; env.rcpts.clear();
-            writer.write_all(b"250 OK\r\n").await?; SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL","smtp25","ok"]).inc();
+            if let Some(sz) = declared {
+                if sz > MAX_MSG_BYTES {
+                    writer
+                        .write_all(b"552 5.3.4 Message size exceeds maximum\r\n")
+                        .await?;
+                    SMTP_COMMANDS_TOTAL
+                        .with_label_values(&["MAIL", "smtp25", "reject"])
+                        .inc();
+                    continue;
+                }
+            }
+            env.from = Some(extract_angle(rest));
+            env.declared_size = declared;
+            env.rcpts.clear();
+            writer.write_all(b"250 OK\r\n").await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["MAIL", "smtp25", "ok"])
+                .inc();
         } else if upper.starts_with("RCPT TO:") {
-            if env.from.is_none() { writer.write_all(b"503 MAIL first\r\n").await?; SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT","smtp25","reject"]).inc(); }
-            else if env.rcpts.len() >= MAX_RCPTS { writer.write_all(b"452 Too many recipients\r\n").await?; SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT","smtp25","reject"]).inc(); }
-            else { env.rcpts.push(extract_angle(&line[8..])); writer.write_all(b"250 OK\r\n").await?; SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT","smtp25","ok"]).inc(); }
+            if env.from.is_none() {
+                writer.write_all(b"503 MAIL first\r\n").await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["RCPT", "smtp25", "reject"])
+                    .inc();
+            } else if env.rcpts.len() >= MAX_RCPTS {
+                writer.write_all(b"452 Too many recipients\r\n").await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["RCPT", "smtp25", "reject"])
+                    .inc();
+            } else {
+                env.rcpts.push(extract_angle(&line[8..]));
+                writer.write_all(b"250 OK\r\n").await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["RCPT", "smtp25", "ok"])
+                    .inc();
+            }
         } else if upper == "DATA" {
-            if env.from.is_none() || env.rcpts.is_empty() { writer.write_all(b"503 Bad sequence\r\n").await?; SMTP_COMMANDS_TOTAL.with_label_values(&["DATA","smtp25","reject"]).inc(); }
-            else { writer.write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n").await?; data_mode = true; }
-        } else if upper == "RSET" { env = Envelope::default(); writer.write_all(b"250 OK\r\n").await?; SMTP_COMMANDS_TOTAL.with_label_values(&["RSET","smtp25","ok"]).inc();
-        } else if upper == "NOOP" { writer.write_all(b"250 OK\r\n").await?; SMTP_COMMANDS_TOTAL.with_label_values(&["NOOP","smtp25","ok"]).inc();
-        } else if upper == "VRFY" { writer.write_all(b"252 2.5.2 Cannot VRFY user; try RCPT\r\n").await?; SMTP_COMMANDS_TOTAL.with_label_values(&["VRFY","smtp25","ok"]).inc();
-        } else if upper == "QUIT" { writer.write_all(format!("221 {domain} Bye\r\n").as_bytes()).await?; SMTP_COMMANDS_TOTAL.with_label_values(&["QUIT","smtp25","ok"]).inc(); break;
+            if env.from.is_none() || env.rcpts.is_empty() {
+                writer.write_all(b"503 Bad sequence\r\n").await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["DATA", "smtp25", "reject"])
+                    .inc();
+            } else {
+                writer
+                    .write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n")
+                    .await?;
+                data_mode = true;
+            }
+        } else if upper == "RSET" {
+            env = Envelope::default();
+            writer.write_all(b"250 OK\r\n").await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["RSET", "smtp25", "ok"])
+                .inc();
+        } else if upper == "NOOP" {
+            writer.write_all(b"250 OK\r\n").await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["NOOP", "smtp25", "ok"])
+                .inc();
+        } else if upper == "VRFY" {
+            writer
+                .write_all(b"252 2.5.2 Cannot VRFY user; try RCPT\r\n")
+                .await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["VRFY", "smtp25", "ok"])
+                .inc();
+        } else if upper == "QUIT" {
+            writer
+                .write_all(format!("221 {domain} Bye\r\n").as_bytes())
+                .await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["QUIT", "smtp25", "ok"])
+                .inc();
+            break;
         } else {
             let verb = command_label(upper.split_whitespace().next().unwrap_or("OTHER"));
             warn!(cmd = %line, "unknown SMTP command (TLS)");
             writer.write_all(b"500 Command not recognized\r\n").await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&[verb, "smtp25", "reject"]).inc();
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&[verb, "smtp25", "reject"])
+                .inc();
         }
     }
     Ok(())
@@ -464,7 +594,10 @@ mod extra_tests {
 
     #[test]
     fn extract_angle_with_space_and_params() {
-        assert_eq!(extract_angle("<user@domain.com> SIZE=1024"), "user@domain.com");
+        assert_eq!(
+            extract_angle("<user@domain.com> SIZE=1024"),
+            "user@domain.com"
+        );
     }
 
     #[test]
@@ -510,17 +643,26 @@ mod extra_tests {
 
     #[test]
     fn extract_angle_domain_only_address() {
-        assert_eq!(extract_angle("<postmaster@localhost>"), "postmaster@localhost");
+        assert_eq!(
+            extract_angle("<postmaster@localhost>"),
+            "postmaster@localhost"
+        );
     }
 
     #[test]
     fn size_param_with_body_param_before_size() {
-        assert_eq!(extract_size_param("<a@b> BODY=8BITMIME SIZE=2048"), Some(2048));
+        assert_eq!(
+            extract_size_param("<a@b> BODY=8BITMIME SIZE=2048"),
+            Some(2048)
+        );
     }
 
     #[test]
     fn extract_angle_subdomain_address_extracted() {
-        assert_eq!(extract_angle("<user@mail.example.org>"), "user@mail.example.org");
+        assert_eq!(
+            extract_angle("<user@mail.example.org>"),
+            "user@mail.example.org"
+        );
     }
 
     #[test]

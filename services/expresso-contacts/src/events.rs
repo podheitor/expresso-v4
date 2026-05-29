@@ -28,10 +28,25 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ContactsEvent {
-    AddressbookCreated { tenant_id: Uuid, addressbook_id: Uuid, name: Option<String> },
-    AddressbookDeleted { tenant_id: Uuid, addressbook_id: Uuid },
-    ContactUpserted    { tenant_id: Uuid, addressbook_id: Uuid, contact_id: Uuid },
-    ContactDeleted     { tenant_id: Uuid, addressbook_id: Uuid, contact_id: Uuid },
+    AddressbookCreated {
+        tenant_id: Uuid,
+        addressbook_id: Uuid,
+        name: Option<String>,
+    },
+    AddressbookDeleted {
+        tenant_id: Uuid,
+        addressbook_id: Uuid,
+    },
+    ContactUpserted {
+        tenant_id: Uuid,
+        addressbook_id: Uuid,
+        contact_id: Uuid,
+    },
+    ContactDeleted {
+        tenant_id: Uuid,
+        addressbook_id: Uuid,
+        contact_id: Uuid,
+    },
 }
 
 impl ContactsEvent {
@@ -39,16 +54,16 @@ impl ContactsEvent {
         match self {
             Self::AddressbookCreated { tenant_id, .. } => *tenant_id,
             Self::AddressbookDeleted { tenant_id, .. } => *tenant_id,
-            Self::ContactUpserted    { tenant_id, .. } => *tenant_id,
-            Self::ContactDeleted     { tenant_id, .. } => *tenant_id,
+            Self::ContactUpserted { tenant_id, .. } => *tenant_id,
+            Self::ContactDeleted { tenant_id, .. } => *tenant_id,
         }
     }
     pub fn kind_str(&self) -> &'static str {
         match self {
             Self::AddressbookCreated { .. } => "addressbook_created",
             Self::AddressbookDeleted { .. } => "addressbook_deleted",
-            Self::ContactUpserted    { .. } => "contact_upserted",
-            Self::ContactDeleted     { .. } => "contact_deleted",
+            Self::ContactUpserted { .. } => "contact_upserted",
+            Self::ContactDeleted { .. } => "contact_deleted",
         }
     }
 }
@@ -59,7 +74,9 @@ pub struct ContactsEventBus {
 }
 
 impl ContactsEventBus {
-    pub fn noop() -> Self { Self { jetstream: None } }
+    pub fn noop() -> Self {
+        Self { jetstream: None }
+    }
 
     pub async fn new_with_nats(url: &str) -> anyhow::Result<Self> {
         let client = async_nats::connect(url).await?;
@@ -70,38 +87,50 @@ impl ContactsEventBus {
             max_age: std::time::Duration::from_secs(60 * 60 * 24 * 7),
             ..Default::default()
         };
-        js.get_or_create_stream(cfg).await
+        js.get_or_create_stream(cfg)
+            .await
             .map_err(|e| anyhow::anyhow!("jetstream ensure: {e}"))?;
         Lazy::force(&NATS_PUBLISH_TOTAL);
-        for kind in ["addressbook_created","addressbook_deleted","contact_upserted","contact_deleted"] {
-            for result in ["ok","err","serialize_err"] {
-                NATS_PUBLISH_TOTAL.with_label_values(&[kind, result]).inc_by(0);
+        for kind in [
+            "addressbook_created",
+            "addressbook_deleted",
+            "contact_upserted",
+            "contact_deleted",
+        ] {
+            for result in ["ok", "err", "serialize_err"] {
+                NATS_PUBLISH_TOTAL
+                    .with_label_values(&[kind, result])
+                    .inc_by(0);
             }
         }
         tracing::info!(nats_url=%url, "jetstream EXPRESSO_CONTACTS ready");
-        Ok(Self { jetstream: Some(js) })
+        Ok(Self {
+            jetstream: Some(js),
+        })
     }
 
     /// Best-effort fire-and-forget publish.
     pub fn publish(&self, ev: ContactsEvent) {
-        let Some(js) = self.jetstream.clone() else { return; };
+        let Some(js) = self.jetstream.clone() else {
+            return;
+        };
         let kind = ev.kind_str();
         let subject = format!("expresso.contacts.{}.{}", ev.tenant_id(), kind);
         tokio::spawn(async move {
             match serde_json::to_vec(&ev) {
-                Ok(payload) => {
-                    match js.publish(subject.clone(), payload.into()).await {
-                        Ok(_) => {
-                            NATS_PUBLISH_TOTAL.with_label_values(&[kind, "ok"]).inc();
-                        }
-                        Err(e) => {
-                            NATS_PUBLISH_TOTAL.with_label_values(&[kind, "err"]).inc();
-                            tracing::warn!(error=%e, %subject, "nats publish failed");
-                        }
+                Ok(payload) => match js.publish(subject.clone(), payload.into()).await {
+                    Ok(_) => {
+                        NATS_PUBLISH_TOTAL.with_label_values(&[kind, "ok"]).inc();
                     }
-                }
+                    Err(e) => {
+                        NATS_PUBLISH_TOTAL.with_label_values(&[kind, "err"]).inc();
+                        tracing::warn!(error=%e, %subject, "nats publish failed");
+                    }
+                },
                 Err(e) => {
-                    NATS_PUBLISH_TOTAL.with_label_values(&[kind, "serialize_err"]).inc();
+                    NATS_PUBLISH_TOTAL
+                        .with_label_values(&[kind, "serialize_err"])
+                        .inc();
                     tracing::warn!(error=%e, "contacts event serialize failed");
                 }
             }
@@ -110,101 +139,186 @@ impl ContactsEventBus {
 }
 
 impl Default for ContactsEventBus {
-    fn default() -> Self { Self::noop() }
+    fn default() -> Self {
+        Self::noop()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn tid() -> Uuid { Uuid::new_v4() }
-    fn aid() -> Uuid { Uuid::new_v4() }
-    fn cid() -> Uuid { Uuid::new_v4() }
+    fn tid() -> Uuid {
+        Uuid::new_v4()
+    }
+    fn aid() -> Uuid {
+        Uuid::new_v4()
+    }
+    fn cid() -> Uuid {
+        Uuid::new_v4()
+    }
 
     #[test]
     fn addressbook_created_tenant_id() {
         let t = tid();
-        let ev = ContactsEvent::AddressbookCreated { tenant_id: t, addressbook_id: aid(), name: None };
+        let ev = ContactsEvent::AddressbookCreated {
+            tenant_id: t,
+            addressbook_id: aid(),
+            name: None,
+        };
         assert_eq!(ev.tenant_id(), t);
     }
 
     #[test]
     fn addressbook_deleted_tenant_id() {
         let t = tid();
-        let ev = ContactsEvent::AddressbookDeleted { tenant_id: t, addressbook_id: aid() };
+        let ev = ContactsEvent::AddressbookDeleted {
+            tenant_id: t,
+            addressbook_id: aid(),
+        };
         assert_eq!(ev.tenant_id(), t);
     }
 
     #[test]
     fn contact_upserted_tenant_id() {
         let t = tid();
-        let ev = ContactsEvent::ContactUpserted { tenant_id: t, addressbook_id: aid(), contact_id: cid() };
+        let ev = ContactsEvent::ContactUpserted {
+            tenant_id: t,
+            addressbook_id: aid(),
+            contact_id: cid(),
+        };
         assert_eq!(ev.tenant_id(), t);
     }
 
     #[test]
     fn contact_deleted_tenant_id() {
         let t = tid();
-        let ev = ContactsEvent::ContactDeleted { tenant_id: t, addressbook_id: aid(), contact_id: cid() };
+        let ev = ContactsEvent::ContactDeleted {
+            tenant_id: t,
+            addressbook_id: aid(),
+            contact_id: cid(),
+        };
         assert_eq!(ev.tenant_id(), t);
     }
 
     #[test]
     fn kind_str_values() {
-        assert_eq!(ContactsEvent::AddressbookCreated { tenant_id: tid(), addressbook_id: aid(), name: None }.kind_str(), "addressbook_created");
-        assert_eq!(ContactsEvent::AddressbookDeleted { tenant_id: tid(), addressbook_id: aid() }.kind_str(), "addressbook_deleted");
-        assert_eq!(ContactsEvent::ContactUpserted    { tenant_id: tid(), addressbook_id: aid(), contact_id: cid() }.kind_str(), "contact_upserted");
-        assert_eq!(ContactsEvent::ContactDeleted     { tenant_id: tid(), addressbook_id: aid(), contact_id: cid() }.kind_str(), "contact_deleted");
+        assert_eq!(
+            ContactsEvent::AddressbookCreated {
+                tenant_id: tid(),
+                addressbook_id: aid(),
+                name: None
+            }
+            .kind_str(),
+            "addressbook_created"
+        );
+        assert_eq!(
+            ContactsEvent::AddressbookDeleted {
+                tenant_id: tid(),
+                addressbook_id: aid()
+            }
+            .kind_str(),
+            "addressbook_deleted"
+        );
+        assert_eq!(
+            ContactsEvent::ContactUpserted {
+                tenant_id: tid(),
+                addressbook_id: aid(),
+                contact_id: cid()
+            }
+            .kind_str(),
+            "contact_upserted"
+        );
+        assert_eq!(
+            ContactsEvent::ContactDeleted {
+                tenant_id: tid(),
+                addressbook_id: aid(),
+                contact_id: cid()
+            }
+            .kind_str(),
+            "contact_deleted"
+        );
     }
 
     #[test]
     fn addressbook_created_serializes_tag() {
-        let ev = ContactsEvent::AddressbookCreated { tenant_id: Uuid::nil(), addressbook_id: Uuid::nil(), name: Some("AB".into()) };
+        let ev = ContactsEvent::AddressbookCreated {
+            tenant_id: Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            name: Some("AB".into()),
+        };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains(r#""kind":"addressbook_created""#) && s.contains("AB"));
     }
 
     #[test]
     fn contact_deleted_kind_str() {
-        let ev = ContactsEvent::ContactDeleted { tenant_id: tid(), addressbook_id: aid(), contact_id: cid() };
+        let ev = ContactsEvent::ContactDeleted {
+            tenant_id: tid(),
+            addressbook_id: aid(),
+            contact_id: cid(),
+        };
         assert_eq!(ev.kind_str(), "contact_deleted");
     }
 
     #[test]
     fn addressbook_created_name_none_serializes() {
-        let ev = ContactsEvent::AddressbookCreated { tenant_id: Uuid::nil(), addressbook_id: Uuid::nil(), name: None };
+        let ev = ContactsEvent::AddressbookCreated {
+            tenant_id: Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            name: None,
+        };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains(r#""kind":"addressbook_created""#));
     }
 
     #[test]
     fn contact_upserted_kind_str() {
-        let ev = ContactsEvent::ContactUpserted { tenant_id: tid(), addressbook_id: aid(), contact_id: cid() };
+        let ev = ContactsEvent::ContactUpserted {
+            tenant_id: tid(),
+            addressbook_id: aid(),
+            contact_id: cid(),
+        };
         assert_eq!(ev.kind_str(), "contact_upserted");
     }
 
     #[test]
     fn addressbook_created_kind_str() {
-        let ev = ContactsEvent::AddressbookCreated { tenant_id: tid(), addressbook_id: aid(), name: None };
+        let ev = ContactsEvent::AddressbookCreated {
+            tenant_id: tid(),
+            addressbook_id: aid(),
+            name: None,
+        };
         assert_eq!(ev.kind_str(), "addressbook_created");
     }
 
     #[test]
     fn addressbook_deleted_kind_str() {
-        let ev = ContactsEvent::AddressbookDeleted { tenant_id: tid(), addressbook_id: aid() };
+        let ev = ContactsEvent::AddressbookDeleted {
+            tenant_id: tid(),
+            addressbook_id: aid(),
+        };
         assert_eq!(ev.kind_str(), "addressbook_deleted");
     }
 
     #[test]
     fn contact_deleted_kind_str_new() {
-        let ev = ContactsEvent::ContactDeleted { tenant_id: tid(), addressbook_id: aid(), contact_id: cid() };
+        let ev = ContactsEvent::ContactDeleted {
+            tenant_id: tid(),
+            addressbook_id: aid(),
+            contact_id: cid(),
+        };
         assert_eq!(ev.kind_str(), "contact_deleted");
     }
 
     #[test]
     fn contacts_event_tenant_id_accessible() {
         let t = tid();
-        let ev = ContactsEvent::AddressbookCreated { tenant_id: t, addressbook_id: aid(), name: None };
+        let ev = ContactsEvent::AddressbookCreated {
+            tenant_id: t,
+            addressbook_id: aid(),
+            name: None,
+        };
         assert_eq!(ev.tenant_id(), t);
     }
 
@@ -221,7 +335,10 @@ mod tests {
     #[test]
     fn addressbook_deleted_tenant_id_accessible() {
         let t = tid();
-        let ev = ContactsEvent::AddressbookDeleted { tenant_id: t, addressbook_id: aid() };
+        let ev = ContactsEvent::AddressbookDeleted {
+            tenant_id: t,
+            addressbook_id: aid(),
+        };
         assert_eq!(ev.tenant_id(), t);
     }
 
@@ -239,9 +356,9 @@ mod tests {
     #[test]
     fn addressbook_created_name_some_preserved() {
         let ev = ContactsEvent::AddressbookCreated {
-            tenant_id:      Uuid::nil(),
+            tenant_id: Uuid::nil(),
             addressbook_id: Uuid::nil(),
-            name:           Some("Work".into()),
+            name: Some("Work".into()),
         };
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("Work"));
@@ -250,9 +367,9 @@ mod tests {
     #[test]
     fn contact_upserted_kind_str_is_contact_upserted() {
         let ev = ContactsEvent::ContactUpserted {
-            tenant_id:      Uuid::nil(),
+            tenant_id: Uuid::nil(),
             addressbook_id: Uuid::nil(),
-            contact_id:     Uuid::nil(),
+            contact_id: Uuid::nil(),
         };
         assert_eq!(ev.kind_str(), "contact_upserted");
     }
@@ -270,9 +387,9 @@ mod tests {
     #[test]
     fn contact_upserted_addressbook_id_accessible() {
         let ev = ContactsEvent::ContactUpserted {
-            tenant_id:      Uuid::nil(),
+            tenant_id: Uuid::nil(),
             addressbook_id: Uuid::nil(),
-            contact_id:     Uuid::nil(),
+            contact_id: Uuid::nil(),
         };
         assert_eq!(ev.tenant_id(), Uuid::nil());
     }
@@ -281,7 +398,7 @@ mod tests {
     fn contacts_event_bus_noop_does_not_panic() {
         let bus = ContactsEventBus::noop();
         bus.publish(ContactsEvent::AddressbookDeleted {
-            tenant_id:      Uuid::nil(),
+            tenant_id: Uuid::nil(),
             addressbook_id: Uuid::nil(),
         });
     }
@@ -289,9 +406,9 @@ mod tests {
     #[test]
     fn addressbook_created_kind_str_is_addressbook_created() {
         let ev = ContactsEvent::AddressbookCreated {
-            tenant_id:      Uuid::nil(),
+            tenant_id: Uuid::nil(),
             addressbook_id: Uuid::nil(),
-            name:           None,
+            name: None,
         };
         assert_eq!(ev.kind_str(), "addressbook_created");
     }
@@ -299,9 +416,9 @@ mod tests {
     #[test]
     fn contact_deleted_tenant_id_is_nil() {
         let ev = ContactsEvent::ContactDeleted {
-            tenant_id:      Uuid::nil(),
+            tenant_id: Uuid::nil(),
             addressbook_id: Uuid::nil(),
-            contact_id:     Uuid::nil(),
+            contact_id: Uuid::nil(),
         };
         assert_eq!(ev.tenant_id(), Uuid::nil());
     }

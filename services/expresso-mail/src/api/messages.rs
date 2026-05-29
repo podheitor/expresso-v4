@@ -8,189 +8,298 @@
 //! `mailboxes` é NULL-bypass).
 
 use axum::{
-    Router,
-    routing::{get, delete, patch, post},
-    extract::{State, Path, Query},
-    response::{IntoResponse, Response},
-    Json, http::{StatusCode, header, HeaderMap, HeaderValue},
     body::Body,
+    extract::{Path, Query, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
+    routing::{delete, get, patch, post},
+    Json, Router,
 };
-use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor, address::Envelope, Address};
 use expresso_core::begin_tenant_tx;
+use lettre::{address::Envelope, Address, AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{api::context::RequestCtx, error::{MailError, Result}, state::AppState};
+use crate::{
+    api::context::RequestCtx,
+    error::{MailError, Result},
+    state::AppState,
+};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/mail/messages",            get(list_messages))
-        .route("/mail/search",              get(search_messages))
-        .route("/mail/threads",             get(list_threads))
-        .route("/mail/threads/:thread_id",  get(list_thread))
-        .route("/mail/messages/:id",        get(get_message))
-        .route("/mail/messages/:id",        delete(delete_message))
+        .route("/mail/messages", get(list_messages))
+        .route("/mail/search", get(search_messages))
+        .route("/mail/threads", get(list_threads))
+        .route("/mail/threads/:thread_id", get(list_thread))
+        .route("/mail/messages/:id", get(get_message))
+        .route("/mail/messages/:id", delete(delete_message))
         .route("/mail/messages/:id/thread", get(get_message_thread))
-        .route("/mail/messages/:id/raw",    get(get_message_raw).head(head_message_raw))
-        .route("/mail/messages/:id/move",   patch(move_message))
-        .route("/mail/messages/:id/flags",  get(get_message_flags).patch(update_flags))
-        .route("/mail/messages/bulk",        post(bulk_action).delete(bulk_delete))
+        .route(
+            "/mail/messages/:id/raw",
+            get(get_message_raw).head(head_message_raw),
+        )
+        .route("/mail/messages/:id/move", patch(move_message))
+        .route(
+            "/mail/messages/:id/flags",
+            get(get_message_flags).patch(update_flags),
+        )
+        .route("/mail/messages/bulk", post(bulk_action).delete(bulk_delete))
         .route("/mail/messages/bulk/flags", patch(bulk_update_flags))
         .route("/mail/messages/:id/read-receipt", post(send_read_receipt))
-        .route("/mail/messages/stats",            get(message_stats))
-        .route("/mail/messages/stats/flags",      get(flag_stats))
-        .route("/mail/messages/stats/threads",    get(thread_stats))
-        .route("/mail/messages/stats/senders",    get(sender_stats))
-        .route("/mail/messages/stats/size",       get(size_stats))
-        .route("/mail/messages/stats/attachments",    get(attachment_stats))
-        .route("/mail/messages/stats/received-by-day",  get(received_by_day_stats))
-        .route("/mail/messages/stats/threads-by-day",      get(threads_by_day_stats))
-        .route("/mail/messages/stats/unread-by-folder",    get(unread_by_folder_stats))
-        .route("/mail/messages/stats/size-by-folder",      get(size_by_folder_stats))
-        .route("/mail/messages/stats/attachments-by-folder", get(attachments_by_folder_stats))
-        .route("/mail/messages/stats/flags-by-folder",        get(flags_by_folder_stats))
-        .route("/mail/messages/stats/received-by-folder",      get(received_by_folder_stats))
-        .route("/mail/messages/stats/threads-by-folder",       get(threads_by_folder_stats))
-        .route("/mail/messages/stats/senders-by-folder",       get(senders_by_folder_stats))
-        .route("/mail/messages/stats/date-by-folder",           get(date_by_folder_stats))
-        .route("/mail/messages/stats/cc-by-folder",              get(cc_by_folder_stats))
-        .route("/mail/messages/stats/bcc-by-folder",             get(bcc_by_folder_stats))
-        .route("/mail/messages/stats/reply-rate-by-folder",      get(reply_rate_by_folder_stats))
-        .route("/mail/messages/stats/to-count-by-folder",        get(to_count_by_folder_stats))
-        .route("/mail/messages/stats/subject-length-by-folder",  get(subject_length_by_folder_stats))
-        .route("/mail/messages/stats/preview-length-by-folder",  get(preview_length_by_folder_stats))
-        .route("/mail/messages/stats/has-date-by-folder",         get(has_date_by_folder_stats))
-        .route("/mail/messages/stats/from-domain-by-folder",      get(from_domain_by_folder_stats))
-        .route("/mail/messages/stats/in-reply-to-by-folder",      get(in_reply_to_by_folder_stats))
-        .route("/mail/messages/stats/message-id-coverage",         get(message_id_coverage_stats))
-        .route("/mail/messages/stats/body-size-by-folder",          get(body_size_by_folder_stats))
-        .route("/mail/messages/stats/reply-to-by-folder",           get(reply_to_by_folder_stats))
-        .route("/mail/messages/stats/thread-depth-by-folder",        get(thread_depth_by_folder_stats))
-        .route("/mail/messages/stats/flags-summary",                  get(flags_summary_stats))
-        .route("/mail/messages/stats/size-distribution",              get(size_distribution_stats))
-        .route("/mail/messages/stats/oldest-newest-by-folder",        get(oldest_newest_by_folder_stats))
-        .route("/mail/messages/stats/references-count-by-folder",  get(references_count_by_folder_stats))
-        .route("/mail/messages/stats/to-count-distribution",        get(to_count_distribution_stats))
-        .route("/mail/messages/stats/avg-recipients-by-folder",    get(avg_recipients_by_folder_stats))
-        .route("/mail/messages/stats/first-message-by-folder",     get(first_message_by_folder_stats))
-        .route("/mail/messages/stats/attachment-size-by-folder",   get(attachment_size_by_folder_stats))
-        .route("/mail/messages/stats/read-ratio-by-folder",        get(read_ratio_by_folder_stats))
-        .route("/mail/messages/stats/subject-word-count-by-folder", get(subject_word_count_by_folder_stats))
-        .route("/mail/messages/stats/cc-count-distribution",       get(cc_count_distribution_stats))
+        .route("/mail/messages/stats", get(message_stats))
+        .route("/mail/messages/stats/flags", get(flag_stats))
+        .route("/mail/messages/stats/threads", get(thread_stats))
+        .route("/mail/messages/stats/senders", get(sender_stats))
+        .route("/mail/messages/stats/size", get(size_stats))
+        .route("/mail/messages/stats/attachments", get(attachment_stats))
+        .route(
+            "/mail/messages/stats/received-by-day",
+            get(received_by_day_stats),
+        )
+        .route(
+            "/mail/messages/stats/threads-by-day",
+            get(threads_by_day_stats),
+        )
+        .route(
+            "/mail/messages/stats/unread-by-folder",
+            get(unread_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/size-by-folder",
+            get(size_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/attachments-by-folder",
+            get(attachments_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/flags-by-folder",
+            get(flags_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/received-by-folder",
+            get(received_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/threads-by-folder",
+            get(threads_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/senders-by-folder",
+            get(senders_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/date-by-folder",
+            get(date_by_folder_stats),
+        )
+        .route("/mail/messages/stats/cc-by-folder", get(cc_by_folder_stats))
+        .route(
+            "/mail/messages/stats/bcc-by-folder",
+            get(bcc_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/reply-rate-by-folder",
+            get(reply_rate_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/to-count-by-folder",
+            get(to_count_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/subject-length-by-folder",
+            get(subject_length_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/preview-length-by-folder",
+            get(preview_length_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/has-date-by-folder",
+            get(has_date_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/from-domain-by-folder",
+            get(from_domain_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/in-reply-to-by-folder",
+            get(in_reply_to_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/message-id-coverage",
+            get(message_id_coverage_stats),
+        )
+        .route(
+            "/mail/messages/stats/body-size-by-folder",
+            get(body_size_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/reply-to-by-folder",
+            get(reply_to_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/thread-depth-by-folder",
+            get(thread_depth_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/flags-summary",
+            get(flags_summary_stats),
+        )
+        .route(
+            "/mail/messages/stats/size-distribution",
+            get(size_distribution_stats),
+        )
+        .route(
+            "/mail/messages/stats/oldest-newest-by-folder",
+            get(oldest_newest_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/references-count-by-folder",
+            get(references_count_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/to-count-distribution",
+            get(to_count_distribution_stats),
+        )
+        .route(
+            "/mail/messages/stats/avg-recipients-by-folder",
+            get(avg_recipients_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/first-message-by-folder",
+            get(first_message_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/attachment-size-by-folder",
+            get(attachment_size_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/read-ratio-by-folder",
+            get(read_ratio_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/subject-word-count-by-folder",
+            get(subject_word_count_by_folder_stats),
+        )
+        .route(
+            "/mail/messages/stats/cc-count-distribution",
+            get(cc_count_distribution_stats),
+        )
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 pub struct ListParams {
-    pub folder:    Option<String>,
+    pub folder: Option<String>,
     /// Legacy offset-based page (0-indexed). Ignored when before_id or after_id is set.
-    pub page:      Option<i64>,
-    pub limit:     Option<i64>,
+    pub page: Option<i64>,
+    pub limit: Option<i64>,
     /// Keyset cursor — return messages received strictly before this message (DESC order).
     pub before_id: Option<Uuid>,
     /// Keyset cursor — return messages received strictly after this message (ASC, then reversed).
-    pub after_id:  Option<Uuid>,
+    pub after_id: Option<Uuid>,
     /// Filter by flag presence (e.g. `\Seen`, `\Starred`, `\Flagged`). URL-encode backslash.
-    pub flag:      Option<String>,
+    pub flag: Option<String>,
     /// Multi-flag AND filter: comma-separated list of flags — all must be present.
     /// Example: `flags=%5CSeen,%5CFlagged` (URL-encoded backslashes).
-    pub flags:     Option<String>,
+    pub flags: Option<String>,
     /// If `true`, return only messages NOT having `\Seen` flag.
-    pub unread:    Option<bool>,
+    pub unread: Option<bool>,
     /// Return only messages belonging to this thread.
     pub thread_id: Option<Uuid>,
     /// Sort order for offset pagination: "asc" or "desc" (default "desc").
     /// Ignored when keyset cursors (before_id/after_id) are used.
-    pub sort:      Option<String>,
+    pub sort: Option<String>,
     /// ILIKE filter on from_addr field.
-    pub from_addr:       Option<String>,
+    pub from_addr: Option<String>,
     /// ILIKE filter on subject field.
-    pub subject:         Option<String>,
+    pub subject: Option<String>,
     /// ILIKE filter on cc_addrs jsonb array.
-    pub cc_addr:         Option<String>,
+    pub cc_addr: Option<String>,
     /// If set, return only messages with (true) or without (false) attachments.
     pub has_attachments: Option<bool>,
     /// Return only messages with size_bytes >= this value.
-    pub size_min:        Option<i32>,
+    pub size_min: Option<i32>,
     /// Return only messages with size_bytes <= this value.
-    pub size_max:        Option<i32>,
+    pub size_max: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SearchParams {
     /// Full-text search in subject, from, and preview_text
-    pub q:         Option<String>,
-    pub folder:    Option<String>,
-    pub from:      Option<String>,
-    pub subject:   Option<String>,
+    pub q: Option<String>,
+    pub folder: Option<String>,
+    pub from: Option<String>,
+    pub subject: Option<String>,
     /// ILIKE filter on cc_addrs jsonb array.
-    pub cc_addr:   Option<String>,
+    pub cc_addr: Option<String>,
     /// ISO-8601 date string — messages received on or after
-    pub since:     Option<String>,
+    pub since: Option<String>,
     /// ISO-8601 date string — messages received before
-    pub before:    Option<String>,
+    pub before: Option<String>,
     /// Legacy offset-based page (0-indexed). Ignored when before_id or after_id is set.
-    pub page:      Option<i64>,
-    pub limit:     Option<i64>,
+    pub page: Option<i64>,
+    pub limit: Option<i64>,
     /// Keyset cursor — return messages received strictly before this message (DESC order).
     pub before_id: Option<Uuid>,
     /// Keyset cursor — return messages received strictly after this message (ASC, then reversed).
-    pub after_id:  Option<Uuid>,
+    pub after_id: Option<Uuid>,
     /// Return only messages belonging to this thread.
     pub thread_id: Option<Uuid>,
     /// Sort order for offset pagination: "asc" or "desc" (default "desc").
     /// Ignored when keyset cursors (before_id/after_id) are used.
-    pub sort:            Option<String>,
+    pub sort: Option<String>,
     /// If set, return only messages with (true) or without (false) attachments.
     pub has_attachments: Option<bool>,
     /// Return only messages with size_bytes >= this value.
-    pub size_min:        Option<i32>,
+    pub size_min: Option<i32>,
     /// Return only messages with size_bytes <= this value.
-    pub size_max:        Option<i32>,
+    pub size_max: Option<i32>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct MessageListItem {
-    pub id:              Uuid,
-    pub thread_id:       Option<Uuid>,
-    pub subject:         Option<String>,
-    pub from_addr:       Option<String>,
-    pub from_name:       Option<String>,
+    pub id: Uuid,
+    pub thread_id: Option<Uuid>,
+    pub subject: Option<String>,
+    pub from_addr: Option<String>,
+    pub from_name: Option<String>,
     pub has_attachments: bool,
-    pub preview_text:    Option<String>,
-    pub flags:           Vec<String>,
+    pub preview_text: Option<String>,
+    pub flags: Vec<String>,
     #[serde(with = "time::serde::rfc3339::option")]
-    pub date:            Option<OffsetDateTime>,
-    pub size_bytes:      i32,
+    pub date: Option<OffsetDateTime>,
+    pub size_bytes: i32,
 }
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct MessageDetail {
-    pub id:              Uuid,
-    pub mailbox_id:      Uuid,
-    pub subject:         Option<String>,
-    pub from_addr:       Option<String>,
-    pub from_name:       Option<String>,
-    pub to_addrs:        serde_json::Value,
-    pub cc_addrs:        serde_json::Value,
-    pub bcc_addrs:       serde_json::Value,
-    pub reply_to:        Option<String>,
-    pub message_id:      Option<String>,
-    pub in_reply_to:     Option<String>,
-    pub references_:     Vec<String>,
-    pub thread_id:       Option<Uuid>,
-    pub flags:           Vec<String>,
+    pub id: Uuid,
+    pub mailbox_id: Uuid,
+    pub subject: Option<String>,
+    pub from_addr: Option<String>,
+    pub from_name: Option<String>,
+    pub to_addrs: serde_json::Value,
+    pub cc_addrs: serde_json::Value,
+    pub bcc_addrs: serde_json::Value,
+    pub reply_to: Option<String>,
+    pub message_id: Option<String>,
+    pub in_reply_to: Option<String>,
+    pub references_: Vec<String>,
+    pub thread_id: Option<Uuid>,
+    pub flags: Vec<String>,
     pub has_attachments: bool,
-    pub body_path:       String,
-    pub preview_text:    Option<String>,
+    pub body_path: String,
+    pub preview_text: Option<String>,
     #[serde(with = "time::serde::rfc3339::option")]
-    pub date:            Option<OffsetDateTime>,
+    pub date: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339")]
-    pub received_at:     OffsetDateTime,
-    pub size_bytes:      i32,
+    pub received_at: OffsetDateTime,
+    pub size_bytes: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -200,7 +309,7 @@ pub struct MoveRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct FlagRequest {
-    pub add:    Vec<String>,
+    pub add: Vec<String>,
     pub remove: Vec<String>,
 }
 
@@ -215,10 +324,10 @@ pub struct FlagRequest {
 /// Supports the same `before_id`/`after_id` keyset cursor as `/mail/messages`.
 /// `sort=asc/desc` controls offset-mode order (default `desc`); ignored with keyset cursors.
 async fn search_messages(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Query(params): Query<SearchParams>,
-    req_headers:   HeaderMap,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let limit = params.limit.unwrap_or(50).min(200);
 
@@ -228,31 +337,36 @@ async fn search_messages(
     // unavailable or the query is empty.
     let tantivy_filter: Option<String> = match &params.q {
         Some(q) if !q.trim().is_empty() => {
-            let search_url   = state.cfg().search_url.clone();
+            let search_url = state.cfg().search_url.clone();
             let search_token = state.cfg().search_token.clone();
             if !search_url.is_empty() {
                 let client = reqwest::Client::new();
-                let mut req = client.get(format!("{search_url}/api/v1/search"))
-                    .query(&[
-                        ("q",         q.as_str()),
-                        ("tenant_id", &ctx.tenant_id.to_string()),
-                        ("limit",     "200"),
-                    ]);
-                if !search_token.is_empty() { req = req.bearer_auth(&search_token); }
+                let mut req = client.get(format!("{search_url}/api/v1/search")).query(&[
+                    ("q", q.as_str()),
+                    ("tenant_id", &ctx.tenant_id.to_string()),
+                    ("limit", "200"),
+                ]);
+                if !search_token.is_empty() {
+                    req = req.bearer_auth(&search_token);
+                }
                 match req.send().await {
                     Ok(resp) if resp.status().is_success() => {
                         #[derive(serde::Deserialize)]
-                        struct SResp { hits: Vec<SHit> }
+                        struct SResp {
+                            hits: Vec<SHit>,
+                        }
                         #[derive(serde::Deserialize)]
-                        struct SHit { document_id: String }
+                        struct SHit {
+                            document_id: String,
+                        }
                         match resp.json::<SResp>().await {
                             Ok(sr) if !sr.hits.is_empty() => {
                                 // document_id = "mailbox_id/uid" — build
                                 // AND (m.mailbox_id::text || '/' || m.uid::text) = ANY($ids)
-                                let ids: Vec<String> = sr.hits.into_iter()
-                                    .map(|h| h.document_id)
-                                    .collect();
-                                let literal = ids.iter()
+                                let ids: Vec<String> =
+                                    sr.hits.into_iter().map(|h| h.document_id).collect();
+                                let literal = ids
+                                    .iter()
                                     .map(|s| format!("'{}'", s.replace('\'', "''")))
                                     .collect::<Vec<_>>()
                                     .join(",");
@@ -275,7 +389,8 @@ async fn search_messages(
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
-    let folder_filter = params.folder
+    let folder_filter = params
+        .folder
         .map(|f| format!("AND mb.folder_name = '{}'", f.replace('\'', "''")))
         .unwrap_or_default();
     let q_filter = if let Some(ref tf) = tantivy_filter {
@@ -286,42 +401,68 @@ async fn search_messages(
             format!("AND (m.subject ILIKE '%{esc}%' OR m.from_addr ILIKE '%{esc}%' OR m.preview_text ILIKE '%{esc}%')")
         }).unwrap_or_default()
     };
-    let from_filter = params.from.map(|f| {
-        let esc = f.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-        format!("AND m.from_addr ILIKE '%{esc}%'")
-    }).unwrap_or_default();
-    let subject_filter = params.subject.map(|s| {
-        let esc = s.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-        format!("AND m.subject ILIKE '%{esc}%'")
-    }).unwrap_or_default();
+    let from_filter = params
+        .from
+        .map(|f| {
+            let esc = f
+                .replace('\'', "''")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            format!("AND m.from_addr ILIKE '%{esc}%'")
+        })
+        .unwrap_or_default();
+    let subject_filter = params
+        .subject
+        .map(|s| {
+            let esc = s
+                .replace('\'', "''")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            format!("AND m.subject ILIKE '%{esc}%'")
+        })
+        .unwrap_or_default();
     let cc_addr_filter = params.cc_addr.map(|c| {
         let esc = c.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
         format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(m.cc_addrs) t WHERE t ILIKE '%{esc}%')")
     }).unwrap_or_default();
-    let since_filter = params.since
-        .map(|d| format!("AND m.received_at >= '{}'::timestamptz", d.replace('\'', "''")))
+    let since_filter = params
+        .since
+        .map(|d| {
+            format!(
+                "AND m.received_at >= '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
-    let before_date_filter = params.before
-        .map(|d| format!("AND m.received_at < '{}'::timestamptz", d.replace('\'', "''")))
+    let before_date_filter = params
+        .before
+        .map(|d| {
+            format!(
+                "AND m.received_at < '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
-    let thread_id_filter = params.thread_id
+    let thread_id_filter = params
+        .thread_id
         .map(|t| format!("AND m.thread_id = '{t}'"))
         .unwrap_or_default();
 
     let has_attachments_filter = match params.has_attachments {
-        Some(true)  => "AND m.has_attachments = TRUE",
+        Some(true) => "AND m.has_attachments = TRUE",
         Some(false) => "AND m.has_attachments = FALSE",
-        None        => "",
+        None => "",
     };
-    let size_min_filter = params.size_min
+    let size_min_filter = params
+        .size_min
         .map(|v| format!("AND m.size_bytes >= {v}"))
         .unwrap_or_default();
-    let size_max_filter = params.size_max
+    let size_max_filter = params
+        .size_max
         .map(|v| format!("AND m.size_bytes <= {v}"))
         .unwrap_or_default();
 
-    let base_select =
-        "SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name, \
+    let base_select = "SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name, \
                 m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes \
          FROM messages m \
          JOIN mailboxes mb ON mb.id = m.mailbox_id \
@@ -347,7 +488,9 @@ async fn search_messages(
     if let Some(ts) = max_received {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         tx.commit().await?;
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
@@ -406,7 +549,12 @@ async fn search_messages(
         }
     } else {
         let offset = params.page.unwrap_or(0) * limit;
-        let order = if params.sort.as_deref().map(|s| s.eq_ignore_ascii_case("asc")).unwrap_or(false) {
+        let order = if params
+            .sort
+            .as_deref()
+            .map(|s| s.eq_ignore_ascii_case("asc"))
+            .unwrap_or(false)
+        {
             "ASC"
         } else {
             "DESC"
@@ -439,12 +587,19 @@ async fn search_messages(
     tx.commit().await?;
     let mut resp = (
         StatusCode::OK,
-        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        [(
+            header::HeaderName::from_static("x-total-count"),
+            total.to_string(),
+        )],
         Json(rows),
-    ).into_response();
+    )
+        .into_response();
     if let Some(ts) = max_received {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -458,20 +613,22 @@ async fn search_messages(
 /// Optional filters: `flag=\Starred`, `unread=true`, `thread_id=UUID`, `from_addr=`, `subject=` (ILIKE).
 /// Optional sort for offset mode: `sort=asc` (default `desc`). Keyset direction is cursor-driven.
 async fn list_messages(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Query(params): Query<ListParams>,
-    req_headers:   HeaderMap,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let folder = params.folder.unwrap_or_else(|| "INBOX".into());
-    let limit  = params.limit.unwrap_or(50).min(200);
+    let limit = params.limit.unwrap_or(50).min(200);
 
     // Build optional flag filters (no user-provided SQL, only escaped literals).
-    let flag_filter = params.flag
+    let flag_filter = params
+        .flag
         .map(|f| format!("AND '{}' = ANY(m.flags)", f.replace('\'', "''")))
         .unwrap_or_default();
     // Multi-flag AND: every flag in the comma-separated list must be present.
-    let multi_flag_filter = params.flags
+    let multi_flag_filter = params
+        .flags
         .map(|raw| {
             raw.split(',')
                 .map(|f| format!("AND '{}' = ANY(m.flags)", f.trim().replace('\'', "''")))
@@ -484,30 +641,45 @@ async fn list_messages(
     } else {
         String::new()
     };
-    let thread_id_filter = params.thread_id
+    let thread_id_filter = params
+        .thread_id
         .map(|t| format!("AND m.thread_id = '{t}'"))
         .unwrap_or_default();
-    let from_addr_filter = params.from_addr.map(|f| {
-        let esc = f.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-        format!("AND m.from_addr ILIKE '%{esc}%'")
-    }).unwrap_or_default();
-    let subject_filter = params.subject.map(|s| {
-        let esc = s.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-        format!("AND m.subject ILIKE '%{esc}%'")
-    }).unwrap_or_default();
+    let from_addr_filter = params
+        .from_addr
+        .map(|f| {
+            let esc = f
+                .replace('\'', "''")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            format!("AND m.from_addr ILIKE '%{esc}%'")
+        })
+        .unwrap_or_default();
+    let subject_filter = params
+        .subject
+        .map(|s| {
+            let esc = s
+                .replace('\'', "''")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            format!("AND m.subject ILIKE '%{esc}%'")
+        })
+        .unwrap_or_default();
     let cc_addr_filter = params.cc_addr.map(|c| {
         let esc = c.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
         format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(m.cc_addrs) t WHERE t ILIKE '%{esc}%')")
     }).unwrap_or_default();
     let has_attachments_filter = match params.has_attachments {
-        Some(true)  => "AND m.has_attachments = TRUE",
+        Some(true) => "AND m.has_attachments = TRUE",
         Some(false) => "AND m.has_attachments = FALSE",
-        None        => "",
+        None => "",
     };
-    let size_min_filter = params.size_min
+    let size_min_filter = params
+        .size_min
         .map(|v| format!("AND m.size_bytes >= {v}"))
         .unwrap_or_default();
-    let size_max_filter = params.size_max
+    let size_max_filter = params
+        .size_max
         .map(|v| format!("AND m.size_bytes <= {v}"))
         .unwrap_or_default();
 
@@ -528,7 +700,9 @@ async fn list_messages(
     if let Some(ts) = max_received {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         tx.commit().await?;
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
@@ -538,8 +712,7 @@ async fn list_messages(
         }
     }
 
-    let base =
-        "SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name, \
+    let base = "SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name, \
                 m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes \
          FROM messages m \
          JOIN mailboxes mb ON mb.id = m.mailbox_id \
@@ -607,7 +780,12 @@ async fn list_messages(
     } else {
         // Legacy offset pagination.
         let offset = params.page.unwrap_or(0) * limit;
-        let order = if params.sort.as_deref().map(|s| s.eq_ignore_ascii_case("asc")).unwrap_or(false) {
+        let order = if params
+            .sort
+            .as_deref()
+            .map(|s| s.eq_ignore_ascii_case("asc"))
+            .unwrap_or(false)
+        {
             "ASC"
         } else {
             "DESC"
@@ -648,12 +826,19 @@ async fn list_messages(
 
     let mut resp = (
         StatusCode::OK,
-        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        [(
+            header::HeaderName::from_static("x-total-count"),
+            total.to_string(),
+        )],
         Json(rows),
-    ).into_response();
+    )
+        .into_response();
     if let Some(ts) = max_received {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -663,9 +848,9 @@ async fn list_messages(
 /// Returns ETag derived from received_at (immutable) + id. Responds 304 if If-None-Match or If-Modified-Since matches.
 async fn get_message(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    req_headers:  axum::http::HeaderMap,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    req_headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let msg: Option<MessageDetail> = sqlx::query_as(
@@ -693,7 +878,8 @@ async fn get_message(
     let msg = msg.ok_or(MailError::MessageNotFound(id))?;
 
     let etag = format!("\"{}-{}\"", msg.received_at.unix_timestamp(), msg.id);
-    let last_modified = msg.received_at
+    let last_modified = msg
+        .received_at
         .format(&time::format_description::well_known::Rfc2822)
         .unwrap_or_default();
 
@@ -705,7 +891,9 @@ async fn get_message(
     }
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if msg.received_at <= ims_dt {
                     tx.commit().await?;
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
@@ -730,14 +918,11 @@ async fn get_message(
 
     Ok((
         StatusCode::OK,
-        [
-            (header::ETAG,          etag),
-            (header::LAST_MODIFIED, last_modified),
-        ],
+        [(header::ETAG, etag), (header::LAST_MODIFIED, last_modified)],
         Json(msg),
-    ).into_response())
+    )
+        .into_response())
 }
-
 
 /// GET /api/v1/mail/messages/:id/raw — download RFC 2822 bytes.
 ///
@@ -748,9 +933,9 @@ async fn get_message(
 /// Returns 404 if the message is not found or 502 if the body store is unavailable.
 async fn get_message_raw(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    req_headers:  axum::http::HeaderMap,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    req_headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row: Option<(String, Option<String>, i32)> = sqlx::query_as(
@@ -778,14 +963,22 @@ async fn get_message_raw(
         }
     }
 
-    let bytes = fetch_body_bytes_api(&state, &body_path).await
+    let bytes = fetch_body_bytes_api(&state, &body_path)
+        .await
         .ok_or_else(|| MailError::SendFailed("body store unavailable".into()))?;
 
     let filename = message_id
         .as_deref()
         .map(|mid| {
-            let clean: String = mid.chars()
-                .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '.' { c } else { '_' })
+            let clean: String = mid
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
                 .collect();
             format!("{clean}.eml")
         })
@@ -796,20 +989,21 @@ async fn get_message_raw(
     Ok((
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE,        "message/rfc822".to_string()),
+            (header::CONTENT_TYPE, "message/rfc822".to_string()),
             (header::CONTENT_DISPOSITION, cd),
-            (header::ETAG,                etag),
+            (header::ETAG, etag),
         ],
         Body::from(bytes),
-    ).into_response())
+    )
+        .into_response())
 }
 
 /// HEAD /api/v1/mail/messages/:id/raw — check existence and get Content-Length without body download.
 async fn head_message_raw(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    req_headers:  axum::http::HeaderMap,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    req_headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row: Option<(String, i32)> = sqlx::query_as(
@@ -840,16 +1034,20 @@ async fn head_message_raw(
     Ok((
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE,   "message/rfc822".to_string()),
+            (header::CONTENT_TYPE, "message/rfc822".to_string()),
             (header::CONTENT_LENGTH, size_bytes.to_string()),
-            (header::ETAG,           etag),
+            (header::ETAG, etag),
         ],
         Body::empty(),
-    ).into_response())
+    )
+        .into_response())
 }
 
 async fn fetch_body_bytes_api(state: &AppState, body_path: &str) -> Option<Vec<u8>> {
-    if let Some(idx) = body_path.strip_prefix("s3://").and_then(|s| s.find('/').map(|i| "s3://".len() + i + 1)) {
+    if let Some(idx) = body_path
+        .strip_prefix("s3://")
+        .and_then(|s| s.find('/').map(|i| "s3://".len() + i + 1))
+    {
         let key = &body_path[idx..];
         state.store()?.get(key).await.ok()
     } else if body_path.starts_with('/') {
@@ -868,19 +1066,21 @@ async fn fetch_body_bytes_api(state: &AppState, body_path: &str) -> Option<Vec<u
 #[derive(Debug, Deserialize)]
 struct ListThreadsParams {
     folder: Option<String>,
-    limit:  Option<i64>,
+    limit: Option<i64>,
     offset: Option<i64>,
 }
 
 async fn list_threads(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Query(params): Query<ListThreadsParams>,
 ) -> Result<Json<serde_json::Value>> {
-    let limit  = params.limit.unwrap_or(50).clamp(1, 200);
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
     let offset = params.offset.unwrap_or(0).max(0);
 
-    let folder_filter = params.folder.as_deref()
+    let folder_filter = params
+        .folder
+        .as_deref()
         .map(|f| format!("AND mb.folder_name = '{}'", f.replace('\'', "''")))
         .unwrap_or_default();
 
@@ -948,10 +1148,10 @@ async fn list_threads(
 /// GET /api/v1/mail/threads/:thread_id — list all messages in thread ordered ASC.
 /// Returns ETag derived from MAX(received_at) of thread messages. Responds 304 if If-None-Match matches.
 async fn list_thread(
-    State(state):    State<AppState>,
-    ctx:             RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Path(thread_id): Path<Uuid>,
-    req_headers:     axum::http::HeaderMap,
+    req_headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -981,7 +1181,9 @@ async fn list_thread(
     if let Some(ts) = max_ts {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         tx.commit().await?;
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
@@ -1028,14 +1230,21 @@ async fn list_thread(
     let mut resp = (
         StatusCode::OK,
         [
-            (header::HeaderName::from_static("x-total-count"), total.to_string()),
-            (header::ETAG,                                     etag),
+            (
+                header::HeaderName::from_static("x-total-count"),
+                total.to_string(),
+            ),
+            (header::ETAG, etag),
         ],
         Json(rows),
-    ).into_response();
+    )
+        .into_response();
     if let Some(ts) = max_ts {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -1052,13 +1261,15 @@ struct ThreadStatsParams {
 }
 
 async fn thread_stats(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Query(params): Query<ThreadStatsParams>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
-    let folder_filter = params.folder.as_deref()
+    let folder_filter = params
+        .folder
+        .as_deref()
         .map(|f| format!("AND mb.folder_name = '{}'", f.replace('\'', "''")))
         .unwrap_or_default();
 
@@ -1103,8 +1314,8 @@ async fn thread_stats(
 /// Response: `{thread_id, messages: [MessageListItem]}`. Sprint #607.
 async fn get_message_thread(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -1153,8 +1364,8 @@ async fn get_message_thread(
 /// DELETE /api/v1/mail/messages/:id — soft-delete: move to Trash
 async fn delete_message(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -1192,9 +1403,9 @@ async fn delete_message(
 /// PATCH /api/v1/mail/messages/:id/move
 async fn move_message(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<MoveRequest>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<MoveRequest>,
 ) -> Result<Json<MessageDetail>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -1257,9 +1468,9 @@ async fn move_message(
 /// ETag = sorted flags joined; Last-Modified = received_at (immutable delivery timestamp).
 async fn get_message_flags(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    req_headers:  axum::http::HeaderMap,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    req_headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row: Option<(Vec<String>, OffsetDateTime)> = sqlx::query_as(
@@ -1290,7 +1501,9 @@ async fn get_message_flags(
     }
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if received_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -1300,20 +1513,18 @@ async fn get_message_flags(
 
     Ok((
         StatusCode::OK,
-        [
-            (header::ETAG,          etag),
-            (header::LAST_MODIFIED, last_modified),
-        ],
+        [(header::ETAG, etag), (header::LAST_MODIFIED, last_modified)],
         Json(flags),
-    ).into_response())
+    )
+        .into_response())
 }
 
 /// PATCH /api/v1/mail/messages/:id/flags
 async fn update_flags(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<FlagRequest>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<FlagRequest>,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -1373,12 +1584,12 @@ enum BulkRequest {
         ids: Vec<Uuid>,
     },
     Flag {
-        ids:    Vec<Uuid>,
-        add:    Vec<String>,
+        ids: Vec<Uuid>,
+        add: Vec<String>,
         remove: Vec<String>,
     },
     Move {
-        ids:    Vec<Uuid>,
+        ids: Vec<Uuid>,
         folder: String,
     },
     MarkRead {
@@ -1396,8 +1607,8 @@ struct BulkResult {
 
 #[derive(Debug, Deserialize)]
 struct BulkFlagRequest {
-    pub ids:    Vec<Uuid>,
-    pub add:    Vec<String>,
+    pub ids: Vec<Uuid>,
+    pub add: Vec<String>,
     pub remove: Vec<String>,
 }
 
@@ -1412,8 +1623,8 @@ struct BulkFlagRequest {
 /// Returns `{"affected": N}` — count of rows modified.
 async fn bulk_action(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(body):   Json<BulkRequest>,
+    ctx: RequestCtx,
+    Json(body): Json<BulkRequest>,
 ) -> Result<Json<BulkResult>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -1480,7 +1691,9 @@ async fn bulk_action(
             .bind(folder)
             .fetch_optional(&mut *tx)
             .await?;
-            let dst_id = mbox.ok_or_else(|| MailError::FolderNotFound { folder: folder.to_string() })?;
+            let dst_id = mbox.ok_or_else(|| MailError::FolderNotFound {
+                folder: folder.to_string(),
+            })?;
             let res = sqlx::query(
                 "UPDATE messages SET mailbox_id = $1 \
                  WHERE id = ANY($2) AND tenant_id = $3 \
@@ -1535,8 +1748,8 @@ async fn bulk_action(
 /// Returns `{"affected": N}` — number of messages touched (add + remove counted separately).
 async fn bulk_update_flags(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(body):   Json<BulkFlagRequest>,
+    ctx: RequestCtx,
+    Json(body): Json<BulkFlagRequest>,
 ) -> Result<Json<BulkResult>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let mut affected: u64 = 0;
@@ -1589,8 +1802,8 @@ struct BulkDeleteRequest {
 /// Returns `{"affected": N}`.
 async fn bulk_delete(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(body):   Json<BulkDeleteRequest>,
+    ctx: RequestCtx,
+    Json(body): Json<BulkDeleteRequest>,
 ) -> Result<Json<BulkResult>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let deleted: Vec<(Uuid, i64)> = sqlx::query_as(
@@ -1607,7 +1820,7 @@ async fn bulk_delete(
     tx.commit().await?;
 
     // Fire-and-forget: remove deleted messages from search index.
-    let search_url   = state.cfg().search_url.clone();
+    let search_url = state.cfg().search_url.clone();
     let search_token = state.cfg().search_token.clone();
     // Capture the count before the fire-and-forget task moves `deleted`.
     let affected = deleted.len() as u64;
@@ -1639,13 +1852,18 @@ async fn bulk_delete(
 /// the SMTP relay is unreachable.
 async fn send_read_receipt(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     // Fetch the message; scope the tx to avoid borrow across await.
     let (from_addr_raw, orig_message_id, subject_raw, received_at_ts) = {
         let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
-        let row: Option<(Option<String>, Option<String>, Option<String>, OffsetDateTime)> = sqlx::query_as(
+        let row: Option<(
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            OffsetDateTime,
+        )> = sqlx::query_as(
             r#"SELECT m.from_addr, m.message_id, m.subject, m.received_at
                FROM messages  m
                JOIN mailboxes mb ON mb.id = m.mailbox_id
@@ -1667,9 +1885,9 @@ async fn send_read_receipt(
     let recipient_str = from_addr_raw
         .as_deref()
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| MailError::BadRequest(
-            "message has no From address to send MDN to".into(),
-        ))?;
+        .ok_or_else(|| {
+            MailError::BadRequest("message has no From address to send MDN to".into())
+        })?;
     let to_addr: Address = recipient_str
         .parse()
         .map_err(|_| MailError::BadRequest(format!("invalid from address: {recipient_str}")))?;
@@ -1677,13 +1895,12 @@ async fn send_read_receipt(
     // Caller's address is the MDN sender — fetch from users table.
     let caller_addr_str: String = {
         let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
-        let email: Option<String> = sqlx::query_scalar(
-            "SELECT email FROM users WHERE tenant_id = $1 AND id = $2 LIMIT 1",
-        )
-        .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let email: Option<String> =
+            sqlx::query_scalar("SELECT email FROM users WHERE tenant_id = $1 AND id = $2 LIMIT 1")
+                .bind(ctx.tenant_id)
+                .bind(ctx.user_id)
+                .fetch_optional(&mut *tx)
+                .await?;
         tx.commit().await?;
         email.ok_or(MailError::Forbidden)?
     };
@@ -1762,7 +1979,7 @@ struct StatsParams {
     /// Mailbox name filter (e.g. "INBOX"). Omit for all folders.
     folder: Option<String>,
     /// RFC 3339 lower bound on received_at. Omit for all time.
-    since:  Option<String>,
+    since: Option<String>,
 }
 
 /// GET /api/v1/mail/messages/stats?folder=INBOX&since=<rfc3339>
@@ -1771,22 +1988,30 @@ struct StatsParams {
 /// When `folder` is given, returns a single-element list for that folder.
 /// Grouped by mailbox name, ordered by total DESC.
 async fn message_stats(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Query(params): Query<StatsParams>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db();
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
 
-    let folder_filter = params.folder.as_deref().map(|f| {
-        let esc = f.replace('\'', "''");
-        format!("AND mb.name = '{esc}'")
-    }).unwrap_or_default();
+    let folder_filter = params
+        .folder
+        .as_deref()
+        .map(|f| {
+            let esc = f.replace('\'', "''");
+            format!("AND mb.name = '{esc}'")
+        })
+        .unwrap_or_default();
 
-    let since_filter = params.since.as_deref().map(|s| {
-        let esc = s.replace('\'', "''");
-        format!("AND m.received_at >= '{esc}'::timestamptz")
-    }).unwrap_or_default();
+    let since_filter = params
+        .since
+        .as_deref()
+        .map(|s| {
+            let esc = s.replace('\'', "''");
+            format!("AND m.received_at >= '{esc}'::timestamptz")
+        })
+        .unwrap_or_default();
 
     let sql = format!(
         "SELECT mb.name AS folder, \
@@ -1808,15 +2033,18 @@ async fn message_stats(
         .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter().map(|(folder, total, unread, size_bytes)| {
-        serde_json::json!({
-            "folder":     folder,
-            "total":      total,
-            "unread":     unread,
-            "read":       total - unread,
-            "size_bytes": size_bytes,
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, total, unread, size_bytes)| {
+            serde_json::json!({
+                "folder":     folder,
+                "total":      total,
+                "unread":     unread,
+                "read":       total - unread,
+                "size_bytes": size_bytes,
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -1834,8 +2062,8 @@ struct FlagStatsParams {
 /// Response: `{folder?, flags: [{flag, count}]}` ordered by count DESC.
 /// Sprint #610.
 async fn flag_stats(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Query(params): Query<FlagStatsParams>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -1873,9 +2101,10 @@ async fn flag_stats(
     };
     tx.commit().await?;
 
-    let flags: Vec<serde_json::Value> = rows.into_iter().map(|(flag, count)| {
-        serde_json::json!({"flag": flag, "count": count})
-    }).collect();
+    let flags: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(flag, count)| serde_json::json!({"flag": flag, "count": count}))
+        .collect();
 
     let mut resp = serde_json::json!({"flags": flags});
     if let Some(folder) = params.folder {
@@ -1893,12 +2122,12 @@ async fn flag_stats(
 #[derive(Debug, Deserialize)]
 struct SenderStatsParams {
     folder: Option<String>,
-    limit:  Option<i64>,
+    limit: Option<i64>,
 }
 
 async fn sender_stats(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Query(params): Query<SenderStatsParams>,
 ) -> Result<Json<serde_json::Value>> {
     let limit = params.limit.unwrap_or(20).min(200).max(1);
@@ -1939,9 +2168,10 @@ async fn sender_stats(
     };
     tx.commit().await?;
 
-    let senders: Vec<serde_json::Value> = rows.into_iter().map(|(from_addr, count)| {
-        serde_json::json!({"from_addr": from_addr, "count": count})
-    }).collect();
+    let senders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(from_addr, count)| serde_json::json!({"from_addr": from_addr, "count": count}))
+        .collect();
 
     let mut resp = serde_json::json!({"senders": senders});
     if let Some(folder) = params.folder {
@@ -1962,8 +2192,8 @@ struct SizeStatsParams {
 }
 
 async fn size_stats(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Query(params): Query<SizeStatsParams>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -1987,20 +2217,21 @@ async fn size_stats(
                {folder_filter}"
     );
 
-    let row: (i64, Option<f64>, Option<i64>, Option<i64>, i64) = if let Some(ref folder) = params.folder {
-        sqlx::query_as(&sql)
-            .bind(ctx.tenant_id)
-            .bind(ctx.user_id)
-            .bind(folder)
-            .fetch_one(&mut *tx)
-            .await?
-    } else {
-        sqlx::query_as(&sql)
-            .bind(ctx.tenant_id)
-            .bind(ctx.user_id)
-            .fetch_one(&mut *tx)
-            .await?
-    };
+    let row: (i64, Option<f64>, Option<i64>, Option<i64>, i64) =
+        if let Some(ref folder) = params.folder {
+            sqlx::query_as(&sql)
+                .bind(ctx.tenant_id)
+                .bind(ctx.user_id)
+                .bind(folder)
+                .fetch_one(&mut *tx)
+                .await?
+        } else {
+            sqlx::query_as(&sql)
+                .bind(ctx.tenant_id)
+                .bind(ctx.user_id)
+                .fetch_one(&mut *tx)
+                .await?
+        };
     tx.commit().await?;
 
     let (total_messages, avg_bytes, min_bytes, max_bytes, total_bytes) = row;
@@ -2038,15 +2269,15 @@ struct AttachmentStatsParams {
 #[derive(Debug, Deserialize)]
 struct ReceivedByDayParams {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    since:  Option<time::OffsetDateTime>,
+    since: Option<time::OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    until:  Option<time::OffsetDateTime>,
+    until: Option<time::OffsetDateTime>,
     folder: Option<String>,
 }
 
 async fn received_by_day_stats(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Query(params): Query<ReceivedByDayParams>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -2091,7 +2322,8 @@ async fn received_by_day_stats(
     };
     tx.commit().await?;
 
-    let days: Vec<serde_json::Value> = rows.into_iter()
+    let days: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
         .collect();
     let mut resp = serde_json::json!({"days": days});
@@ -2109,8 +2341,8 @@ async fn received_by_day_stats(
 /// Complementa `received-by-day` (#648) que conta mensagens; aqui a unidade é thread.
 /// Sprint #653.
 async fn threads_by_day_stats(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Query(params): Query<ReceivedByDayParams>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -2141,15 +2373,16 @@ async fn threads_by_day_stats(
     .await?;
     tx.commit().await?;
 
-    let days: Vec<serde_json::Value> = rows.into_iter()
+    let days: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
         .collect();
     Ok(Json(serde_json::json!({"days": days})))
 }
 
 async fn attachment_stats(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Query(params): Query<AttachmentStatsParams>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -2214,7 +2447,7 @@ async fn attachment_stats(
 /// LEFT JOIN para incluir pastas vazias com zeros. Sprint #668.
 async fn attachments_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2236,13 +2469,18 @@ async fn attachments_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, with_attachments, without_attachments, size_bytes)| serde_json::json!({
-            "folder":             folder,
-            "with_attachments":   with_attachments,
-            "without_attachments": without_attachments,
-            "size_bytes":         size_bytes,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(
+            |(folder, with_attachments, without_attachments, size_bytes)| {
+                serde_json::json!({
+                    "folder":             folder,
+                    "with_attachments":   with_attachments,
+                    "without_attachments": without_attachments,
+                    "size_bytes":         size_bytes,
+                })
+            },
+        )
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2254,7 +2492,7 @@ async fn attachments_by_folder_stats(
 /// flag_stats (#610) com breakdown por mailbox. Sprint #673.
 async fn flags_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2286,7 +2524,7 @@ async fn flags_by_folder_stats(
 /// Complementa received-by-day (#648) com perspectiva por mailbox. Sprint #678.
 async fn received_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2304,7 +2542,8 @@ async fn received_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(folder, total)| serde_json::json!({"folder": folder, "total": total}))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
@@ -2317,7 +2556,7 @@ async fn received_by_folder_stats(
 /// Complementa `stats/size` (#640) com breakdown por folder. Sprint #663.
 async fn size_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2339,13 +2578,16 @@ async fn size_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, total_bytes, avg_bytes, max_bytes)| serde_json::json!({
-            "folder":      folder,
-            "total_bytes": total_bytes,
-            "avg_bytes":   avg_bytes,
-            "max_bytes":   max_bytes,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, total_bytes, avg_bytes, max_bytes)| {
+            serde_json::json!({
+                "folder":      folder,
+                "total_bytes": total_bytes,
+                "avg_bytes":   avg_bytes,
+                "max_bytes":   max_bytes,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2357,7 +2599,7 @@ async fn size_by_folder_stats(
 /// Complementa `stats/` com visão focada somente em leitura. Sprint #658.
 async fn unread_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2391,7 +2633,7 @@ async fn unread_by_folder_stats(
 /// Complementa `stats/threads` (#630) com breakdown por pasta. Sprint #683.
 async fn threads_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2414,12 +2656,15 @@ async fn threads_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, thread_count, unread_thread_count)| serde_json::json!({
-            "folder":               folder,
-            "thread_count":         thread_count,
-            "unread_thread_count":  unread_thread_count,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, thread_count, unread_thread_count)| {
+            serde_json::json!({
+                "folder":               folder,
+                "thread_count":         thread_count,
+                "unread_thread_count":  unread_thread_count,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2431,7 +2676,7 @@ async fn threads_by_folder_stats(
 /// Complementa `stats/senders` com breakdown por folder. Sprint #688.
 async fn senders_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2459,11 +2704,14 @@ async fn senders_by_folder_stats(
         }
     }
 
-    let folders: Vec<serde_json::Value> = map.into_iter()
-        .map(|(folder, top_senders)| serde_json::json!({
-            "folder":      folder,
-            "top_senders": top_senders,
-        }))
+    let folders: Vec<serde_json::Value> = map
+        .into_iter()
+        .map(|(folder, top_senders)| {
+            serde_json::json!({
+                "folder":      folder,
+                "top_senders": top_senders,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2475,13 +2723,12 @@ async fn senders_by_folder_stats(
 /// de cada mailbox sem listar mensagens. Sprint #693.
 async fn date_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
-    let rows: Vec<(String, i64, Option<OffsetDateTime>, Option<OffsetDateTime>)> =
-        sqlx::query_as(
-            "SELECT \
+    let rows: Vec<(String, i64, Option<OffsetDateTime>, Option<OffsetDateTime>)> = sqlx::query_as(
+        "SELECT \
                 mb.name AS folder, \
                 COUNT(m.id)::BIGINT AS message_count, \
                 MIN(m.received_at) AS oldest_at, \
@@ -2491,20 +2738,23 @@ async fn date_by_folder_stats(
              WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
              GROUP BY mb.name \
              ORDER BY message_count DESC, mb.name ASC",
-        )
-        .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
-        .fetch_all(&mut *tx)
-        .await?;
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, message_count, oldest_at, newest_at)| serde_json::json!({
-            "folder":        folder,
-            "message_count": message_count,
-            "oldest_at":     oldest_at,
-            "newest_at":     newest_at,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, message_count, oldest_at, newest_at)| {
+            serde_json::json!({
+                "folder":        folder,
+                "message_count": message_count,
+                "oldest_at":     oldest_at,
+                "newest_at":     newest_at,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2516,7 +2766,7 @@ async fn date_by_folder_stats(
 /// Retorna `{folders:[{folder,total,with_cc,without_cc}]}` ordenado por total DESC. Sprint #697.
 async fn cc_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2538,13 +2788,16 @@ async fn cc_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, total, with_cc, without_cc)| serde_json::json!({
-            "folder":     folder,
-            "total":      total,
-            "with_cc":    with_cc,
-            "without_cc": without_cc,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, total, with_cc, without_cc)| {
+            serde_json::json!({
+                "folder":     folder,
+                "total":      total,
+                "with_cc":    with_cc,
+                "without_cc": without_cc,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2556,7 +2809,7 @@ async fn cc_by_folder_stats(
 /// por total DESC. Sprint #702.
 async fn bcc_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2578,13 +2831,16 @@ async fn bcc_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, total, with_bcc, without_bcc)| serde_json::json!({
-            "folder":      folder,
-            "total":       total,
-            "with_bcc":    with_bcc,
-            "without_bcc": without_bcc,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, total, with_bcc, without_bcc)| {
+            serde_json::json!({
+                "folder":      folder,
+                "total":       total,
+                "with_bcc":    with_bcc,
+                "without_bcc": without_bcc,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2595,7 +2851,7 @@ async fn bcc_by_folder_stats(
 /// Retorna `{folders:[{folder,total,replies,non_replies}]}` ordenado por total DESC. Sprint #707.
 async fn reply_rate_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2617,13 +2873,16 @@ async fn reply_rate_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, total, replies, non_replies)| serde_json::json!({
-            "folder":      folder,
-            "total":       total,
-            "replies":     replies,
-            "non_replies": non_replies,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, total, replies, non_replies)| {
+            serde_json::json!({
+                "folder":      folder,
+                "total":       total,
+                "replies":     replies,
+                "non_replies": non_replies,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2635,7 +2894,7 @@ async fn reply_rate_by_folder_stats(
 /// Retorna `{folders:[{folder,message_count,avg_to,max_to}]}` ordenado por message_count DESC. Sprint #712.
 async fn to_count_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2657,13 +2916,16 @@ async fn to_count_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, message_count, avg_to, max_to)| serde_json::json!({
-            "folder":        folder,
-            "message_count": message_count,
-            "avg_to":        avg_to,
-            "max_to":        max_to,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, message_count, avg_to, max_to)| {
+            serde_json::json!({
+                "folder":        folder,
+                "message_count": message_count,
+                "avg_to":        avg_to,
+                "max_to":        max_to,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2676,7 +2938,7 @@ async fn to_count_by_folder_stats(
 /// Sprint #717.
 async fn subject_length_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2698,13 +2960,16 @@ async fn subject_length_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, message_count, avg_len, max_len)| serde_json::json!({
-            "folder":              folder,
-            "message_count":       message_count,
-            "avg_subject_length":  avg_len,
-            "max_subject_length":  max_len,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, message_count, avg_len, max_len)| {
+            serde_json::json!({
+                "folder":              folder,
+                "message_count":       message_count,
+                "avg_subject_length":  avg_len,
+                "max_subject_length":  max_len,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2715,7 +2980,7 @@ async fn subject_length_by_folder_stats(
 /// avg_preview_length é NULL quando pasta não tem mensagens. Sprint #722.
 async fn preview_length_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2737,13 +3002,16 @@ async fn preview_length_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, message_count, avg_len, max_len)| serde_json::json!({
-            "folder":              folder,
-            "message_count":       message_count,
-            "avg_preview_length":  avg_len,
-            "max_preview_length":  max_len,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, message_count, avg_len, max_len)| {
+            serde_json::json!({
+                "folder":              folder,
+                "message_count":       message_count,
+                "avg_preview_length":  avg_len,
+                "max_preview_length":  max_len,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2754,7 +3022,7 @@ async fn preview_length_by_folder_stats(
 /// LEFT JOIN para incluir pastas vazias. Sprint #727.
 async fn has_date_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2776,13 +3044,16 @@ async fn has_date_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, total, with_date, without_date)| serde_json::json!({
-            "folder":       folder,
-            "total":        total,
-            "with_date":    with_date,
-            "without_date": without_date,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, total, with_date, without_date)| {
+            serde_json::json!({
+                "folder":       folder,
+                "total":        total,
+                "with_date":    with_date,
+                "without_date": without_date,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2794,7 +3065,7 @@ async fn has_date_by_folder_stats(
 /// Sprint #732.
 async fn from_domain_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2816,15 +3087,19 @@ async fn from_domain_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let mut map: std::collections::BTreeMap<String, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
+    let mut map: std::collections::BTreeMap<String, Vec<serde_json::Value>> =
+        std::collections::BTreeMap::new();
     for (folder, domain, cnt) in rows {
-        map.entry(folder).or_default().push(serde_json::json!({"domain": domain, "count": cnt}));
+        map.entry(folder)
+            .or_default()
+            .push(serde_json::json!({"domain": domain, "count": cnt}));
     }
     for domains in map.values_mut() {
         domains.truncate(20);
     }
 
-    let folders: Vec<serde_json::Value> = map.into_iter()
+    let folders: Vec<serde_json::Value> = map
+        .into_iter()
         .map(|(folder, domains)| serde_json::json!({"folder": folder, "domains": domains}))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
@@ -2836,7 +3111,7 @@ async fn from_domain_by_folder_stats(
 /// Retorna `{folders:[{folder,total,with_in_reply_to,without_in_reply_to}]}` total DESC. Sprint #737.
 async fn in_reply_to_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2858,13 +3133,16 @@ async fn in_reply_to_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, total, with_irt, without_irt)| serde_json::json!({
-            "folder":             folder,
-            "total":              total,
-            "with_in_reply_to":   with_irt,
-            "without_in_reply_to": without_irt,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, total, with_irt, without_irt)| {
+            serde_json::json!({
+                "folder":             folder,
+                "total":              total,
+                "with_in_reply_to":   with_irt,
+                "without_in_reply_to": without_irt,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2875,7 +3153,7 @@ async fn in_reply_to_by_folder_stats(
 /// Retorna `{folders:[{folder,total,with_message_id,without_message_id}]}` total DESC. Sprint #742.
 async fn message_id_coverage_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2897,13 +3175,16 @@ async fn message_id_coverage_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, total, with_mid, without_mid)| serde_json::json!({
-            "folder":            folder,
-            "total":             total,
-            "with_message_id":   with_mid,
-            "without_message_id": without_mid,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, total, with_mid, without_mid)| {
+            serde_json::json!({
+                "folder":            folder,
+                "total":             total,
+                "with_message_id":   with_mid,
+                "without_message_id": without_mid,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2914,7 +3195,7 @@ async fn message_id_coverage_stats(
 /// Retorna `{folders:[{folder,message_count,avg_size_bytes,max_size_bytes}]}` total DESC. Sprint #747.
 async fn body_size_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2936,13 +3217,16 @@ async fn body_size_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, message_count, avg_size, max_size)| serde_json::json!({
-            "folder":         folder,
-            "message_count":  message_count,
-            "avg_size_bytes": avg_size,
-            "max_size_bytes": max_size,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, message_count, avg_size, max_size)| {
+            serde_json::json!({
+                "folder":         folder,
+                "message_count":  message_count,
+                "avg_size_bytes": avg_size,
+                "max_size_bytes": max_size,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2953,7 +3237,7 @@ async fn body_size_by_folder_stats(
 /// LEFT JOIN para incluir pastas vazias. Retorna `{folders:[{folder,total,with_reply_to,without_reply_to}]}` total DESC. Sprint #752.
 async fn reply_to_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -2975,13 +3259,16 @@ async fn reply_to_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, total, with_rt, without_rt)| serde_json::json!({
-            "folder":          folder,
-            "total":           total,
-            "with_reply_to":   with_rt,
-            "without_reply_to": without_rt,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, total, with_rt, without_rt)| {
+            serde_json::json!({
+                "folder":          folder,
+                "total":           total,
+                "with_reply_to":   with_rt,
+                "without_reply_to": without_rt,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -2992,7 +3279,7 @@ async fn reply_to_by_folder_stats(
 /// LEFT JOIN para incluir pastas vazias. Retorna `{folders:[{folder,thread_count,avg_depth,max_depth}]}`. Sprint #757.
 async fn thread_depth_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -3020,13 +3307,16 @@ async fn thread_depth_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, thread_count, avg_depth, max_depth)| serde_json::json!({
-            "folder":       folder,
-            "thread_count": thread_count,
-            "avg_depth":    avg_depth,
-            "max_depth":    max_depth,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, thread_count, avg_depth, max_depth)| {
+            serde_json::json!({
+                "folder":       folder,
+                "thread_count": thread_count,
+                "avg_depth":    avg_depth,
+                "max_depth":    max_depth,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -3037,7 +3327,7 @@ async fn thread_depth_by_folder_stats(
 /// Retorna `{flags:[{flag,count}]}` count DESC. Sprint #762.
 async fn flags_summary_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -3060,7 +3350,8 @@ async fn flags_summary_stats(
     .await?;
     tx.commit().await?;
 
-    let flags: Vec<serde_json::Value> = rows.into_iter()
+    let flags: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(flag, count)| serde_json::json!({"flag": flag, "count": count}))
         .collect();
     Ok(Json(serde_json::json!({"flags": flags})))
@@ -3071,7 +3362,7 @@ async fn flags_summary_stats(
 /// Buckets: <1KB / 1-10KB / 10-100KB / 100KB-1MB / >1MB por size_bytes. Sprint #767.
 async fn size_distribution_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -3108,13 +3399,17 @@ async fn size_distribution_stats(
 /// Retorna `{folders:[{folder,message_count,oldest,newest}]}` total DESC. Sprint #772.
 async fn oldest_newest_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
-    let rows: Vec<(String, i64, Option<time::OffsetDateTime>, Option<time::OffsetDateTime>)> =
-        sqlx::query_as(
-            "SELECT \
+    let rows: Vec<(
+        String,
+        i64,
+        Option<time::OffsetDateTime>,
+        Option<time::OffsetDateTime>,
+    )> = sqlx::query_as(
+        "SELECT \
                 mb.name AS folder, \
                 COUNT(m.id)::BIGINT AS message_count, \
                 MIN(m.received_at), \
@@ -3124,20 +3419,23 @@ async fn oldest_newest_by_folder_stats(
              WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
              GROUP BY mb.name \
              ORDER BY message_count DESC, mb.name ASC",
-        )
-        .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
-        .fetch_all(&mut *tx)
-        .await?;
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, message_count, oldest, newest)| serde_json::json!({
-            "folder":        folder,
-            "message_count": message_count,
-            "oldest":        oldest.map(|t| t.to_string()),
-            "newest":        newest.map(|t| t.to_string()),
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, message_count, oldest, newest)| {
+            serde_json::json!({
+                "folder":        folder,
+                "message_count": message_count,
+                "oldest":        oldest.map(|t| t.to_string()),
+                "newest":        newest.map(|t| t.to_string()),
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -3149,7 +3447,7 @@ async fn oldest_newest_by_folder_stats(
 /// Retorna `{folders:[{folder,message_count,with_references,without_references}]}`. Sprint #777.
 async fn references_count_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -3171,13 +3469,16 @@ async fn references_count_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, mc, wr, wor)| serde_json::json!({
-            "folder":             folder,
-            "message_count":      mc,
-            "with_references":    wr,
-            "without_references": wor,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, mc, wr, wor)| {
+            serde_json::json!({
+                "folder":             folder,
+                "message_count":      mc,
+                "with_references":    wr,
+                "without_references": wor,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -3188,7 +3489,7 @@ async fn references_count_by_folder_stats(
 /// Escopo: todas as mensagens do user (cross-folder). Sprint #782.
 async fn to_count_distribution_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -3230,7 +3531,7 @@ async fn to_count_distribution_stats(
 /// Retorna `{folders:[{folder,message_count,avg_recipients,max_recipients}]}`. Sprint #787.
 async fn avg_recipients_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -3260,13 +3561,16 @@ async fn avg_recipients_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, mc, avg, max)| serde_json::json!({
-            "folder":          folder,
-            "message_count":   mc,
-            "avg_recipients":  avg,
-            "max_recipients":  max,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, mc, avg, max)| {
+            serde_json::json!({
+                "folder":          folder,
+                "message_count":   mc,
+                "avg_recipients":  avg,
+                "max_recipients":  max,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -3277,7 +3581,7 @@ async fn avg_recipients_by_folder_stats(
 /// LEFT JOIN mailboxes para pastas vazias. Sprint #792.
 async fn first_message_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -3295,11 +3599,14 @@ async fn first_message_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, first)| serde_json::json!({
-            "folder":         folder,
-            "first_received": first.map(|t| t.to_string()),
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, first)| {
+            serde_json::json!({
+                "folder":         folder,
+                "first_received": first.map(|t| t.to_string()),
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -3311,7 +3618,7 @@ async fn first_message_by_folder_stats(
 /// Retorna `{folders:[{folder,total_with_attachments,avg_bytes,max_bytes}]}`. Sprint #797.
 async fn attachment_size_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -3333,13 +3640,16 @@ async fn attachment_size_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, total, avg, max)| serde_json::json!({
-            "folder":                 folder,
-            "total_with_attachments": total,
-            "avg_bytes":              avg,
-            "max_bytes":              max,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, total, avg, max)| {
+            serde_json::json!({
+                "folder":                 folder,
+                "total_with_attachments": total,
+                "avg_bytes":              avg,
+                "max_bytes":              max,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -3350,7 +3660,7 @@ async fn attachment_size_by_folder_stats(
 /// Retorna `{folders:[{folder,total,read,unread,read_pct}]}`. Sprint #802.
 async fn read_ratio_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -3372,9 +3682,14 @@ async fn read_ratio_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(folder, total, read, unread)| {
-            let read_pct = if total > 0 { read as f64 / total as f64 * 100.0 } else { 0.0 };
+            let read_pct = if total > 0 {
+                read as f64 / total as f64 * 100.0
+            } else {
+                0.0
+            };
             serde_json::json!({
                 "folder":   folder,
                 "total":    total,
@@ -3394,7 +3709,7 @@ async fn read_ratio_by_folder_stats(
 /// Retorna `{folders:[{folder,message_count,avg_words,max_words}]}`. Sprint #807.
 async fn subject_word_count_by_folder_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -3420,13 +3735,16 @@ async fn subject_word_count_by_folder_stats(
     .await?;
     tx.commit().await?;
 
-    let folders: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(folder, mc, avg, max)| serde_json::json!({
-            "folder":         folder,
-            "message_count":  mc,
-            "avg_words":      avg,
-            "max_words":      max,
-        }))
+    let folders: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, mc, avg, max)| {
+            serde_json::json!({
+                "folder":         folder,
+                "message_count":  mc,
+                "avg_words":      avg,
+                "max_words":      max,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }
@@ -3436,7 +3754,7 @@ async fn subject_word_count_by_folder_stats(
 /// Buckets: 0/1/2/3/4/5+ via jsonb_array_length(cc_addrs). Cross-folder por user. Sprint #812.
 async fn cc_count_distribution_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 

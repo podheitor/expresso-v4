@@ -4,21 +4,18 @@
 //!   - `expresso-milter` (Postfix milter sidecar)
 
 use mail_auth::{
-    AuthenticatedMessage,
-    DkimResult,
-    DmarcResult,
-    MessageAuthenticator,
     common::{
         crypto::{RsaKey, Sha256},
         headers::HeaderWriter,
     },
     dkim::DkimSigner,
-    dmarc::{Policy, verify::DmarcParameters},
+    dmarc::{verify::DmarcParameters, Policy},
     spf::verify::SpfParameters,
+    AuthenticatedMessage, DkimResult, DmarcResult, MessageAuthenticator,
 };
 use once_cell::sync::Lazy;
 use prometheus::IntCounterVec;
-use rustls_pki_types::{PrivateKeyDer, PrivatePkcs1KeyDer, pem::PemObject};
+use rustls_pki_types::{pem::PemObject, PrivateKeyDer, PrivatePkcs1KeyDer};
 use std::net::IpAddr;
 use tracing::{debug, info, warn};
 
@@ -129,18 +126,17 @@ impl AuthResults {
         let from = self.spf_envelope_from.as_deref().unwrap_or("");
         let helo = self.spf_helo.as_deref().unwrap_or("");
         let phrase = match self.spf.as_str() {
-            "pass"      => "designates",
-            "fail"      => "does not designate",
-            "softfail"  => "does not designate (softfail)",
-            "neutral"   => "reports neutral for",
-            "none"      => "has no SPF record for",
+            "pass" => "designates",
+            "fail" => "does not designate",
+            "softfail" => "does not designate (softfail)",
+            "neutral" => "reports neutral for",
+            "none" => "has no SPF record for",
             "temperror" => "transient error evaluating",
             "permerror" => "permanent error evaluating",
-            _           => "evaluating",
+            _ => "evaluating",
         };
         let origin = if from.is_empty() { helo } else { from };
-        let comment =
-            format!("{hostname}: domain of {origin} {phrase} {ip} as permitted sender");
+        let comment = format!("{hostname}: domain of {origin} {phrase} {ip} as permitted sender");
         format!(
             "{result} ({comment}) receiver={hostname}; client-ip={ip}; envelope-from=<{from}>; helo={helo}",
             result = self.spf,
@@ -174,9 +170,9 @@ pub static MAIL_AUTH_ACTIONS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
 
 fn policy_str(p: Policy) -> &'static str {
     match p {
-        Policy::None        => "none",
-        Policy::Quarantine  => "quarantine",
-        Policy::Reject      => "reject",
+        Policy::None => "none",
+        Policy::Quarantine => "quarantine",
+        Policy::Reject => "reject",
         Policy::Unspecified => "unspecified",
     }
 }
@@ -185,9 +181,11 @@ fn dmarc_verdict(spf: &DmarcResult, dkim: &DmarcResult) -> &'static str {
     // DMARC pass = at least one of SPF/DKIM is aligned Pass.
     if matches!(spf, DmarcResult::Pass) || matches!(dkim, DmarcResult::Pass) {
         "pass"
-    } else if matches!(spf, DmarcResult::TempError(_)) || matches!(dkim, DmarcResult::TempError(_)) {
+    } else if matches!(spf, DmarcResult::TempError(_)) || matches!(dkim, DmarcResult::TempError(_))
+    {
         "temperror"
-    } else if matches!(spf, DmarcResult::PermError(_)) || matches!(dkim, DmarcResult::PermError(_)) {
+    } else if matches!(spf, DmarcResult::PermError(_)) || matches!(dkim, DmarcResult::PermError(_))
+    {
         "permerror"
     } else if matches!(spf, DmarcResult::None) && matches!(dkim, DmarcResult::None) {
         "none"
@@ -208,9 +206,15 @@ pub async fn verify_inbound(
         Ok(a) => a,
         Err(e) => {
             warn!(error = %e, "authenticator init failed — skipping auth");
-            MAIL_AUTH_CHECKS_TOTAL.with_label_values(&["spf",   "temperror"]).inc();
-            MAIL_AUTH_CHECKS_TOTAL.with_label_values(&["dkim",  "temperror"]).inc();
-            MAIL_AUTH_CHECKS_TOTAL.with_label_values(&["dmarc", "temperror"]).inc();
+            MAIL_AUTH_CHECKS_TOTAL
+                .with_label_values(&["spf", "temperror"])
+                .inc();
+            MAIL_AUTH_CHECKS_TOTAL
+                .with_label_values(&["dkim", "temperror"])
+                .inc();
+            MAIL_AUTH_CHECKS_TOTAL
+                .with_label_values(&["dmarc", "temperror"])
+                .inc();
             return AuthResults {
                 spf: "temperror".into(),
                 dkim: "temperror".into(),
@@ -223,7 +227,10 @@ pub async fn verify_inbound(
         }
     };
 
-    let from_domain = mail_from.rsplit_once('@').map(|(_, d)| d).unwrap_or(helo_domain);
+    let from_domain = mail_from
+        .rsplit_once('@')
+        .map(|(_, d)| d)
+        .unwrap_or(helo_domain);
 
     let spf_output = authenticator
         .verify_spf(SpfParameters::verify_mail_from(
@@ -255,7 +262,8 @@ pub async fn verify_inbound(
                     &spf_output,
                 ))
                 .await;
-            let dm = dmarc_verdict(dmarc_output.spf_result(), dmarc_output.dkim_result()).to_string();
+            let dm =
+                dmarc_verdict(dmarc_output.spf_result(), dmarc_output.dkim_result()).to_string();
             let policy = Some(policy_str(dmarc_output.policy()).to_string());
             (dk, dm, policy)
         }
@@ -263,9 +271,15 @@ pub async fn verify_inbound(
     };
     debug!(dkim = %dkim_str, dmarc = %dmarc_str, policy = ?dmarc_policy, "DKIM/DMARC results");
 
-    MAIL_AUTH_CHECKS_TOTAL.with_label_values(&["spf",   spf_str.as_str()]).inc();
-    MAIL_AUTH_CHECKS_TOTAL.with_label_values(&["dkim",  dkim_str.as_str()]).inc();
-    MAIL_AUTH_CHECKS_TOTAL.with_label_values(&["dmarc", dmarc_str.as_str()]).inc();
+    MAIL_AUTH_CHECKS_TOTAL
+        .with_label_values(&["spf", spf_str.as_str()])
+        .inc();
+    MAIL_AUTH_CHECKS_TOTAL
+        .with_label_values(&["dkim", dkim_str.as_str()])
+        .inc();
+    MAIL_AUTH_CHECKS_TOTAL
+        .with_label_values(&["dmarc", dmarc_str.as_str()])
+        .inc();
 
     AuthResults {
         spf: spf_str,
@@ -330,7 +344,9 @@ mod tests {
     #[test]
     fn should_quarantine_only_when_fail_and_p_quarantine() {
         let fail_quar = AuthResults {
-            spf: "fail".into(), dkim: "fail".into(), dmarc: "fail".into(),
+            spf: "fail".into(),
+            dkim: "fail".into(),
+            dmarc: "fail".into(),
             dmarc_policy: Some("quarantine".into()),
             ..Default::default()
         };
@@ -338,7 +354,9 @@ mod tests {
         assert!(!fail_quar.should_reject());
 
         let pass_quar = AuthResults {
-            spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(),
+            spf: "pass".into(),
+            dkim: "pass".into(),
+            dmarc: "pass".into(),
             dmarc_policy: Some("quarantine".into()),
             ..Default::default()
         };
@@ -379,7 +397,10 @@ mod tests {
             ..Default::default()
         };
         let v = ar.to_received_spf("mx.expresso.local");
-        assert!(v.contains("domain of bounce.example.org has no SPF record for 198.51.100.5"), "got: {v}");
+        assert!(
+            v.contains("domain of bounce.example.org has no SPF record for 198.51.100.5"),
+            "got: {v}"
+        );
         assert!(v.contains("envelope-from=<>"));
     }
 
@@ -400,21 +421,27 @@ mod tests {
     #[test]
     fn should_reject_only_when_fail_and_p_reject() {
         let fail_reject = AuthResults {
-            spf: "fail".into(), dkim: "fail".into(), dmarc: "fail".into(),
+            spf: "fail".into(),
+            dkim: "fail".into(),
+            dmarc: "fail".into(),
             dmarc_policy: Some("reject".into()),
             ..Default::default()
         };
         assert!(fail_reject.should_reject());
 
         let fail_quar = AuthResults {
-            spf: "fail".into(), dkim: "fail".into(), dmarc: "fail".into(),
+            spf: "fail".into(),
+            dkim: "fail".into(),
+            dmarc: "fail".into(),
             dmarc_policy: Some("quarantine".into()),
             ..Default::default()
         };
         assert!(!fail_quar.should_reject());
 
         let pass = AuthResults {
-            spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(),
+            spf: "pass".into(),
+            dkim: "pass".into(),
+            dmarc: "pass".into(),
             dmarc_policy: Some("reject".into()),
             ..Default::default()
         };
@@ -424,8 +451,11 @@ mod tests {
     #[test]
     fn auth_results_spf_field_preserved() {
         let r = AuthResults {
-            spf: "pass".into(), dkim: "fail".into(), dmarc: "none".into(),
-            dmarc_policy: None, ..Default::default()
+            spf: "pass".into(),
+            dkim: "fail".into(),
+            dmarc: "none".into(),
+            dmarc_policy: None,
+            ..Default::default()
         };
         assert_eq!(r.spf, "pass");
         assert_eq!(r.dkim, "fail");
@@ -434,8 +464,11 @@ mod tests {
     #[test]
     fn auth_results_dmarc_none_dmarc_policy_is_none() {
         let r = AuthResults {
-            spf: "pass".into(), dkim: "pass".into(), dmarc: "none".into(),
-            dmarc_policy: None, ..Default::default()
+            spf: "pass".into(),
+            dkim: "pass".into(),
+            dmarc: "none".into(),
+            dmarc_policy: None,
+            ..Default::default()
         };
         assert!(r.dmarc_policy.is_none());
     }
@@ -443,8 +476,11 @@ mod tests {
     #[test]
     fn auth_results_should_reject_false_on_pass() {
         let r = AuthResults {
-            spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(),
-            dmarc_policy: None, ..Default::default()
+            spf: "pass".into(),
+            dkim: "pass".into(),
+            dmarc: "pass".into(),
+            dmarc_policy: None,
+            ..Default::default()
         };
         assert!(!r.should_reject());
     }
@@ -452,8 +488,11 @@ mod tests {
     #[test]
     fn auth_results_spf_fail_should_reject() {
         let r = AuthResults {
-            spf: "fail".into(), dkim: "pass".into(), dmarc: "fail".into(),
-            dmarc_policy: Some("reject".into()), ..Default::default()
+            spf: "fail".into(),
+            dkim: "pass".into(),
+            dmarc: "fail".into(),
+            dmarc_policy: Some("reject".into()),
+            ..Default::default()
         };
         assert!(r.should_reject());
     }
@@ -461,7 +500,8 @@ mod tests {
     #[test]
     fn auth_results_quarantine_policy_should_quarantine() {
         let r = AuthResults {
-            dmarc: "fail".into(), dmarc_policy: Some("quarantine".into()),
+            dmarc: "fail".into(),
+            dmarc_policy: Some("quarantine".into()),
             ..Default::default()
         };
         assert!(r.should_quarantine());
@@ -470,7 +510,8 @@ mod tests {
     #[test]
     fn auth_results_pass_dmarc_does_not_quarantine() {
         let r = AuthResults {
-            dmarc: "pass".into(), dmarc_policy: Some("quarantine".into()),
+            dmarc: "pass".into(),
+            dmarc_policy: Some("quarantine".into()),
             ..Default::default()
         };
         assert!(!r.should_quarantine());
@@ -526,13 +567,25 @@ mod tests {
 
     #[test]
     fn auth_results_to_header_ends_with_crlf() {
-        let r = AuthResults { spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(), dmarc_policy: None, ..Default::default() };
+        let r = AuthResults {
+            spf: "pass".into(),
+            dkim: "pass".into(),
+            dmarc: "pass".into(),
+            dmarc_policy: None,
+            ..Default::default()
+        };
         assert!(r.to_header("mx.example.com").ends_with("\r\n"));
     }
 
     #[test]
     fn auth_results_to_value_contains_hostname() {
-        let r = AuthResults { spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(), dmarc_policy: None, ..Default::default() };
+        let r = AuthResults {
+            spf: "pass".into(),
+            dkim: "pass".into(),
+            dmarc: "pass".into(),
+            dmarc_policy: None,
+            ..Default::default()
+        };
         let v = r.to_value("mail.corp.example");
         assert!(v.starts_with("mail.corp.example"));
     }
@@ -540,8 +593,11 @@ mod tests {
     #[test]
     fn auth_results_none_policy_to_value_has_no_p_fragment() {
         let r = AuthResults {
-            spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(),
-            dmarc_policy: None, ..Default::default()
+            spf: "pass".into(),
+            dkim: "pass".into(),
+            dmarc: "pass".into(),
+            dmarc_policy: None,
+            ..Default::default()
         };
         assert!(!r.to_value("mx.example.com").contains("(p="));
     }
@@ -549,8 +605,11 @@ mod tests {
     #[test]
     fn auth_results_to_value_contains_semicolon_separated_results() {
         let r = AuthResults {
-            spf: "pass".into(), dkim: "none".into(), dmarc: "none".into(),
-            dmarc_policy: None, ..Default::default()
+            spf: "pass".into(),
+            dkim: "none".into(),
+            dmarc: "none".into(),
+            dmarc_policy: None,
+            ..Default::default()
         };
         let v = r.to_value("mx.example.com");
         assert!(v.contains("; spf=pass"));

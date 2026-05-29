@@ -17,7 +17,7 @@ use axum::{
 use crate::caldav::auth::CalDavPrincipal;
 use crate::caldav::xml::{self, PropRequest};
 use crate::caldav::{uri, MULTISTATUS_CT};
-use crate::domain::{CalendarRepo, DeadProp, DeadPropRepo, EventRepo, EventQuery};
+use crate::domain::{CalendarRepo, DeadProp, DeadPropRepo, EventQuery, EventRepo};
 use crate::error::Result;
 use crate::state::AppState;
 
@@ -39,25 +39,36 @@ pub async fn handle(
             }
             propfind_home(&state, &principal, &req, depth).await?
         }
-        uri::Target::Calendar { user_id, calendar_id } => {
+        uri::Target::Calendar {
+            user_id,
+            calendar_id,
+        } => {
             if user_id != principal.user_id {
                 return Ok(forbidden());
             }
             propfind_calendar(&state, &principal, calendar_id, &req, depth).await?
         }
-        uri::Target::Event { user_id, calendar_id, uid } => {
+        uri::Target::Event {
+            user_id,
+            calendar_id,
+            uid,
+        } => {
             if user_id != principal.user_id {
                 return Ok(forbidden());
             }
             propfind_event(&state, &principal, calendar_id, &uid, &req).await?
         }
         uri::Target::ScheduleInbox { user_id } => {
-            if user_id != principal.user_id { return Ok(forbidden()); }
-            propfind_schedule(&principal, /*inbox=*/true, &req)
+            if user_id != principal.user_id {
+                return Ok(forbidden());
+            }
+            propfind_schedule(&principal, /*inbox=*/ true, &req)
         }
         uri::Target::ScheduleOutbox { user_id } => {
-            if user_id != principal.user_id { return Ok(forbidden()); }
-            propfind_schedule(&principal, /*inbox=*/false, &req)
+            if user_id != principal.user_id {
+                return Ok(forbidden());
+            }
+            propfind_schedule(&principal, /*inbox=*/ false, &req)
         }
         uri::Target::Unknown => return Ok(not_found()),
     };
@@ -83,10 +94,10 @@ pub fn parse_depth(headers: &HeaderMap) -> Depth {
         .get("depth")
         .and_then(|v| v.to_str().ok())
         .map(|s| match s.trim().to_ascii_lowercase().as_str() {
-            "0"        => Depth::Zero,
-            "1"        => Depth::One,
+            "0" => Depth::Zero,
+            "1" => Depth::One,
             "infinity" => Depth::Infinity,
-            _          => Depth::Zero,
+            _ => Depth::Zero,
         })
         .unwrap_or(Depth::Zero)
 }
@@ -94,10 +105,10 @@ pub fn parse_depth(headers: &HeaderMap) -> Depth {
 // ─── builders ───────────────────────────────────────────────────────────────
 
 async fn propfind_home(
-    state:     &AppState,
+    state: &AppState,
     principal: &CalDavPrincipal,
-    req:       &PropRequest,
-    depth:     Depth,
+    req: &PropRequest,
+    depth: Depth,
 ) -> Result<String> {
     let pool = state.db_or_unavailable()?;
     let mut out = String::with_capacity(1024);
@@ -106,7 +117,17 @@ async fn propfind_home(
 
     // Self response — home collection.
     let home_href = format!("/caldav/{}/", principal.user_id);
-    append_collection_response(&mut out, &home_href, /*is_home=*/true, None, None, None, req, principal, &[]);
+    append_collection_response(
+        &mut out,
+        &home_href,
+        /*is_home=*/ true,
+        None,
+        None,
+        None,
+        req,
+        principal,
+        &[],
+    );
 
     if matches!(depth, Depth::One | Depth::Infinity) {
         let calendars = CalendarRepo::new(pool)
@@ -116,14 +137,23 @@ async fn propfind_home(
         for cal in calendars {
             let href = format!("/caldav/{}/{}/", principal.user_id, cal.id);
             let dead = if req.allprop {
-                dead_repo.list_for_calendar(principal.tenant_id, cal.id).await.unwrap_or_default()
-            } else { Vec::new() };
+                dead_repo
+                    .list_for_calendar(principal.tenant_id, cal.id)
+                    .await
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             append_collection_response(
-                &mut out, &href, /*is_home=*/false,
+                &mut out,
+                &href,
+                /*is_home=*/ false,
                 Some(cal.name.as_str()),
                 cal.description.as_deref(),
                 Some((cal.color.as_deref(), cal.timezone.as_str(), cal.ctag)),
-                req, principal, &dead,
+                req,
+                principal,
+                &dead,
             );
         }
     }
@@ -131,8 +161,8 @@ async fn propfind_home(
     // RFC 6638 §4: expose schedule-inbox + schedule-outbox collections when
     // Depth >= 1 so clients enumerate them alongside regular calendars.
     if matches!(depth, Depth::One | Depth::Infinity) {
-        append_schedule_response(&mut out, principal, /*inbox=*/true,  req);
-        append_schedule_response(&mut out, principal, /*inbox=*/false, req);
+        append_schedule_response(&mut out, principal, /*inbox=*/ true, req);
+        append_schedule_response(&mut out, principal, /*inbox=*/ false, req);
     }
 
     out.push_str("</D:multistatus>");
@@ -140,11 +170,7 @@ async fn propfind_home(
 }
 
 /// Stand-alone PROPFIND on a schedule-inbox/outbox collection URL.
-fn propfind_schedule(
-    principal: &CalDavPrincipal,
-    inbox:     bool,
-    req:       &PropRequest,
-) -> String {
+fn propfind_schedule(principal: &CalDavPrincipal, inbox: bool, req: &PropRequest) -> String {
     let mut out = String::with_capacity(512);
     out.push_str(xml::XML_PROLOG);
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">"#);
@@ -155,20 +181,22 @@ fn propfind_schedule(
 
 /// Append a single schedule-inbox or schedule-outbox `<D:response>`.
 fn append_schedule_response(
-    out:       &mut String,
+    out: &mut String,
     principal: &CalDavPrincipal,
-    inbox:     bool,
-    req:       &PropRequest,
+    inbox: bool,
+    req: &PropRequest,
 ) {
     let (seg, elem, disp) = if inbox {
-        ("schedule-inbox",  "<C:schedule-inbox/>",  "Schedule Inbox")
+        ("schedule-inbox", "<C:schedule-inbox/>", "Schedule Inbox")
     } else {
         ("schedule-outbox", "<C:schedule-outbox/>", "Schedule Outbox")
     };
     let href = format!("/caldav/{}/{seg}/", principal.user_id);
 
     out.push_str("<D:response>");
-    out.push_str("<D:href>"); out.push_str(&xml::escape(&href)); out.push_str("</D:href>");
+    out.push_str("<D:href>");
+    out.push_str(&xml::escape(&href));
+    out.push_str("</D:href>");
     out.push_str("<D:propstat><D:prop>");
     if req.resourcetype {
         out.push_str("<D:resourcetype><D:collection/>");
@@ -203,11 +231,11 @@ fn append_schedule_response(
 }
 
 async fn propfind_calendar(
-    state:       &AppState,
-    principal:   &CalDavPrincipal,
+    state: &AppState,
+    principal: &CalDavPrincipal,
     calendar_id: uuid::Uuid,
-    req:         &PropRequest,
-    depth:       Depth,
+    req: &PropRequest,
+    depth: Depth,
 ) -> Result<String> {
     let pool = state.db_or_unavailable()?;
     let repo = CalendarRepo::new(pool);
@@ -218,15 +246,24 @@ async fn propfind_calendar(
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/" xmlns:A="http://apple.com/ns/ical/">"#);
 
     let dead = if req.allprop {
-        DeadPropRepo::new(pool).list_for_calendar(principal.tenant_id, cal.id).await.unwrap_or_default()
-    } else { Vec::new() };
+        DeadPropRepo::new(pool)
+            .list_for_calendar(principal.tenant_id, cal.id)
+            .await
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let href = format!("/caldav/{}/{}/", principal.user_id, cal.id);
     append_collection_response(
-        &mut out, &href, /*is_home=*/false,
+        &mut out,
+        &href,
+        /*is_home=*/ false,
         Some(cal.name.as_str()),
         cal.description.as_deref(),
         Some((cal.color.as_deref(), cal.timezone.as_str(), cal.ctag)),
-        req, principal, &dead,
+        req,
+        principal,
+        &dead,
     );
 
     if matches!(depth, Depth::One | Depth::Infinity) {
@@ -244,11 +281,11 @@ async fn propfind_calendar(
 }
 
 async fn propfind_event(
-    state:       &AppState,
-    principal:   &CalDavPrincipal,
+    state: &AppState,
+    principal: &CalDavPrincipal,
     calendar_id: uuid::Uuid,
-    uid:         &str,
-    req:         &PropRequest,
+    uid: &str,
+    req: &PropRequest,
 ) -> Result<String> {
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool)
@@ -258,7 +295,10 @@ async fn propfind_event(
     let mut out = String::with_capacity(1024);
     out.push_str(xml::XML_PROLOG);
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/">"#);
-    let href = format!("/caldav/{}/{}/{}.ics", principal.user_id, calendar_id, ev.uid);
+    let href = format!(
+        "/caldav/{}/{}/{}.ics",
+        principal.user_id, calendar_id, ev.uid
+    );
     append_event_response(&mut out, &href, &ev.etag, req, ev.ical_raw.as_str());
     out.push_str("</D:multistatus>");
     Ok(out)
@@ -266,18 +306,20 @@ async fn propfind_event(
 
 /// Append a `<D:response>` for a collection (home or calendar).
 fn append_collection_response(
-    out:        &mut String,
-    href:       &str,
-    is_home:    bool,
-    dispname:   Option<&str>,
-    descr:      Option<&str>,
-    cal_meta:   Option<(Option<&str>, &str, i64)>,  // (color, tz, ctag)
-    req:        &PropRequest,
-    principal:  &CalDavPrincipal,
+    out: &mut String,
+    href: &str,
+    is_home: bool,
+    dispname: Option<&str>,
+    descr: Option<&str>,
+    cal_meta: Option<(Option<&str>, &str, i64)>, // (color, tz, ctag)
+    req: &PropRequest,
+    principal: &CalDavPrincipal,
     dead_props: &[DeadProp],
 ) {
     out.push_str("<D:response>");
-    out.push_str("<D:href>"); out.push_str(&xml::escape(href)); out.push_str("</D:href>");
+    out.push_str("<D:href>");
+    out.push_str(&xml::escape(href));
+    out.push_str("</D:href>");
     out.push_str("<D:propstat><D:prop>");
 
     if req.resourcetype {
@@ -358,24 +400,26 @@ fn append_collection_response(
     }
     if req.supported_report_set {
         // Advertise the REPORTs we serve (RFC 3253 §3.1.5 + RFC 4791 §5.2.1).
-        out.push_str(            "<D:supported-report-set>\
+        out.push_str(
+            "<D:supported-report-set>\
              <D:supported-report><D:report><C:calendar-query/></D:report></D:supported-report>\
              <D:supported-report><D:report><C:calendar-multiget/></D:report></D:supported-report>\
              <D:supported-report><D:report><C:free-busy-query/></D:report></D:supported-report>\
              <D:supported-report><D:report><D:sync-collection/></D:report></D:supported-report>\
-             </D:supported-report-set>"
+             </D:supported-report-set>",
         );
     }
     if req.current_user_privilege_set {
         // Owner privileges. Sharing ACL refinement handled elsewhere; here we
         // grant the principal full access to their own home/calendar.
-        out.push_str(            "<D:current-user-privilege-set>\
+        out.push_str(
+            "<D:current-user-privilege-set>\
              <D:privilege><D:read/></D:privilege>\
              <D:privilege><D:write/></D:privilege>\
              <D:privilege><D:write-content/></D:privilege>\
              <D:privilege><D:write-properties/></D:privilege>\
              <D:privilege><D:read-current-user-privilege-set/></D:privilege>\
-             </D:current-user-privilege-set>"
+             </D:current-user-privilege-set>",
         );
     }
 
@@ -385,8 +429,8 @@ fn append_collection_response(
             out.push_str(&format!(
                 r#"<{local} xmlns="{ns}">{val}</{local}>"#,
                 local = dp.local_name,
-                ns    = xml::escape(&dp.namespace),
-                val   = xml::escape(&dp.xml_value),
+                ns = xml::escape(&dp.namespace),
+                val = xml::escape(&dp.xml_value),
             ));
         }
     }
@@ -399,11 +443,13 @@ fn append_event_response(
     out: &mut String,
     href: &str,
     etag: &str,
-    req:  &PropRequest,
+    req: &PropRequest,
     ical_raw: &str,
 ) {
     out.push_str("<D:response>");
-    out.push_str("<D:href>"); out.push_str(&xml::escape(href)); out.push_str("</D:href>");
+    out.push_str("<D:href>");
+    out.push_str(&xml::escape(href));
+    out.push_str("</D:href>");
     out.push_str("<D:propstat><D:prop>");
     if req.resourcetype {
         out.push_str("<D:resourcetype/>");
@@ -427,11 +473,12 @@ fn append_event_response(
         out.push_str("</D:getcontentlength>");
     }
     if req.current_user_privilege_set {
-        out.push_str(            "<D:current-user-privilege-set>\
+        out.push_str(
+            "<D:current-user-privilege-set>\
              <D:privilege><D:read/></D:privilege>\
              <D:privilege><D:write/></D:privilege>\
              <D:privilege><D:write-content/></D:privilege>\
-             </D:current-user-privilege-set>"
+             </D:current-user-privilege-set>",
         );
     }
     out.push_str("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>");
@@ -477,12 +524,18 @@ mod tests {
 
     #[test]
     fn parse_depth_infinity() {
-        assert!(matches!(parse_depth(&headers_with_depth("infinity")), Depth::Infinity));
+        assert!(matches!(
+            parse_depth(&headers_with_depth("infinity")),
+            Depth::Infinity
+        ));
     }
 
     #[test]
     fn parse_depth_infinity_case_insensitive() {
-        assert!(matches!(parse_depth(&headers_with_depth("Infinity")), Depth::Infinity));
+        assert!(matches!(
+            parse_depth(&headers_with_depth("Infinity")),
+            Depth::Infinity
+        ));
     }
 
     #[test]
@@ -517,7 +570,10 @@ mod tests {
 
     #[test]
     fn parse_depth_infinity_string_is_infinity() {
-        assert!(matches!(parse_depth(&headers_with_depth("infinity")), Depth::Infinity));
+        assert!(matches!(
+            parse_depth(&headers_with_depth("infinity")),
+            Depth::Infinity
+        ));
     }
 
     #[test]
@@ -554,7 +610,10 @@ mod tests {
 
     #[test]
     fn parse_depth_uppercase_infinity_is_infinity() {
-        assert!(matches!(parse_depth(&headers_with_depth("INFINITY")), Depth::Infinity));
+        assert!(matches!(
+            parse_depth(&headers_with_depth("INFINITY")),
+            Depth::Infinity
+        ));
     }
 
     #[test]

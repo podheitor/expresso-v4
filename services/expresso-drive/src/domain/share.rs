@@ -21,9 +21,9 @@ use crate::error::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Share {
-    pub id:         Uuid,
-    pub tenant_id:  Uuid,
-    pub file_id:    Uuid,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub file_id: Uuid,
     pub permission: String,
     pub created_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
@@ -36,9 +36,9 @@ pub struct Share {
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct ResolvedShare {
-    pub id:         Uuid,
-    pub tenant_id:  Uuid,
-    pub file_id:    Uuid,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub file_id: Uuid,
     pub expires_at: OffsetDateTime,
     pub revoked_at: Option<OffsetDateTime>,
 }
@@ -51,12 +51,14 @@ const SELECT_COLS: &str = "id, tenant_id, file_id, permission, created_by, \
     created_at, expires_at, revoked_at";
 
 impl<'a> ShareRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     pub async fn insert(
         &self,
-        tenant_id:  Uuid,
-        file_id:    Uuid,
+        tenant_id: Uuid,
+        file_id: Uuid,
         token_hash: &str,
         created_by: Uuid,
         expires_at: OffsetDateTime,
@@ -68,9 +70,13 @@ impl<'a> ShareRepo<'a> {
              RETURNING {SELECT_COLS}"
         );
         let row = sqlx::query_as(&sql)
-            .bind(tenant_id).bind(file_id).bind(token_hash)
-            .bind(created_by).bind(expires_at)
-            .fetch_one(&mut *tx).await?;
+            .bind(tenant_id)
+            .bind(file_id)
+            .bind(token_hash)
+            .bind(created_by)
+            .bind(expires_at)
+            .fetch_one(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -83,8 +89,10 @@ impl<'a> ShareRepo<'a> {
              ORDER BY created_at DESC"
         );
         let rows = sqlx::query_as(&sql)
-            .bind(tenant_id).bind(file_id)
-            .fetch_all(&mut *tx).await?;
+            .bind(tenant_id)
+            .bind(file_id)
+            .fetch_all(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(rows)
     }
@@ -95,8 +103,10 @@ impl<'a> ShareRepo<'a> {
             "UPDATE drive_shares SET revoked_at = now() \
              WHERE id = $1 AND tenant_id = $2 AND revoked_at IS NULL",
         )
-        .bind(id).bind(tenant_id)
-        .execute(&mut *tx).await?;
+        .bind(id)
+        .bind(tenant_id)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(r.rows_affected())
     }
@@ -108,7 +118,8 @@ impl<'a> ShareRepo<'a> {
              FROM drive_share_resolve($1)",
         )
         .bind(token_hash)
-        .fetch_optional(self.pool).await?;
+        .fetch_optional(self.pool)
+        .await?;
         Ok(row)
     }
 }
@@ -121,9 +132,9 @@ mod tests {
     #[test]
     fn share_serde_roundtrip() {
         let s = Share {
-            id:         Uuid::nil(),
-            tenant_id:  Uuid::nil(),
-            file_id:    Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
             permission: "read".into(),
             created_by: Uuid::nil(),
             created_at: datetime!(2026-05-22 09:00:00 UTC),
@@ -139,8 +150,11 @@ mod tests {
     #[test]
     fn share_revoked_at_present_roundtrip() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "write".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "write".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-05-22 09:00:00 UTC),
             expires_at: datetime!(2026-05-29 09:00:00 UTC),
             revoked_at: Some(datetime!(2026-05-23 10:00:00 UTC)),
@@ -153,8 +167,11 @@ mod tests {
     #[test]
     fn share_expires_at_in_rfc3339() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "read".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "read".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-05-22 09:00:00 UTC),
             expires_at: datetime!(2026-06-22 09:00:00 UTC),
             revoked_at: None,
@@ -166,8 +183,11 @@ mod tests {
     #[test]
     fn share_debug_contains_permission() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "write".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "write".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: None,
@@ -179,8 +199,11 @@ mod tests {
     fn share_different_permissions_serde() {
         for perm in ["read", "write", "admin"] {
             let s = Share {
-                id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-                permission: perm.into(), created_by: Uuid::nil(),
+                id: Uuid::nil(),
+                tenant_id: Uuid::nil(),
+                file_id: Uuid::nil(),
+                permission: perm.into(),
+                created_by: Uuid::nil(),
                 created_at: datetime!(2026-01-01 00:00:00 UTC),
                 expires_at: datetime!(2026-02-01 00:00:00 UTC),
                 revoked_at: None,
@@ -193,8 +216,11 @@ mod tests {
     #[test]
     fn share_revoked_at_none_by_default() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "read".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "read".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: None,
@@ -206,8 +232,11 @@ mod tests {
     fn share_file_id_accessible() {
         let fid = Uuid::new_v4();
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: fid,
-            permission: "read".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: fid,
+            permission: "read".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: None,
@@ -218,8 +247,11 @@ mod tests {
     #[test]
     fn share_permission_preserved() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "write".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "write".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: None,
@@ -230,8 +262,11 @@ mod tests {
     #[test]
     fn share_expires_at_accessible() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "read".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "read".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-06-30 00:00:00 UTC),
             revoked_at: None,
@@ -242,8 +277,11 @@ mod tests {
     #[test]
     fn share_permission_read_preserved() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "read".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "read".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: None,
@@ -254,8 +292,11 @@ mod tests {
     #[test]
     fn share_write_permission_preserved() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "write".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "write".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: None,
@@ -266,8 +307,11 @@ mod tests {
     #[test]
     fn share_revoked_at_is_none_for_active_share() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "read".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "read".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: None,
@@ -278,8 +322,11 @@ mod tests {
     #[test]
     fn share_read_permission_value_is_read() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "read".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "read".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: None,
@@ -290,8 +337,11 @@ mod tests {
     #[test]
     fn share_write_revoked_at_is_none() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "write".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "write".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: None,
@@ -303,8 +353,11 @@ mod tests {
     fn share_file_id_preserved() {
         let fid = Uuid::new_v4();
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: fid,
-            permission: "read".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: fid,
+            permission: "read".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: None,
@@ -316,8 +369,11 @@ mod tests {
     fn share_created_by_preserved() {
         let uid = Uuid::new_v4();
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "read".into(), created_by: uid,
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "read".into(),
+            created_by: uid,
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: None,
@@ -329,8 +385,11 @@ mod tests {
     fn share_tenant_id_preserved() {
         let tid = Uuid::new_v4();
         let s = Share {
-            id: Uuid::nil(), tenant_id: tid, file_id: Uuid::nil(),
-            permission: "read".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: tid,
+            file_id: Uuid::nil(),
+            permission: "read".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: None,
@@ -341,8 +400,11 @@ mod tests {
     #[test]
     fn share_expires_after_created() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "read".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "read".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-01-08 00:00:00 UTC),
             revoked_at: None,
@@ -353,8 +415,11 @@ mod tests {
     #[test]
     fn share_id_is_nil_uuid_when_set_to_nil() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "write".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "write".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-03-01 00:00:00 UTC),
             expires_at: datetime!(2026-03-08 00:00:00 UTC),
             revoked_at: None,
@@ -365,8 +430,11 @@ mod tests {
     #[test]
     fn share_revoked_some_not_none() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "read".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "read".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-02-01 00:00:00 UTC),
             revoked_at: Some(datetime!(2026-01-15 00:00:00 UTC)),
@@ -377,8 +445,11 @@ mod tests {
     #[test]
     fn share_permission_is_not_empty() {
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "write".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "write".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-06-01 00:00:00 UTC),
             revoked_at: None,
@@ -390,8 +461,11 @@ mod tests {
     fn share_revoked_at_none_when_not_revoked() {
         use time::macros::datetime;
         let s = Share {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
-            permission: "read".into(), created_by: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            permission: "read".into(),
+            created_by: Uuid::nil(),
             created_at: datetime!(2026-01-01 00:00:00 UTC),
             expires_at: datetime!(2026-12-31 00:00:00 UTC),
             revoked_at: None,
@@ -402,7 +476,7 @@ mod tests {
     #[test]
     fn share_permission_write_differs_from_read() {
         let write = "write".to_string();
-        let read  = "read".to_string();
+        let read = "read".to_string();
         assert_ne!(write, read);
     }
 }

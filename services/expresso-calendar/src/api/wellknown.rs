@@ -20,7 +20,9 @@ pub fn routes() -> Router<AppState> {
 
 async fn redirect() -> Response {
     let mut resp = (StatusCode::MOVED_PERMANENTLY, "").into_response();
-    resp.headers_mut()
-        .insert(header::LOCATION, header::HeaderValue::from_static("/caldav/"));
+    resp.headers_mut().insert(
+        header::LOCATION,
+        header::HeaderValue::from_static("/caldav/"),
+    );
     resp
 }

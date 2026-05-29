@@ -1,4 +1,8 @@
-use axum::{response::{IntoResponse, Response}, http::StatusCode, Json};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use serde_json::json;
 use thiserror::Error;
 
@@ -47,30 +51,26 @@ pub type Result<T> = std::result::Result<T, MailError>;
 impl IntoResponse for MailError {
     fn into_response(self) -> Response {
         let (status, code, msg) = match &self {
-            MailError::MessageNotFound(_) | MailError::FolderNotFound { .. } | MailError::NotFound => {
-                (StatusCode::NOT_FOUND, "not_found", self.to_string())
-            }
+            MailError::MessageNotFound(_)
+            | MailError::FolderNotFound { .. }
+            | MailError::NotFound => (StatusCode::NOT_FOUND, "not_found", self.to_string()),
             MailError::QuotaExceeded => {
                 // 507 Insufficient Storage (RFC 4918) — a mailbox quota is a
                 // storage condition, not a request-size limit (413).
                 let s = StatusCode::from_u16(507).expect("507 is a valid status code");
                 (s, "quota_exceeded", self.to_string())
             }
-            MailError::Forbidden => {
-                (StatusCode::FORBIDDEN, "forbidden", self.to_string())
-            }
-            MailError::InvalidMessage(m) => {
-                (StatusCode::BAD_REQUEST, "invalid_message", m.clone())
-            }
-            MailError::BadRequest(m) => {
-                (StatusCode::BAD_REQUEST, "bad_request", m.clone())
-            }
-            MailError::Conflict(m) => {
-                (StatusCode::CONFLICT, "conflict", m.clone())
-            }
+            MailError::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),
+            MailError::InvalidMessage(m) => (StatusCode::BAD_REQUEST, "invalid_message", m.clone()),
+            MailError::BadRequest(m) => (StatusCode::BAD_REQUEST, "bad_request", m.clone()),
+            MailError::Conflict(m) => (StatusCode::CONFLICT, "conflict", m.clone()),
             _ => {
                 tracing::error!(error = %self, "internal mail error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", "internal server error".into())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal_error",
+                    "internal server error".into(),
+                )
             }
         };
 
@@ -89,12 +89,20 @@ mod tests {
 
     #[test]
     fn message_not_found_is_404() {
-        assert_eq!(status(MailError::MessageNotFound(uuid::Uuid::new_v4())), 404);
+        assert_eq!(
+            status(MailError::MessageNotFound(uuid::Uuid::new_v4())),
+            404
+        );
     }
 
     #[test]
     fn folder_not_found_is_404() {
-        assert_eq!(status(MailError::FolderNotFound { folder: "INBOX".into() }), 404);
+        assert_eq!(
+            status(MailError::FolderNotFound {
+                folder: "INBOX".into()
+            }),
+            404
+        );
     }
 
     #[test]
@@ -192,7 +200,10 @@ mod tests {
 
     #[test]
     fn send_failed_is_500_status() {
-        assert_eq!(status(MailError::SendFailed("connection refused".into())), 500);
+        assert_eq!(
+            status(MailError::SendFailed("connection refused".into())),
+            500
+        );
     }
 
     #[test]
@@ -203,7 +214,9 @@ mod tests {
 
     #[test]
     fn folder_not_found_display_contains_folder_name() {
-        let e = MailError::FolderNotFound { folder: "Archive".into() };
+        let e = MailError::FolderNotFound {
+            folder: "Archive".into(),
+        };
         assert!(format!("{e}").contains("Archive"));
     }
 

@@ -287,7 +287,10 @@ mod tests {
 
     #[test]
     fn redirect_action_is_not_discard() {
-        let actions = evaluate(br#"require "redirect"; redirect "fwd@example.com";"#, MSG.as_bytes());
+        let actions = evaluate(
+            br#"require "redirect"; redirect "fwd@example.com";"#,
+            MSG.as_bytes(),
+        );
         assert!(!matches!(actions[0], FilterAction::Discard));
     }
 
@@ -298,7 +301,12 @@ mod tests {
 
     #[test]
     fn redirect_action_is_not_keep() {
-        assert!(!matches!(FilterAction::Redirect { address: "a@b.com".into() }, FilterAction::Keep { .. }));
+        assert!(!matches!(
+            FilterAction::Redirect {
+                address: "a@b.com".into()
+            },
+            FilterAction::Keep { .. }
+        ));
     }
 
     #[test]

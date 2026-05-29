@@ -23,7 +23,10 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use time::OffsetDateTime;
-use tokio::{fs, io::{AsyncSeekExt, AsyncWriteExt}};
+use tokio::{
+    fs,
+    io::{AsyncSeekExt, AsyncWriteExt},
+};
 use uuid::Uuid;
 
 use crate::{
@@ -33,10 +36,10 @@ use crate::{
     state::AppState,
 };
 
-const TUS_VERSION:      &str = "1.0.0";
-const TUS_SUPPORTED:    &str = "1.0.0";
-const TUS_EXTENSIONS:   &str = "creation,termination,expiration";
-const MAX_UPLOAD_BYTES: i64  = 50 * 1024 * 1024 * 1024;   // 50 GB hard cap.
+const TUS_VERSION: &str = "1.0.0";
+const TUS_SUPPORTED: &str = "1.0.0";
+const TUS_EXTENSIONS: &str = "creation,termination,expiration";
+const MAX_UPLOAD_BYTES: i64 = 50 * 1024 * 1024 * 1024; // 50 GB hard cap.
 
 /// POSIX NAME_MAX. Sistemas de arquivos modernos toleram até 255 bytes;
 /// metadata pode ter UTF-8 multibyte, então conta bytes (não chars).
@@ -54,33 +57,52 @@ pub const MAX_CHUNK_BYTES: usize = 16 * 1024 * 1024;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/drive/uploads",
-            post_route(create_upload_h).options(options_collection))
-        .route("/api/v1/drive/uploads/:id",
-            head_route(head_upload_h).patch(patch_upload_h).delete(delete_upload_h))
+        .route(
+            "/api/v1/drive/uploads",
+            post_route(create_upload_h).options(options_collection),
+        )
+        .route(
+            "/api/v1/drive/uploads/:id",
+            head_route(head_upload_h)
+                .patch(patch_upload_h)
+                .delete(delete_upload_h),
+        )
         .layer(DefaultBodyLimit::max(MAX_CHUNK_BYTES))
 }
 
 fn tus_headers() -> Vec<(HeaderName, HeaderValue)> {
     vec![
-        (HeaderName::from_static("tus-resumable"), HeaderValue::from_static(TUS_VERSION)),
-        (HeaderName::from_static("tus-version"),   HeaderValue::from_static(TUS_SUPPORTED)),
-        (HeaderName::from_static("tus-extension"), HeaderValue::from_static(TUS_EXTENSIONS)),
+        (
+            HeaderName::from_static("tus-resumable"),
+            HeaderValue::from_static(TUS_VERSION),
+        ),
+        (
+            HeaderName::from_static("tus-version"),
+            HeaderValue::from_static(TUS_SUPPORTED),
+        ),
+        (
+            HeaderName::from_static("tus-extension"),
+            HeaderValue::from_static(TUS_EXTENSIONS),
+        ),
     ]
 }
 
 fn parse_metadata(h: Option<&HeaderValue>) -> (Option<String>, Option<String>) {
     // "filename base64name,filetype base64mime,parent base64uuid"
-    let Some(v) = h.and_then(|x| x.to_str().ok()) else { return (None, None); };
-    let mut name  = None;
-    let mut mime  = None;
+    let Some(v) = h.and_then(|x| x.to_str().ok()) else {
+        return (None, None);
+    };
+    let mut name = None;
+    let mut mime = None;
     for part in v.split(',') {
         let mut it = part.trim().splitn(2, ' ');
         let (k, val) = (it.next().unwrap_or(""), it.next().unwrap_or(""));
-        let decoded = STANDARD.decode(val.trim())
-            .ok().and_then(|b| String::from_utf8(b).ok());
+        let decoded = STANDARD
+            .decode(val.trim())
+            .ok()
+            .and_then(|b| String::from_utf8(b).ok());
         match k {
-            "filename" | "name"     => name = decoded,
+            "filename" | "name" => name = decoded,
             "filetype" | "mimetype" => mime = decoded,
             _ => {}
         }
@@ -97,84 +119,121 @@ fn header_i64(h: &HeaderMap, name: &str) -> Option<i64> {
 fn http_date(dt: OffsetDateTime) -> String {
     let dt = dt.to_offset(time::UtcOffset::UTC);
     let wd = match dt.weekday() {
-        time::Weekday::Monday    => "Mon",
-        time::Weekday::Tuesday   => "Tue",
+        time::Weekday::Monday => "Mon",
+        time::Weekday::Tuesday => "Tue",
         time::Weekday::Wednesday => "Wed",
-        time::Weekday::Thursday  => "Thu",
-        time::Weekday::Friday    => "Fri",
-        time::Weekday::Saturday  => "Sat",
-        time::Weekday::Sunday    => "Sun",
+        time::Weekday::Thursday => "Thu",
+        time::Weekday::Friday => "Fri",
+        time::Weekday::Saturday => "Sat",
+        time::Weekday::Sunday => "Sun",
     };
     let mo = match dt.month() {
-        time::Month::January   => "Jan", time::Month::February => "Feb",
-        time::Month::March     => "Mar", time::Month::April    => "Apr",
-        time::Month::May       => "May", time::Month::June     => "Jun",
-        time::Month::July      => "Jul", time::Month::August   => "Aug",
-        time::Month::September => "Sep", time::Month::October  => "Oct",
-        time::Month::November  => "Nov", time::Month::December => "Dec",
+        time::Month::January => "Jan",
+        time::Month::February => "Feb",
+        time::Month::March => "Mar",
+        time::Month::April => "Apr",
+        time::Month::May => "May",
+        time::Month::June => "Jun",
+        time::Month::July => "Jul",
+        time::Month::August => "Aug",
+        time::Month::September => "Sep",
+        time::Month::October => "Oct",
+        time::Month::November => "Nov",
+        time::Month::December => "Dec",
     };
     format!(
         "{wd}, {:02} {mo} {} {:02}:{:02}:{:02} GMT",
-        dt.day(), dt.year(), dt.hour(), dt.minute(), dt.second()
+        dt.day(),
+        dt.year(),
+        dt.hour(),
+        dt.minute(),
+        dt.second()
     )
 }
 
 async fn options_collection() -> Response {
     let mut h = HeaderMap::new();
-    for (k, v) in tus_headers() { h.insert(k, v); }
+    for (k, v) in tus_headers() {
+        h.insert(k, v);
+    }
     (StatusCode::NO_CONTENT, h).into_response()
 }
 
 async fn create_upload_h(
-    State(st): State<AppState>, ctx: RequestCtx, headers: HeaderMap,
+    State(st): State<AppState>,
+    ctx: RequestCtx,
+    headers: HeaderMap,
 ) -> Response {
-    create_upload(st, ctx, headers).await.unwrap_or_else(|e| e.into_response())
+    create_upload(st, ctx, headers)
+        .await
+        .unwrap_or_else(|e| e.into_response())
 }
 
 async fn head_upload_h(
-    State(st): State<AppState>, ctx: RequestCtx, Path(id): Path<Uuid>,
-) -> Response { head_upload(st, ctx, id).await.unwrap_or_else(|e| e.into_response()) }
+    State(st): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+) -> Response {
+    head_upload(st, ctx, id)
+        .await
+        .unwrap_or_else(|e| e.into_response())
+}
 
 async fn patch_upload_h(
-    State(st): State<AppState>, ctx: RequestCtx, Path(id): Path<Uuid>,
-    headers: HeaderMap, body: Bytes,
-) -> Response { patch_upload(st, ctx, id, headers, body).await.unwrap_or_else(|e| e.into_response()) }
+    State(st): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    patch_upload(st, ctx, id, headers, body)
+        .await
+        .unwrap_or_else(|e| e.into_response())
+}
 
 async fn delete_upload_h(
-    State(st): State<AppState>, ctx: RequestCtx, Path(id): Path<Uuid>,
-) -> Response { delete_upload(st, ctx, id).await.unwrap_or_else(|e| e.into_response()) }
+    State(st): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+) -> Response {
+    delete_upload(st, ctx, id)
+        .await
+        .unwrap_or_else(|e| e.into_response())
+}
 
 // ─── POST /uploads ───────────────────────────────────────────────────────────
 
-async fn create_upload(
-    st:      AppState,
-    ctx:     RequestCtx,
-    headers: HeaderMap,
-) -> Result<Response> {
+async fn create_upload(st: AppState, ctx: RequestCtx, headers: HeaderMap) -> Result<Response> {
     let total = header_i64(&headers, "upload-length")
         .ok_or_else(|| DriveError::BadRequest("Upload-Length required".into()))?;
     if total < 0 || total > MAX_UPLOAD_BYTES {
-        return Err(DriveError::BadRequest(format!("Upload-Length out of bounds (max {MAX_UPLOAD_BYTES})")));
+        return Err(DriveError::BadRequest(format!(
+            "Upload-Length out of bounds (max {MAX_UPLOAD_BYTES})"
+        )));
     }
 
-    let pool  = st.db_or_unavailable()?;
+    let pool = st.db_or_unavailable()?;
     let quota = QuotaRepo::new(pool).get(ctx.tenant_id).await?;
     if !quota.fits(total) {
         return Err(DriveError::QuotaExceeded);
     }
 
     let (name_md, mime_md) = parse_metadata(headers.get("upload-metadata"));
-    let name = name_md.ok_or_else(|| DriveError::BadRequest("Upload-Metadata filename required".into()))?;
+    let name = name_md
+        .ok_or_else(|| DriveError::BadRequest("Upload-Metadata filename required".into()))?;
     let fname = sanitize_name(&name)?;
     if let Some(ref m) = mime_md {
         if m.len() > MAX_MIME_BYTES {
             return Err(DriveError::BadRequest(format!(
-                "mime_type too long: {} bytes (max {})", m.len(), MAX_MIME_BYTES
+                "mime_type too long: {} bytes (max {})",
+                m.len(),
+                MAX_MIME_BYTES
             )));
         }
     }
 
-    let parent_id = headers.get("upload-parent-id")
+    let parent_id = headers
+        .get("upload-parent-id")
         .and_then(|v| v.to_str().ok())
         .filter(|s| !s.is_empty())
         .map(Uuid::parse_str)
@@ -185,22 +244,29 @@ async fn create_upload(
     let root = st.data_root();
     fs::create_dir_all(root).await?;
     let path: PathBuf = root.join(format!("{key}.part"));
-    fs::File::create(&path).await?;   // reserva arquivo vazio.
+    fs::File::create(&path).await?; // reserva arquivo vazio.
 
     let repo = UploadRepo::new(pool);
-    let up = repo.insert(&NewUpload {
-        tenant_id:     ctx.tenant_id,
-        owner_user_id: ctx.user_id,
-        parent_id,
-        name:          &fname,
-        mime_type:     mime_md.as_deref(),
-        total_size:    total,
-        storage_key:   &key,
-    }).await?;
+    let up = repo
+        .insert(&NewUpload {
+            tenant_id: ctx.tenant_id,
+            owner_user_id: ctx.user_id,
+            parent_id,
+            name: &fname,
+            mime_type: mime_md.as_deref(),
+            total_size: total,
+            storage_key: &key,
+        })
+        .await?;
 
     let mut h = HeaderMap::new();
-    for (k, v) in tus_headers() { h.insert(k, v); }
-    h.insert("location", format!("/api/v1/drive/uploads/{}", up.id).parse().unwrap());
+    for (k, v) in tus_headers() {
+        h.insert(k, v);
+    }
+    h.insert(
+        "location",
+        format!("/api/v1/drive/uploads/{}", up.id).parse().unwrap(),
+    );
     h.insert("upload-offset", "0".parse().unwrap());
     h.insert("upload-length", total.to_string().parse().unwrap());
     h.insert("upload-expires", http_date(up.expires_at).parse().unwrap());
@@ -215,14 +281,21 @@ async fn create_upload(
 
 async fn head_upload(st: AppState, ctx: RequestCtx, id: Uuid) -> Result<Response> {
     let pool = st.db_or_unavailable()?;
-    let up = UploadRepo::new(pool).get(ctx.tenant_id, id).await?
+    let up = UploadRepo::new(pool)
+        .get(ctx.tenant_id, id)
+        .await?
         .ok_or(DriveError::NotFound(id))?;
     if up.is_expired() {
         return Err(DriveError::Gone(id));
     }
     let mut h = HeaderMap::new();
-    for (k, v) in tus_headers() { h.insert(k, v); }
-    h.insert("upload-offset", up.offset_bytes.to_string().parse().unwrap());
+    for (k, v) in tus_headers() {
+        h.insert(k, v);
+    }
+    h.insert(
+        "upload-offset",
+        up.offset_bytes.to_string().parse().unwrap(),
+    );
     h.insert("upload-length", up.total_size.to_string().parse().unwrap());
     h.insert("upload-expires", http_date(up.expires_at).parse().unwrap());
     h.insert("cache-control", "no-store".parse().unwrap());
@@ -232,22 +305,26 @@ async fn head_upload(st: AppState, ctx: RequestCtx, id: Uuid) -> Result<Response
 // ─── PATCH /uploads/:id ──────────────────────────────────────────────────────
 
 async fn patch_upload(
-    st:      AppState,
-    ctx:     RequestCtx,
-    id:      Uuid,
+    st: AppState,
+    ctx: RequestCtx,
+    id: Uuid,
     headers: HeaderMap,
-    body:    Bytes,
+    body: Bytes,
 ) -> Result<Response> {
-    let ct = headers.get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("");
+    let ct = headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     if !ct.starts_with("application/offset+octet-stream") {
         return Err(DriveError::BadRequest(
-            "Content-Type must be application/offset+octet-stream".into()
+            "Content-Type must be application/offset+octet-stream".into(),
         ));
     }
     if body.len() > MAX_CHUNK_BYTES {
         return Err(DriveError::BadRequest(format!(
             "chunk too large: {} bytes (max {} per PATCH)",
-            body.len(), MAX_CHUNK_BYTES
+            body.len(),
+            MAX_CHUNK_BYTES
         )));
     }
     let client_offset = header_i64(&headers, "upload-offset")
@@ -255,7 +332,9 @@ async fn patch_upload(
 
     let pool = st.db_or_unavailable()?;
     let repo = UploadRepo::new(pool);
-    let up = repo.get(ctx.tenant_id, id).await?
+    let up = repo
+        .get(ctx.tenant_id, id)
+        .await?
         .ok_or(DriveError::NotFound(id))?;
     if up.is_expired() {
         return Err(DriveError::Gone(id));
@@ -263,7 +342,8 @@ async fn patch_upload(
 
     if client_offset != up.offset_bytes {
         return Err(DriveError::Conflict(format!(
-            "offset mismatch: expected {}, got {}", up.offset_bytes, client_offset
+            "offset mismatch: expected {}, got {}",
+            up.offset_bytes, client_offset
         )));
     }
 
@@ -276,14 +356,19 @@ async fn patch_upload(
     // Append no .part file.
     let path: PathBuf = st.data_root().join(format!("{}.part", up.storage_key));
     let mut f = fs::OpenOptions::new().write(true).open(&path).await?;
-    f.seek(std::io::SeekFrom::Start(up.offset_bytes as u64)).await?;
+    f.seek(std::io::SeekFrom::Start(up.offset_bytes as u64))
+        .await?;
     f.write_all(&body).await?;
     f.flush().await?;
 
     // Atualiza offset via CAS.
-    let updated = repo.advance_offset(ctx.tenant_id, id, up.offset_bytes, new_offset).await?;
+    let updated = repo
+        .advance_offset(ctx.tenant_id, id, up.offset_bytes, new_offset)
+        .await?;
     if updated.is_none() {
-        return Err(DriveError::Conflict("concurrent PATCH — retry HEAD first".into()));
+        return Err(DriveError::Conflict(
+            "concurrent PATCH — retry HEAD first".into(),
+        ));
     }
 
     // Completou? → promove para drive_files + remove upload session.
@@ -292,7 +377,9 @@ async fn patch_upload(
     }
 
     let mut h = HeaderMap::new();
-    for (k, v) in tus_headers() { h.insert(k, v); }
+    for (k, v) in tus_headers() {
+        h.insert(k, v);
+    }
     h.insert("upload-offset", new_offset.to_string().parse().unwrap());
     h.insert("upload-expires", http_date(up.expires_at).parse().unwrap());
     Ok((StatusCode::NO_CONTENT, h).into_response())
@@ -312,7 +399,9 @@ async fn delete_upload(st: AppState, ctx: RequestCtx, id: Uuid) -> Result<Respon
     repo.delete(ctx.tenant_id, id).await?;
 
     let mut h = HeaderMap::new();
-    for (k, v) in tus_headers() { h.insert(k, v); }
+    for (k, v) in tus_headers() {
+        h.insert(k, v);
+    }
     tracing::info!(target: "audit",
         event = "drive.upload.abort",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, upload_id = %id);
@@ -322,13 +411,13 @@ async fn delete_upload(st: AppState, ctx: RequestCtx, id: Uuid) -> Result<Respon
 // ─── Finalize → promote to drive_files ───────────────────────────────────────
 
 async fn finalize_upload(
-    st:  &AppState,
+    st: &AppState,
     ctx: &RequestCtx,
-    up:  &crate::domain::UploadSession,
+    up: &crate::domain::UploadSession,
 ) -> Result<()> {
-    let pool     = st.db_or_unavailable()?;
+    let pool = st.db_or_unavailable()?;
     let file_repo = FileRepo::new(pool);
-    let ver_repo  = VersionRepo::new(pool);
+    let ver_repo = VersionRepo::new(pool);
 
     // Lê blob completo p/ computar sha256 + renomeia.part → final key.
     let root = st.data_root();
@@ -341,41 +430,53 @@ async fn finalize_upload(
     fs::rename(&src, &dst).await?;
 
     // Colisão por nome no mesmo parent → arquiva versão atual → overwrite.
-    if let Some(existing) = file_repo.find_by_name(ctx.tenant_id, up.parent_id, &up.name).await? {
+    if let Some(existing) = file_repo
+        .find_by_name(ctx.tenant_id, up.parent_id, &up.name)
+        .await?
+    {
         if existing.kind != "file" {
             let _ = fs::remove_file(&dst).await;
             return Err(DriveError::Conflict("folder name collision".into()));
         }
         if let Some(prev_key) = existing.storage_key.as_deref() {
             let next_no = ver_repo.next_no(ctx.tenant_id, existing.id).await?;
-            ver_repo.insert(&NewVersion {
-                file_id:     existing.id,
-                tenant_id:   ctx.tenant_id,
-                version_no:  next_no,
-                storage_key: prev_key,
-                size_bytes:  existing.size_bytes,
-                sha256:      existing.sha256.as_deref(),
-                mime_type:   existing.mime_type.as_deref(),
-                created_by:  existing.owner_user_id,
-            }).await?;
+            ver_repo
+                .insert(&NewVersion {
+                    file_id: existing.id,
+                    tenant_id: ctx.tenant_id,
+                    version_no: next_no,
+                    storage_key: prev_key,
+                    size_bytes: existing.size_bytes,
+                    sha256: existing.sha256.as_deref(),
+                    mime_type: existing.mime_type.as_deref(),
+                    created_by: existing.owner_user_id,
+                })
+                .await?;
         }
-        file_repo.update_content(
-            ctx.tenant_id, existing.id,
-            &final_key, up.total_size,
-            Some(&sha), up.mime_type.as_deref(),
-        ).await?;
+        file_repo
+            .update_content(
+                ctx.tenant_id,
+                existing.id,
+                &final_key,
+                up.total_size,
+                Some(&sha),
+                up.mime_type.as_deref(),
+            )
+            .await?;
     } else {
-        file_repo.insert(&NewFile {
-            tenant_id:     ctx.tenant_id,
-            owner_user_id: ctx.user_id,
-            parent_id:     up.parent_id,
-            name:          up.name.clone(),
-            kind:          "file".into(),
-            mime_type:     up.mime_type.clone(),
-            size_bytes:    up.total_size,
-            sha256:        Some(sha),
-            storage_key:   Some(final_key),
-        }).await?;
+        file_repo
+            .insert(&NewFile {
+                tenant_id: ctx.tenant_id,
+                owner_user_id: ctx.user_id,
+                parent_id: up.parent_id,
+                name: up.name.clone(),
+                kind: "file".into(),
+                mime_type: up.mime_type.clone(),
+                size_bytes: up.total_size,
+                sha256: Some(sha),
+                storage_key: Some(final_key),
+            })
+            .await?;
     }
 
     UploadRepo::new(pool).delete(ctx.tenant_id, up.id).await?;
@@ -394,7 +495,9 @@ fn sanitize_name(raw: &str) -> Result<String> {
     }
     if t.len() > MAX_FILENAME_BYTES {
         return Err(DriveError::BadRequest(format!(
-            "filename too long: {} bytes (max {})", t.len(), MAX_FILENAME_BYTES
+            "filename too long: {} bytes (max {})",
+            t.len(),
+            MAX_FILENAME_BYTES
         )));
     }
     Ok(t.to_string())
@@ -438,7 +541,9 @@ mod tests {
     #[test]
     fn http_date_normalizes_to_utc() {
         let east = time::UtcOffset::from_hms(5, 0, 0).unwrap();
-        let dt = OffsetDateTime::from_unix_timestamp(784111777).unwrap().to_offset(east);
+        let dt = OffsetDateTime::from_unix_timestamp(784111777)
+            .unwrap()
+            .to_offset(east);
         assert_eq!(http_date(dt), "Sun, 06 Nov 1994 08:49:37 GMT");
     }
 

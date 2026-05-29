@@ -25,15 +25,15 @@ pub struct BusyInterval {
     #[serde(with = "time::serde::rfc3339")]
     pub start: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    pub end:   OffsetDateTime,
+    pub end: OffsetDateTime,
 }
 
 #[derive(Debug, FromRow)]
 struct BusyRow {
-    email:   String,
+    email: String,
     dtstart: OffsetDateTime,
-    dtend:   Option<OffsetDateTime>,
-    rrule:   Option<String>,
+    dtend: Option<OffsetDateTime>,
+    rrule: Option<String>,
 }
 
 pub struct FreeBusyRepo<'a> {
@@ -62,7 +62,7 @@ impl<'a> FreeBusyRepo<'a> {
         tenant_id: Uuid,
         attendees: &[String],
         from: OffsetDateTime,
-        to:   OffsetDateTime,
+        to: OffsetDateTime,
         include_transparent: bool,
     ) -> Result<BTreeMap<String, Vec<BusyInterval>>> {
         // Normalize inputs → lowercase, deduplicate, cap to avoid pathological
@@ -125,21 +125,24 @@ impl<'a> FreeBusyRepo<'a> {
             // Try RRULE expansion; if rule missing or unparsable, fall back
             // to single-instance clamping. RRULE expander enforces its own
             // iteration cap (MAX_ITER=1000).
-            let intervals: Vec<(time::OffsetDateTime, time::OffsetDateTime)> = match r.rrule.as_deref() {
-                Some(raw) => match super::rrule::Rrule::parse(raw) {
-                    Some(rule) => rule.expand(r.dtstart, duration, from, to),
-                    None       => super::rrule::single_instance(r.dtstart, r.dtend, from, to)
-                        .into_iter().collect(),
-                },
-                None => super::rrule::single_instance(r.dtstart, r.dtend, from, to)
-                    .into_iter().collect(),
-            };
+            let intervals: Vec<(time::OffsetDateTime, time::OffsetDateTime)> =
+                match r.rrule.as_deref() {
+                    Some(raw) => match super::rrule::Rrule::parse(raw) {
+                        Some(rule) => rule.expand(r.dtstart, duration, from, to),
+                        None => super::rrule::single_instance(r.dtstart, r.dtend, from, to)
+                            .into_iter()
+                            .collect(),
+                    },
+                    None => super::rrule::single_instance(r.dtstart, r.dtend, from, to)
+                        .into_iter()
+                        .collect(),
+                };
 
             let bucket = out.entry(r.email).or_default();
             for (s, e) in intervals {
                 // Final clamp (expander may emit slightly wider end).
                 let start = if s < from { from } else { s };
-                let end   = if e > to   { to }   else { e };
+                let end = if e > to { to } else { e };
                 if end > start {
                     bucket.push(BusyInterval { start, end });
                 }

@@ -154,10 +154,7 @@ pub fn build_mime_multipart(
     let ical = build_ical(invite, method)?;
     // Boundary: short uuid.
     let boundary = format!("=_{}=", uuid::Uuid::new_v4().simple());
-    let ct = format!(
-        "multipart/mixed; boundary=\"{}\"",
-        boundary
-    );
+    let ct = format!("multipart/mixed; boundary=\"{}\"", boundary);
     let mut body = String::new();
     writeln_crlf(&mut body, &format!("--{boundary}"))?;
     writeln_crlf(&mut body, "Content-Type: text/plain; charset=UTF-8")?;
@@ -173,7 +170,10 @@ pub fn build_mime_multipart(
         ),
     )?;
     writeln_crlf(&mut body, "Content-Transfer-Encoding: 8bit")?;
-    writeln_crlf(&mut body, "Content-Disposition: attachment; filename=\"invite.ics\"")?;
+    writeln_crlf(
+        &mut body,
+        "Content-Disposition: attachment; filename=\"invite.ics\"",
+    )?;
     writeln_crlf(&mut body, "")?;
     body.push_str(&ical);
     writeln_crlf(&mut body, &format!("--{boundary}--"))?;
@@ -383,7 +383,11 @@ mod tests {
         inv.description = Some(long.clone());
         let ical = build_ical(&inv, Method::Request).unwrap();
         for line in ical.split("\r\n") {
-            assert!(line.len() <= 75, "unfolded line {} bytes: {line:?}", line.len());
+            assert!(
+                line.len() <= 75,
+                "unfolded line {} bytes: {line:?}",
+                line.len()
+            );
         }
         // Reconstruct: remove CRLF + leading space of continuation; find original substring
         let unfolded: String = ical
@@ -401,12 +405,8 @@ mod tests {
 
     #[test]
     fn mime_multipart_has_both_parts() {
-        let (ct, body) = build_mime_multipart(
-            &sample_invite(),
-            Method::Request,
-            "Você foi convidado.",
-        )
-        .unwrap();
+        let (ct, body) =
+            build_mime_multipart(&sample_invite(), Method::Request, "Você foi convidado.").unwrap();
         assert!(ct.starts_with("multipart/mixed; boundary=\""));
         assert!(body.contains("Content-Type: text/plain; charset=UTF-8\r\n"));
         assert!(body.contains("Content-Type: text/calendar; method=REQUEST; charset=UTF-8\r\n"));

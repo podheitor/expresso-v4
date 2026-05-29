@@ -15,12 +15,12 @@ use tokio::{
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
 
+use expresso_auth_client::{KcBasicAuthenticator, KcBasicConfig, KcBasicError};
 use std::sync::OnceLock;
 use std::time::Duration;
-use expresso_auth_client::{KcBasicAuthenticator, KcBasicConfig, KcBasicError};
 
-use crate::{ingest, state::AppState};
 use crate::smtp::metrics::{command_label, SMTP_COMMANDS_TOTAL, SMTP_SESSIONS_TOTAL};
+use crate::{ingest, state::AppState};
 
 const MAX_MSG_BYTES: usize = 50 * 1024 * 1024; // 50 MiB
 const MAX_RCPTS: usize = 100;
@@ -71,20 +71,20 @@ fn load_tls_config(cert_path: &str, key_path: &str) -> anyhow::Result<ServerConf
     let cert_pem = std::fs::read(cert_path)?;
     let key_pem = std::fs::read(key_path)?;
 
-    let cert_chain: Vec<CertificateDer<'static>> = certs(&mut cert_pem.as_slice())
-        .collect::<Result<Vec<_>, _>>()?;
+    let cert_chain: Vec<CertificateDer<'static>> =
+        certs(&mut cert_pem.as_slice()).collect::<Result<Vec<_>, _>>()?;
     if cert_chain.is_empty() {
         anyhow::bail!("no certs found in {}", cert_path);
     }
 
     // Try PKCS8 first, then RSA
-    let pkcs8: Vec<_> = pkcs8_private_keys(&mut key_pem.as_slice())
-        .collect::<Result<Vec<_>, _>>()?;
+    let pkcs8: Vec<_> =
+        pkcs8_private_keys(&mut key_pem.as_slice()).collect::<Result<Vec<_>, _>>()?;
     let key: PrivateKeyDer<'static> = if let Some(k) = pkcs8.into_iter().next() {
         PrivateKeyDer::Pkcs8(k)
     } else {
-        let rsa: Vec<_> = rsa_private_keys(&mut key_pem.as_slice())
-            .collect::<Result<Vec<_>, _>>()?;
+        let rsa: Vec<_> =
+            rsa_private_keys(&mut key_pem.as_slice()).collect::<Result<Vec<_>, _>>()?;
         let k = rsa
             .into_iter()
             .next()
@@ -114,14 +114,18 @@ async fn handle(
     state: AppState,
     acceptor: TlsAcceptor,
 ) -> anyhow::Result<()> {
-    SMTP_SESSIONS_TOTAL.with_label_values(&["smtp587", "accepted"]).inc();
+    SMTP_SESSIONS_TOTAL
+        .with_label_values(&["smtp587", "accepted"])
+        .inc();
 
     let domain = state.cfg().mail_server.domain.clone();
 
     let (reader, writer) = stream.into_split();
     let (done, env) = handle_plain(reader, writer, &domain, &state).await?;
     if done {
-        SMTP_SESSIONS_TOTAL.with_label_values(&["smtp587", "closed"]).inc();
+        SMTP_SESSIONS_TOTAL
+            .with_label_values(&["smtp587", "closed"])
+            .inc();
         return Ok(());
     }
     let stream = env
@@ -131,8 +135,12 @@ async fn handle(
     info!(peer = %peer, "submission TLS established");
     let result = handle_tls(tls_stream, &domain, &state, env.helo).await;
     match &result {
-        Ok(()) => SMTP_SESSIONS_TOTAL.with_label_values(&["smtp587", "closed"]).inc(),
-        Err(_) => SMTP_SESSIONS_TOTAL.with_label_values(&["smtp587", "error"]).inc(),
+        Ok(()) => SMTP_SESSIONS_TOTAL
+            .with_label_values(&["smtp587", "closed"])
+            .inc(),
+        Err(_) => SMTP_SESSIONS_TOTAL
+            .with_label_values(&["smtp587", "error"])
+            .inc(),
     }
     result
 }
@@ -178,7 +186,13 @@ async fn handle_plain(
             let stream = reader
                 .reunite(writer)
                 .map_err(|_| anyhow::anyhow!("reunite failed"))?;
-            return Ok((false, PreTls { tcp: Some(stream), helo }));
+            return Ok((
+                false,
+                PreTls {
+                    tcp: Some(stream),
+                    helo,
+                },
+            ));
         } else if upper == "QUIT" {
             writer
                 .write_all(format!("221 {domain} Bye\r\n").as_bytes())
@@ -186,7 +200,11 @@ async fn handle_plain(
             return Ok((true, PreTls { tcp: None, helo }));
         } else if upper == "NOOP" {
             writer.write_all(b"250 OK\r\n").await?;
-        } else if upper.starts_with("AUTH") || upper.starts_with("MAIL") || upper.starts_with("RCPT") || upper == "DATA" {
+        } else if upper.starts_with("AUTH")
+            || upper.starts_with("MAIL")
+            || upper.starts_with("RCPT")
+            || upper == "DATA"
+        {
             writer
                 .write_all(b"530 Must issue a STARTTLS command first\r\n")
                 .await?;
@@ -211,7 +229,10 @@ where
     let (reader, mut writer) = tokio::io::split(stream);
     let mut lines = BufReader::new(reader).lines();
 
-    let mut env = Envelope { helo: prev_helo, ..Default::default() };
+    let mut env = Envelope {
+        helo: prev_helo,
+        ..Default::default()
+    };
     let mut data_mode = false;
     let mut data_buf = String::new();
 
@@ -244,13 +265,8 @@ where
                 };
 
                 // Ingest (local delivery if recipient matches domain; else relay)
-                match ingest::process(
-                    state,
-                    env.from.as_deref(),
-                    &env.rcpts,
-                    signed.as_bytes(),
-                )
-                .await
+                match ingest::process(state, env.from.as_deref(), &env.rcpts, signed.as_bytes())
+                    .await
                 {
                     Ok(n) => {
                         writer
@@ -258,14 +274,18 @@ where
                                 format!("250 OK queued ({n} delivered locally)\r\n").as_bytes(),
                             )
                             .await?;
-                        SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp587", "ok"]).inc();
+                        SMTP_COMMANDS_TOTAL
+                            .with_label_values(&["DATA", "smtp587", "ok"])
+                            .inc();
                     }
                     Err(e) => {
                         error!(error = %e, "submission ingest failed");
                         writer
                             .write_all(b"451 Requested action aborted: local error\r\n")
                             .await?;
-                        SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp587", "error"]).inc();
+                        SMTP_COMMANDS_TOTAL
+                            .with_label_values(&["DATA", "smtp587", "error"])
+                            .inc();
                     }
                 }
 
@@ -298,7 +318,11 @@ where
         let upper = line.to_ascii_uppercase();
 
         if upper.starts_with("EHLO") || upper.starts_with("HELO") {
-            let verb = if upper.starts_with("EHLO") { "EHLO" } else { "HELO" };
+            let verb = if upper.starts_with("EHLO") {
+                "EHLO"
+            } else {
+                "HELO"
+            };
             env.helo = Some(line[4..].trim().to_string());
             writer
                 .write_all(
@@ -308,7 +332,9 @@ where
                     .as_bytes(),
                 )
                 .await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&[verb, "smtp587", "ok"]).inc();
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&[verb, "smtp587", "ok"])
+                .inc();
         } else if upper.starts_with("AUTH PLAIN") {
             let b64 = line[10..].trim();
             let credential = if b64.is_empty() {
@@ -325,18 +351,30 @@ where
                     Ok(()) => {
                         env.authed_user = Some(user.clone());
                         info!(user = %user, "submission AUTH PLAIN success");
-                        writer.write_all(b"235 2.7.0 Authentication successful\r\n").await?;
-                        SMTP_COMMANDS_TOTAL.with_label_values(&["AUTH", "smtp587", "ok"]).inc();
+                        writer
+                            .write_all(b"235 2.7.0 Authentication successful\r\n")
+                            .await?;
+                        SMTP_COMMANDS_TOTAL
+                            .with_label_values(&["AUTH", "smtp587", "ok"])
+                            .inc();
                     }
                     Err(e) => {
                         warn!(user = %user, error = %e, "submission AUTH PLAIN fail");
-                        writer.write_all(b"535 5.7.8 Authentication credentials invalid\r\n").await?;
-                        SMTP_COMMANDS_TOTAL.with_label_values(&["AUTH", "smtp587", "reject"]).inc();
+                        writer
+                            .write_all(b"535 5.7.8 Authentication credentials invalid\r\n")
+                            .await?;
+                        SMTP_COMMANDS_TOTAL
+                            .with_label_values(&["AUTH", "smtp587", "reject"])
+                            .inc();
                     }
                 },
                 None => {
-                    writer.write_all(b"501 5.5.2 Cannot decode AUTH PLAIN\r\n").await?;
-                    SMTP_COMMANDS_TOTAL.with_label_values(&["AUTH", "smtp587", "reject"]).inc();
+                    writer
+                        .write_all(b"501 5.5.2 Cannot decode AUTH PLAIN\r\n")
+                        .await?;
+                    SMTP_COMMANDS_TOTAL
+                        .with_label_values(&["AUTH", "smtp587", "reject"])
+                        .inc();
                 }
             }
         } else if upper.starts_with("AUTH LOGIN") {
@@ -350,78 +388,130 @@ where
                 Some(l) => l,
                 None => break,
             };
-            let user = B64.decode(user_b64.trim()).ok().and_then(|b| String::from_utf8(b).ok());
-            let pass = B64.decode(pass_b64.trim()).ok().and_then(|b| String::from_utf8(b).ok());
+            let user = B64
+                .decode(user_b64.trim())
+                .ok()
+                .and_then(|b| String::from_utf8(b).ok());
+            let pass = B64
+                .decode(pass_b64.trim())
+                .ok()
+                .and_then(|b| String::from_utf8(b).ok());
             match (user, pass) {
                 (Some(u), Some(p)) => match authenticate(state, &u, &p).await {
                     Ok(()) => {
                         env.authed_user = Some(u.clone());
                         info!(user = %u, "submission AUTH LOGIN success");
-                        writer.write_all(b"235 2.7.0 Authentication successful\r\n").await?;
-                        SMTP_COMMANDS_TOTAL.with_label_values(&["AUTH", "smtp587", "ok"]).inc();
+                        writer
+                            .write_all(b"235 2.7.0 Authentication successful\r\n")
+                            .await?;
+                        SMTP_COMMANDS_TOTAL
+                            .with_label_values(&["AUTH", "smtp587", "ok"])
+                            .inc();
                     }
                     Err(e) => {
                         warn!(user = %u, error = %e, "submission AUTH LOGIN fail");
-                        writer.write_all(b"535 5.7.8 Authentication credentials invalid\r\n").await?;
-                        SMTP_COMMANDS_TOTAL.with_label_values(&["AUTH", "smtp587", "reject"]).inc();
+                        writer
+                            .write_all(b"535 5.7.8 Authentication credentials invalid\r\n")
+                            .await?;
+                        SMTP_COMMANDS_TOTAL
+                            .with_label_values(&["AUTH", "smtp587", "reject"])
+                            .inc();
                     }
                 },
                 _ => {
-                    writer.write_all(b"501 5.5.2 Cannot decode AUTH LOGIN\r\n").await?;
-                    SMTP_COMMANDS_TOTAL.with_label_values(&["AUTH", "smtp587", "reject"]).inc();
+                    writer
+                        .write_all(b"501 5.5.2 Cannot decode AUTH LOGIN\r\n")
+                        .await?;
+                    SMTP_COMMANDS_TOTAL
+                        .with_label_values(&["AUTH", "smtp587", "reject"])
+                        .inc();
                 }
             }
         } else if upper.starts_with("MAIL FROM:") {
             let Some(authed) = env.authed_user.as_deref() else {
-                writer.write_all(b"530 5.7.0 Authentication required\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp587", "reject"]).inc();
+                writer
+                    .write_all(b"530 5.7.0 Authentication required\r\n")
+                    .await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["MAIL", "smtp587", "reject"])
+                    .inc();
                 continue;
             };
             let rest = &line[10..];
             if let Some(sz) = extract_size_param(rest) {
                 if sz > MAX_MSG_BYTES {
-                    writer.write_all(b"552 5.3.4 Message size exceeds fixed maximum\r\n").await?;
-                    SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp587", "reject"]).inc();
+                    writer
+                        .write_all(b"552 5.3.4 Message size exceeds fixed maximum\r\n")
+                        .await?;
+                    SMTP_COMMANDS_TOTAL
+                        .with_label_values(&["MAIL", "smtp587", "reject"])
+                        .inc();
                     continue;
                 }
             }
             let from = extract_angle(rest);
             if !from_matches_authed(&from, authed) {
                 warn!(user = %authed, from = %from, "submission MAIL FROM spoof rejected");
-                writer.write_all(b"550 5.7.1 MAIL FROM does not match authenticated user\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp587", "reject"]).inc();
+                writer
+                    .write_all(b"550 5.7.1 MAIL FROM does not match authenticated user\r\n")
+                    .await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["MAIL", "smtp587", "reject"])
+                    .inc();
                 continue;
             }
             env.from = Some(from);
             env.rcpts.clear();
             writer.write_all(b"250 OK\r\n").await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp587", "ok"]).inc();
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["MAIL", "smtp587", "ok"])
+                .inc();
         } else if upper.starts_with("RCPT TO:") {
             if env.authed_user.is_none() {
-                writer.write_all(b"530 5.7.0 Authentication required\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp587", "reject"]).inc();
+                writer
+                    .write_all(b"530 5.7.0 Authentication required\r\n")
+                    .await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["RCPT", "smtp587", "reject"])
+                    .inc();
                 continue;
             }
             if env.from.is_none() {
-                writer.write_all(b"503 Bad sequence: MAIL first\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp587", "reject"]).inc();
+                writer
+                    .write_all(b"503 Bad sequence: MAIL first\r\n")
+                    .await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["RCPT", "smtp587", "reject"])
+                    .inc();
             } else if env.rcpts.len() >= MAX_RCPTS {
                 writer.write_all(b"452 Too many recipients\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp587", "reject"]).inc();
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["RCPT", "smtp587", "reject"])
+                    .inc();
             } else {
                 env.rcpts.push(extract_angle(&line[8..]));
                 writer.write_all(b"250 OK\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp587", "ok"]).inc();
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["RCPT", "smtp587", "ok"])
+                    .inc();
             }
         } else if upper == "DATA" {
             if env.authed_user.is_none() {
-                writer.write_all(b"530 5.7.0 Authentication required\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp587", "reject"]).inc();
+                writer
+                    .write_all(b"530 5.7.0 Authentication required\r\n")
+                    .await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["DATA", "smtp587", "reject"])
+                    .inc();
             } else if env.from.is_none() || env.rcpts.is_empty() {
                 writer.write_all(b"503 Bad sequence\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp587", "reject"]).inc();
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["DATA", "smtp587", "reject"])
+                    .inc();
             } else {
-                writer.write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n").await?;
+                writer
+                    .write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n")
+                    .await?;
                 data_mode = true;
             }
         } else if upper == "RSET" {
@@ -431,19 +521,29 @@ where
                 ..Default::default()
             };
             writer.write_all(b"250 OK\r\n").await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&["RSET", "smtp587", "ok"]).inc();
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["RSET", "smtp587", "ok"])
+                .inc();
         } else if upper == "NOOP" {
             writer.write_all(b"250 OK\r\n").await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&["NOOP", "smtp587", "ok"]).inc();
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["NOOP", "smtp587", "ok"])
+                .inc();
         } else if upper == "QUIT" {
-            writer.write_all(format!("221 {domain} Bye\r\n").as_bytes()).await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&["QUIT", "smtp587", "ok"]).inc();
+            writer
+                .write_all(format!("221 {domain} Bye\r\n").as_bytes())
+                .await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["QUIT", "smtp587", "ok"])
+                .inc();
             break;
         } else {
             let verb = command_label(upper.split_whitespace().next().unwrap_or("OTHER"));
             warn!(cmd = %line, "unknown submission command");
             writer.write_all(b"500 Command not recognized\r\n").await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&[verb, "smtp587", "reject"]).inc();
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&[verb, "smtp587", "reject"])
+                .inc();
         }
     }
 
@@ -480,8 +580,12 @@ fn extract_size_param(s: &str) -> Option<usize> {
 fn from_matches_authed(from: &str, authed: &str) -> bool {
     let f = from.trim();
     let a = authed.trim();
-    if f.is_empty() || a.is_empty() { return false; }
-    if !a.contains('@') { return false; }
+    if f.is_empty() || a.is_empty() {
+        return false;
+    }
+    if !a.contains('@') {
+        return false;
+    }
     f.eq_ignore_ascii_case(a)
 }
 
@@ -522,15 +626,18 @@ fn kc_authenticator() -> anyhow::Result<&'static KcBasicAuthenticator> {
         .unwrap_or_else(|_| "http://expresso-keycloak:8080".to_string());
     let realm = std::env::var("AUTH__SUBMISSION_REALM")
         .map_err(|_| anyhow::anyhow!("AUTH__SUBMISSION_REALM env not set"))?;
-    let client_id = std::env::var("AUTH__SUBMISSION_CLIENT_ID")
-        .unwrap_or_else(|_| "expresso-dav".to_string());
+    let client_id =
+        std::env::var("AUTH__SUBMISSION_CLIENT_ID").unwrap_or_else(|_| "expresso-dav".to_string());
     let client_secret = std::env::var("AUTH__SUBMISSION_CLIENT_SECRET").ok();
     let cfg = KcBasicConfig {
-        url, realm, client_id, client_secret,
-        cache_ttl:        Duration::from_secs(60),
-        http_timeout:     Duration::from_secs(10),
-        max_failures:     10,
-        failure_window:   Duration::from_secs(60),
+        url,
+        realm,
+        client_id,
+        client_secret,
+        cache_ttl: Duration::from_secs(60),
+        http_timeout: Duration::from_secs(10),
+        max_failures: 10,
+        failure_window: Duration::from_secs(60),
         lockout_duration: Duration::from_secs(5 * 60),
     };
     // Race entre threads: `set` falha quando outro já populou — pegamos
@@ -544,12 +651,11 @@ async fn authenticate(state: &AppState, user: &str, pass: &str) -> anyhow::Resul
     let a = kc_authenticator()?;
     match a.authenticate(user, pass).await {
         Ok(_) => Ok(()),
-        Err(KcBasicError::InvalidCredentials) =>
-            anyhow::bail!("kc auth rejected: invalid credentials"),
-        Err(KcBasicError::Unreachable(s)) =>
-            anyhow::bail!("kc unreachable: {s}"),
-        Err(KcBasicError::Upstream(s)) =>
-            anyhow::bail!("kc upstream: {s}"),
+        Err(KcBasicError::InvalidCredentials) => {
+            anyhow::bail!("kc auth rejected: invalid credentials")
+        }
+        Err(KcBasicError::Unreachable(s)) => anyhow::bail!("kc unreachable: {s}"),
+        Err(KcBasicError::Upstream(s)) => anyhow::bail!("kc upstream: {s}"),
     }
 }
 
@@ -604,13 +710,22 @@ mod tests {
 
     #[test]
     fn from_matches_authed_case_insensitive() {
-        assert!(from_matches_authed("Alice@Example.Com", "alice@example.com"));
-        assert!(from_matches_authed("alice@example.com", "ALICE@EXAMPLE.COM"));
+        assert!(from_matches_authed(
+            "Alice@Example.Com",
+            "alice@example.com"
+        ));
+        assert!(from_matches_authed(
+            "alice@example.com",
+            "ALICE@EXAMPLE.COM"
+        ));
     }
 
     #[test]
     fn from_matches_authed_rejects_mismatch() {
-        assert!(!from_matches_authed("other@example.com", "alice@example.com"));
+        assert!(!from_matches_authed(
+            "other@example.com",
+            "alice@example.com"
+        ));
         assert!(!from_matches_authed("alice@other.com", "alice@example.com"));
     }
 
@@ -656,7 +771,10 @@ mod tests {
 
     #[test]
     fn from_matches_authed_exact_match() {
-        assert!(from_matches_authed("alice@example.com", "alice@example.com"));
+        assert!(from_matches_authed(
+            "alice@example.com",
+            "alice@example.com"
+        ));
     }
 
     #[test]
@@ -667,7 +785,10 @@ mod tests {
     #[test]
     fn from_matches_authed_subdomain_does_not_match() {
         // alice@sub.example.com must not match alice@example.com
-        assert!(!from_matches_authed("alice@sub.example.com", "alice@example.com"));
+        assert!(!from_matches_authed(
+            "alice@sub.example.com",
+            "alice@example.com"
+        ));
     }
 
     #[test]

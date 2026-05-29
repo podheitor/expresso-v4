@@ -9,16 +9,16 @@
 mod axum_ext;
 mod claims;
 mod error;
-mod validator;
 mod keycloak_basic;
-mod tenant_resolver;
-mod multi_validator;
 pub mod metrics;
+mod multi_validator;
+mod tenant_resolver;
+mod validator;
 
-pub use axum_ext::{Authenticated, AuthRejection, TenantAuthenticated, ACCESS_TOKEN_COOKIE};
-pub use claims::{AuthContext, RawClaims, AudClaim, RolesBlock};
+pub use axum_ext::{AuthRejection, Authenticated, TenantAuthenticated, ACCESS_TOKEN_COOKIE};
+pub use claims::{AudClaim, AuthContext, RawClaims, RolesBlock};
 pub use error::{AuthError, Result};
-pub use validator::{OidcConfig, OidcValidator};
 pub use keycloak_basic::{KcBasicAuthenticator, KcBasicConfig, KcBasicError};
-pub use tenant_resolver::TenantResolver;
 pub use multi_validator::MultiRealmValidator;
+pub use tenant_resolver::TenantResolver;
+pub use validator::{OidcConfig, OidcValidator};

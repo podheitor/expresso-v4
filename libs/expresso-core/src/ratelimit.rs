@@ -25,17 +25,20 @@ use axum::{
 
 #[derive(Debug, Clone)]
 pub struct RateLimitConfig {
-    pub rps:   u32,   // tokens/sec
-    pub burst: u32,   // bucket capacity
+    pub rps: u32,   // tokens/sec
+    pub burst: u32, // bucket capacity
 }
 
 impl RateLimitConfig {
     pub fn from_env() -> Self {
         fn parse(k: &str, default: u32) -> u32 {
-            std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+            std::env::var(k)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
         }
         Self {
-            rps:   parse("EXPRESSO_RATELIMIT_RPS", 50),
+            rps: parse("EXPRESSO_RATELIMIT_RPS", 50),
             burst: parse("EXPRESSO_RATELIMIT_BURST", 200),
         }
     }
@@ -43,19 +46,22 @@ impl RateLimitConfig {
 
 #[derive(Debug)]
 struct Bucket {
-    tokens:    f64,
+    tokens: f64,
     last_fill: Instant,
 }
 
 #[derive(Debug)]
 pub struct RateLimiter {
-    cfg:     RateLimitConfig,
+    cfg: RateLimitConfig,
     buckets: Mutex<HashMap<String, Bucket>>,
 }
 
 impl RateLimiter {
     pub fn new(cfg: RateLimitConfig) -> Arc<Self> {
-        Arc::new(Self { cfg, buckets: Mutex::new(HashMap::new()) })
+        Arc::new(Self {
+            cfg,
+            buckets: Mutex::new(HashMap::new()),
+        })
     }
 
     /// Returns Ok(()) if allowed; Err(retry_after_secs) if denied.
@@ -63,12 +69,12 @@ impl RateLimiter {
         let now = Instant::now();
         let mut map = self.buckets.lock().unwrap_or_else(|p| p.into_inner());
         let b = map.entry(key.to_string()).or_insert(Bucket {
-            tokens:    self.cfg.burst as f64,
+            tokens: self.cfg.burst as f64,
             last_fill: now,
         });
         let elapsed = now.duration_since(b.last_fill).as_secs_f64();
-        let refill  = elapsed * self.cfg.rps as f64;
-        b.tokens    = (b.tokens + refill).min(self.cfg.burst as f64);
+        let refill = elapsed * self.cfg.rps as f64;
+        b.tokens = (b.tokens + refill).min(self.cfg.burst as f64);
         b.last_fill = now;
 
         if b.tokens >= 1.0 {
@@ -91,30 +97,35 @@ impl RateLimiter {
 }
 
 /// Axum middleware. Expects the Limiter in request extensions.
-pub async fn layer(
-    req: Request,
-    next: Next,
-) -> Response {
+pub async fn layer(req: Request, next: Next) -> Response {
     // Skip rate limiting on observability/health endpoints.
     let path = req.uri().path();
-    if matches!(path, "/health" | "/healthz" | "/readyz" | "/ready" | "/metrics") {
+    if matches!(
+        path,
+        "/health" | "/healthz" | "/readyz" | "/ready" | "/metrics"
+    ) {
         return next.run(req).await;
     }
     let limiter = req.extensions().get::<Arc<RateLimiter>>().cloned();
     if let Some(limiter) = limiter {
-        let key = req.headers().get("x-expresso-tenant")
+        let key = req
+            .headers()
+            .get("x-expresso-tenant")
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string())
-            .or_else(|| req.headers().get("x-forwarded-for")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.split(',').next())
-                .map(|s| s.trim().to_string()))
+            .or_else(|| {
+                req.headers()
+                    .get("x-forwarded-for")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.split(',').next())
+                    .map(|s| s.trim().to_string())
+            })
             .unwrap_or_else(|| "_anon".to_string());
 
         if let Err(retry) = limiter.check(&key) {
-            let mut resp = Response::new(axum::body::Body::from(
-                format!(r#"{{"error":"rate_limited","retry_after":{retry}}}"#),
-            ));
+            let mut resp = Response::new(axum::body::Body::from(format!(
+                r#"{{"error":"rate_limited","retry_after":{retry}}}"#
+            )));
             *resp.status_mut() = StatusCode::TOO_MANY_REQUESTS;
             resp.headers_mut().insert(
                 axum::http::header::CONTENT_TYPE,
@@ -122,7 +133,8 @@ pub async fn layer(
             );
             resp.headers_mut().insert(
                 axum::http::header::RETRY_AFTER,
-                HeaderValue::from_str(&retry.to_string()).unwrap_or_else(|_| HeaderValue::from_static("1")),
+                HeaderValue::from_str(&retry.to_string())
+                    .unwrap_or_else(|_| HeaderValue::from_static("1")),
             );
             return resp;
         }
@@ -268,7 +280,10 @@ mod tests {
 
     #[test]
     fn rate_limit_config_burst_greater_than_rps_is_valid() {
-        let cfg = RateLimitConfig { rps: 10, burst: 100 };
+        let cfg = RateLimitConfig {
+            rps: 10,
+            burst: 100,
+        };
         assert!(cfg.burst > cfg.rps);
     }
 
@@ -327,7 +342,10 @@ mod tests {
 
     #[test]
     fn rate_limit_config_debug_contains_rps_value() {
-        let cfg = RateLimitConfig { rps: 99, burst: 200 };
+        let cfg = RateLimitConfig {
+            rps: 99,
+            burst: 200,
+        };
         assert!(format!("{cfg:?}").contains("99"));
     }
 

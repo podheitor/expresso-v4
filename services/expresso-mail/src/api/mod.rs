@@ -1,30 +1,30 @@
 //! Axum HTTP router for webmail REST API
 
-pub mod health;
-pub mod folders;
-pub mod messages;
-pub mod compose;
 pub mod attachments;
+pub mod compose;
 pub mod context;
-pub mod quota;
-pub mod vacation;
-pub mod sieve;
 pub mod drafts;
 pub mod flag_presets;
-pub mod snooze;
+pub mod folders;
+pub mod health;
+pub mod messages;
+pub mod quota;
+pub mod sieve;
 pub mod signatures;
+pub mod snooze;
 pub mod threads;
+pub mod vacation;
 
 use axum::{
-    Router,
-    middleware::{self, Next},
     extract::Request,
+    middleware::{self, Next},
     response::Response,
+    Router,
 };
 use tower_http::{
-    cors::{CorsLayer, Any},
-    trace::TraceLayer,
     compression::CompressionLayer,
+    cors::{Any, CorsLayer},
+    trace::TraceLayer,
 };
 
 use crate::state::AppState;
@@ -50,7 +50,7 @@ pub fn router(state: AppState) -> Router {
         .layer(CompressionLayer::new())
         .layer(
             CorsLayer::new()
-                .allow_origin(Any)  // tighten in prod via env
+                .allow_origin(Any) // tighten in prod via env
                 .allow_methods(Any)
                 .allow_headers(Any),
         )

@@ -5,10 +5,10 @@
 //! DELETE /api/v1/mail/drafts/:id   — discard draft
 
 use axum::{
-    Router,
+    extract::{Path, State},
+    http::StatusCode,
     routing::{post, put},
-    extract::{State, Path},
-    Json, http::StatusCode,
+    Json, Router,
 };
 use expresso_core::begin_tenant_tx;
 use lettre::{
@@ -28,19 +28,19 @@ use crate::{
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/mail/drafts",      post(save_draft))
-        .route("/mail/drafts/:id",  put(update_draft).delete(discard_draft))
+        .route("/mail/drafts", post(save_draft))
+        .route("/mail/drafts/:id", put(update_draft).delete(discard_draft))
 }
 
 #[derive(Debug, Deserialize)]
 pub struct DraftRequest {
-    pub from:       String,
-    pub to:         Option<Vec<String>>,
-    pub cc:         Option<Vec<String>>,
-    pub bcc:        Option<Vec<String>>,
-    pub subject:    Option<String>,
-    pub body_text:  Option<String>,
-    pub body_html:  Option<String>,
+    pub from: String,
+    pub to: Option<Vec<String>>,
+    pub cc: Option<Vec<String>>,
+    pub bcc: Option<Vec<String>>,
+    pub subject: Option<String>,
+    pub body_text: Option<String>,
+    pub body_html: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -51,8 +51,8 @@ pub struct DraftCreated {
 /// POST /api/v1/mail/drafts — serialize to RFC 2822, store in \Drafts with \Draft flag.
 async fn save_draft(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(req):    Json<DraftRequest>,
+    ctx: RequestCtx,
+    Json(req): Json<DraftRequest>,
 ) -> Result<(StatusCode, Json<DraftCreated>)> {
     let raw = build_raw(&req)?;
     let id = store_draft(&state, &ctx, &raw, None).await?;
@@ -62,9 +62,9 @@ async fn save_draft(
 /// PUT /api/v1/mail/drafts/:id — replace: delete old draft, store new one.
 async fn update_draft(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(old_id): Path<Uuid>,
-    Json(req):    Json<DraftRequest>,
+    Json(req): Json<DraftRequest>,
 ) -> Result<Json<DraftCreated>> {
     let raw = build_raw(&req)?;
     // Delete old draft if it belongs to this user.
@@ -89,8 +89,8 @@ async fn update_draft(
 /// DELETE /api/v1/mail/drafts/:id — discard a draft message.
 async fn discard_draft(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     sqlx::query(
@@ -109,7 +109,9 @@ async fn discard_draft(
 
 /// Build RFC 2822 bytes from a draft request using lettre.
 fn build_raw(req: &DraftRequest) -> Result<Vec<u8>> {
-    let from_addr: Address = req.from.parse()
+    let from_addr: Address = req
+        .from
+        .parse()
         .map_err(|_| MailError::InvalidMessage(format!("invalid from: {}", req.from)))?;
 
     let has_recipients = req.to.iter().flatten().next().is_some()
@@ -132,17 +134,20 @@ fn build_raw(req: &DraftRequest) -> Result<Vec<u8>> {
     }
 
     for addr_str in req.to.iter().flatten() {
-        let a: Address = addr_str.parse()
+        let a: Address = addr_str
+            .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid to: {addr_str}")))?;
         builder = builder.to(Mailbox::new(None, a));
     }
     for addr_str in req.cc.iter().flatten() {
-        let a: Address = addr_str.parse()
+        let a: Address = addr_str
+            .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid cc: {addr_str}")))?;
         builder = builder.cc(Mailbox::new(None, a));
     }
     for addr_str in req.bcc.iter().flatten() {
-        let a: Address = addr_str.parse()
+        let a: Address = addr_str
+            .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid bcc: {addr_str}")))?;
         builder = builder.bcc(Mailbox::new(None, a));
     }
@@ -150,11 +155,21 @@ fn build_raw(req: &DraftRequest) -> Result<Vec<u8>> {
     let email = match (req.body_html.as_deref(), req.body_text.as_deref()) {
         (Some(html), Some(plain)) => builder.multipart(
             MultiPart::alternative()
-                .singlepart(SinglePart::builder().header(ContentType::TEXT_PLAIN).body(plain.to_string()))
-                .singlepart(SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string())),
+                .singlepart(
+                    SinglePart::builder()
+                        .header(ContentType::TEXT_PLAIN)
+                        .body(plain.to_string()),
+                )
+                .singlepart(
+                    SinglePart::builder()
+                        .header(ContentType::TEXT_HTML)
+                        .body(html.to_string()),
+                ),
         ),
         (Some(html), None) => builder.singlepart(
-            SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string()),
+            SinglePart::builder()
+                .header(ContentType::TEXT_HTML)
+                .body(html.to_string()),
         ),
         (None, plain_opt) => builder.singlepart(
             SinglePart::builder()
@@ -171,11 +186,12 @@ fn build_raw(req: &DraftRequest) -> Result<Vec<u8>> {
 /// Returns the new message UUID.
 async fn store_draft(
     state: &AppState,
-    ctx:   &RequestCtx,
-    raw:   &[u8],
-    _id:   Option<Uuid>,
+    ctx: &RequestCtx,
+    raw: &[u8],
+    _id: Option<Uuid>,
 ) -> Result<Uuid> {
-    let body_path = ingest::write_raw_message(state, raw).await
+    let body_path = ingest::write_raw_message(state, raw)
+        .await
         .map_err(|e| MailError::SendFailed(e.to_string()))?;
 
     let size_bytes = raw.len().min(i32::MAX as usize) as i32;
@@ -212,12 +228,10 @@ async fn store_draft(
         (mid, 1i64)
     };
 
-    sqlx::query(
-        "UPDATE mailboxes SET next_uid = next_uid + 1 WHERE id = $1",
-    )
-    .bind(mbox_id)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("UPDATE mailboxes SET next_uid = next_uid + 1 WHERE id = $1")
+        .bind(mbox_id)
+        .execute(&mut *tx)
+        .await?;
 
     sqlx::query(
         "INSERT INTO messages (id, mailbox_id, tenant_id, uid, flags, size_bytes, body_path, received_at) \
@@ -241,13 +255,18 @@ async fn store_draft(
 mod tests {
     use super::*;
 
-    fn req(from: &str, to: Option<Vec<&str>>, subject: Option<&str>, body_text: Option<&str>) -> DraftRequest {
+    fn req(
+        from: &str,
+        to: Option<Vec<&str>>,
+        subject: Option<&str>,
+        body_text: Option<&str>,
+    ) -> DraftRequest {
         DraftRequest {
-            from:      from.into(),
-            to:        to.map(|v| v.iter().map(|s| s.to_string()).collect()),
-            cc:        None,
-            bcc:       None,
-            subject:   subject.map(|s| s.into()),
+            from: from.into(),
+            to: to.map(|v| v.iter().map(|s| s.to_string()).collect()),
+            cc: None,
+            bcc: None,
+            subject: subject.map(|s| s.into()),
             body_text: body_text.map(|s| s.into()),
             body_html: None,
         }
@@ -268,7 +287,12 @@ mod tests {
 
     #[test]
     fn build_raw_with_recipients_succeeds() {
-        let r = req("a@example.com", Some(vec!["b@example.com", "c@example.com"]), None, None);
+        let r = req(
+            "a@example.com",
+            Some(vec!["b@example.com", "c@example.com"]),
+            None,
+            None,
+        );
         assert!(build_raw(&r).is_ok());
     }
 
@@ -312,7 +336,12 @@ mod tests {
 
     #[test]
     fn build_raw_multiple_recipients_all_appear() {
-        let r = req("a@example.com", Some(vec!["b@x.com", "c@x.com"]), None, None);
+        let r = req(
+            "a@example.com",
+            Some(vec!["b@x.com", "c@x.com"]),
+            None,
+            None,
+        );
         let bytes = build_raw(&r).unwrap();
         let s = String::from_utf8_lossy(&bytes);
         assert!(s.contains("b@x.com"));
@@ -424,7 +453,12 @@ mod tests {
 
     #[test]
     fn build_raw_with_cc_and_subject_succeeds() {
-        let r = req("from@example.com", Some(vec!["to@example.com"]), Some("Hello"), None);
+        let r = req(
+            "from@example.com",
+            Some(vec!["to@example.com"]),
+            Some("Hello"),
+            None,
+        );
         assert!(build_raw(&r).is_ok());
     }
 }

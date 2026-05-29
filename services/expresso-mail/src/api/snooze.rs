@@ -29,17 +29,17 @@ use crate::state::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct SnoozeRecord {
-    pub id:           Uuid,
-    pub tenant_id:    Uuid,
-    pub user_id:      Uuid,
-    pub message_id:   Uuid,
-    pub mailbox_id:   Uuid,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub message_id: Uuid,
+    pub mailbox_id: Uuid,
     #[serde(with = "time::serde::rfc3339")]
     pub snooze_until: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    pub snoozed_at:   OffsetDateTime,
+    pub snoozed_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339::option")]
-    pub woken_at:     Option<OffsetDateTime>,
+    pub woken_at: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -50,19 +50,24 @@ struct SnoozeBody {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/mail/messages/:id/snooze", post(snooze_message).delete(cancel_snooze))
-        .route("/mail/snoozed",             get(list_snoozed))
+        .route(
+            "/mail/messages/:id/snooze",
+            post(snooze_message).delete(cancel_snooze),
+        )
+        .route("/mail/snoozed", get(list_snoozed))
 }
 
 /// POST /api/v1/mail/messages/:id/snooze — snooze a message.
 async fn snooze_message(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<SnoozeBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<SnoozeBody>,
 ) -> Result<impl IntoResponse> {
     if body.snooze_until <= OffsetDateTime::now_utc() {
-        return Err(MailError::BadRequest("snooze_until must be in the future".into()));
+        return Err(MailError::BadRequest(
+            "snooze_until must be in the future".into(),
+        ));
     }
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -107,8 +112,8 @@ async fn snooze_message(
 /// DELETE /api/v1/mail/messages/:id/snooze — cancel an active snooze.
 async fn cancel_snooze(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -134,7 +139,7 @@ async fn cancel_snooze(
 /// GET /api/v1/mail/snoozed — list active snoozed messages (not yet woken).
 async fn list_snoozed(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<Vec<SnoozeRecord>>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -163,8 +168,8 @@ pub fn spawn_waker(pool: expresso_core::DbPool, interval_secs: u64) {
             tick.tick().await;
             match wake_due(&pool).await {
                 Ok(n) if n > 0 => tracing::info!(woken = n, "snooze waker cycle completed"),
-                Ok(_)          => {}
-                Err(e)         => tracing::warn!(error = %e, "snooze waker failed"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "snooze waker failed"),
             }
         }
     });
@@ -196,14 +201,14 @@ mod tests {
     #[test]
     fn snooze_record_serde_roundtrip() {
         let r = SnoozeRecord {
-            id:           Uuid::nil(),
-            tenant_id:    Uuid::nil(),
-            user_id:      Uuid::nil(),
-            message_id:   Uuid::nil(),
-            mailbox_id:   Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-06-01 09:00:00 UTC),
-            snoozed_at:   datetime!(2026-05-22 08:00:00 UTC),
-            woken_at:     None,
+            snoozed_at: datetime!(2026-05-22 08:00:00 UTC),
+            woken_at: None,
         };
         let s = serde_json::to_string(&r).unwrap();
         let back: SnoozeRecord = serde_json::from_str(&s).unwrap();
@@ -214,11 +219,14 @@ mod tests {
     #[test]
     fn snooze_record_woken_at_present_roundtrip() {
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-06-01 09:00:00 UTC),
-            snoozed_at:   datetime!(2026-05-22 08:00:00 UTC),
-            woken_at:     Some(datetime!(2026-06-01 09:00:01 UTC)),
+            snoozed_at: datetime!(2026-05-22 08:00:00 UTC),
+            woken_at: Some(datetime!(2026-06-01 09:00:01 UTC)),
         };
         let s = serde_json::to_string(&r).unwrap();
         let back: SnoozeRecord = serde_json::from_str(&s).unwrap();
@@ -236,11 +244,14 @@ mod tests {
     #[test]
     fn snooze_record_snooze_until_in_json() {
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-07-04 00:00:00 UTC),
-            snoozed_at:   datetime!(2026-07-03 12:00:00 UTC),
-            woken_at:     None,
+            snoozed_at: datetime!(2026-07-03 12:00:00 UTC),
+            woken_at: None,
         };
         let s = serde_json::to_string(&r).unwrap();
         assert!(s.contains("2026-07-04T00:00:00"));
@@ -249,11 +260,14 @@ mod tests {
     #[test]
     fn snooze_record_woken_at_none() {
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-07-04 00:00:00 UTC),
-            snoozed_at:   datetime!(2026-07-03 12:00:00 UTC),
-            woken_at:     None,
+            snoozed_at: datetime!(2026-07-03 12:00:00 UTC),
+            woken_at: None,
         };
         assert!(r.woken_at.is_none());
     }
@@ -271,8 +285,11 @@ mod tests {
         use time::macros::datetime;
         let mid = Uuid::new_v4();
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: mid,
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: mid,
             snooze_until: datetime!(2026-08-01 08:00:00 UTC),
             snoozed_at: datetime!(2026-07-31 08:00:00 UTC),
             woken_at: None,
@@ -284,8 +301,11 @@ mod tests {
     fn snooze_record_woken_at_none_by_default() {
         use time::macros::datetime;
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-08-01 08:00:00 UTC),
             snoozed_at: datetime!(2026-07-31 08:00:00 UTC),
             woken_at: None,
@@ -297,8 +317,11 @@ mod tests {
     fn snooze_record_serializes_snooze_until_as_rfc3339() {
         use time::macros::datetime;
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-09-01 08:00:00 UTC),
             snoozed_at: datetime!(2026-07-31 08:00:00 UTC),
             woken_at: None,
@@ -311,8 +334,11 @@ mod tests {
     fn snooze_record_woken_at_none_initially() {
         use time::macros::datetime;
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-09-01 08:00:00 UTC),
             snoozed_at: datetime!(2026-07-31 08:00:00 UTC),
             woken_at: None,
@@ -325,8 +351,11 @@ mod tests {
         use time::macros::datetime;
         let until = datetime!(2026-10-15 09:00:00 UTC);
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: until,
             snoozed_at: datetime!(2026-10-14 09:00:00 UTC),
             woken_at: None,
@@ -338,8 +367,11 @@ mod tests {
     fn snooze_record_october_woken_at_none() {
         use time::macros::datetime;
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-10-15 09:00:00 UTC),
             snoozed_at: datetime!(2026-10-14 09:00:00 UTC),
             woken_at: None,
@@ -352,8 +384,11 @@ mod tests {
         use time::macros::datetime;
         let target = datetime!(2026-12-01 08:00:00 UTC);
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: target,
             snoozed_at: datetime!(2026-11-30 08:00:00 UTC),
             woken_at: None,
@@ -366,8 +401,11 @@ mod tests {
         use time::macros::datetime;
         let snoozed = datetime!(2026-08-15 10:00:00 UTC);
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-08-16 10:00:00 UTC),
             snoozed_at: snoozed,
             woken_at: None,
@@ -380,10 +418,13 @@ mod tests {
         use time::macros::datetime;
         let mid = Uuid::new_v4();
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: mid, mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: mid,
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-09-01 08:00:00 UTC),
-            snoozed_at:   datetime!(2026-08-31 08:00:00 UTC),
+            snoozed_at: datetime!(2026-08-31 08:00:00 UTC),
             woken_at: None,
         };
         assert_eq!(r.message_id, mid);
@@ -394,10 +435,13 @@ mod tests {
         use time::macros::datetime;
         let uid = Uuid::new_v4();
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: uid,
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: uid,
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-09-01 08:00:00 UTC),
-            snoozed_at:   datetime!(2026-08-31 08:00:00 UTC),
+            snoozed_at: datetime!(2026-08-31 08:00:00 UTC),
             woken_at: None,
         };
         assert_eq!(r.user_id, uid);
@@ -407,10 +451,13 @@ mod tests {
     fn snooze_record_snooze_until_after_snoozed_at() {
         use time::macros::datetime;
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-10-01 09:00:00 UTC),
-            snoozed_at:   datetime!(2026-09-30 09:00:00 UTC),
+            snoozed_at: datetime!(2026-09-30 09:00:00 UTC),
             woken_at: None,
         };
         assert!(r.snooze_until > r.snoozed_at);
@@ -420,10 +467,13 @@ mod tests {
     fn snooze_record_id_is_nil_when_set_to_nil() {
         use time::macros::datetime;
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-11-01 08:00:00 UTC),
-            snoozed_at:   datetime!(2026-10-31 08:00:00 UTC),
+            snoozed_at: datetime!(2026-10-31 08:00:00 UTC),
             woken_at: None,
         };
         assert_eq!(r.id, Uuid::nil());
@@ -433,10 +483,13 @@ mod tests {
     fn snooze_record_woken_at_some_is_not_none() {
         use time::macros::datetime;
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-11-01 08:00:00 UTC),
-            snoozed_at:   datetime!(2026-10-31 08:00:00 UTC),
+            snoozed_at: datetime!(2026-10-31 08:00:00 UTC),
             woken_at: Some(datetime!(2026-11-01 08:00:00 UTC)),
         };
         assert!(r.woken_at.is_some());
@@ -446,10 +499,13 @@ mod tests {
     fn snooze_record_snooze_until_before_woken_at_when_set() {
         use time::macros::datetime;
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-11-01 08:00:00 UTC),
-            snoozed_at:   datetime!(2026-10-31 08:00:00 UTC),
+            snoozed_at: datetime!(2026-10-31 08:00:00 UTC),
             woken_at: Some(datetime!(2026-11-01 09:00:00 UTC)),
         };
         assert!(r.snooze_until <= r.woken_at.unwrap());
@@ -460,10 +516,13 @@ mod tests {
         use time::macros::datetime;
         let tid = Uuid::new_v4();
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: tid, user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: tid,
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-12-01 10:00:00 UTC),
-            snoozed_at:   datetime!(2026-11-30 10:00:00 UTC),
+            snoozed_at: datetime!(2026-11-30 10:00:00 UTC),
             woken_at: None,
         };
         assert_eq!(r.tenant_id, tid);
@@ -473,10 +532,13 @@ mod tests {
     fn snooze_record_woken_at_is_none_when_explicitly_set_to_none() {
         use time::macros::datetime;
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2026-12-01 10:00:00 UTC),
-            snoozed_at:   datetime!(2026-11-30 10:00:00 UTC),
+            snoozed_at: datetime!(2026-11-30 10:00:00 UTC),
             woken_at: None,
         };
         assert!(r.woken_at.is_none());
@@ -494,10 +556,13 @@ mod tests {
         use time::macros::datetime;
         let woken = datetime!(2027-01-10 06:00:00 UTC);
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2027-01-10 05:00:00 UTC),
-            snoozed_at:   datetime!(2027-01-09 05:00:00 UTC),
+            snoozed_at: datetime!(2027-01-09 05:00:00 UTC),
             woken_at: Some(woken),
         };
         assert_eq!(r.woken_at.unwrap(), woken);
@@ -507,10 +572,13 @@ mod tests {
     fn snooze_record_clone_preserves_fields() {
         use time::macros::datetime;
         let r = SnoozeRecord {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
-            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            message_id: Uuid::nil(),
+            mailbox_id: Uuid::nil(),
             snooze_until: datetime!(2027-02-01 08:00:00 UTC),
-            snoozed_at:   datetime!(2027-01-31 08:00:00 UTC),
+            snoozed_at: datetime!(2027-01-31 08:00:00 UTC),
             woken_at: None,
         };
         let cloned = r.clone();

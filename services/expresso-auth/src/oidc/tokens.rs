@@ -4,33 +4,33 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 pub struct AuthCodeRequest<'a> {
-    pub grant_type:    &'static str,
-    pub code:          &'a str,
-    pub redirect_uri:  &'a str,
-    pub client_id:     &'a str,
+    pub grant_type: &'static str,
+    pub code: &'a str,
+    pub redirect_uri: &'a str,
+    pub client_id: &'a str,
     pub code_verifier: &'a str,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RefreshRequest<'a> {
-    pub grant_type:    &'static str,
+    pub grant_type: &'static str,
     pub refresh_token: &'a str,
-    pub client_id:     &'a str,
+    pub client_id: &'a str,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TokenResponse {
-    pub access_token:  String,
+    pub access_token: String,
     #[serde(default)]
     pub refresh_token: Option<String>,
     #[serde(default)]
-    pub id_token:      Option<String>,
-    pub token_type:    String,
-    pub expires_in:    i64,
+    pub id_token: Option<String>,
+    pub token_type: String,
+    pub expires_in: i64,
     #[serde(default)]
     pub refresh_expires_in: Option<i64>,
     #[serde(default)]
-    pub scope:         Option<String>,
+    pub scope: Option<String>,
 }
 
 #[cfg(test)]
@@ -74,13 +74,13 @@ mod tests {
     #[test]
     fn token_response_roundtrip_serde() {
         let orig = TokenResponse {
-            access_token:      "at".into(),
-            refresh_token:     Some("rt".into()),
-            id_token:          None,
-            token_type:        "Bearer".into(),
-            expires_in:        600,
+            access_token: "at".into(),
+            refresh_token: Some("rt".into()),
+            id_token: None,
+            token_type: "Bearer".into(),
+            expires_in: 600,
             refresh_expires_in: Some(3600),
-            scope:             Some("openid".into()),
+            scope: Some("openid".into()),
         };
         let json = serde_json::to_string(&orig).unwrap();
         let back: TokenResponse = serde_json::from_str(&json).unwrap();
@@ -92,11 +92,16 @@ mod tests {
     #[test]
     fn token_response_no_id_token_omitted_in_json() {
         let t = TokenResponse {
-            access_token: "at".into(), refresh_token: None, id_token: None,
-            token_type: "Bearer".into(), expires_in: 300,
-            refresh_expires_in: None, scope: None,
+            access_token: "at".into(),
+            refresh_token: None,
+            id_token: None,
+            token_type: "Bearer".into(),
+            expires_in: 300,
+            refresh_expires_in: None,
+            scope: None,
         };
-        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&t).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&t).unwrap()).unwrap();
         assert!(v.get("id_token").map(|x| x.is_null()).unwrap_or(true));
     }
 
@@ -104,7 +109,10 @@ mod tests {
     fn auth_code_request_grant_type_constant() {
         let r = AuthCodeRequest {
             grant_type: "authorization_code",
-            code: "c", redirect_uri: "http://x", client_id: "cl", code_verifier: "v",
+            code: "c",
+            redirect_uri: "http://x",
+            client_id: "cl",
+            code_verifier: "v",
         };
         assert_eq!(r.grant_type, "authorization_code");
     }
@@ -113,7 +121,8 @@ mod tests {
     fn refresh_request_grant_type_constant() {
         let r = RefreshRequest {
             grant_type: "refresh_token",
-            refresh_token: "rt", client_id: "cl",
+            refresh_token: "rt",
+            client_id: "cl",
         };
         assert_eq!(r.grant_type, "refresh_token");
     }
@@ -121,9 +130,13 @@ mod tests {
     #[test]
     fn token_response_scope_present() {
         let t = TokenResponse {
-            access_token: "at".into(), refresh_token: None, id_token: None,
-            token_type: "Bearer".into(), expires_in: 300,
-            refresh_expires_in: None, scope: Some("openid profile email".into()),
+            access_token: "at".into(),
+            refresh_token: None,
+            id_token: None,
+            token_type: "Bearer".into(),
+            expires_in: 300,
+            refresh_expires_in: None,
+            scope: Some("openid profile email".into()),
         };
         assert_eq!(t.scope.as_deref(), Some("openid profile email"));
     }
@@ -131,9 +144,13 @@ mod tests {
     #[test]
     fn token_response_clone_is_independent() {
         let orig = TokenResponse {
-            access_token: "tok".into(), refresh_token: None, id_token: None,
-            token_type: "Bearer".into(), expires_in: 60,
-            refresh_expires_in: None, scope: None,
+            access_token: "tok".into(),
+            refresh_token: None,
+            id_token: None,
+            token_type: "Bearer".into(),
+            expires_in: 60,
+            refresh_expires_in: None,
+            scope: None,
         };
         let mut cloned = orig.clone();
         cloned.access_token = "other".into();
@@ -143,9 +160,13 @@ mod tests {
     #[test]
     fn token_response_refresh_expires_in_none_by_default() {
         let t = TokenResponse {
-            access_token: "at".into(), refresh_token: None, id_token: None,
-            token_type: "Bearer".into(), expires_in: 300,
-            refresh_expires_in: None, scope: None,
+            access_token: "at".into(),
+            refresh_token: None,
+            id_token: None,
+            token_type: "Bearer".into(),
+            expires_in: 300,
+            refresh_expires_in: None,
+            scope: None,
         };
         assert!(t.refresh_expires_in.is_none());
     }
@@ -153,9 +174,13 @@ mod tests {
     #[test]
     fn token_response_expires_in_preserved() {
         let t = TokenResponse {
-            access_token: "tok".into(), refresh_token: None, id_token: None,
-            token_type: "Bearer".into(), expires_in: 900,
-            refresh_expires_in: None, scope: None,
+            access_token: "tok".into(),
+            refresh_token: None,
+            id_token: None,
+            token_type: "Bearer".into(),
+            expires_in: 900,
+            refresh_expires_in: None,
+            scope: None,
         };
         assert_eq!(t.expires_in, 900);
     }
@@ -163,9 +188,13 @@ mod tests {
     #[test]
     fn token_response_token_type_preserved() {
         let t = TokenResponse {
-            access_token: "tok".into(), refresh_token: None, id_token: None,
-            token_type: "Bearer".into(), expires_in: 60,
-            refresh_expires_in: None, scope: None,
+            access_token: "tok".into(),
+            refresh_token: None,
+            id_token: None,
+            token_type: "Bearer".into(),
+            expires_in: 60,
+            refresh_expires_in: None,
+            scope: None,
         };
         assert_eq!(t.token_type, "Bearer");
     }
@@ -173,9 +202,13 @@ mod tests {
     #[test]
     fn token_response_expires_in_value_preserved() {
         let t = TokenResponse {
-            access_token: "t".into(), refresh_token: None, id_token: None,
-            token_type: "Bearer".into(), expires_in: 3600,
-            refresh_expires_in: None, scope: None,
+            access_token: "t".into(),
+            refresh_token: None,
+            id_token: None,
+            token_type: "Bearer".into(),
+            expires_in: 3600,
+            refresh_expires_in: None,
+            scope: None,
         };
         assert_eq!(t.expires_in, 3600);
     }
@@ -183,9 +216,13 @@ mod tests {
     #[test]
     fn token_response_scope_none_by_default() {
         let t = TokenResponse {
-            access_token: "tok".into(), refresh_token: None, id_token: None,
-            token_type: "Bearer".into(), expires_in: 300,
-            refresh_expires_in: None, scope: None,
+            access_token: "tok".into(),
+            refresh_token: None,
+            id_token: None,
+            token_type: "Bearer".into(),
+            expires_in: 300,
+            refresh_expires_in: None,
+            scope: None,
         };
         assert!(t.scope.is_none());
     }
@@ -193,9 +230,13 @@ mod tests {
     #[test]
     fn token_response_access_token_preserved() {
         let t = TokenResponse {
-            access_token: "my-access-token".into(), refresh_token: None, id_token: None,
-            token_type: "Bearer".into(), expires_in: 3600,
-            refresh_expires_in: None, scope: None,
+            access_token: "my-access-token".into(),
+            refresh_token: None,
+            id_token: None,
+            token_type: "Bearer".into(),
+            expires_in: 3600,
+            refresh_expires_in: None,
+            scope: None,
         };
         assert_eq!(t.access_token, "my-access-token");
     }
@@ -203,10 +244,13 @@ mod tests {
     #[test]
     fn token_response_id_token_some_when_provided() {
         let t = TokenResponse {
-            access_token: "at".into(), refresh_token: None,
+            access_token: "at".into(),
+            refresh_token: None,
             id_token: Some("idt".into()),
-            token_type: "Bearer".into(), expires_in: 300,
-            refresh_expires_in: None, scope: None,
+            token_type: "Bearer".into(),
+            expires_in: 300,
+            refresh_expires_in: None,
+            scope: None,
         };
         assert_eq!(t.id_token.as_deref(), Some("idt"));
     }
@@ -214,9 +258,13 @@ mod tests {
     #[test]
     fn token_response_access_token_nonempty() {
         let t = TokenResponse {
-            access_token: "my-access-token".into(), refresh_token: None, id_token: None,
-            token_type: "Bearer".into(), expires_in: 3600,
-            refresh_expires_in: None, scope: None,
+            access_token: "my-access-token".into(),
+            refresh_token: None,
+            id_token: None,
+            token_type: "Bearer".into(),
+            expires_in: 3600,
+            refresh_expires_in: None,
+            scope: None,
         };
         assert!(!t.access_token.is_empty());
     }
@@ -224,9 +272,13 @@ mod tests {
     #[test]
     fn token_response_refresh_token_none_by_default() {
         let t = TokenResponse {
-            access_token: "tok".into(), refresh_token: None, id_token: None,
-            token_type: "Bearer".into(), expires_in: 300,
-            refresh_expires_in: None, scope: None,
+            access_token: "tok".into(),
+            refresh_token: None,
+            id_token: None,
+            token_type: "Bearer".into(),
+            expires_in: 300,
+            refresh_expires_in: None,
+            scope: None,
         };
         assert!(t.refresh_token.is_none());
     }
@@ -234,9 +286,9 @@ mod tests {
     #[test]
     fn refresh_request_client_id_preserved() {
         let r = RefreshRequest {
-            grant_type:    "refresh_token",
+            grant_type: "refresh_token",
             refresh_token: "rt",
-            client_id:     "my-client",
+            client_id: "my-client",
         };
         assert_eq!(r.client_id, "my-client");
     }
@@ -244,10 +296,10 @@ mod tests {
     #[test]
     fn auth_code_request_code_preserved() {
         let r = AuthCodeRequest {
-            grant_type:    "authorization_code",
-            code:          "mycode123",
-            redirect_uri:  "https://app/cb",
-            client_id:     "client",
+            grant_type: "authorization_code",
+            code: "mycode123",
+            redirect_uri: "https://app/cb",
+            client_id: "client",
             code_verifier: "verifier",
         };
         assert_eq!(r.code, "mycode123");
@@ -256,10 +308,10 @@ mod tests {
     #[test]
     fn auth_code_request_grant_type_is_authorization_code() {
         let r = AuthCodeRequest {
-            grant_type:    "authorization_code",
-            code:          "c",
-            redirect_uri:  "https://app/cb",
-            client_id:     "cid",
+            grant_type: "authorization_code",
+            code: "c",
+            redirect_uri: "https://app/cb",
+            client_id: "cid",
             code_verifier: "v",
         };
         assert_eq!(r.grant_type, "authorization_code");
@@ -268,10 +320,10 @@ mod tests {
     #[test]
     fn auth_code_request_redirect_uri_preserved() {
         let r = AuthCodeRequest {
-            grant_type:    "authorization_code",
-            code:          "c",
-            redirect_uri:  "https://app/callback",
-            client_id:     "cid",
+            grant_type: "authorization_code",
+            code: "c",
+            redirect_uri: "https://app/callback",
+            client_id: "cid",
             code_verifier: "v",
         };
         assert_eq!(r.redirect_uri, "https://app/callback");
@@ -280,10 +332,10 @@ mod tests {
     #[test]
     fn auth_code_request_code_verifier_preserved() {
         let r = AuthCodeRequest {
-            grant_type:    "authorization_code",
-            code:          "auth-code-123",
-            redirect_uri:  "https://app/cb",
-            client_id:     "cid",
+            grant_type: "authorization_code",
+            code: "auth-code-123",
+            redirect_uri: "https://app/cb",
+            client_id: "cid",
             code_verifier: "my-verifier",
         };
         assert_eq!(r.code_verifier, "my-verifier");

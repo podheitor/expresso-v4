@@ -80,20 +80,31 @@ struct Summary {
 }
 
 #[derive(Deserialize)]
-struct TokenResp { access_token: String }
+struct TokenResp {
+    access_token: String,
+}
 
 async fn admin_token(c: &Client, cli: &Cli) -> Result<String> {
-    let url = format!("{}/realms/{}/protocol/openid-connect/token", cli.kc_url, cli.kc_admin_realm);
-    let r: TokenResp = c.post(&url)
+    let url = format!(
+        "{}/realms/{}/protocol/openid-connect/token",
+        cli.kc_url, cli.kc_admin_realm
+    );
+    let r: TokenResp = c
+        .post(&url)
         .form(&[
             ("grant_type", "password"),
-            ("client_id",  "admin-cli"),
-            ("username",   &cli.kc_admin_user),
-            ("password",   &cli.kc_admin_pass),
+            ("client_id", "admin-cli"),
+            ("username", &cli.kc_admin_user),
+            ("password", &cli.kc_admin_pass),
         ])
-        .send().await.context("kc admin token req")?
-        .error_for_status().context("kc admin token status")?
-        .json().await.context("kc admin token json")?;
+        .send()
+        .await
+        .context("kc admin token req")?
+        .error_for_status()
+        .context("kc admin token status")?
+        .json()
+        .await
+        .context("kc admin token json")?;
     Ok(r.access_token)
 }
 
@@ -175,10 +186,17 @@ fn build_admin_client() -> Value {
 /// rotate after provision).
 fn generated_secret() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let ns = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let ns = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
     // 64-hex-char string; entropy ≈ 128 bits from nanos + pid mixing.
     let pid = std::process::id() as u128;
-    format!("{:032x}{:032x}", ns ^ pid, (ns.wrapping_mul(2654435761)) ^ pid)
+    format!(
+        "{:032x}{:032x}",
+        ns ^ pid,
+        (ns.wrapping_mul(2654435761)) ^ pid
+    )
 }
 
 fn build_user_body(username: &str, email: &str) -> Value {
@@ -193,10 +211,10 @@ fn build_user_body(username: &str, email: &str) -> Value {
 }
 
 const REALM_ROLES: &[(&str, &str)] = &[
-    ("SuperAdmin",  "Plataform super administrator"),
+    ("SuperAdmin", "Plataform super administrator"),
     ("TenantAdmin", "Tenant-scope administrator"),
-    ("User",        "Regular user (default)"),
-    ("Readonly",    "Read-only access"),
+    ("User", "Regular user (default)"),
+    ("Readonly", "Read-only access"),
 ];
 
 // --- HTTP helpers ----------------------------------------------------
@@ -213,23 +231,48 @@ async fn realm_exists(c: &Client, cli: &Cli, tok: &str, realm: &str) -> Result<b
 
 async fn create_realm(c: &Client, cli: &Cli, tok: &str, body: &Value) -> Result<()> {
     let url = format!("{}/admin/realms", cli.kc_url);
-    c.post(&url).bearer_auth(tok).json(body).send().await
+    c.post(&url)
+        .bearer_auth(tok)
+        .json(body)
+        .send()
+        .await
         .context("create realm")?
-        .error_for_status().context("create realm status")?;
+        .error_for_status()
+        .context("create realm status")?;
     Ok(())
 }
 
 async fn list_clients(c: &Client, cli: &Cli, tok: &str, realm: &str) -> Result<Vec<Value>> {
     let url = format!("{}/admin/realms/{}/clients", cli.kc_url, realm);
-    Ok(c.get(&url).bearer_auth(tok).send().await?.error_for_status()?.json().await?)
+    Ok(c.get(&url)
+        .bearer_auth(tok)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?)
 }
 
-async fn create_client(c: &Client, cli: &Cli, tok: &str, realm: &str, body: &Value) -> Result<String> {
+async fn create_client(
+    c: &Client,
+    cli: &Cli,
+    tok: &str,
+    realm: &str,
+    body: &Value,
+) -> Result<String> {
     let url = format!("{}/admin/realms/{}/clients", cli.kc_url, realm);
-    let resp = c.post(&url).bearer_auth(tok).json(body).send().await
+    let resp = c
+        .post(&url)
+        .bearer_auth(tok)
+        .json(body)
+        .send()
+        .await
         .context("create client")?
-        .error_for_status().context("create client status")?;
-    let id = resp.headers().get("location")
+        .error_for_status()
+        .context("create client status")?;
+    let id = resp
+        .headers()
+        .get("location")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.rsplit('/').next().map(String::from))
         .context("missing Location on client create")?;
@@ -238,57 +281,151 @@ async fn create_client(c: &Client, cli: &Cli, tok: &str, realm: &str, body: &Val
 
 async fn list_realm_roles(c: &Client, cli: &Cli, tok: &str, realm: &str) -> Result<Vec<Value>> {
     let url = format!("{}/admin/realms/{}/roles", cli.kc_url, realm);
-    Ok(c.get(&url).bearer_auth(tok).send().await?.error_for_status()?.json().await?)
+    Ok(c.get(&url)
+        .bearer_auth(tok)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?)
 }
 
-async fn create_realm_role(c: &Client, cli: &Cli, tok: &str, realm: &str, name: &str, desc: &str) -> Result<()> {
+async fn create_realm_role(
+    c: &Client,
+    cli: &Cli,
+    tok: &str,
+    realm: &str,
+    name: &str,
+    desc: &str,
+) -> Result<()> {
     let url = format!("{}/admin/realms/{}/roles", cli.kc_url, realm);
-    let body = json!({ "name": name, "description": desc, "composite": false, "clientRole": false });
-    c.post(&url).bearer_auth(tok).json(&body).send().await?
-        .error_for_status().context("create role")?;
+    let body =
+        json!({ "name": name, "description": desc, "composite": false, "clientRole": false });
+    c.post(&url)
+        .bearer_auth(tok)
+        .json(&body)
+        .send()
+        .await?
+        .error_for_status()
+        .context("create role")?;
     Ok(())
 }
 
-async fn find_user_by_username(c: &Client, cli: &Cli, tok: &str, realm: &str, username: &str) -> Result<Option<String>> {
-    let url = format!("{}/admin/realms/{}/users?username={}&exact=true", cli.kc_url, realm, username);
-    let arr: Vec<Value> = c.get(&url).bearer_auth(tok).send().await?.error_for_status()?.json().await?;
-    Ok(arr.first().and_then(|u| u.get("id")).and_then(|v| v.as_str()).map(String::from))
+async fn find_user_by_username(
+    c: &Client,
+    cli: &Cli,
+    tok: &str,
+    realm: &str,
+    username: &str,
+) -> Result<Option<String>> {
+    let url = format!(
+        "{}/admin/realms/{}/users?username={}&exact=true",
+        cli.kc_url, realm, username
+    );
+    let arr: Vec<Value> = c
+        .get(&url)
+        .bearer_auth(tok)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    Ok(arr
+        .first()
+        .and_then(|u| u.get("id"))
+        .and_then(|v| v.as_str())
+        .map(String::from))
 }
 
-async fn create_user(c: &Client, cli: &Cli, tok: &str, realm: &str, body: &Value) -> Result<String> {
+async fn create_user(
+    c: &Client,
+    cli: &Cli,
+    tok: &str,
+    realm: &str,
+    body: &Value,
+) -> Result<String> {
     let url = format!("{}/admin/realms/{}/users", cli.kc_url, realm);
-    let resp = c.post(&url).bearer_auth(tok).json(body).send().await?
-        .error_for_status().context("create user")?;
-    resp.headers().get("location")
+    let resp = c
+        .post(&url)
+        .bearer_auth(tok)
+        .json(body)
+        .send()
+        .await?
+        .error_for_status()
+        .context("create user")?;
+    resp.headers()
+        .get("location")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.rsplit('/').next().map(String::from))
         .context("missing Location on user create")
 }
 
-async fn set_user_password(c: &Client, cli: &Cli, tok: &str, realm: &str, user_id: &str, password: &str, temporary: bool) -> Result<()> {
-    let url = format!("{}/admin/realms/{}/users/{}/reset-password", cli.kc_url, realm, user_id);
+async fn set_user_password(
+    c: &Client,
+    cli: &Cli,
+    tok: &str,
+    realm: &str,
+    user_id: &str,
+    password: &str,
+    temporary: bool,
+) -> Result<()> {
+    let url = format!(
+        "{}/admin/realms/{}/users/{}/reset-password",
+        cli.kc_url, realm, user_id
+    );
     let body = json!({ "type": "password", "value": password, "temporary": temporary });
-    c.put(&url).bearer_auth(tok).json(&body).send().await?
-        .error_for_status().context("set password")?;
+    c.put(&url)
+        .bearer_auth(tok)
+        .json(&body)
+        .send()
+        .await?
+        .error_for_status()
+        .context("set password")?;
     Ok(())
 }
 
-async fn assign_realm_role(c: &Client, cli: &Cli, tok: &str, realm: &str, user_id: &str, role_name: &str) -> Result<()> {
+async fn assign_realm_role(
+    c: &Client,
+    cli: &Cli,
+    tok: &str,
+    realm: &str,
+    user_id: &str,
+    role_name: &str,
+) -> Result<()> {
     // 1. Fetch role representation (id + name needed in the POST body).
     let url = format!("{}/admin/realms/{}/roles/{}", cli.kc_url, realm, role_name);
-    let role: Value = c.get(&url).bearer_auth(tok).send().await?
-        .error_for_status().context("get role")?.json().await?;
+    let role: Value = c
+        .get(&url)
+        .bearer_auth(tok)
+        .send()
+        .await?
+        .error_for_status()
+        .context("get role")?
+        .json()
+        .await?;
     // 2. POST to user's realm-mapping endpoint.
-    let url2 = format!("{}/admin/realms/{}/users/{}/role-mappings/realm", cli.kc_url, realm, user_id);
-    c.post(&url2).bearer_auth(tok).json(&[role]).send().await?
-        .error_for_status().context("assign role")?;
+    let url2 = format!(
+        "{}/admin/realms/{}/users/{}/role-mappings/realm",
+        cli.kc_url, realm, user_id
+    );
+    c.post(&url2)
+        .bearer_auth(tok)
+        .json(&[role])
+        .send()
+        .await?
+        .error_for_status()
+        .context("assign role")?;
     Ok(())
 }
 
 // --- Orchestration ---------------------------------------------------
 
 async fn provision(c: &Client, cli: &Cli, tok: &str) -> Result<Summary> {
-    let mut summary = Summary { realm: cli.realm.clone(), dry_run: cli.dry_run, ..Default::default() };
+    let mut summary = Summary {
+        realm: cli.realm.clone(),
+        dry_run: cli.dry_run,
+        ..Default::default()
+    };
     let display = cli.display.clone().unwrap_or_else(|| cli.realm.clone());
     let realm_body = build_realm_body(&cli.realm, &display);
 
@@ -308,17 +445,31 @@ async fn provision(c: &Client, cli: &Cli, tok: &str) -> Result<Summary> {
 
     let redirect_uris = if cli.base_redirect.is_empty() {
         vec![format!("https://{}.expresso.local/*", cli.realm)]
-    } else { cli.base_redirect.clone() };
+    } else {
+        cli.base_redirect.clone()
+    };
 
     let client_specs: [(&str, Value); 3] = [
-        ("expresso-web",   build_web_client(&redirect_uris)),
-        ("expresso-dav",   build_dav_client()),
+        ("expresso-web", build_web_client(&redirect_uris)),
+        ("expresso-dav", build_dav_client()),
         ("expresso-admin", build_admin_client()),
     ];
 
-    let existing = if cli.dry_run { Vec::new() } else { list_clients(c, cli, tok, &cli.realm).await.unwrap_or_default() };
-    let existing_ids: Vec<String> = existing.iter()
-        .filter_map(|cl| cl.get("clientId").and_then(|v| v.as_str()).map(String::from)).collect();
+    let existing = if cli.dry_run {
+        Vec::new()
+    } else {
+        list_clients(c, cli, tok, &cli.realm)
+            .await
+            .unwrap_or_default()
+    };
+    let existing_ids: Vec<String> = existing
+        .iter()
+        .filter_map(|cl| {
+            cl.get("clientId")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        })
+        .collect();
 
     for (cid, body) in client_specs.iter() {
         if existing_ids.iter().any(|x| x == cid) {
@@ -335,9 +486,17 @@ async fn provision(c: &Client, cli: &Cli, tok: &str) -> Result<Summary> {
     }
 
     // Roles
-    let existing_roles = if cli.dry_run { Vec::new() } else { list_realm_roles(c, cli, tok, &cli.realm).await.unwrap_or_default() };
-    let existing_role_names: Vec<String> = existing_roles.iter()
-        .filter_map(|r| r.get("name").and_then(|v| v.as_str()).map(String::from)).collect();
+    let existing_roles = if cli.dry_run {
+        Vec::new()
+    } else {
+        list_realm_roles(c, cli, tok, &cli.realm)
+            .await
+            .unwrap_or_default()
+    };
+    let existing_role_names: Vec<String> = existing_roles
+        .iter()
+        .filter_map(|r| r.get("name").and_then(|v| v.as_str()).map(String::from))
+        .collect();
     for (name, desc) in REALM_ROLES {
         if existing_role_names.iter().any(|x| x == name) {
             summary.roles_skipped.push((*name).into());
@@ -356,12 +515,30 @@ async fn provision(c: &Client, cli: &Cli, tok: &str) -> Result<Summary> {
     if cli.dry_run {
         summary.admin_user_created = true;
         summary.admin_user_id = Some("(dry-run)".into());
-    } else if let Some(existing_id) = find_user_by_username(c, cli, tok, &cli.realm, &cli.admin_username).await? {
+    } else if let Some(existing_id) =
+        find_user_by_username(c, cli, tok, &cli.realm, &cli.admin_username).await?
+    {
         info!(user_id=%existing_id, "admin user exists, skipping create");
         summary.admin_user_id = Some(existing_id);
     } else {
-        let user_id = create_user(c, cli, tok, &cli.realm, &build_user_body(&cli.admin_username, &cli.admin_email)).await?;
-        set_user_password(c, cli, tok, &cli.realm, &user_id, &cli.admin_password, cli.admin_password_temporary).await?;
+        let user_id = create_user(
+            c,
+            cli,
+            tok,
+            &cli.realm,
+            &build_user_body(&cli.admin_username, &cli.admin_email),
+        )
+        .await?;
+        set_user_password(
+            c,
+            cli,
+            tok,
+            &cli.realm,
+            &user_id,
+            &cli.admin_password,
+            cli.admin_password_temporary,
+        )
+        .await?;
         assign_realm_role(c, cli, tok, &cli.realm, &user_id, "TenantAdmin").await?;
         summary.admin_user_id = Some(user_id);
         summary.admin_user_created = true;
@@ -429,8 +606,8 @@ mod tests {
 
     #[test]
     fn all_realm_roles_declared() {
-        let names: Vec<&str> = REALM_ROLES.iter().map(|(n,_)| *n).collect();
-        assert_eq!(names, ["SuperAdmin","TenantAdmin","User","Readonly"]);
+        let names: Vec<&str> = REALM_ROLES.iter().map(|(n, _)| *n).collect();
+        assert_eq!(names, ["SuperAdmin", "TenantAdmin", "User", "Readonly"]);
     }
 
     #[test]

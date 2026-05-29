@@ -29,9 +29,9 @@ const DEFAULT_TTL_SECONDS: i64 = 7 * 24 * 3600;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/drive/files/:id/shares",  get(list).post(create))
-        .route("/api/v1/drive/shares/:id",        delete(revoke))
-        .route("/api/v1/drive/share/:token",      get(public_download))
+        .route("/api/v1/drive/files/:id/shares", get(list).post(create))
+        .route("/api/v1/drive/shares/:id", delete(revoke))
+        .route("/api/v1/drive/share/:token", get(public_download))
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -47,14 +47,14 @@ pub struct CreateResp {
     /// Token cleartext — entregue uma única vez. Guarde com cuidado.
     pub token: String,
     /// URL relativa pronta p/ compartilhamento via gateway.
-    pub url:   String,
+    pub url: String,
 }
 
 async fn create(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path(file_id): Path<Uuid>,
-    Json(body):   Json<CreateBody>,
+    Json(body): Json<CreateBody>,
 ) -> Result<(StatusCode, Json<CreateResp>)> {
     let pool = state.db_or_unavailable()?;
     // Arquivo precisa existir + pertencer ao tenant do requisitante.
@@ -90,10 +90,10 @@ async fn create(
 }
 
 async fn list(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Path(file_id): Path<Uuid>,
-    req_headers:   HeaderMap,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     FileRepo::new(pool).get(ctx.tenant_id, file_id).await?;
@@ -108,7 +108,9 @@ async fn list(
     if let Some(ts) = max_created {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -116,23 +118,30 @@ async fn list(
             }
         }
     }
-    let rows = ShareRepo::new(pool).list_for_file(ctx.tenant_id, file_id).await?;
+    let rows = ShareRepo::new(pool)
+        .list_for_file(ctx.tenant_id, file_id)
+        .await?;
     let mut resp = Json(rows).into_response();
     if let Some(ts) = max_created {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
 
 async fn revoke(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
-    let pool    = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let changed = ShareRepo::new(pool).revoke(ctx.tenant_id, id).await?;
-    if changed == 0 { return Err(DriveError::NotFound(id)); }
+    if changed == 0 {
+        return Err(DriveError::NotFound(id));
+    }
     tracing::info!(target: "audit",
         event = "drive.share.revoke",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, share_id = %id);
@@ -141,12 +150,14 @@ async fn revoke(
 
 async fn public_download(
     State(state): State<AppState>,
-    Path(token):  Path<String>,
+    Path(token): Path<String>,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let token_hash = format!("{:x}", Sha256::digest(token.as_bytes()));
     let repo = ShareRepo::new(pool);
-    let resolved = repo.resolve(&token_hash).await?
+    let resolved = repo
+        .resolve(&token_hash)
+        .await?
         .ok_or(DriveError::Forbidden)?;
 
     let now = OffsetDateTime::now_utc();
@@ -156,11 +167,15 @@ async fn public_download(
 
     // Download via pool (bypass tenant — owner do blob é o tenant do share).
     // Usamos fetch direto por id + tenant já conhecidos.
-    let file = FileRepo::new(pool).get(resolved.tenant_id, resolved.file_id).await?;
+    let file = FileRepo::new(pool)
+        .get(resolved.tenant_id, resolved.file_id)
+        .await?;
     if file.kind != "file" {
         return Err(DriveError::BadRequest("share target is a folder".into()));
     }
-    let key = file.storage_key.as_deref()
+    let key = file
+        .storage_key
+        .as_deref()
         .ok_or_else(|| DriveError::BadRequest("file has no content".into()))?;
     let bytes = fs::read(state.data_root().join(key)).await?;
 

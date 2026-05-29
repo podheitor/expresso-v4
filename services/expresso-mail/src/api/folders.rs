@@ -5,46 +5,95 @@
 //! explícitos, e RLS de `mailboxes` filtra junto. Sem essa combinação o
 //! endpoint vazava mailboxes de todos os tenants (RLS no schema é NULL-bypass).
 
-use axum::{Router, routing::get, extract::{State, Path, Query}, http::{header, HeaderMap, HeaderValue, StatusCode}, response::{IntoResponse, Response}, Json};
-use time::OffsetDateTime;
+use axum::{
+    extract::{Path, Query, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router,
+};
 use expresso_core::begin_tenant_tx;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{api::context::RequestCtx, error::{MailError, Result}, state::AppState};
+use crate::{
+    api::context::RequestCtx,
+    error::{MailError, Result},
+    state::AppState,
+};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/mail/folders",                    get(list_folders).post(create_folder))
-        .route("/mail/folders/all",                get(list_all_folders))
-        .route("/mail/folders/unread-summary",     get(unread_summary))
-        .route("/mail/folders/stats",              get(folders_stats))
-        .route("/mail/folders/size-summary",       get(folders_size_summary))
-        .route("/mail/folders/special-use/empty",       axum::routing::post(empty_special_use_folders_bulk))
-        .route("/mail/folders/special-use/:slot/empty", axum::routing::post(empty_special_use_folder))
-        .route("/mail/folders/special-use/mark-unread", axum::routing::post(mark_unread_special_use_folders_bulk))
-        .route("/mail/folders/rename-history",     get(list_folder_rename_history))
-        .route("/mail/folders/rename-history/revert-all", axum::routing::post(revert_all_folder_renames))
-        .route("/mail/folders/rename-history/by-mailbox/:mailbox_id/undo", axum::routing::post(undo_folder_rename_by_mailbox))
-        .route("/mail/folders/rename-history/:id/undo", axum::routing::post(undo_folder_rename))
-        .route("/mail/folders/:id/stats",          get(folder_stats_by_id))
-        .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
-        .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
-        .route("/mail/folders/:name/mark-unread",  axum::routing::post(mark_folder_unread))
-        .route("/mail/folders/:name/empty",        axum::routing::post(empty_folder))
-        .route("/mail/folders/:name/subscribe",    axum::routing::post(subscribe_folder))
-        .route("/mail/folders/:name/unsubscribe",  axum::routing::post(unsubscribe_folder))
+        .route("/mail/folders", get(list_folders).post(create_folder))
+        .route("/mail/folders/all", get(list_all_folders))
+        .route("/mail/folders/unread-summary", get(unread_summary))
+        .route("/mail/folders/stats", get(folders_stats))
+        .route("/mail/folders/size-summary", get(folders_size_summary))
+        .route(
+            "/mail/folders/special-use/empty",
+            axum::routing::post(empty_special_use_folders_bulk),
+        )
+        .route(
+            "/mail/folders/special-use/:slot/empty",
+            axum::routing::post(empty_special_use_folder),
+        )
+        .route(
+            "/mail/folders/special-use/mark-unread",
+            axum::routing::post(mark_unread_special_use_folders_bulk),
+        )
+        .route(
+            "/mail/folders/rename-history",
+            get(list_folder_rename_history),
+        )
+        .route(
+            "/mail/folders/rename-history/revert-all",
+            axum::routing::post(revert_all_folder_renames),
+        )
+        .route(
+            "/mail/folders/rename-history/by-mailbox/:mailbox_id/undo",
+            axum::routing::post(undo_folder_rename_by_mailbox),
+        )
+        .route(
+            "/mail/folders/rename-history/:id/undo",
+            axum::routing::post(undo_folder_rename),
+        )
+        .route("/mail/folders/:id/stats", get(folder_stats_by_id))
+        .route(
+            "/mail/folders/:name",
+            axum::routing::patch(rename_folder).delete(delete_folder),
+        )
+        .route(
+            "/mail/folders/:name/mark-read",
+            axum::routing::post(mark_folder_read),
+        )
+        .route(
+            "/mail/folders/:name/mark-unread",
+            axum::routing::post(mark_folder_unread),
+        )
+        .route(
+            "/mail/folders/:name/empty",
+            axum::routing::post(empty_folder),
+        )
+        .route(
+            "/mail/folders/:name/subscribe",
+            axum::routing::post(subscribe_folder),
+        )
+        .route(
+            "/mail/folders/:name/unsubscribe",
+            axum::routing::post(unsubscribe_folder),
+        )
 }
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct FolderDto {
-    pub id:            Uuid,
-    pub name:          String,
-    pub special_use:   Option<String>,
+    pub id: Uuid,
+    pub name: String,
+    pub special_use: Option<String>,
     pub message_count: i32,
-    pub unseen_count:  i32,
-    pub subscribed:    bool,
+    pub unseen_count: i32,
+    pub subscribed: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,8 +109,8 @@ pub struct RenameFolderRequest {
 /// GET /api/v1/mail/folders
 async fn list_folders(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let max_ts: Option<OffsetDateTime> = sqlx::query_scalar(
         "SELECT MAX(updated_at) FROM mailboxes WHERE tenant_id = $1 AND user_id = $2 AND subscribed = true",
@@ -75,7 +124,9 @@ async fn list_folders(
     if let Some(ts) = max_ts {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -115,7 +166,7 @@ async fn list_folders(
                 ELSE 10
             END,
             folder_name
-        "#
+        "#,
     )
     .bind(ctx.tenant_id)
     .bind(ctx.user_id)
@@ -124,12 +175,19 @@ async fn list_folders(
     tx.commit().await?;
 
     let mut resp = (
-        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        [(
+            header::HeaderName::from_static("x-total-count"),
+            total.to_string(),
+        )],
         Json(rows),
-    ).into_response();
+    )
+        .into_response();
     if let Some(ts) = max_ts {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -137,8 +195,8 @@ async fn list_folders(
 /// POST /api/v1/mail/folders — create a new folder
 async fn create_folder(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(body):   Json<CreateFolderRequest>,
+    ctx: RequestCtx,
+    Json(body): Json<CreateFolderRequest>,
 ) -> Result<(StatusCode, Json<FolderDto>)> {
     validate_folder_name(&body.name)?;
 
@@ -154,7 +212,10 @@ async fn create_folder(
     .await?;
 
     if existing.is_some() {
-        return Err(MailError::BadRequest(format!("folder '{}' already exists", body.name)));
+        return Err(MailError::BadRequest(format!(
+            "folder '{}' already exists",
+            body.name
+        )));
     }
 
     let row: FolderDto = sqlx::query_as(
@@ -186,10 +247,10 @@ async fn create_folder(
 /// o rename roda rollback. Habilita audit trail e UI tipo "histórico de
 /// renames" via GET /api/v1/mail/folders/rename-history.
 async fn rename_folder(
-    State(state):  State<AppState>,
-    ctx:           RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Path(old_name): Path<String>,
-    Json(body):    Json<RenameFolderRequest>,
+    Json(body): Json<RenameFolderRequest>,
 ) -> Result<Json<FolderDto>> {
     validate_folder_name(&body.name)?;
 
@@ -207,7 +268,11 @@ async fn rename_folder(
 
     let mailbox_id = match lookup {
         None => return Err(MailError::FolderNotFound { folder: old_name }),
-        Some((_, Some(_))) => return Err(MailError::BadRequest("cannot rename a system folder".into())),
+        Some((_, Some(_))) => {
+            return Err(MailError::BadRequest(
+                "cannot rename a system folder".into(),
+            ))
+        }
         Some((id, None)) => id,
     };
 
@@ -230,7 +295,9 @@ async fn rename_folder(
     .fetch_optional(&mut *tx)
     .await?;
 
-    let dto = row.ok_or_else(|| MailError::FolderNotFound { folder: old_name.clone() })?;
+    let dto = row.ok_or_else(|| MailError::FolderNotFound {
+        folder: old_name.clone(),
+    })?;
 
     sqlx::query(
         "INSERT INTO mail_folder_rename_history \
@@ -252,19 +319,19 @@ async fn rename_folder(
 
 #[derive(Debug, serde::Deserialize)]
 struct FolderRenameHistoryQuery {
-    limit:      Option<i64>,
-    since:      Option<time::OffsetDateTime>,
-    before:     Option<time::OffsetDateTime>,
-    name:       Option<String>,
+    limit: Option<i64>,
+    since: Option<time::OffsetDateTime>,
+    before: Option<time::OffsetDateTime>,
+    name: Option<String>,
     mailbox_id: Option<Uuid>,
 }
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
 struct FolderRenameHistoryEntry {
-    id:         Uuid,
+    id: Uuid,
     mailbox_id: Uuid,
-    old_name:   String,
-    new_name:   String,
+    old_name: String,
+    new_name: String,
     renamed_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
     renamed_at: time::OffsetDateTime,
@@ -278,8 +345,8 @@ struct FolderRenameHistoryEntry {
 /// porque axum prefere static sobre `:capture` (lição #443/#448).
 async fn list_folder_rename_history(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<FolderRenameHistoryQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<FolderRenameHistoryQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let limit = q.limit.unwrap_or(50).clamp(1, 500);
 
@@ -304,7 +371,9 @@ async fn list_folder_rename_history(
     .fetch_all(state.db())
     .await?;
 
-    Ok(Json(serde_json::json!({ "limit": limit, "entries": entries })))
+    Ok(Json(
+        serde_json::json!({ "limit": limit, "entries": entries }),
+    ))
 }
 
 /// POST /api/v1/mail/folders/rename-history/:id/undo — reverte um rename
@@ -318,8 +387,8 @@ async fn list_folder_rename_history(
 /// special_use IS NOT NULL), então não há check redundante.
 async fn undo_folder_rename(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -349,8 +418,16 @@ async fn undo_folder_rename(
     .await?;
 
     let current_name = match current {
-        None => return Err(MailError::FolderNotFound { folder: format!("mailbox:{mailbox_id}") }),
-        Some((_, Some(_))) => return Err(MailError::BadRequest("cannot undo rename of system folder".into())),
+        None => {
+            return Err(MailError::FolderNotFound {
+                folder: format!("mailbox:{mailbox_id}"),
+            })
+        }
+        Some((_, Some(_))) => {
+            return Err(MailError::BadRequest(
+                "cannot undo rename of system folder".into(),
+            ))
+        }
         Some((name, None)) => name,
     };
 
@@ -421,8 +498,8 @@ async fn undo_folder_rename(
 /// Útil pra UX "desfazer último rename desta pasta" sem listar history e
 /// escolher o id manualmente.
 async fn undo_folder_rename_by_mailbox(
-    State(state):    State<AppState>,
-    ctx:             RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Path(mailbox_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -456,8 +533,16 @@ async fn undo_folder_rename_by_mailbox(
     .await?;
 
     let current_name = match current {
-        None => return Err(MailError::FolderNotFound { folder: format!("mailbox:{mailbox_id}") }),
-        Some((_, Some(_))) => return Err(MailError::BadRequest("cannot undo rename of system folder".into())),
+        None => {
+            return Err(MailError::FolderNotFound {
+                folder: format!("mailbox:{mailbox_id}"),
+            })
+        }
+        Some((_, Some(_))) => {
+            return Err(MailError::BadRequest(
+                "cannot undo rename of system folder".into(),
+            ))
+        }
         Some((name, None)) => name,
     };
 
@@ -521,7 +606,7 @@ async fn undo_folder_rename_by_mailbox(
 
 #[derive(Debug, Deserialize)]
 struct RevertAllQuery {
-    n:   Option<i64>,
+    n: Option<i64>,
     /// `?dry=true` retorna o plano sem aplicar (sprint #494). Default false.
     dry: Option<bool>,
 }
@@ -541,8 +626,8 @@ struct RevertAllQuery {
 /// experimental. DISTINCT ON garante 1 entry por mailbox (mais recente).
 async fn revert_all_folder_renames(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<RevertAllQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<RevertAllQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let n = q.n.unwrap_or(1).clamp(1, 50);
     let dry = q.dry.unwrap_or(false);
@@ -567,7 +652,7 @@ async fn revert_all_folder_renames(
     .await?;
 
     let mut reverted: Vec<serde_json::Value> = Vec::new();
-    let mut skipped:  Vec<serde_json::Value> = Vec::new();
+    let mut skipped: Vec<serde_json::Value> = Vec::new();
 
     for (entry_id, mailbox_id, old_name, new_name) in entries {
         let current: Option<(String, Option<String>)> = sqlx::query_as(
@@ -677,8 +762,8 @@ async fn revert_all_folder_renames(
 /// preview antes de "Confirm" no UI bulk.
 async fn revert_all_dry_run(
     state: &AppState,
-    ctx:   &RequestCtx,
-    n:     i64,
+    ctx: &RequestCtx,
+    n: i64,
 ) -> Result<Json<serde_json::Value>> {
     let entries: Vec<(Uuid, Uuid, String, String)> = sqlx::query_as(
         "SELECT DISTINCT ON (mailbox_id) id, mailbox_id, old_name, new_name \
@@ -693,8 +778,8 @@ async fn revert_all_dry_run(
     .fetch_all(state.db())
     .await?;
 
-    let mut planned:   Vec<serde_json::Value> = Vec::new();
-    let mut skipped:   Vec<serde_json::Value> = Vec::new();
+    let mut planned: Vec<serde_json::Value> = Vec::new();
+    let mut skipped: Vec<serde_json::Value> = Vec::new();
     let mut conflicts: Vec<serde_json::Value> = Vec::new();
 
     for (entry_id, mailbox_id, old_name, new_name) in entries {
@@ -778,9 +863,9 @@ async fn revert_all_dry_run(
 
 /// DELETE /api/v1/mail/folders/:name — delete folder and all its messages
 async fn delete_folder(
-    State(state):   State<AppState>,
-    ctx:            RequestCtx,
-    Path(name):     Path<String>,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(name): Path<String>,
 ) -> Result<StatusCode> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -797,20 +882,22 @@ async fn delete_folder(
 
     match special {
         None => return Err(MailError::FolderNotFound { folder: name }),
-        Some(Some(_)) => return Err(MailError::BadRequest("cannot delete a system folder".into())),
+        Some(Some(_)) => {
+            return Err(MailError::BadRequest(
+                "cannot delete a system folder".into(),
+            ))
+        }
         Some(None) => {}
     }
 
     // messages.mailbox_id has ON DELETE CASCADE, so deleting the mailbox row
     // removes all contained messages automatically.
-    sqlx::query(
-        "DELETE FROM mailboxes WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3",
-    )
-    .bind(ctx.user_id)
-    .bind(ctx.tenant_id)
-    .bind(&name)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("DELETE FROM mailboxes WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3")
+        .bind(ctx.user_id)
+        .bind(ctx.tenant_id)
+        .bind(&name)
+        .execute(&mut *tx)
+        .await?;
 
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
@@ -819,8 +906,8 @@ async fn delete_folder(
 /// GET /api/v1/mail/folders/all — list ALL folders including unsubscribed ones
 async fn list_all_folders(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let max_ts: Option<OffsetDateTime> = sqlx::query_scalar(
         "SELECT MAX(updated_at) FROM mailboxes WHERE tenant_id = $1 AND user_id = $2",
@@ -834,7 +921,9 @@ async fn list_all_folders(
     if let Some(ts) = max_ts {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -844,13 +933,12 @@ async fn list_all_folders(
     }
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
-    let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM mailboxes WHERE tenant_id = $1 AND user_id = $2",
-    )
-    .bind(ctx.tenant_id)
-    .bind(ctx.user_id)
-    .fetch_one(&mut *tx)
-    .await?;
+    let total: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM mailboxes WHERE tenant_id = $1 AND user_id = $2")
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .fetch_one(&mut *tx)
+            .await?;
     let rows: Vec<FolderDto> = sqlx::query_as(
         r#"
         SELECT
@@ -873,7 +961,7 @@ async fn list_all_folders(
                 ELSE 10
             END,
             folder_name
-        "#
+        "#,
     )
     .bind(ctx.tenant_id)
     .bind(ctx.user_id)
@@ -882,12 +970,19 @@ async fn list_all_folders(
     tx.commit().await?;
 
     let mut resp = (
-        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        [(
+            header::HeaderName::from_static("x-total-count"),
+            total.to_string(),
+        )],
         Json(rows),
-    ).into_response();
+    )
+        .into_response();
     if let Some(ts) = max_ts {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -895,8 +990,8 @@ async fn list_all_folders(
 /// POST /api/v1/mail/folders/:name/subscribe — mark folder as subscribed
 async fn subscribe_folder(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(name):   Path<String>,
+    ctx: RequestCtx,
+    Path(name): Path<String>,
 ) -> Result<StatusCode> {
     set_subscribed(&state, &ctx, &name, true).await
 }
@@ -904,16 +999,16 @@ async fn subscribe_folder(
 /// POST /api/v1/mail/folders/:name/unsubscribe — mark folder as unsubscribed
 async fn unsubscribe_folder(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(name):   Path<String>,
+    ctx: RequestCtx,
+    Path(name): Path<String>,
 ) -> Result<StatusCode> {
     set_subscribed(&state, &ctx, &name, false).await
 }
 
 async fn set_subscribed(
-    state:      &AppState,
-    ctx:        &RequestCtx,
-    name:       &str,
+    state: &AppState,
+    ctx: &RequestCtx,
+    name: &str,
     subscribed: bool,
 ) -> Result<StatusCode> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -931,7 +1026,9 @@ async fn set_subscribed(
     tx.commit().await?;
 
     if affected == 0 {
-        Err(MailError::FolderNotFound { folder: name.to_string() })
+        Err(MailError::FolderNotFound {
+            folder: name.to_string(),
+        })
     } else {
         Ok(StatusCode::NO_CONTENT)
     }
@@ -942,8 +1039,8 @@ async fn set_subscribed(
 /// Returns `{"marked": N}` — number of messages that had the flag added.
 async fn mark_folder_read(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(name):   Path<String>,
+    ctx: RequestCtx,
+    Path(name): Path<String>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -984,8 +1081,8 @@ async fn mark_folder_read(
 /// pasta não pertence ao user.
 async fn mark_folder_unread(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(name):   Path<String>,
+    ctx: RequestCtx,
+    Path(name): Path<String>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -1027,8 +1124,8 @@ async fn mark_folder_unread(
 /// como delete_folder bloqueia em qualquer system folder.
 async fn empty_folder(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(name):   Path<String>,
+    ctx: RequestCtx,
+    Path(name): Path<String>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -1067,17 +1164,19 @@ async fn empty_folder(
 /// special_use. Idempotente: pasta já vazia retorna `{deleted: 0}`.
 async fn empty_special_use_folder(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(slot):   Path<String>,
+    ctx: RequestCtx,
+    Path(slot): Path<String>,
 ) -> Result<Json<serde_json::Value>> {
     let special_use = match slot.to_lowercase().as_str() {
-        "trash"  => "\\Trash",
-        "junk"   => "\\Junk",
+        "trash" => "\\Trash",
+        "junk" => "\\Junk",
         "drafts" => "\\Drafts",
-        "sent"   => "\\Sent",
-        _ => return Err(MailError::BadRequest(
-            "slot must be one of: trash, junk, drafts, sent".into()
-        )),
+        "sent" => "\\Sent",
+        _ => {
+            return Err(MailError::BadRequest(
+                "slot must be one of: trash, junk, drafts, sent".into(),
+            ))
+        }
     };
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -1131,8 +1230,8 @@ struct EmptyBulkQuery {
 /// para os slots que de fato mapearam pra mailboxes existentes.
 async fn empty_special_use_folders_bulk(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<EmptyBulkQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<EmptyBulkQuery>,
 ) -> Result<Json<serde_json::Value>> {
     use std::collections::BTreeSet;
 
@@ -1143,21 +1242,21 @@ async fn empty_special_use_folders_bulk(
         .filter(|s| !s.is_empty())
         .collect();
     if slots.is_empty() || slots.len() > 4 {
-        return Err(MailError::BadRequest(
-            "slots must be 1..4 entries".into(),
-        ));
+        return Err(MailError::BadRequest("slots must be 1..4 entries".into()));
     }
 
     let mut mapped: Vec<(String, &'static str)> = Vec::with_capacity(slots.len());
     for s in &slots {
         let su = match s.as_str() {
-            "trash"  => "\\Trash",
-            "junk"   => "\\Junk",
+            "trash" => "\\Trash",
+            "junk" => "\\Junk",
             "drafts" => "\\Drafts",
-            "sent"   => "\\Sent",
-            _ => return Err(MailError::BadRequest(format!(
-                "unknown slot '{s}': must be one of trash, junk, drafts, sent"
-            ))),
+            "sent" => "\\Sent",
+            _ => {
+                return Err(MailError::BadRequest(format!(
+                    "unknown slot '{s}': must be one of trash, junk, drafts, sent"
+                )))
+            }
         };
         mapped.push((s.clone(), su));
     }
@@ -1176,7 +1275,9 @@ async fn empty_special_use_folders_bulk(
         .fetch_optional(&mut *tx)
         .await?;
 
-        let Some((mbox_id, folder_name)) = mbox else { continue };
+        let Some((mbox_id, folder_name)) = mbox else {
+            continue;
+        };
 
         let res = sqlx::query(
             r#"DELETE FROM messages
@@ -1213,8 +1314,8 @@ async fn empty_special_use_folders_bulk(
 /// "marcar Trash+Junk como não lidos" sem precisar saber labels locais.
 async fn mark_unread_special_use_folders_bulk(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Query(q):     Query<EmptyBulkQuery>,
+    ctx: RequestCtx,
+    Query(q): Query<EmptyBulkQuery>,
 ) -> Result<Json<serde_json::Value>> {
     use std::collections::BTreeSet;
 
@@ -1231,13 +1332,15 @@ async fn mark_unread_special_use_folders_bulk(
     let mut mapped: Vec<(String, &'static str)> = Vec::with_capacity(slots.len());
     for s in &slots {
         let su = match s.as_str() {
-            "trash"  => "\\Trash",
-            "junk"   => "\\Junk",
+            "trash" => "\\Trash",
+            "junk" => "\\Junk",
             "drafts" => "\\Drafts",
-            "sent"   => "\\Sent",
-            _ => return Err(MailError::BadRequest(format!(
-                "unknown slot '{s}': must be one of trash, junk, drafts, sent"
-            ))),
+            "sent" => "\\Sent",
+            _ => {
+                return Err(MailError::BadRequest(format!(
+                    "unknown slot '{s}': must be one of trash, junk, drafts, sent"
+                )))
+            }
         };
         mapped.push((s.clone(), su));
     }
@@ -1256,7 +1359,9 @@ async fn mark_unread_special_use_folders_bulk(
         .fetch_optional(&mut *tx)
         .await?;
 
-        let Some((mbox_id, folder_name)) = mbox else { continue };
+        let Some((mbox_id, folder_name)) = mbox else {
+            continue;
+        };
 
         let res = sqlx::query(
             r#"UPDATE messages
@@ -1289,7 +1394,7 @@ async fn mark_unread_special_use_folders_bulk(
 /// Use this when you need accurate counts; `GET /mail/folders` returns the cached `unseen_count`.
 async fn unread_summary(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<Vec<serde_json::Value>>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     // Muted conversations are excluded from the badge: a noisy thread the user
@@ -1322,7 +1427,8 @@ async fn unread_summary(
     .await?;
     tx.commit().await?;
 
-    let result = rows.into_iter()
+    let result = rows
+        .into_iter()
         .map(|(folder, unread)| serde_json::json!({"folder": folder, "unread": unread}))
         .collect();
     Ok(Json(result))
@@ -1336,7 +1442,7 @@ async fn unread_summary(
 /// preferência axum (lição #443/#448), sem necessidade de hífen.
 async fn folders_stats(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<Vec<serde_json::Value>>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let rows: Vec<(String, Option<String>, i64, i64, i64)> = sqlx::query_as(
@@ -1360,14 +1466,17 @@ async fn folders_stats(
     .await?;
     tx.commit().await?;
 
-    let result = rows.into_iter()
-        .map(|(folder, special_use, total, unread, size_bytes)| serde_json::json!({
-            "folder":      folder,
-            "special_use": special_use,
-            "total":       total,
-            "unread":      unread,
-            "size_bytes":  size_bytes,
-        }))
+    let result = rows
+        .into_iter()
+        .map(|(folder, special_use, total, unread, size_bytes)| {
+            serde_json::json!({
+                "folder":      folder,
+                "special_use": special_use,
+                "total":       total,
+                "unread":      unread,
+                "size_bytes":  size_bytes,
+            })
+        })
         .collect();
     Ok(Json(result))
 }
@@ -1380,7 +1489,7 @@ async fn folders_stats(
 /// de cleanup. Path estático precede `/folders/:name` (lição #443/#448).
 async fn folders_size_summary(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let rows: Vec<(String, Option<String>, i64, i64)> = sqlx::query_as(
@@ -1404,13 +1513,16 @@ async fn folders_size_summary(
     tx.commit().await?;
 
     let total_bytes: i64 = rows.iter().map(|(_, _, sz, _)| sz).sum();
-    let folders: Vec<_> = rows.into_iter()
-        .map(|(folder, special_use, size_bytes, message_count)| serde_json::json!({
-            "folder":        folder,
-            "special_use":   special_use,
-            "size_bytes":    size_bytes,
-            "message_count": message_count,
-        }))
+    let folders: Vec<_> = rows
+        .into_iter()
+        .map(|(folder, special_use, size_bytes, message_count)| {
+            serde_json::json!({
+                "folder":        folder,
+                "special_use":   special_use,
+                "size_bytes":    size_bytes,
+                "message_count": message_count,
+            })
+        })
         .collect();
 
     Ok(Json(serde_json::json!({
@@ -1426,8 +1538,8 @@ async fn folders_size_summary(
 /// (#454) mas por UUID em vez de listar todos (sprint #581).
 async fn folder_stats_by_id(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row: Option<(Uuid, String, Option<String>, i64, i64, i64)> = sqlx::query_as(
@@ -1453,8 +1565,7 @@ async fn folder_stats_by_id(
     .await?;
     tx.commit().await?;
 
-    let (fid, folder, special_use, total, unread, size_bytes) = row
-        .ok_or(MailError::NotFound)?;
+    let (fid, folder, special_use, total, unread, size_bytes) = row.ok_or(MailError::NotFound)?;
 
     Ok(Json(serde_json::json!({
         "folder_id":   fid,
@@ -1471,10 +1582,14 @@ async fn folder_stats_by_id(
 /// interpolation in legacy code paths. Keeps folders safe for IMAP LIST patterns.
 fn validate_folder_name(name: &str) -> Result<()> {
     if name.is_empty() || name.len() > 200 {
-        return Err(MailError::BadRequest("folder name must be 1–200 chars".into()));
+        return Err(MailError::BadRequest(
+            "folder name must be 1–200 chars".into(),
+        ));
     }
     if name.contains('\0') || name.contains('\r') || name.contains('\n') {
-        return Err(MailError::BadRequest("folder name contains invalid characters".into()));
+        return Err(MailError::BadRequest(
+            "folder name contains invalid characters".into(),
+        ));
     }
     Ok(())
 }

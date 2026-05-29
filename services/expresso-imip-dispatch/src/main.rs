@@ -78,7 +78,9 @@ struct AttendeeWire {
     rsvp: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Debug, Deserialize)]
 struct InviteWire {
@@ -112,11 +114,15 @@ impl From<InviteWire> for EventInvite {
             dtend: w.dtend,
             organizer_email: w.organizer_email,
             organizer_cn: w.organizer_cn,
-            attendees: w.attendees.into_iter().map(|a| Attendee {
-                email: a.email,
-                common_name: a.common_name,
-                rsvp: a.rsvp,
-            }).collect(),
+            attendees: w
+                .attendees
+                .into_iter()
+                .map(|a| Attendee {
+                    email: a.email,
+                    common_name: a.common_name,
+                    rsvp: a.rsvp,
+                })
+                .collect(),
         }
     }
 }
@@ -142,15 +148,22 @@ struct SmtpConfig {
 
 impl SmtpConfig {
     fn from_env() -> Self {
-        let enabled = env::var("IMIP_ENABLED").map(|v| v == "true").unwrap_or(false);
+        let enabled = env::var("IMIP_ENABLED")
+            .map(|v| v == "true")
+            .unwrap_or(false);
         Self {
             enabled,
             host: env::var("SMTP_HOST").unwrap_or_default(),
-            port: env::var("SMTP_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(587),
+            port: env::var("SMTP_PORT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(587),
             user: env::var("SMTP_USER").ok().filter(|s| !s.is_empty()),
             password: env::var("SMTP_PASSWORD").ok().filter(|s| !s.is_empty()),
             from: env::var("SMTP_FROM").unwrap_or_else(|_| "noreply@expresso.local".into()),
-            starttls: env::var("SMTP_STARTTLS").map(|v| v != "false").unwrap_or(true),
+            starttls: env::var("SMTP_STARTTLS")
+                .map(|v| v != "false")
+                .unwrap_or(true),
         }
     }
 }
@@ -183,15 +196,23 @@ async fn main() -> Result<()> {
     let client = async_nats::connect(&nats_url).await?;
     let js = jetstream::new(client);
 
-    let stream = js.get_stream(&stream_name).await
+    let stream = js
+        .get_stream(&stream_name)
+        .await
         .with_context(|| format!("get stream {stream_name}"))?;
 
-    let consumer = stream.get_or_create_consumer(&durable, PullConfig {
-        durable_name: Some(durable.clone()),
-        filter_subject: subject.clone(),
-        deliver_policy: DeliverPolicy::New,
-        ..Default::default()
-    }).await.context("create consumer")?;
+    let consumer = stream
+        .get_or_create_consumer(
+            &durable,
+            PullConfig {
+                durable_name: Some(durable.clone()),
+                filter_subject: subject.clone(),
+                deliver_policy: DeliverPolicy::New,
+                ..Default::default()
+            },
+        )
+        .await
+        .context("create consumer")?;
 
     info!("consumer ready, waiting for messages");
 
@@ -199,13 +220,18 @@ async fn main() -> Result<()> {
     while let Some(msg) = messages.next().await {
         let msg = match msg {
             Ok(m) => m,
-            Err(e) => { warn!(error=%e, "recv error"); continue; }
+            Err(e) => {
+                warn!(error=%e, "recv error");
+                continue;
+            }
         };
         let smtp = smtp.clone();
         tokio::spawn(async move {
             match process_message(&msg.payload, &smtp).await {
                 Ok((method, _)) => {
-                    DISPATCH_TOTAL.with_label_values(&[method_label(method), "ok"]).inc();
+                    DISPATCH_TOTAL
+                        .with_label_values(&[method_label(method), "ok"])
+                        .inc();
                 }
                 Err(e) => {
                     warn!(error=%e, "dispatch failed");
@@ -221,7 +247,10 @@ async fn main() -> Result<()> {
 }
 
 fn method_label(m: Method) -> &'static str {
-    match m { Method::Request => "REQUEST", Method::Cancel => "CANCEL" }
+    match m {
+        Method::Request => "REQUEST",
+        Method::Cancel => "CANCEL",
+    }
 }
 
 fn pre_populate_metrics() {
@@ -234,11 +263,12 @@ fn pre_populate_metrics() {
 }
 
 async fn process_message(payload: &[u8], smtp: &SmtpConfig) -> Result<(Method, usize)> {
-    let env: Envelope = serde_json::from_slice(payload)
-        .map_err(|e| {
-            DISPATCH_TOTAL.with_label_values(&["unknown", "parse_err"]).inc();
-            anyhow::anyhow!("parse envelope: {e}")
-        })?;
+    let env: Envelope = serde_json::from_slice(payload).map_err(|e| {
+        DISPATCH_TOTAL
+            .with_label_values(&["unknown", "parse_err"])
+            .inc();
+        anyhow::anyhow!("parse envelope: {e}")
+    })?;
     let method: Method = env.method.into();
     let invite: EventInvite = env.invite.into();
     let subject_hint = env.subject_hint.unwrap_or_else(|| match method {
@@ -258,16 +288,28 @@ async fn process_message(payload: &[u8], smtp: &SmtpConfig) -> Result<(Method, u
             attendees = recipients.len(), subject = %subject_hint,
             "dry-run (IMIP_ENABLED=false)"
         );
-        DISPATCH_TOTAL.with_label_values(&[method_label(method), "dry_run"]).inc();
+        DISPATCH_TOTAL
+            .with_label_values(&[method_label(method), "dry_run"])
+            .inc();
         return Ok((method, recipients.len()));
     }
 
     // Actual SMTP send
-    send_via_smtp(smtp, &invite.organizer_email, &subject_hint, &ct, body, &recipients).await
-        .map_err(|e| {
-            DISPATCH_TOTAL.with_label_values(&[method_label(method), "send_err"]).inc();
-            e
-        })?;
+    send_via_smtp(
+        smtp,
+        &invite.organizer_email,
+        &subject_hint,
+        &ct,
+        body,
+        &recipients,
+    )
+    .await
+    .map_err(|e| {
+        DISPATCH_TOTAL
+            .with_label_values(&[method_label(method), "send_err"])
+            .inc();
+        e
+    })?;
     info!(uid=%invite.uid, method=method_label(method), attendees=recipients.len(), "sent");
     Ok((method, recipients.len()))
 }
@@ -287,20 +329,22 @@ async fn send_via_smtp(
     if recipients.is_empty() {
         return Err(anyhow::anyhow!("no recipients"));
     }
-    let from_mbox: lettre::message::Mailbox = cfg.from.parse()
+    let from_mbox: lettre::message::Mailbox = cfg
+        .from
+        .parse()
         .map_err(|e| anyhow::anyhow!("parse SMTP_FROM: {e}"))?;
 
-    let mut builder = Message::builder()
-        .from(from_mbox)
-        .subject(subject)
-        .header(ContentType::parse(content_type)
-            .map_err(|e| anyhow::anyhow!("content_type: {e}"))?);
+    let mut builder = Message::builder().from(from_mbox).subject(subject).header(
+        ContentType::parse(content_type).map_err(|e| anyhow::anyhow!("content_type: {e}"))?,
+    );
     for r in recipients {
-        let mbox: lettre::message::Mailbox = r.parse()
+        let mbox: lettre::message::Mailbox = r
+            .parse()
             .map_err(|e| anyhow::anyhow!("parse recipient {r}: {e}"))?;
         builder = builder.to(mbox);
     }
-    let email = builder.body(body)
+    let email = builder
+        .body(body)
         .map_err(|e| anyhow::anyhow!("build email: {e}"))?;
 
     let mut transport = if cfg.starttls {
@@ -313,7 +357,10 @@ async fn send_via_smtp(
     if let (Some(u), Some(p)) = (&cfg.user, &cfg.password) {
         transport = transport.credentials(Credentials::new(u.clone(), p.clone()));
     }
-    transport.build().send(email).await
+    transport
+        .build()
+        .send(email)
+        .await
         .map_err(|e| anyhow::anyhow!("smtp send: {e}"))?;
     Ok(())
 }
@@ -340,7 +387,10 @@ async fn run_ops_http(addr: String) {
         .route("/metrics", get(metrics_handler));
     let listener = match tokio::net::TcpListener::bind(&addr).await {
         Ok(l) => l,
-        Err(e) => { error!(error=%e, %addr, "ops http bind failed"); return; }
+        Err(e) => {
+            error!(error=%e, %addr, "ops http bind failed");
+            return;
+        }
     };
     info!(%addr, "ops http ready");
     if let Err(e) = axum::serve(listener, app).await {
@@ -352,7 +402,11 @@ async fn metrics_handler() -> impl IntoResponse {
     let mut buf = Vec::new();
     let enc = TextEncoder::new();
     if let Err(e) = enc.encode(&prometheus::gather(), &mut buf) {
-        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("encode: {e}")).into_response();
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("encode: {e}"),
+        )
+            .into_response();
     }
     ([(axum::http::header::CONTENT_TYPE, enc.format_type())], buf).into_response()
 }
@@ -416,12 +470,20 @@ mod tests {
     #[test]
     fn human_summary_varies_by_method() {
         let inv = EventInvite {
-            uid: "u".into(), sequence: 0, summary: "Foo".into(),
-            description: None, location: Some("L".into()),
+            uid: "u".into(),
+            sequence: 0,
+            summary: "Foo".into(),
+            description: None,
+            location: Some("L".into()),
             dtstart: time::macros::datetime!(2026-05-10 13:00 UTC),
-            dtend:   time::macros::datetime!(2026-05-10 14:00 UTC),
-            organizer_email: "o@x".into(), organizer_cn: None,
-            attendees: vec![Attendee{email:"a@x".into(),common_name:None,rsvp:true}],
+            dtend: time::macros::datetime!(2026-05-10 14:00 UTC),
+            organizer_email: "o@x".into(),
+            organizer_cn: None,
+            attendees: vec![Attendee {
+                email: "a@x".into(),
+                common_name: None,
+                rsvp: true,
+            }],
         };
         let r = human_summary(&inv, Method::Request);
         let c = human_summary(&inv, Method::Cancel);
@@ -432,7 +494,7 @@ mod tests {
     #[test]
     fn method_label_maps_both_variants() {
         assert_eq!(method_label(Method::Request), "REQUEST");
-        assert_eq!(method_label(Method::Cancel),  "CANCEL");
+        assert_eq!(method_label(Method::Cancel), "CANCEL");
     }
 
     #[test]
@@ -443,11 +505,15 @@ mod tests {
     #[test]
     fn human_summary_contains_event_summary() {
         let inv = EventInvite {
-            uid: "u2".into(), sequence: 1, summary: "Team Sync".into(),
-            description: None, location: None,
+            uid: "u2".into(),
+            sequence: 1,
+            summary: "Team Sync".into(),
+            description: None,
+            location: None,
             dtstart: time::macros::datetime!(2026-06-01 09:00 UTC),
-            dtend:   time::macros::datetime!(2026-06-01 10:00 UTC),
-            organizer_email: "org@x".into(), organizer_cn: None,
+            dtend: time::macros::datetime!(2026-06-01 10:00 UTC),
+            organizer_email: "org@x".into(),
+            organizer_cn: None,
             attendees: vec![],
         };
         let s = human_summary(&inv, Method::Request);
@@ -457,11 +523,15 @@ mod tests {
     #[test]
     fn human_summary_cancel_differs_from_request() {
         let inv = EventInvite {
-            uid: "u3".into(), sequence: 0, summary: "Friday Stand-up".into(),
-            description: None, location: None,
+            uid: "u3".into(),
+            sequence: 0,
+            summary: "Friday Stand-up".into(),
+            description: None,
+            location: None,
             dtstart: time::macros::datetime!(2026-06-06 10:00 UTC),
-            dtend:   time::macros::datetime!(2026-06-06 10:30 UTC),
-            organizer_email: "org@x".into(), organizer_cn: None,
+            dtend: time::macros::datetime!(2026-06-06 10:30 UTC),
+            organizer_email: "org@x".into(),
+            organizer_cn: None,
             attendees: vec![],
         };
         let req = human_summary(&inv, Method::Request);
@@ -472,11 +542,15 @@ mod tests {
     #[test]
     fn human_summary_request_contains_summary() {
         let inv = EventInvite {
-            uid: "u4".into(), sequence: 0, summary: "Sprint Review".into(),
-            description: None, location: None,
+            uid: "u4".into(),
+            sequence: 0,
+            summary: "Sprint Review".into(),
+            description: None,
+            location: None,
             dtstart: time::macros::datetime!(2026-07-01 14:00 UTC),
-            dtend:   time::macros::datetime!(2026-07-01 15:00 UTC),
-            organizer_email: "pm@x".into(), organizer_cn: None,
+            dtend: time::macros::datetime!(2026-07-01 15:00 UTC),
+            organizer_email: "pm@x".into(),
+            organizer_cn: None,
             attendees: vec![],
         };
         let s = human_summary(&inv, Method::Request);
@@ -486,11 +560,15 @@ mod tests {
     #[test]
     fn human_summary_not_empty() {
         let inv = EventInvite {
-            uid: "u5".into(), sequence: 1, summary: "Daily".into(),
-            description: None, location: None,
+            uid: "u5".into(),
+            sequence: 1,
+            summary: "Daily".into(),
+            description: None,
+            location: None,
             dtstart: time::macros::datetime!(2026-08-01 09:00 UTC),
-            dtend:   time::macros::datetime!(2026-08-01 09:15 UTC),
-            organizer_email: "lead@x".into(), organizer_cn: None,
+            dtend: time::macros::datetime!(2026-08-01 09:15 UTC),
+            organizer_email: "lead@x".into(),
+            organizer_cn: None,
             attendees: vec![],
         };
         assert!(!human_summary(&inv, Method::Cancel).is_empty());
@@ -499,11 +577,15 @@ mod tests {
     #[test]
     fn human_summary_request_contains_organizer() {
         let inv = EventInvite {
-            uid: "u6".into(), sequence: 0, summary: "Sprint Planning".into(),
-            description: None, location: None,
+            uid: "u6".into(),
+            sequence: 0,
+            summary: "Sprint Planning".into(),
+            description: None,
+            location: None,
             dtstart: time::macros::datetime!(2026-08-02 10:00 UTC),
-            dtend:   time::macros::datetime!(2026-08-02 11:00 UTC),
-            organizer_email: "pm@corp.com".into(), organizer_cn: None,
+            dtend: time::macros::datetime!(2026-08-02 11:00 UTC),
+            organizer_email: "pm@corp.com".into(),
+            organizer_cn: None,
             attendees: vec![],
         };
         let s = human_summary(&inv, Method::Request);
@@ -539,11 +621,15 @@ mod tests {
     #[test]
     fn human_summary_location_used_when_present() {
         let inv = EventInvite {
-            uid: "u7".into(), sequence: 0, summary: "Kick-off".into(),
-            description: None, location: Some("Room 42".into()),
+            uid: "u7".into(),
+            sequence: 0,
+            summary: "Kick-off".into(),
+            description: None,
+            location: Some("Room 42".into()),
             dtstart: time::macros::datetime!(2026-09-01 10:00 UTC),
-            dtend:   time::macros::datetime!(2026-09-01 11:00 UTC),
-            organizer_email: "pm@x".into(), organizer_cn: None,
+            dtend: time::macros::datetime!(2026-09-01 11:00 UTC),
+            organizer_email: "pm@x".into(),
+            organizer_cn: None,
             attendees: vec![],
         };
         let s = human_summary(&inv, Method::Request);
@@ -565,11 +651,15 @@ mod tests {
     #[test]
     fn human_summary_cancel_contains_event_uid_in_summary() {
         let inv = EventInvite {
-            uid: "ev-cancel-99".into(), sequence: 0, summary: "CancelMe".into(),
-            description: None, location: None,
+            uid: "ev-cancel-99".into(),
+            sequence: 0,
+            summary: "CancelMe".into(),
+            description: None,
+            location: None,
             dtstart: time::macros::datetime!(2026-10-01 08:00 UTC),
-            dtend:   time::macros::datetime!(2026-10-01 09:00 UTC),
-            organizer_email: "a@x".into(), organizer_cn: None,
+            dtend: time::macros::datetime!(2026-10-01 09:00 UTC),
+            organizer_email: "a@x".into(),
+            organizer_cn: None,
             attendees: vec![],
         };
         let s = human_summary(&inv, Method::Cancel);
@@ -579,11 +669,15 @@ mod tests {
     #[test]
     fn human_summary_is_nonempty_for_request() {
         let inv = EventInvite {
-            uid: "ev-req-01".into(), sequence: 0, summary: "Team Sync".into(),
-            description: None, location: None,
+            uid: "ev-req-01".into(),
+            sequence: 0,
+            summary: "Team Sync".into(),
+            description: None,
+            location: None,
             dtstart: time::macros::datetime!(2026-06-01 10:00 UTC),
-            dtend:   time::macros::datetime!(2026-06-01 11:00 UTC),
-            organizer_email: "org@example.com".into(), organizer_cn: None,
+            dtend: time::macros::datetime!(2026-06-01 11:00 UTC),
+            organizer_email: "org@example.com".into(),
+            organizer_cn: None,
             attendees: vec![],
         };
         let s = human_summary(&inv, Method::Request);
@@ -593,11 +687,15 @@ mod tests {
     #[test]
     fn human_summary_cancel_contains_summary_text() {
         let inv = EventInvite {
-            uid: "ev-cancel-01".into(), sequence: 1, summary: "Q2 Review".into(),
-            description: None, location: None,
+            uid: "ev-cancel-01".into(),
+            sequence: 1,
+            summary: "Q2 Review".into(),
+            description: None,
+            location: None,
             dtstart: time::macros::datetime!(2026-07-01 14:00 UTC),
-            dtend:   time::macros::datetime!(2026-07-01 15:00 UTC),
-            organizer_email: "org@example.com".into(), organizer_cn: None,
+            dtend: time::macros::datetime!(2026-07-01 15:00 UTC),
+            organizer_email: "org@example.com".into(),
+            organizer_cn: None,
             attendees: vec![],
         };
         let s = human_summary(&inv, Method::Cancel);

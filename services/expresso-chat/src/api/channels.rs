@@ -28,18 +28,21 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/channels", post(create).get(list))
         .route("/api/v1/channels/:id", get(get_one).delete(archive))
-        .route("/api/v1/channels/:id/members", post(add_member).get(list_members))
+        .route(
+            "/api/v1/channels/:id/members",
+            post(add_member).get(list_members),
+        )
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CreateBody {
-    pub name:    String,
-    pub topic:   Option<String>,
-    pub kind:    Option<ChannelKind>,
+    pub name: String,
+    pub topic: Option<String>,
+    pub kind: Option<ChannelKind>,
     pub team_id: Option<Uuid>,
     /// Additional users (beyond the creator) to invite at creation.
     #[serde(default)]
-    pub invite:  Vec<Uuid>,
+    pub invite: Vec<Uuid>,
 }
 
 async fn create(
@@ -50,7 +53,7 @@ async fn create(
     if body.name.trim().is_empty() {
         return Err(ChatError::BadRequest("name required".into()));
     }
-    let pool   = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let matrix = state.matrix_or_unavailable()?;
 
     let kind = body.kind.unwrap_or(ChannelKind::Team);
@@ -62,25 +65,37 @@ async fn create(
     let invites_mxid: Vec<String> = body.invite.iter().map(|u| matrix.mxid_for(*u)).collect();
     let acting_as = matrix.mxid_for(ctx.user_id);
 
-    let room = matrix.create_room(&acting_as, &CreateRoomRequest {
-        name:   &body.name,
-        topic:  body.topic.as_deref(),
-        preset,
-        invite: &invites_mxid,
-    }).await?;
+    let room = matrix
+        .create_room(
+            &acting_as,
+            &CreateRoomRequest {
+                name: &body.name,
+                topic: body.topic.as_deref(),
+                preset,
+                invite: &invites_mxid,
+            },
+        )
+        .await?;
 
     let repo = ChannelRepo::new(pool);
-    let ch = repo.create(ctx.tenant_id, ctx.user_id, NewChannel {
-        matrix_room_id: room.room_id,
-        name:           body.name,
-        topic:          body.topic,
-        kind,
-        team_id:        body.team_id,
-    }).await?;
+    let ch = repo
+        .create(
+            ctx.tenant_id,
+            ctx.user_id,
+            NewChannel {
+                matrix_room_id: room.room_id,
+                name: body.name,
+                topic: body.topic,
+                kind,
+                team_id: body.team_id,
+            },
+        )
+        .await?;
 
     // Mirror explicit invitees into the DB member index.
     for u in body.invite {
-        repo.add_member(ctx.tenant_id, ch.id, u, MemberRole::Member).await?;
+        repo.add_member(ctx.tenant_id, ch.id, u, MemberRole::Member)
+            .await?;
     }
 
     Ok((StatusCode::CREATED, Json(ch)))
@@ -104,7 +119,9 @@ async fn list(
     if let Some(ts) = max_updated {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -112,14 +129,23 @@ async fn list(
             }
         }
     }
-    let rows = ChannelRepo::new(pool).list_for_user(ctx.tenant_id, ctx.user_id).await?;
+    let rows = ChannelRepo::new(pool)
+        .list_for_user(ctx.tenant_id, ctx.user_id)
+        .await?;
     let mut resp = (
-        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        [(
+            header::HeaderName::from_static("x-total-count"),
+            total.to_string(),
+        )],
         Json(rows),
-    ).into_response();
+    )
+        .into_response();
     if let Some(ts) = max_updated {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -135,7 +161,9 @@ async fn get_one(
     if !repo.is_member(ctx.tenant_id, id, ctx.user_id).await? {
         return Err(ChatError::NotMember);
     }
-    let ch = repo.get(ctx.tenant_id, id).await
+    let ch = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| ChatError::ChannelNotFound(id))?;
     let etag = format!("\"{}-{}\"", ch.updated_at.unix_timestamp(), ch.id);
     if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
@@ -143,10 +171,15 @@ async fn get_one(
             return Ok(StatusCode::NOT_MODIFIED.into_response());
         }
     }
-    let lm = ch.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = ch
+        .updated_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if ch.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -154,8 +187,10 @@ async fn get_one(
         }
     }
     let mut resp = Json(ch).into_response();
-    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
@@ -166,7 +201,9 @@ async fn archive(
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = ChannelRepo::new(pool);
-    let ch   = repo.get(ctx.tenant_id, id).await
+    let ch = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| ChatError::ChannelNotFound(id))?;
     // Archive allowed for the original creator OR any owner/admin member.
     if ch.created_by != ctx.user_id {
@@ -182,7 +219,7 @@ async fn archive(
 #[derive(Debug, Deserialize)]
 pub struct AddMemberBody {
     pub user_id: Uuid,
-    pub role:    Option<MemberRole>,
+    pub role: Option<MemberRole>,
 }
 
 async fn add_member(
@@ -191,34 +228,41 @@ async fn add_member(
     Path(id): Path<Uuid>,
     Json(body): Json<AddMemberBody>,
 ) -> Result<StatusCode> {
-    let pool   = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let matrix = state.matrix_or_unavailable()?;
-    let repo   = ChannelRepo::new(pool);
+    let repo = ChannelRepo::new(pool);
     // Invitation requires owner/admin role (RBAC hardening).
     match repo.member_role(ctx.tenant_id, id, ctx.user_id).await? {
         Some(MemberRole::Owner) | Some(MemberRole::Admin) => {}
         Some(_) => return Err(ChatError::Forbidden),
-        None    => return Err(ChatError::NotMember),
+        None => return Err(ChatError::NotMember),
     }
-    let ch = repo.get(ctx.tenant_id, id).await
+    let ch = repo
+        .get(ctx.tenant_id, id)
+        .await
         .map_err(|_| ChatError::ChannelNotFound(id))?;
 
-    let acting_as      = matrix.mxid_for(ctx.user_id);
-    let invitee_mxid   = matrix.mxid_for(body.user_id);
-    matrix.invite_user(&acting_as, &ch.matrix_room_id, &invitee_mxid).await?;
+    let acting_as = matrix.mxid_for(ctx.user_id);
+    let invitee_mxid = matrix.mxid_for(body.user_id);
+    matrix
+        .invite_user(&acting_as, &ch.matrix_room_id, &invitee_mxid)
+        .await?;
 
     repo.add_member(
-        ctx.tenant_id, id, body.user_id,
-        body.role.unwrap_or(MemberRole::Member)
-    ).await?;
+        ctx.tenant_id,
+        id,
+        body.user_id,
+        body.role.unwrap_or(MemberRole::Member),
+    )
+    .await?;
     Ok(StatusCode::CREATED)
 }
 
 async fn list_members(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let repo = ChannelRepo::new(pool);
@@ -236,7 +280,9 @@ async fn list_members(
     if let Some(ts) = max_joined {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -247,8 +293,11 @@ async fn list_members(
     let rows = repo.list_members(ctx.tenant_id, id).await?;
     let mut resp = Json(rows).into_response();
     if let Some(ts) = max_joined {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }

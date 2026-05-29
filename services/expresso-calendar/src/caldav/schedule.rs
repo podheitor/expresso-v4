@@ -50,7 +50,9 @@ pub async fn dispatch_itip(body: &str) -> std::result::Result<Vec<RecipientStatu
         return Err(StatusCode::BAD_REQUEST);
     }
     let cfg = SmtpCfg::from_env().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
-    let transport = cfg.build_transport().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let transport = cfg
+        .build_transport()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     let from_mbox: Mailbox = extract_organizer_email(body)
         .and_then(|e| e.parse().ok())
         .unwrap_or_else(|| cfg.from.clone());
@@ -58,14 +60,17 @@ pub async fn dispatch_itip(body: &str) -> std::result::Result<Vec<RecipientStatu
     let mut responses: Vec<RecipientStatus> = Vec::with_capacity(attendees.len());
     for att in &attendees {
         let to_mbox: Mailbox = match Mailbox::from_str(&att.email) {
-            Ok(m)  => m,
-            Err(_) => { responses.push((att.email.clone(), "3.7", "Invalid Calendar User")); continue; }
+            Ok(m) => m,
+            Err(_) => {
+                responses.push((att.email.clone(), "3.7", "Invalid Calendar User"));
+                continue;
+            }
         };
         let subject = match method.as_str() {
-            "REPLY"   => "Invitation Reply",
-            "CANCEL"  => "Invitation Cancelled",
+            "REPLY" => "Invitation Reply",
+            "CANCEL" => "Invitation Cancelled",
             "REFRESH" => "Invitation Refresh Request",
-            _         => "Meeting Invitation",
+            _ => "Meeting Invitation",
         };
         let ics_ct: ContentType = format!("text/calendar; method={method}; charset=utf-8")
             .parse()
@@ -84,11 +89,14 @@ pub async fn dispatch_itip(body: &str) -> std::result::Result<Vec<RecipientStatu
                         .body(body.to_owned())),
             );
         let msg = match msg_build {
-            Ok(m)  => m,
-            Err(_) => { responses.push((att.email.clone(), "5.1", "Message build failed")); continue; }
+            Ok(m) => m,
+            Err(_) => {
+                responses.push((att.email.clone(), "5.1", "Message build failed"));
+                continue;
+            }
         };
         match transport.send(msg).await {
-            Ok(_)  => responses.push((att.email.clone(), "1.2", "Message delivered")),
+            Ok(_) => responses.push((att.email.clone(), "1.2", "Message delivered")),
             Err(e) => {
                 tracing::warn!(error = %e, recipient = %att.email, "iMIP SMTP send failed");
                 responses.push((att.email.clone(), "5.1", "Service unavailable"));
@@ -100,10 +108,10 @@ pub async fn dispatch_itip(body: &str) -> std::result::Result<Vec<RecipientStatu
 
 /// POST on schedule-outbox — send iTIP to listed ATTENDEEs.
 pub async fn post(
-    _state:    AppState,
+    _state: AppState,
     principal: CalDavPrincipal,
-    path:      &str,
-    body:      &str,
+    path: &str,
+    body: &str,
 ) -> Result<Response> {
     match uri::classify(path) {
         Target::ScheduleOutbox { user_id } if user_id == principal.user_id => {}
@@ -177,18 +185,19 @@ fn render_schedule_response(items: &[RecipientStatus]) -> String {
 // ─── SMTP config ────────────────────────────────────────────────────────────
 
 struct SmtpCfg {
-    host:     String,
-    port:     u16,
+    host: String,
+    port: u16,
     username: Option<String>,
     password: Option<String>,
-    from:     Mailbox,
+    from: Mailbox,
     starttls: bool,
 }
 
 impl SmtpCfg {
     fn from_env() -> Option<Self> {
         let host = std::env::var("SMTP_HOST").ok()?;
-        let port = std::env::var("SMTP_PORT").ok()
+        let port = std::env::var("SMTP_PORT")
+            .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(25u16);
         let username = std::env::var("SMTP_USERNAME").ok();
@@ -198,13 +207,21 @@ impl SmtpCfg {
         let starttls = std::env::var("SMTP_STARTTLS")
             .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
             .unwrap_or(false);
-        Some(Self { host, port, username, password, from, starttls })
+        Some(Self {
+            host,
+            port,
+            username,
+            password,
+            from,
+            starttls,
+        })
     }
 
     fn build_transport(&self) -> Result<AsyncSmtpTransport<Tokio1Executor>> {
         let mut builder = if self.starttls {
-            AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&self.host)
-                .map_err(|e| crate::error::CalendarError::BadRequest(format!("SMTP relay config: {e}")))?
+            AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&self.host).map_err(|e| {
+                crate::error::CalendarError::BadRequest(format!("SMTP relay config: {e}"))
+            })?
         } else {
             AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&self.host)
         }
@@ -217,7 +234,10 @@ impl SmtpCfg {
 }
 
 fn simple(status: StatusCode) -> Response {
-    Response::builder().status(status).body(Body::empty()).unwrap()
+    Response::builder()
+        .status(status)
+        .body(Body::empty())
+        .unwrap()
 }
 
 #[cfg(test)]
@@ -234,7 +254,6 @@ mod tests {
     fn missing_method_returns_none() {
         assert!(extract_method("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n").is_none());
     }
-
 
     #[test]
     fn extracts_organizer() {
@@ -268,13 +287,19 @@ mod tests {
     #[test]
     fn extract_organizer_strips_mailto_prefix() {
         let ics = "BEGIN:VCALENDAR\r\nORGANIZER:mailto:alice@ex.com\r\nEND:VCALENDAR";
-        assert_eq!(extract_organizer_email(ics).as_deref(), Some("alice@ex.com"));
+        assert_eq!(
+            extract_organizer_email(ics).as_deref(),
+            Some("alice@ex.com")
+        );
     }
 
     #[test]
     fn extract_organizer_no_mailto_prefix() {
         let ics = "ORGANIZER:alice@ex.com";
-        assert_eq!(extract_organizer_email(ics).as_deref(), Some("alice@ex.com"));
+        assert_eq!(
+            extract_organizer_email(ics).as_deref(),
+            Some("alice@ex.com")
+        );
     }
 
     #[test]
@@ -291,7 +316,10 @@ mod tests {
     #[test]
     fn extract_organizer_email_uppercase_mailto_works() {
         let ics = "ORGANIZER:MAILTO:upper@ex.com";
-        assert_eq!(extract_organizer_email(ics).as_deref(), Some("upper@ex.com"));
+        assert_eq!(
+            extract_organizer_email(ics).as_deref(),
+            Some("upper@ex.com")
+        );
     }
 
     #[test]
@@ -308,13 +336,19 @@ mod tests {
     #[test]
     fn extract_organizer_email_with_mailto_returns_email() {
         let ics = "BEGIN:VCALENDAR\r\nORGANIZER:mailto:boss@corp.com\r\nEND:VCALENDAR\r\n";
-        assert_eq!(extract_organizer_email(ics).as_deref(), Some("boss@corp.com"));
+        assert_eq!(
+            extract_organizer_email(ics).as_deref(),
+            Some("boss@corp.com")
+        );
     }
 
     #[test]
     fn extract_organizer_email_subdomain_preserved() {
         let ics = "ORGANIZER:mailto:team@sub.example.org";
-        assert_eq!(extract_organizer_email(ics).as_deref(), Some("team@sub.example.org"));
+        assert_eq!(
+            extract_organizer_email(ics).as_deref(),
+            Some("team@sub.example.org")
+        );
     }
 
     #[test]

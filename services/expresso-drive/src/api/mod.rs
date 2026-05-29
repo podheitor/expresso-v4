@@ -1,16 +1,16 @@
-pub mod context;
 mod activity;
 mod comments;
+pub mod context;
 mod files;
 mod health;
 mod reactions;
 mod settings;
 mod shares;
-mod wopi;
-mod wopi_metrics;
 mod tags;
 mod uploads;
 mod versions;
+mod wopi;
+mod wopi_metrics;
 
 pub use wopi_metrics::init as init_wopi_metrics;
 

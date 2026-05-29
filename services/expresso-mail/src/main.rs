@@ -11,18 +11,18 @@
 
 mod api;
 mod bootstrap;
-mod error;
-mod imap;
-mod lmtp;
-mod ingest;
-mod imip;
 mod dkim;
-mod sieve;
-mod scanner;
-mod smtp;
-mod state;
+mod error;
 #[cfg(feature = "fuzzing")]
 pub mod fuzz_entry;
+mod imap;
+mod imip;
+mod ingest;
+mod lmtp;
+mod scanner;
+mod sieve;
+mod smtp;
+mod state;
 
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{signal, task::JoinSet};
@@ -30,7 +30,6 @@ use tracing::info;
 
 use expresso_core::{create_db_pool, create_redis_pool, init_tracing, run_migrations, AppConfig};
 use state::AppState;
-
 
 fn env_string(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.trim().is_empty())
@@ -40,19 +39,28 @@ fn resolve_multi_realm() -> (
     Option<Arc<expresso_auth_client::MultiRealmValidator>>,
     Option<Arc<expresso_auth_client::TenantResolver>>,
 ) {
-    let tpl = match env_string("AUTH__OIDC_ISSUER_TEMPLATE") { Some(v) => v, None => return (None, None) };
-    let audience = match env_string("AUTH__OIDC_AUDIENCE")   { Some(v) => v, None => return (None, None) };
+    let tpl = match env_string("AUTH__OIDC_ISSUER_TEMPLATE") {
+        Some(v) => v,
+        None => return (None, None),
+    };
+    let audience = match env_string("AUTH__OIDC_AUDIENCE") {
+        Some(v) => v,
+        None => return (None, None),
+    };
     let resolver = expresso_auth_client::TenantResolver::from_env("AUTH__TENANT_HOSTS");
     if resolver.is_empty() {
         tracing::warn!("AUTH__TENANT_HOSTS empty — multi-realm disabled");
         return (None, None);
     }
     match expresso_auth_client::MultiRealmValidator::new(tpl.clone(), audience.clone()) {
-        Ok(m)  => {
+        Ok(m) => {
             tracing::info!(template = %tpl, hosts = resolver.len(), "multi-realm validator ready");
             (Some(Arc::new(m)), Some(Arc::new(resolver)))
         }
-        Err(e) => { tracing::error!(error = %e, "multi-realm init failed"); (None, None) }
+        Err(e) => {
+            tracing::error!(error = %e, "multi-realm init failed");
+            (None, None)
+        }
     }
 }
 
@@ -98,7 +106,10 @@ async fn main() -> anyhow::Result<()> {
         }
     };
     // Load DKIM signer if configured
-    let state = if let (Some(sel), Some(key_path)) = (&cfg.mail_server.dkim_selector, &cfg.mail_server.dkim_key_path) {
+    let state = if let (Some(sel), Some(key_path)) = (
+        &cfg.mail_server.dkim_selector,
+        &cfg.mail_server.dkim_key_path,
+    ) {
         match dkim::DkimSignerState::from_pem_file(&cfg.mail_server.domain, sel, key_path) {
             Ok(signer) => state.set_dkim(signer),
             Err(e) => {
@@ -125,8 +136,12 @@ async fn main() -> anyhow::Result<()> {
     let (multi, resolver) = resolve_multi_realm();
     set.spawn(async move {
         let mut router = api::router(http_state);
-        if let Some(m) = multi    { router = router.layer(axum::extract::Extension(m)); }
-        if let Some(r) = resolver { router = router.layer(axum::extract::Extension(r)); }
+        if let Some(m) = multi {
+            router = router.layer(axum::extract::Extension(m));
+        }
+        if let Some(r) = resolver {
+            router = router.layer(axum::extract::Extension(r));
+        }
         let listener = tokio::net::TcpListener::bind(http_addr).await?;
         info!(addr = %http_addr, "HTTP API listening");
         axum::serve(listener, router)
@@ -142,7 +157,8 @@ async fn main() -> anyhow::Result<()> {
 
     // SMTP Submission (587, STARTTLS + AUTH required) — only if TLS configured
     if cfg.mail_server.tls_cert.is_some() && cfg.mail_server.tls_key.is_some() {
-        let sub_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.submission_port).parse()?;
+        let sub_addr: SocketAddr =
+            format!("0.0.0.0:{}", cfg.mail_server.submission_port).parse()?;
         let sub_state = state.clone();
         set.spawn(async move { smtp::submission::serve(sub_state, sub_addr).await });
     } else {
@@ -224,16 +240,16 @@ async fn scheduled_send_worker(state: AppState) -> anyhow::Result<()> {
 }
 
 async fn dispatch_due_messages(state: &AppState) -> anyhow::Result<()> {
-    use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor, address::Envelope, Address};
+    use lettre::{address::Envelope, Address, AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
     use tokio::fs;
 
     #[derive(sqlx::FromRow)]
     struct DueRow {
-        id:        uuid::Uuid,
+        id: uuid::Uuid,
         tenant_id: uuid::Uuid,
         body_path: String,
         from_addr: Option<String>,
-        to_addrs:  sqlx::types::Json<Vec<String>>,
+        to_addrs: sqlx::types::Json<Vec<String>>,
     }
 
     let due: Vec<DueRow> = sqlx::query_as(
@@ -264,9 +280,11 @@ async fn dispatch_due_messages(state: &AppState) -> anyhow::Result<()> {
             }
         };
 
-        let from: Option<Address> = row.from_addr.as_deref()
-            .and_then(|s| s.parse().ok());
-        let to: Vec<Address> = row.to_addrs.0.iter()
+        let from: Option<Address> = row.from_addr.as_deref().and_then(|s| s.parse().ok());
+        let to: Vec<Address> = row
+            .to_addrs
+            .0
+            .iter()
             .filter_map(|s| s.parse().ok())
             .collect();
         if to.is_empty() {
@@ -292,7 +310,8 @@ async fn dispatch_due_messages(state: &AppState) -> anyhow::Result<()> {
                 .bind(row.id)
                 .bind(r"\Seen")
                 .execute(state.db())
-                .await {
+                .await
+                {
                     tracing::error!(msg_id = %row.id, error = %e, "scheduled send: status update failed");
                 } else {
                     tracing::info!(target: "audit",

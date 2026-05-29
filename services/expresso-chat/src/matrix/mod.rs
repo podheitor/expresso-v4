@@ -19,16 +19,17 @@ use crate::error::{ChatError, Result};
 
 #[derive(Clone, Debug)]
 pub struct MatrixConfig {
-    pub hs_url:      String,   // e.g. https://synapse.expresso.local
-    pub server_name: String,   // e.g. expresso.local (MXID suffix)
-    pub as_token:    Option<String>,  // AppService token — impersonation allowed
-    #[allow(dead_code)]  // reserved — Synapse Admin API (deactivate/rename) lands with Keycloak sync
-    pub admin_token: Option<String>,  // Admin API token — user provisioning
+    pub hs_url: String,           // e.g. https://synapse.expresso.local
+    pub server_name: String,      // e.g. expresso.local (MXID suffix)
+    pub as_token: Option<String>, // AppService token — impersonation allowed
+    #[allow(dead_code)]
+    // reserved — Synapse Admin API (deactivate/rename) lands with Keycloak sync
+    pub admin_token: Option<String>, // Admin API token — user provisioning
 }
 
 #[derive(Clone, Debug)]
 pub struct MatrixClient {
-    cfg:  MatrixConfig,
+    cfg: MatrixConfig,
     http: Client,
 }
 
@@ -43,19 +44,19 @@ pub enum RoomPreset {
 impl RoomPreset {
     fn as_str(&self) -> &'static str {
         match self {
-            Self::PrivateChat        => "private_chat",
+            Self::PrivateChat => "private_chat",
             Self::TrustedPrivateChat => "trusted_private_chat",
-            Self::PublicChat         => "public_chat",
+            Self::PublicChat => "public_chat",
         }
     }
 }
 
 #[derive(Debug, Serialize)]
 pub struct CreateRoomRequest<'a> {
-    pub name:    &'a str,
-    pub topic:   Option<&'a str>,
-    pub preset:  RoomPreset,
-    pub invite:  &'a [String],   // list of MXIDs
+    pub name: &'a str,
+    pub topic: Option<&'a str>,
+    pub preset: RoomPreset,
+    pub invite: &'a [String], // list of MXIDs
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,7 +70,9 @@ impl MatrixClient {
     /// a typed error instead of a boot-time panic.
     #[allow(dead_code)]
     pub fn admin_token(&self) -> Result<&str> {
-        self.cfg.admin_token.as_deref()
+        self.cfg
+            .admin_token
+            .as_deref()
             .ok_or_else(|| ChatError::Matrix("MATRIX__ADMIN_TOKEN not configured".into()))
     }
 
@@ -88,31 +91,37 @@ impl MatrixClient {
     }
 
     fn as_token(&self) -> Result<&str> {
-        self.cfg.as_token.as_deref()
+        self.cfg
+            .as_token
+            .as_deref()
             .ok_or_else(|| ChatError::Matrix("MATRIX__AS_TOKEN not configured".into()))
     }
 
     /// Client-Server endpoint URL + impersonation query param.
     fn cs_url(&self, path: &str, acting_as: &str) -> Result<reqwest::Url> {
-        let base = format!("{}/_matrix/client/v3{}", self.cfg.hs_url.trim_end_matches('/'), path);
-        let mut url = reqwest::Url::parse(&base)
-            .map_err(|e| ChatError::Matrix(format!("bad url: {e}")))?;
+        let base = format!(
+            "{}/_matrix/client/v3{}",
+            self.cfg.hs_url.trim_end_matches('/'),
+            path
+        );
+        let mut url =
+            reqwest::Url::parse(&base).map_err(|e| ChatError::Matrix(format!("bad url: {e}")))?;
         url.query_pairs_mut().append_pair("user_id", acting_as);
         Ok(url)
     }
 
-    async fn send<T: for<'de> Deserialize<'de>>(
-        &self,
-        req: reqwest::RequestBuilder,
-    ) -> Result<T> {
-        let resp = req.send().await
+    async fn send<T: for<'de> Deserialize<'de>>(&self, req: reqwest::RequestBuilder) -> Result<T> {
+        let resp = req
+            .send()
+            .await
             .map_err(|e| ChatError::Matrix(format!("request failed: {e}")))?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             return Err(ChatError::Matrix(format!("HS {}: {}", status, body)));
         }
-        resp.json::<T>().await
+        resp.json::<T>()
+            .await
             .map_err(|e| ChatError::Matrix(format!("decode: {e}")))
     }
 
@@ -130,16 +139,26 @@ impl MatrixClient {
             "type":     "m.login.application_service",
             "username": localpart,
         });
-        let resp = self.http.post(&url)
+        let resp = self
+            .http
+            .post(&url)
             .bearer_auth(self.as_token()?)
             .json(&body)
-            .send().await
+            .send()
+            .await
             .map_err(|e| ChatError::Matrix(format!("register failed: {e}")))?;
         let status = resp.status();
-        if status.is_success() { return Ok(()); }
+        if status.is_success() {
+            return Ok(());
+        }
         let text = resp.text().await.unwrap_or_default();
-        if text.contains("M_USER_IN_USE") { return Ok(()); }
-        Err(ChatError::Matrix(format!("register HS {}: {}", status, text)))
+        if text.contains("M_USER_IN_USE") {
+            return Ok(());
+        }
+        Err(ChatError::Matrix(format!(
+            "register HS {}: {}",
+            status, text
+        )))
     }
 
     pub async fn create_room(
@@ -155,7 +174,13 @@ impl MatrixClient {
             "preset": req.preset.as_str(),
             "invite": req.invite,
         });
-        self.send(self.http.post(url).bearer_auth(self.as_token()?).json(&body)).await
+        self.send(
+            self.http
+                .post(url)
+                .bearer_auth(self.as_token()?)
+                .json(&body),
+        )
+        .await
     }
 
     pub async fn invite_user(
@@ -168,7 +193,13 @@ impl MatrixClient {
         let path = format!("/rooms/{}/invite", urlencode(room_id));
         let url = self.cs_url(&path, acting_as)?;
         let body = json!({ "user_id": mxid_to_invite });
-        let resp = self.http.post(url).bearer_auth(self.as_token()?).json(&body).send().await
+        let resp = self
+            .http
+            .post(url)
+            .bearer_auth(self.as_token()?)
+            .json(&body)
+            .send()
+            .await
             .map_err(|e| ChatError::Matrix(format!("invite failed: {e}")))?;
         if !resp.status().is_success() {
             let s = resp.status();
@@ -179,43 +210,49 @@ impl MatrixClient {
     }
 
     /// Send a plain text message. Returns event_id.
-    pub async fn send_text(
-        &self,
-        acting_as: &str,
-        room_id: &str,
-        body: &str,
-    ) -> Result<String> {
+    pub async fn send_text(&self, acting_as: &str, room_id: &str, body: &str) -> Result<String> {
         self.ensure_registered(acting_as).await?;
         let txn = Uuid::new_v4();
         let path = format!("/rooms/{}/send/m.room.message/{}", urlencode(room_id), txn);
         let url = self.cs_url(&path, acting_as)?;
         let payload = json!({ "msgtype": "m.text", "body": body });
-        #[derive(Deserialize)] struct R { event_id: String }
-        let r: R = self.send(self.http.put(url).bearer_auth(self.as_token()?).json(&payload)).await?;
+        #[derive(Deserialize)]
+        struct R {
+            event_id: String,
+        }
+        let r: R = self
+            .send(
+                self.http
+                    .put(url)
+                    .bearer_auth(self.as_token()?)
+                    .json(&payload),
+            )
+            .await?;
         Ok(r.event_id)
     }
 
     /// List recent messages (reverse-chronological; limit capped at 100 by HS).
-    pub async fn list_messages(
-        &self,
-        acting_as: &str,
-        room_id: &str,
-        limit: u32,
-    ) -> Result<Value> {
+    pub async fn list_messages(&self, acting_as: &str, room_id: &str, limit: u32) -> Result<Value> {
         self.ensure_registered(acting_as).await?;
         let path = format!("/rooms/{}/messages", urlencode(room_id));
         let mut url = self.cs_url(&path, acting_as)?;
         url.query_pairs_mut()
             .append_pair("dir", "b")
             .append_pair("limit", &limit.min(100).to_string());
-        let resp = self.http.get(url).bearer_auth(self.as_token()?).send().await
+        let resp = self
+            .http
+            .get(url)
+            .bearer_auth(self.as_token()?)
+            .send()
+            .await
             .map_err(|e| ChatError::Matrix(format!("list failed: {e}")))?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             return Err(ChatError::Matrix(format!("list HS {}: {}", status, body)));
         }
-        resp.json::<Value>().await
+        resp.json::<Value>()
+            .await
             .map_err(|e| ChatError::Matrix(format!("decode list: {e}")))
     }
 }
@@ -230,7 +267,9 @@ fn urlencode(s: &str) -> String {
 fn localpart_from_mxid(mxid: &str) -> Option<&str> {
     let rest = mxid.strip_prefix('@')?;
     let (local, server) = rest.split_once(':')?;
-    if local.is_empty() || server.is_empty() { return None; }
+    if local.is_empty() || server.is_empty() {
+        return None;
+    }
     Some(local)
 }
 
@@ -243,11 +282,15 @@ mod tests {
         let cfg = MatrixConfig {
             hs_url: "http://x".into(),
             server_name: "expresso.local".into(),
-            as_token: None, admin_token: None,
+            as_token: None,
+            admin_token: None,
         };
         let c = MatrixClient::new(cfg);
         let u = Uuid::nil();
-        assert_eq!(c.mxid_for(u), "@expresso-00000000-0000-0000-0000-000000000000:expresso.local");
+        assert_eq!(
+            c.mxid_for(u),
+            "@expresso-00000000-0000-0000-0000-000000000000:expresso.local"
+        );
     }
 
     #[test]
@@ -261,11 +304,15 @@ mod tests {
 
     #[test]
     fn localpart_rejects_malformed() {
-        assert_eq!(localpart_from_mxid("alice:expresso.local"),   None, "missing @");
-        assert_eq!(localpart_from_mxid("@alice"),                 None, "missing :");
-        assert_eq!(localpart_from_mxid("@:expresso.local"),       None, "empty local");
-        assert_eq!(localpart_from_mxid("@alice:"),                None, "empty server");
-        assert_eq!(localpart_from_mxid(""),                       None, "empty");
+        assert_eq!(
+            localpart_from_mxid("alice:expresso.local"),
+            None,
+            "missing @"
+        );
+        assert_eq!(localpart_from_mxid("@alice"), None, "missing :");
+        assert_eq!(localpart_from_mxid("@:expresso.local"), None, "empty local");
+        assert_eq!(localpart_from_mxid("@alice:"), None, "empty server");
+        assert_eq!(localpart_from_mxid(""), None, "empty");
     }
 
     #[test]
@@ -289,7 +336,8 @@ mod tests {
         let cfg = MatrixConfig {
             hs_url: "http://x".into(),
             server_name: "s.local".into(),
-            as_token: None, admin_token: None,
+            as_token: None,
+            admin_token: None,
         };
         let c = MatrixClient::new(cfg);
         let u = Uuid::nil();
@@ -314,7 +362,10 @@ mod tests {
 
     #[test]
     fn localpart_with_special_chars_in_server() {
-        assert_eq!(localpart_from_mxid("@alice:chat.example.com"), Some("alice"));
+        assert_eq!(
+            localpart_from_mxid("@alice:chat.example.com"),
+            Some("alice")
+        );
     }
 
     #[test]
@@ -327,7 +378,8 @@ mod tests {
         let cfg = MatrixConfig {
             hs_url: "http://x".into(),
             server_name: "s.local".into(),
-            as_token: None, admin_token: None,
+            as_token: None,
+            admin_token: None,
         };
         let c = MatrixClient::new(cfg);
         let mxid = c.mxid_for(Uuid::nil());
@@ -346,7 +398,10 @@ mod tests {
 
     #[test]
     fn room_preset_trusted_private_as_str() {
-        assert_eq!(RoomPreset::TrustedPrivateChat.as_str(), "trusted_private_chat");
+        assert_eq!(
+            RoomPreset::TrustedPrivateChat.as_str(),
+            "trusted_private_chat"
+        );
     }
 
     #[test]
@@ -354,7 +409,8 @@ mod tests {
         let cfg = MatrixConfig {
             hs_url: "http://x".into(),
             server_name: "chat.expresso.local".into(),
-            as_token: None, admin_token: None,
+            as_token: None,
+            admin_token: None,
         };
         let c = MatrixClient::new(cfg);
         let mxid = c.mxid_for(Uuid::nil());
@@ -363,8 +419,14 @@ mod tests {
 
     #[test]
     fn room_preset_variants_all_different() {
-        assert_ne!(RoomPreset::PrivateChat.as_str(), RoomPreset::PublicChat.as_str());
-        assert_ne!(RoomPreset::TrustedPrivateChat.as_str(), RoomPreset::PublicChat.as_str());
+        assert_ne!(
+            RoomPreset::PrivateChat.as_str(),
+            RoomPreset::PublicChat.as_str()
+        );
+        assert_ne!(
+            RoomPreset::TrustedPrivateChat.as_str(),
+            RoomPreset::PublicChat.as_str()
+        );
     }
 
     #[test]
@@ -384,11 +446,17 @@ mod tests {
 
     #[test]
     fn room_preset_trusted_private_as_str_is_trusted_private_chat() {
-        assert_eq!(RoomPreset::TrustedPrivateChat.as_str(), "trusted_private_chat");
+        assert_eq!(
+            RoomPreset::TrustedPrivateChat.as_str(),
+            "trusted_private_chat"
+        );
     }
 
     #[test]
     fn room_preset_public_as_str_ne_private_chat() {
-        assert_ne!(RoomPreset::PublicChat.as_str(), RoomPreset::PrivateChat.as_str());
+        assert_ne!(
+            RoomPreset::PublicChat.as_str(),
+            RoomPreset::PrivateChat.as_str()
+        );
     }
 }

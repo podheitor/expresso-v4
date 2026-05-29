@@ -9,8 +9,8 @@
 //!   MAIL__SPAM_REJECT_SCORE  float (default 15.0) — above = reject
 //!   MAIL__CLAMAV_TIMEOUT_MS  default 30000
 
-use std::time::Duration;
 use serde::Deserialize;
+use std::time::Duration;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -66,7 +66,11 @@ struct RspamdResp {
 /// Scan message — calls Rspamd and ClamAV if configured.
 /// Never fails hard — errors log and return partial result (fail-open for delivery).
 pub async fn scan(raw: &[u8]) -> ScanResult {
-    let mut r = ScanResult { spam_score: None, spam_action: None, virus: None };
+    let mut r = ScanResult {
+        spam_score: None,
+        spam_action: None,
+        virus: None,
+    };
 
     if let Ok(url) = std::env::var("MAIL__RSPAMD_URL") {
         match rspamd_scan(&url, raw).await {
@@ -178,28 +182,44 @@ mod tests {
 
     #[test]
     fn clean_no_virus_no_spam() {
-        let r = ScanResult { spam_score: Some(2.5), spam_action: Some("no action".into()), virus: None };
+        let r = ScanResult {
+            spam_score: Some(2.5),
+            spam_action: Some("no action".into()),
+            virus: None,
+        };
         assert!(r.is_clean());
         assert!(should_reject(&r).is_none());
     }
 
     #[test]
     fn virus_rejects() {
-        let r = ScanResult { spam_score: None, spam_action: None, virus: Some("Eicar".into()) };
+        let r = ScanResult {
+            spam_score: None,
+            spam_action: None,
+            virus: Some("Eicar".into()),
+        };
         assert!(!r.is_clean());
         assert_eq!(should_reject(&r).unwrap(), "infected: Eicar");
     }
 
     #[test]
     fn high_score_rejects() {
-        let r = ScanResult { spam_score: Some(20.0), spam_action: Some("reject".into()), virus: None };
+        let r = ScanResult {
+            spam_score: Some(20.0),
+            spam_action: Some("reject".into()),
+            virus: None,
+        };
         assert!(!r.is_clean());
         assert!(should_reject(&r).unwrap().contains("spam score"));
     }
 
     #[test]
     fn headers_include_both() {
-        let r = ScanResult { spam_score: Some(3.14), spam_action: Some("add header".into()), virus: None };
+        let r = ScanResult {
+            spam_score: Some(3.14),
+            spam_action: Some("add header".into()),
+            virus: None,
+        };
         let h = r.to_headers();
         assert!(h.contains("X-Spam-Score: 3.14"));
         assert!(h.contains("X-Spam-Status: No"));
@@ -209,33 +229,53 @@ mod tests {
 
     #[test]
     fn headers_infected() {
-        let r = ScanResult { spam_score: None, spam_action: None, virus: Some("Test.Virus".into()) };
+        let r = ScanResult {
+            spam_score: None,
+            spam_action: None,
+            virus: Some("Test.Virus".into()),
+        };
         let h = r.to_headers();
         assert!(h.contains("X-Virus-Status: Infected: Test.Virus"));
     }
 
     #[test]
     fn spam_high_score_flagged_yes() {
-        let r = ScanResult { spam_score: Some(7.5), spam_action: Some("add header".into()), virus: None };
+        let r = ScanResult {
+            spam_score: Some(7.5),
+            spam_action: Some("add header".into()),
+            virus: None,
+        };
         assert!(r.to_headers().contains("X-Spam-Status: Yes"));
     }
 
     #[test]
     fn no_spam_score_clean() {
-        let r = ScanResult { spam_score: None, spam_action: None, virus: None };
+        let r = ScanResult {
+            spam_score: None,
+            spam_action: None,
+            virus: None,
+        };
         assert!(r.is_clean());
         assert!(should_reject(&r).is_none());
     }
 
     #[test]
     fn reject_action_marks_not_clean() {
-        let r = ScanResult { spam_score: Some(3.0), spam_action: Some("reject".into()), virus: None };
+        let r = ScanResult {
+            spam_score: Some(3.0),
+            spam_action: Some("reject".into()),
+            virus: None,
+        };
         assert!(!r.is_clean());
     }
 
     #[test]
     fn to_headers_no_spam_score_omits_x_spam_lines() {
-        let r = ScanResult { spam_score: None, spam_action: None, virus: None };
+        let r = ScanResult {
+            spam_score: None,
+            spam_action: None,
+            virus: None,
+        };
         let h = r.to_headers();
         assert!(!h.contains("X-Spam-Score"), "no score → header absent");
         assert!(h.contains("X-Virus-Status: Clean"));
@@ -244,89 +284,149 @@ mod tests {
     #[test]
     fn should_reject_respects_default_threshold_15() {
         // Below default threshold of 15.0 — must not reject.
-        let below = ScanResult { spam_score: Some(14.99), spam_action: Some("add header".into()), virus: None };
+        let below = ScanResult {
+            spam_score: Some(14.99),
+            spam_action: Some("add header".into()),
+            virus: None,
+        };
         assert!(should_reject(&below).is_none());
         // At threshold — must reject.
-        let at = ScanResult { spam_score: Some(15.0), spam_action: Some("reject".into()), virus: None };
+        let at = ScanResult {
+            spam_score: Some(15.0),
+            spam_action: Some("reject".into()),
+            virus: None,
+        };
         assert!(should_reject(&at).is_some());
     }
 
     #[test]
     fn score_exactly_5_flagged_yes() {
-        let r = ScanResult { spam_score: Some(5.0), spam_action: None, virus: None };
+        let r = ScanResult {
+            spam_score: Some(5.0),
+            spam_action: None,
+            virus: None,
+        };
         assert!(r.to_headers().contains("X-Spam-Status: Yes"));
     }
 
     #[test]
     fn score_just_below_5_flagged_no() {
-        let r = ScanResult { spam_score: Some(4.99), spam_action: None, virus: None };
+        let r = ScanResult {
+            spam_score: Some(4.99),
+            spam_action: None,
+            virus: None,
+        };
         assert!(r.to_headers().contains("X-Spam-Status: No"));
     }
 
     #[test]
     fn clean_scan_result_is_clean() {
-        let r = ScanResult { spam_score: Some(1.0), spam_action: None, virus: None };
+        let r = ScanResult {
+            spam_score: Some(1.0),
+            spam_action: None,
+            virus: None,
+        };
         assert!(r.is_clean());
     }
 
     #[test]
     fn scan_result_with_virus_is_not_clean() {
-        let r = ScanResult { spam_score: None, spam_action: None, virus: Some("Eicar".into()) };
+        let r = ScanResult {
+            spam_score: None,
+            spam_action: None,
+            virus: Some("Eicar".into()),
+        };
         assert!(!r.is_clean());
     }
 
     #[test]
     fn scan_result_virus_name_preserved() {
-        let r = ScanResult { spam_score: None, spam_action: None, virus: Some("Eicar.Test.File".into()) };
+        let r = ScanResult {
+            spam_score: None,
+            spam_action: None,
+            virus: Some("Eicar.Test.File".into()),
+        };
         assert_eq!(r.virus.as_deref(), Some("Eicar.Test.File"));
     }
 
     #[test]
     fn to_headers_clean_message_contains_virus_clean() {
-        let r = ScanResult { spam_score: None, spam_action: None, virus: None };
+        let r = ScanResult {
+            spam_score: None,
+            spam_action: None,
+            virus: None,
+        };
         assert!(r.to_headers().contains("X-Virus-Status: Clean"));
     }
 
     #[test]
     fn to_headers_with_virus_contains_infected_status() {
-        let r = ScanResult { spam_score: None, spam_action: None, virus: Some("Eicar".into()) };
+        let r = ScanResult {
+            spam_score: None,
+            spam_action: None,
+            virus: Some("Eicar".into()),
+        };
         assert!(r.to_headers().contains("X-Virus-Status: Infected"));
     }
 
     #[test]
     fn scan_result_no_virus_field_is_none() {
-        let r = ScanResult { spam_score: Some(1.2), spam_action: None, virus: None };
+        let r = ScanResult {
+            spam_score: Some(1.2),
+            spam_action: None,
+            virus: None,
+        };
         assert!(r.virus.is_none());
     }
 
     #[test]
     fn spam_action_add_header_does_not_reject() {
-        let r = ScanResult { spam_score: Some(6.0), spam_action: Some("add header".into()), virus: None };
+        let r = ScanResult {
+            spam_score: Some(6.0),
+            spam_action: Some("add header".into()),
+            virus: None,
+        };
         assert!(r.is_clean());
         assert!(should_reject(&r).is_none());
     }
 
     #[test]
     fn to_headers_spam_score_present_in_output() {
-        let r = ScanResult { spam_score: Some(3.2), spam_action: None, virus: None };
+        let r = ScanResult {
+            spam_score: Some(3.2),
+            spam_action: None,
+            virus: None,
+        };
         assert!(r.to_headers().contains("X-Spam-Score:"));
     }
 
     #[test]
     fn scan_result_no_virus_no_spam_score_is_clean() {
-        let r = ScanResult { spam_score: None, spam_action: None, virus: None };
+        let r = ScanResult {
+            spam_score: None,
+            spam_action: None,
+            virus: None,
+        };
         assert!(r.is_clean());
     }
 
     #[test]
     fn scan_result_spam_score_zero_is_clean() {
-        let r = ScanResult { spam_score: Some(0.0), spam_action: None, virus: None };
+        let r = ScanResult {
+            spam_score: Some(0.0),
+            spam_action: None,
+            virus: None,
+        };
         assert!(r.is_clean());
     }
 
     #[test]
     fn scan_result_none_fields_is_clean() {
-        let r = ScanResult { spam_score: None, spam_action: None, virus: None };
+        let r = ScanResult {
+            spam_score: None,
+            spam_action: None,
+            virus: None,
+        };
         assert!(r.is_clean());
     }
 }

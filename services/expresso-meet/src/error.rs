@@ -1,6 +1,10 @@
 //! expresso-meet error types.
 
-use axum::{http::StatusCode, response::{IntoResponse, Response}, Json};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use serde_json::json;
 use thiserror::Error;
 use uuid::Uuid;
@@ -47,21 +51,49 @@ pub enum MeetError {
 impl IntoResponse for MeetError {
     fn into_response(self) -> Response {
         let (status, code, msg) = match &self {
-            Self::MeetingNotFound(_)  => (StatusCode::NOT_FOUND,           "meeting_not_found", self.to_string()),
-            Self::NotFound            => (StatusCode::NOT_FOUND,           "not_found",         self.to_string()),
-            Self::BadRequest(_)       => (StatusCode::BAD_REQUEST,         "bad_request",       self.to_string()),
-            Self::Conflict(_)         => (StatusCode::CONFLICT,            "conflict",          self.to_string()),
-            Self::NotParticipant      => (StatusCode::FORBIDDEN,           "not_participant",   self.to_string()),
-            Self::Forbidden           => (StatusCode::FORBIDDEN,           "forbidden",         self.to_string()),
-            Self::DatabaseUnavailable => (StatusCode::SERVICE_UNAVAILABLE, "db_unavailable",    self.to_string()),
-            Self::JitsiUnavailable    => (StatusCode::SERVICE_UNAVAILABLE, "jitsi_unavailable", self.to_string()),
-            Self::Jwt(_)              => (StatusCode::INTERNAL_SERVER_ERROR,"jwt",              "erro interno".into()),
-            Self::Database(sqlx::Error::Database(db)) if db.is_unique_violation()
-                                      => (StatusCode::CONFLICT,            "unique_violation",  "recurso duplicado".into()),
-            Self::Database(sqlx::Error::RowNotFound)
-                                      => (StatusCode::NOT_FOUND,           "not_found",         "recurso não encontrado".into()),
-            Self::Database(_)         => (StatusCode::INTERNAL_SERVER_ERROR,"database",         "erro interno".into()),
-            Self::Core(_)             => (StatusCode::INTERNAL_SERVER_ERROR,"internal",         "erro interno".into()),
+            Self::MeetingNotFound(_) => {
+                (StatusCode::NOT_FOUND, "meeting_not_found", self.to_string())
+            }
+            Self::NotFound => (StatusCode::NOT_FOUND, "not_found", self.to_string()),
+            Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", self.to_string()),
+            Self::Conflict(_) => (StatusCode::CONFLICT, "conflict", self.to_string()),
+            Self::NotParticipant => (StatusCode::FORBIDDEN, "not_participant", self.to_string()),
+            Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),
+            Self::DatabaseUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "db_unavailable",
+                self.to_string(),
+            ),
+            Self::JitsiUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "jitsi_unavailable",
+                self.to_string(),
+            ),
+            Self::Jwt(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "jwt",
+                "erro interno".into(),
+            ),
+            Self::Database(sqlx::Error::Database(db)) if db.is_unique_violation() => (
+                StatusCode::CONFLICT,
+                "unique_violation",
+                "recurso duplicado".into(),
+            ),
+            Self::Database(sqlx::Error::RowNotFound) => (
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "recurso não encontrado".into(),
+            ),
+            Self::Database(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "database",
+                "erro interno".into(),
+            ),
+            Self::Core(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                "erro interno".into(),
+            ),
         };
         (status, Json(json!({"error": code, "message": msg}))).into_response()
     }
@@ -191,12 +223,18 @@ mod tests {
 
     #[test]
     fn conflict_and_not_found_have_different_statuses() {
-        assert_ne!(status(MeetError::Conflict("x".into())), status(MeetError::NotFound));
+        assert_ne!(
+            status(MeetError::Conflict("x".into())),
+            status(MeetError::NotFound)
+        );
     }
 
     #[test]
     fn forbidden_and_not_participant_have_same_status() {
-        assert_eq!(status(MeetError::Forbidden), status(MeetError::NotParticipant));
+        assert_eq!(
+            status(MeetError::Forbidden),
+            status(MeetError::NotParticipant)
+        );
     }
 
     #[test]
@@ -207,6 +245,9 @@ mod tests {
 
     #[test]
     fn jitsi_unavailable_and_database_unavailable_have_same_status() {
-        assert_eq!(status(MeetError::JitsiUnavailable), status(MeetError::DatabaseUnavailable));
+        assert_eq!(
+            status(MeetError::JitsiUnavailable),
+            status(MeetError::DatabaseUnavailable)
+        );
     }
 }

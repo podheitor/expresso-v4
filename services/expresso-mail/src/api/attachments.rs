@@ -6,29 +6,38 @@
 //! qualquer usuário autenticado baixava attachments de qualquer tenant.
 
 use axum::{
-    Router,
-    routing::get,
     extract::{Path, Query, State},
-    http::{StatusCode, header, HeaderMap, HeaderValue},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    Json,
+    routing::get,
+    Json, Router,
 };
 use expresso_core::begin_tenant_tx;
 use mail_parser::{MessageParser, MimeHeaders, PartType};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::{api::context::RequestCtx, error::{MailError, Result}, state::AppState};
+use crate::{
+    api::context::RequestCtx,
+    error::{MailError, Result},
+    state::AppState,
+};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/mail/messages/:id/attachments",        get(list_attachments))
-        .route("/mail/messages/:id/attachments/:index", get(download_attachment))
-        .route("/mail/messages/:id/headers",            get(message_headers))
-        .route("/mail/messages/:id/body",               get(message_body))
-        .route("/mail/messages/:id/structure",          get(message_structure))
-        .route("/mail/messages/:id/inline-images",            get(list_inline_images))
-        .route("/mail/messages/:id/inline-images/:index",     get(download_inline_image))
+        .route("/mail/messages/:id/attachments", get(list_attachments))
+        .route(
+            "/mail/messages/:id/attachments/:index",
+            get(download_attachment),
+        )
+        .route("/mail/messages/:id/headers", get(message_headers))
+        .route("/mail/messages/:id/body", get(message_body))
+        .route("/mail/messages/:id/structure", get(message_structure))
+        .route("/mail/messages/:id/inline-images", get(list_inline_images))
+        .route(
+            "/mail/messages/:id/inline-images/:index",
+            get(download_inline_image),
+        )
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -51,9 +60,10 @@ async fn load_raw(state: &AppState, body_path: &str) -> Result<Vec<u8>> {
         let store = state.store().ok_or_else(|| {
             MailError::InvalidMessage("S3 body_path but no object store configured".into())
         })?;
-        return store.get(key).await.map_err(|e| {
-            MailError::InvalidMessage(format!("S3 get failed: {e}"))
-        });
+        return store
+            .get(key)
+            .await
+            .map_err(|e| MailError::InvalidMessage(format!("S3 get failed: {e}")));
     }
     tokio::fs::read(body_path)
         .await
@@ -96,9 +106,9 @@ fn format_ct(ct: &mail_parser::ContentType) -> String {
 /// ETag = `"{size_bytes}-{id}"` (immutable after delivery, same as GET /raw).
 async fn list_attachments(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    req_headers:  HeaderMap,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let (body_path, size_bytes) = fetch_message_meta(&state, &ctx, id).await?;
 
@@ -132,14 +142,15 @@ async fn list_attachments(
         .collect();
 
     let mut resp = Json(attachments).into_response();
-    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
     Ok(resp)
 }
 
 /// GET /api/v1/mail/messages/:id/attachments/:index — download binary
 async fn download_attachment(
-    State(state):      State<AppState>,
-    ctx:               RequestCtx,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
     Path((id, index)): Path<(Uuid, usize)>,
 ) -> Result<Response> {
     let (body_path, _) = fetch_message_meta(&state, &ctx, id).await?;
@@ -158,10 +169,7 @@ async fn download_attachment(
         .map(format_ct)
         .unwrap_or_else(|| "application/octet-stream".into());
 
-    let filename = part
-        .attachment_name()
-        .unwrap_or("attachment")
-        .to_owned();
+    let filename = part.attachment_name().unwrap_or("attachment").to_owned();
 
     let body = part.contents().to_vec();
 
@@ -189,19 +197,41 @@ async fn download_attachment(
 /// except TAB, plus DEL) with `_`. Falls back to `default` when the result
 /// is empty after sanitizing.
 fn sanitize_header_token(raw: &str, default: &str) -> String {
-    let cleaned: String = raw.chars().map(|c| {
-        let b = c as u32;
-        if b == 0x09 || (0x20..0x7f).contains(&b) { c } else { '_' }
-    }).collect();
+    let cleaned: String = raw
+        .chars()
+        .map(|c| {
+            let b = c as u32;
+            if b == 0x09 || (0x20..0x7f).contains(&b) {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
     let trimmed = cleaned.trim();
-    if trimmed.is_empty() { default.to_string() } else { trimmed.to_string() }
+    if trimmed.is_empty() {
+        default.to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 fn build_content_disposition(name: &str) -> String {
-    let ascii: String = name.chars().map(|c| {
-        if c.is_ascii_graphic() && c != '"' && c != '\\' { c } else { '_' }
-    }).collect();
-    let ascii = if ascii.trim().is_empty() { "attachment".into() } else { ascii };
+    let ascii: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_graphic() && c != '"' && c != '\\' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let ascii = if ascii.trim().is_empty() {
+        "attachment".into()
+    } else {
+        ascii
+    };
     let pct = percent_encode_filename(name);
     format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{pct}")
 }
@@ -211,7 +241,10 @@ fn percent_encode_filename(name: &str) -> String {
     for b in name.as_bytes() {
         let c = *b;
         let attr_char = c.is_ascii_alphanumeric()
-            || matches!(c, b'!' | b'#' | b'$' | b'&' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~');
+            || matches!(
+                c,
+                b'!' | b'#' | b'$' | b'&' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~'
+            );
         if attr_char {
             out.push(c as char);
         } else {
@@ -234,13 +267,15 @@ struct BodyParams {
 
 async fn message_body(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
     Query(params): Query<BodyParams>,
 ) -> Result<Json<serde_json::Value>> {
     let format = params.format.as_deref().unwrap_or("text");
     if format != "text" && format != "html" {
-        return Err(MailError::InvalidMessage("format must be 'text' or 'html'".into()));
+        return Err(MailError::InvalidMessage(
+            "format must be 'text' or 'html'".into(),
+        ));
     }
 
     let (body_path, _) = fetch_message_meta(&state, &ctx, id).await?;
@@ -274,8 +309,8 @@ async fn message_body(
 /// ao tenant/user. Sprint #587.
 async fn message_headers(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let (body_path, _) = fetch_message_meta(&state, &ctx, id).await?;
     let raw = load_raw(&state, &body_path).await?;
@@ -287,13 +322,15 @@ async fn message_headers(
         .headers()
         .iter()
         .map(|h| {
-            let name  = h.name();
+            let name = h.name();
             let value = h.value().as_text().unwrap_or("").to_string();
             serde_json::json!({"name": name, "value": value})
         })
         .collect();
 
-    Ok(Json(serde_json::json!({"message_id": id, "headers": headers})))
+    Ok(Json(
+        serde_json::json!({"message_id": id, "headers": headers}),
+    ))
 }
 
 /// GET /api/v1/mail/messages/:id/structure — MIME tree estrutural sem conteúdo.
@@ -304,8 +341,8 @@ async fn message_headers(
 /// Sprint #596.
 async fn message_structure(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let (body_path, _) = fetch_message_meta(&state, &ctx, id).await?;
     let raw = load_raw(&state, &body_path).await?;
@@ -316,18 +353,19 @@ async fn message_structure(
     fn build_node(msg: &mail_parser::Message, idx: usize) -> serde_json::Value {
         let part = match msg.part(idx) {
             Some(p) => p,
-            None    => return serde_json::json!({"index": idx, "content_type": "unknown"}),
+            None => return serde_json::json!({"index": idx, "content_type": "unknown"}),
         };
-        let ct = part.content_type().map(|c| format_ct(c))
+        let ct = part
+            .content_type()
+            .map(|c| format_ct(c))
             .unwrap_or_else(|| "application/octet-stream".into());
         let is_attachment = part.attachment_name().is_some();
         let filename = part.attachment_name().map(str::to_owned);
 
         match &part.body {
             PartType::Multipart(children) => {
-                let child_nodes: Vec<serde_json::Value> = children.iter()
-                    .map(|&ci| build_node(msg, ci))
-                    .collect();
+                let child_nodes: Vec<serde_json::Value> =
+                    children.iter().map(|&ci| build_node(msg, ci)).collect();
                 serde_json::json!({
                     "index":         idx,
                     "content_type":  ct,
@@ -348,7 +386,9 @@ async fn message_structure(
     // Root is always part 0 in mail-parser (the message root).
     let root = build_node(&msg, 0);
 
-    Ok(Json(serde_json::json!({"message_id": id, "structure": root})))
+    Ok(Json(
+        serde_json::json!({"message_id": id, "structure": root}),
+    ))
 }
 
 /// GET /api/v1/mail/messages/:id/inline-images
@@ -361,8 +401,8 @@ async fn message_structure(
 /// 404 if message not found or not owned by the caller. Sprint #615.
 async fn list_inline_images(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let (body_path, _) = fetch_message_meta(&state, &ctx, id).await?;
     let raw = load_raw(&state, &body_path).await?;
@@ -385,10 +425,12 @@ async fn list_inline_images(
             if !is_inline {
                 return None;
             }
-            let ct       = part.content_type().map(format_ct)
+            let ct = part
+                .content_type()
+                .map(format_ct)
                 .unwrap_or_else(|| "application/octet-stream".into());
             let filename = part.attachment_name().map(str::to_owned);
-            let size     = part.len();
+            let size = part.len();
             Some(serde_json::json!({
                 "index":        i,
                 "content_type": ct,
@@ -413,9 +455,9 @@ async fn list_inline_images(
 /// 404 if message not found or index has no Content-ID (not an inline image).
 /// Sprint #620.
 async fn download_inline_image(
-    State(state):       State<AppState>,
-    ctx:                RequestCtx,
-    Path((id, index)):  Path<(Uuid, usize)>,
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((id, index)): Path<(Uuid, usize)>,
 ) -> Result<Response> {
     let (body_path, _) = fetch_message_meta(&state, &ctx, id).await?;
     let raw = load_raw(&state, &body_path).await?;
@@ -423,40 +465,60 @@ async fn download_inline_image(
         .parse(&raw)
         .ok_or_else(|| MailError::InvalidMessage("failed to parse MIME".into()))?;
 
-    let part = msg.parts.get(index)
+    let part = msg
+        .parts
+        .get(index)
         .ok_or_else(|| MailError::InvalidMessage(format!("index {index} out of range")))?;
 
     // Must be CID-referenceable.
-    let _cid = part.content_id()
-        .ok_or_else(|| MailError::InvalidMessage(format!("part at index {index} has no Content-ID")))?;
+    let _cid = part.content_id().ok_or_else(|| {
+        MailError::InvalidMessage(format!("part at index {index} has no Content-ID"))
+    })?;
 
-    let is_inline = part.content_disposition()
+    let is_inline = part
+        .content_disposition()
         .map(|cd| cd.is_inline())
         .unwrap_or(true);
     if !is_inline {
-        return Err(MailError::InvalidMessage(format!("part at index {index} is not inline")));
+        return Err(MailError::InvalidMessage(format!(
+            "part at index {index} is not inline"
+        )));
     }
 
-    let ct = part.content_type().map(format_ct)
+    let ct = part
+        .content_type()
+        .map(format_ct)
         .unwrap_or_else(|| "application/octet-stream".into());
     let filename = part.attachment_name().unwrap_or("inline").to_owned();
     let body = part.contents().to_vec();
 
     let ct_safe = sanitize_header_token(&ct, "application/octet-stream");
-    let ascii: String = filename.chars().map(|c| {
-        if c.is_ascii_graphic() && c != '"' && c != '\\' { c } else { '_' }
-    }).collect();
-    let ascii = if ascii.trim().is_empty() { "inline".to_string() } else { ascii };
+    let ascii: String = filename
+        .chars()
+        .map(|c| {
+            if c.is_ascii_graphic() && c != '"' && c != '\\' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let ascii = if ascii.trim().is_empty() {
+        "inline".to_string()
+    } else {
+        ascii
+    };
     let cd = format!("inline; filename=\"{ascii}\"");
 
     Ok((
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE,        ct_safe),
+            (header::CONTENT_TYPE, ct_safe),
             (header::CONTENT_DISPOSITION, cd),
         ],
         body,
-    ).into_response())
+    )
+        .into_response())
 }
 
 #[cfg(test)]
@@ -645,7 +707,8 @@ mod extra_tests {
 
     #[test]
     fn sanitize_header_token_tab_is_preserved() {
-        let result = sanitize_header_token("text/plain\t; charset=utf-8", "application/octet-stream");
+        let result =
+            sanitize_header_token("text/plain\t; charset=utf-8", "application/octet-stream");
         assert!(result.contains('\t'));
     }
 

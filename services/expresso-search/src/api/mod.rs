@@ -19,8 +19,8 @@ use crate::index_store::{IndexDoc, IndexStore, SearchHit};
 /// aloca um heap de tamanho N upfront — sem cap, `?limit=usize::MAX`
 /// é OOM imediato.
 pub const MAX_QUERY_BYTES: usize = 1024;
-pub const MAX_LIMIT:       usize = 200;
-pub const DEFAULT_LIMIT:   usize = 20;
+pub const MAX_LIMIT: usize = 200;
+pub const DEFAULT_LIMIT: usize = 20;
 
 #[derive(Debug, Deserialize)]
 pub struct SearchParams {
@@ -77,7 +77,8 @@ fn validate_search_params(params: &mut SearchParams) -> Option<String> {
     if params.q.len() > MAX_QUERY_BYTES {
         return Some(format!(
             "query too large: {} bytes (max {})",
-            params.q.len(), MAX_QUERY_BYTES
+            params.q.len(),
+            MAX_QUERY_BYTES
         ));
     }
     // limit=0 é nonsense (sem hits) mas não-perigoso; melhor 400 explícito.
@@ -137,12 +138,19 @@ pub async fn bulk_index(
     Json(body): Json<BulkIndexRequest>,
 ) -> Result<Json<BulkIndexResponse>, (StatusCode, String)> {
     if body.documents.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "documents must not be empty".into()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "documents must not be empty".into(),
+        ));
     }
     if body.documents.len() > MAX_BULK_DOCS {
         return Err((
             StatusCode::BAD_REQUEST,
-            format!("too many documents: {} (max {})", body.documents.len(), MAX_BULK_DOCS),
+            format!(
+                "too many documents: {} (max {})",
+                body.documents.len(),
+                MAX_BULK_DOCS
+            ),
         ));
     }
     let total = body.documents.len();
@@ -158,7 +166,10 @@ fn map_search_err(e: anyhow::Error) -> (StatusCode, String) {
     if e.to_string().starts_with("bad_query:") {
         (StatusCode::BAD_REQUEST, "invalid query syntax".to_string())
     } else {
-        (StatusCode::INTERNAL_SERVER_ERROR, "search failed".to_string())
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "search failed".to_string(),
+        )
     }
 }
 
@@ -194,12 +205,16 @@ pub async fn search(
         Some("received_at") => {
             let granularity = params.facet_granularity.as_deref().unwrap_or("day");
             if !matches!(granularity, "day" | "week" | "month") {
-                return Err((StatusCode::BAD_REQUEST, "facet_granularity must be day, week, or month".into()));
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "facet_granularity must be day, week, or month".into(),
+                ));
             }
             let buckets = store
                 .facet_received_at_buckets(&params.q, &params.tenant_id, granularity)
                 .map_err(map_search_err)?;
-            let entries: Vec<FacetEntry> = buckets.into_iter()
+            let entries: Vec<FacetEntry> = buckets
+                .into_iter()
                 .map(|(value, count)| FacetEntry { value, count })
                 .collect();
             let mut map = std::collections::HashMap::new();
@@ -210,7 +225,8 @@ pub async fn search(
             let counts = store
                 .facet_counts_by_kind(&params.q, &params.tenant_id)
                 .map_err(map_search_err)?;
-            let entries: Vec<FacetEntry> = counts.into_iter()
+            let entries: Vec<FacetEntry> = counts
+                .into_iter()
                 .map(|(value, count)| FacetEntry { value, count })
                 .collect();
             let mut map = std::collections::HashMap::new();
@@ -221,7 +237,8 @@ pub async fn search(
             let counts = store
                 .facet_counts_by_from(&params.q, &params.tenant_id, FACET_FROM_TOP_N)
                 .map_err(map_search_err)?;
-            let entries: Vec<FacetEntry> = counts.into_iter()
+            let entries: Vec<FacetEntry> = counts
+                .into_iter()
                 .map(|(value, count)| FacetEntry { value, count })
                 .collect();
             let mut map = std::collections::HashMap::new();
@@ -232,7 +249,8 @@ pub async fn search(
             let counts = store
                 .facet_top_subject_terms(&params.q, &params.tenant_id, FACET_SUBJECT_TOP_N)
                 .map_err(map_search_err)?;
-            let entries: Vec<FacetEntry> = counts.into_iter()
+            let entries: Vec<FacetEntry> = counts
+                .into_iter()
                 .map(|(value, count)| FacetEntry { value, count })
                 .collect();
             let mut map = std::collections::HashMap::new();
@@ -243,7 +261,8 @@ pub async fn search(
             let counts = store
                 .facet_counts_by_domain(&params.q, &params.tenant_id, FACET_DOMAIN_TOP_N)
                 .map_err(map_search_err)?;
-            let entries: Vec<FacetEntry> = counts.into_iter()
+            let entries: Vec<FacetEntry> = counts
+                .into_iter()
                 .map(|(value, count)| FacetEntry { value, count })
                 .collect();
             let mut map = std::collections::HashMap::new();
@@ -254,7 +273,8 @@ pub async fn search(
             let triples = store
                 .facet_domain_by_kind(&params.q, &params.tenant_id, FACET_DOMAIN_X_KIND_TOP_N)
                 .map_err(map_search_err)?;
-            let entries: Vec<FacetEntry> = triples.into_iter()
+            let entries: Vec<FacetEntry> = triples
+                .into_iter()
                 .map(|(domain, kind, count)| FacetEntry {
                     value: format!("{}|{}", domain, kind),
                     count,
@@ -269,7 +289,8 @@ pub async fn search(
                 .facet_kind_by_from(&params.q, &params.tenant_id, FACET_KIND_X_FROM_TOP_N)
                 .map_err(map_search_err)?;
             // value = "kind|from_addr" — cliente faz split('|', 1) pra recuperar.
-            let entries: Vec<FacetEntry> = triples.into_iter()
+            let entries: Vec<FacetEntry> = triples
+                .into_iter()
                 .map(|(kind, from, count)| FacetEntry {
                     value: format!("{}|{}", kind, from),
                     count,
@@ -282,7 +303,11 @@ pub async fn search(
         _ => None,
     };
 
-    Ok(Json(SearchResponse { hits, count, facets }))
+    Ok(Json(SearchResponse {
+        hits,
+        count,
+        facets,
+    }))
 }
 
 /// DELETE /api/v1/index/:id — remove document from index
@@ -428,11 +453,13 @@ pub async fn list_segments(
     let count = segs.len();
     let segments: Vec<serde_json::Value> = segs
         .into_iter()
-        .map(|(id, num_docs, disk_bytes)| serde_json::json!({
-            "id":         id,
-            "num_docs":   num_docs,
-            "disk_bytes": disk_bytes,
-        }))
+        .map(|(id, num_docs, disk_bytes)| {
+            serde_json::json!({
+                "id":         id,
+                "num_docs":   num_docs,
+                "disk_bytes": disk_bytes,
+            })
+        })
         .collect();
 
     Ok(Json(serde_json::json!({
@@ -447,13 +474,8 @@ pub async fn list_segments(
 /// badge/alert UIs that only need to know how many segments exist (e.g. "index
 /// needs vacuum if count > N"). Complements `GET /index/segments` (#613).
 /// Sprint #638.
-pub async fn segment_count(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
-    let count = store
-        .list_segments()
-        .map(|s| s.len())
-        .unwrap_or(0);
+pub async fn segment_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let count = store.list_segments().map(|s| s.len()).unwrap_or(0);
     Json(serde_json::json!({"count": count}))
 }
 
@@ -477,10 +499,7 @@ pub async fn get_segment(
             "num_docs":   num_docs,
             "disk_bytes": disk_bytes,
         }))),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            format!("segment '{id}' not found"),
-        )),
+        None => Err((StatusCode::NOT_FOUND, format!("segment '{id}' not found"))),
     }
 }
 
@@ -514,15 +533,13 @@ pub async fn search_stats(
     if params.tenant_id.trim().is_empty() {
         return Err((StatusCode::BAD_REQUEST, "tenant_id is required".into()));
     }
-    let (total, by_kind) = store
-        .doc_stats(&params.tenant_id)
-        .map_err(|e| {
-            if e.to_string().contains("valid UUID") {
-                (StatusCode::BAD_REQUEST, e.to_string())
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-            }
-        })?;
+    let (total, by_kind) = store.doc_stats(&params.tenant_id).map_err(|e| {
+        if e.to_string().contains("valid UUID") {
+            (StatusCode::BAD_REQUEST, e.to_string())
+        } else {
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        }
+    })?;
 
     let kinds: Vec<serde_json::Value> = by_kind
         .into_iter()
@@ -566,9 +583,7 @@ pub async fn index_health_detailed(
 /// segment by `disk_bytes`, or `{segment: null}` when the index is empty.
 /// Useful for spotting bloat after bulk indexing without sorting the full segment
 /// list client-side. Complements `GET /index/segments` (#613). Sprint #649.
-pub async fn largest_segment(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn largest_segment(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segment = store
         .list_segments()
         .ok()
@@ -576,11 +591,13 @@ pub async fn largest_segment(
             segs.sort_unstable_by(|a, b| b.2.cmp(&a.2));
             segs.into_iter().next()
         })
-        .map(|(id, num_docs, disk_bytes)| serde_json::json!({
-            "id":         id,
-            "num_docs":   num_docs,
-            "disk_bytes": disk_bytes,
-        }));
+        .map(|(id, num_docs, disk_bytes)| {
+            serde_json::json!({
+                "id":         id,
+                "num_docs":   num_docs,
+                "disk_bytes": disk_bytes,
+            })
+        });
     Json(serde_json::json!({"segment": segment}))
 }
 
@@ -591,9 +608,7 @@ pub async fn largest_segment(
 /// Useful for fragmentation signals: when `smallest` is orders of magnitude smaller
 /// than `largest`, the index has many tiny segments and a merge may help.
 /// Sprint #654.
-pub async fn smallest_segment(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn smallest_segment(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segment = store
         .list_segments()
         .ok()
@@ -601,11 +616,13 @@ pub async fn smallest_segment(
             segs.sort_unstable_by(|a, b| a.2.cmp(&b.2));
             segs.into_iter().next()
         })
-        .map(|(id, num_docs, disk_bytes)| serde_json::json!({
-            "id":         id,
-            "num_docs":   num_docs,
-            "disk_bytes": disk_bytes,
-        }));
+        .map(|(id, num_docs, disk_bytes)| {
+            serde_json::json!({
+                "id":         id,
+                "num_docs":   num_docs,
+                "disk_bytes": disk_bytes,
+            })
+        });
     Json(serde_json::json!({"segment": segment}))
 }
 
@@ -616,17 +633,15 @@ pub async fn smallest_segment(
 /// `{segment_count, total_disk_bytes, largest_disk_bytes, smallest_disk_bytes}`.
 /// `largest_disk_bytes` e `smallest_disk_bytes` são `null` quando o índice está vazio.
 /// Graceful: retorna zeros/nulls se `list_segments()` falhar. Sprint #659.
-pub async fn segment_stats(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_stats(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let (segment_count, total_disk_bytes, largest_disk_bytes, smallest_disk_bytes) = store
         .list_segments()
         .map(|segs| {
             if segs.is_empty() {
                 return (0usize, 0u64, None::<u64>, None::<u64>);
             }
-            let total   = segs.iter().map(|(_, _, db)| db).sum::<u64>();
-            let largest  = segs.iter().map(|(_, _, db)| *db).max();
+            let total = segs.iter().map(|(_, _, db)| db).sum::<u64>();
+            let largest = segs.iter().map(|(_, _, db)| *db).max();
             let smallest = segs.iter().map(|(_, _, db)| *db).min();
             (segs.len(), total, largest, smallest)
         })
@@ -645,9 +660,7 @@ pub async fn segment_stats(
 /// Retorna `{segment_count, min_docs, max_docs, avg_docs}` com a distribuição de
 /// `num_docs` por segmento. `min_docs`, `max_docs` e `avg_docs` são `null` quando o
 /// índice está vazio. Graceful: zeros/nulls se `list_segments()` falhar. Sprint #664.
-pub async fn segment_age_stats(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_age_stats(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let (segment_count, min_docs, max_docs, avg_docs) = store
         .list_segments()
         .map(|segs| {
@@ -655,9 +668,9 @@ pub async fn segment_age_stats(
                 return (0usize, None::<u64>, None::<u64>, None::<f64>);
             }
             let docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
-            let min  = docs.iter().copied().min();
-            let max  = docs.iter().copied().max();
-            let avg  = Some(docs.iter().sum::<u64>() as f64 / docs.len() as f64);
+            let min = docs.iter().copied().min();
+            let max = docs.iter().copied().max();
+            let avg = Some(docs.iter().sum::<u64>() as f64 / docs.len() as f64);
             (segs.len(), min, max, avg)
         })
         .unwrap_or((0, None, None, None));
@@ -676,22 +689,20 @@ pub async fn segment_age_stats(
 /// `medium` (1 001–10 000), `large` (>10 000). Retorna
 /// `{segment_count, buckets:[{range,count}]}`. Graceful: zeros se `list_segments()` falhar.
 /// Sprint #669.
-pub async fn segment_doc_distribution(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_doc_distribution(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
 
-    let mut tiny   = 0u64;
-    let mut small  = 0u64;
+    let mut tiny = 0u64;
+    let mut small = 0u64;
     let mut medium = 0u64;
-    let mut large  = 0u64;
+    let mut large = 0u64;
 
     for (_, num_docs, _) in &segs {
         match num_docs {
-            0..=100       => tiny   += 1,
-            101..=1_000   => small  += 1,
+            0..=100 => tiny += 1,
+            101..=1_000 => small += 1,
             1_001..=10_000 => medium += 1,
-            _             => large  += 1,
+            _ => large += 1,
         }
     }
 
@@ -713,7 +724,7 @@ pub async fn segment_doc_distribution(
 /// Graceful: lista vazia se `list_segments()` falhar. Sprint #674.
 pub async fn segments_top_n(
     State(store): State<IndexStore>,
-    Query(q):     Query<TopNQuery>,
+    Query(q): Query<TopNQuery>,
 ) -> Json<serde_json::Value> {
     let limit = q.limit.unwrap_or(5).clamp(1, 50) as usize;
 
@@ -721,12 +732,15 @@ pub async fn segments_top_n(
     segs.sort_unstable_by(|a, b| b.2.cmp(&a.2));
     segs.truncate(limit);
 
-    let segments: Vec<serde_json::Value> = segs.into_iter()
-        .map(|(id, num_docs, disk_bytes)| serde_json::json!({
-            "id":        id,
-            "num_docs":  num_docs,
-            "disk_bytes": disk_bytes,
-        }))
+    let segments: Vec<serde_json::Value> = segs
+        .into_iter()
+        .map(|(id, num_docs, disk_bytes)| {
+            serde_json::json!({
+                "id":        id,
+                "num_docs":  num_docs,
+                "disk_bytes": disk_bytes,
+            })
+        })
         .collect();
 
     Json(serde_json::json!({"segments": segments}))
@@ -744,7 +758,7 @@ pub struct TopNQuery {
 /// Graceful: lista vazia se `list_segments()` falhar. Sprint #679.
 pub async fn segments_bottom_n(
     State(store): State<IndexStore>,
-    Query(q):     Query<TopNQuery>,
+    Query(q): Query<TopNQuery>,
 ) -> Json<serde_json::Value> {
     let limit = q.limit.unwrap_or(5).clamp(1, 50) as usize;
 
@@ -752,12 +766,15 @@ pub async fn segments_bottom_n(
     segs.sort_unstable_by(|a, b| a.2.cmp(&b.2));
     segs.truncate(limit);
 
-    let segments: Vec<serde_json::Value> = segs.into_iter()
-        .map(|(id, num_docs, disk_bytes)| serde_json::json!({
-            "id":         id,
-            "num_docs":   num_docs,
-            "disk_bytes": disk_bytes,
-        }))
+    let segments: Vec<serde_json::Value> = segs
+        .into_iter()
+        .map(|(id, num_docs, disk_bytes)| {
+            serde_json::json!({
+                "id":         id,
+                "num_docs":   num_docs,
+                "disk_bytes": disk_bytes,
+            })
+        })
         .collect();
 
     Json(serde_json::json!({"segments": segments}))
@@ -770,9 +787,7 @@ pub async fn segments_bottom_n(
 /// (which also exposes `disk_bytes` as a side-effect) with a dedicated,
 /// self-descriptive ops endpoint for storage dashboards. Graceful degradation:
 /// returns zeros when `list_segments()` fails. Sprint #644.
-pub async fn index_disk_usage(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn index_disk_usage(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let (total_disk_bytes, segment_count) = store
         .list_segments()
         .map(|segs| {
@@ -793,9 +808,7 @@ pub async fn index_disk_usage(
 /// `num_docs_committed` (live docs in current reader snapshot),
 /// `num_segments_committed` (segments in current reader snapshot).
 /// Does NOT block on the writer lock — safe to call under load. Sprint #628.
-pub async fn writer_stats(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn writer_stats(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let (heap_budget_bytes, writer_busy, num_docs, num_segments) = store.writer_stats();
     Json(serde_json::json!({
         "heap_budget_bytes":      heap_budget_bytes,
@@ -810,9 +823,7 @@ pub async fn writer_stats(
 /// Retorna `{segment_count, min_disk_bytes, max_disk_bytes, avg_disk_bytes}` com
 /// `null` quando o índice está vazio. Análogo a `age-stats` (#664) mas para bytes
 /// em vez de num_docs. Útil pra medir dispersão de tamanho de segmentos. Sprint #694.
-pub async fn segment_size_stats(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_size_stats(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let (segment_count, min_disk_bytes, max_disk_bytes, avg_disk_bytes) = store
         .list_segments()
         .map(|segs| {
@@ -849,22 +860,27 @@ pub struct MergeCandidatesQuery {
 
 pub async fn segments_merge_candidates(
     State(store): State<IndexStore>,
-    Query(q):     Query<MergeCandidatesQuery>,
+    Query(q): Query<MergeCandidatesQuery>,
 ) -> Json<serde_json::Value> {
     let min_docs = q.min_docs.unwrap_or(0);
     let max_docs = q.max_docs.unwrap_or(u64::MAX);
 
     let segs = store.list_segments().unwrap_or_default();
-    let mut candidates: Vec<serde_json::Value> = segs.into_iter()
+    let mut candidates: Vec<serde_json::Value> = segs
+        .into_iter()
         .filter(|(_, num_docs, _)| *num_docs >= min_docs && *num_docs <= max_docs)
-        .map(|(id, num_docs, disk_bytes)| serde_json::json!({
-            "id":         id,
-            "num_docs":   num_docs,
-            "disk_bytes": disk_bytes,
-        }))
+        .map(|(id, num_docs, disk_bytes)| {
+            serde_json::json!({
+                "id":         id,
+                "num_docs":   num_docs,
+                "disk_bytes": disk_bytes,
+            })
+        })
         .collect();
     candidates.sort_by(|a, b| {
-        a["num_docs"].as_u64().unwrap_or(0)
+        a["num_docs"]
+            .as_u64()
+            .unwrap_or(0)
             .cmp(&b["num_docs"].as_u64().unwrap_or(0))
     });
     Json(serde_json::json!({
@@ -889,11 +905,10 @@ pub struct StatsByTenantQuery {
 /// Calcula `num_docs / disk_bytes` (docs per byte) para cada segmento, ordenado
 /// DESC (mais denso primeiro). Segmentos com `disk_bytes = 0` recebem ratio `null`.
 /// Retorna `{segments:[{id,num_docs,disk_bytes,docs_per_byte}]}`. Sprint #698.
-pub async fn segment_doc_ratio(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_doc_ratio(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
-    let mut out: Vec<serde_json::Value> = segs.into_iter()
+    let mut out: Vec<serde_json::Value> = segs
+        .into_iter()
         .map(|(id, num_docs, disk_bytes)| {
             let ratio = if disk_bytes > 0 {
                 serde_json::json!(num_docs as f64 / disk_bytes as f64)
@@ -927,7 +942,7 @@ pub struct PercentileQuery {
 
 pub async fn segment_percentile(
     State(store): State<IndexStore>,
-    Query(q):     Query<PercentileQuery>,
+    Query(q): Query<PercentileQuery>,
 ) -> Json<serde_json::Value> {
     let p = q.p.unwrap_or(50).clamp(0, 100);
     let mut segs = store.list_segments().unwrap_or_default();
@@ -960,9 +975,7 @@ pub async fn segment_percentile(
 /// de num_docs e disk_bytes via iteração em memória sobre list_segments().
 /// Retorna `{segment_count,num_docs_mean,num_docs_stdev,disk_bytes_mean,disk_bytes_stdev}`.
 /// Todos os campos são null quando o índice está vazio; stdev é null com 1 segmento. Sprint #718.
-pub async fn segment_stdev(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_stdev(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
 
@@ -981,12 +994,14 @@ pub async fn segment_stdev(
 
     let mean_f = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
     let stdev_f = |v: &[f64], mean: f64| -> Option<f64> {
-        if v.len() < 2 { return None; }
+        if v.len() < 2 {
+            return None;
+        }
         let variance = v.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (v.len() - 1) as f64;
         Some(variance.sqrt())
     };
 
-    let docs_mean  = mean_f(&docs_vals);
+    let docs_mean = mean_f(&docs_vals);
     let bytes_mean = mean_f(&bytes_vals);
 
     Json(serde_json::json!({
@@ -1003,9 +1018,7 @@ pub async fn segment_stdev(
 /// H = -sum(p_i * log2(p_i)) onde p_i = num_docs_i / total_docs.
 /// H=0 quando há um único segmento; H=log2(n) quando todos têm o mesmo tamanho.
 /// Retorna `{segment_count,total_docs,entropy_bits}`. Null quando índice vazio. Sprint #723.
-pub async fn segment_entropy(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_entropy(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
 
@@ -1043,9 +1056,7 @@ pub async fn segment_entropy(
 /// G = (2 * sum(i * x_i) / (n * sum(x_i))) - (n+1)/n  onde x_i é num_docs ordenado ASC.
 /// 0 = distribuição perfeitamente uniforme; 1 = toda concentração num único segmento.
 /// Retorna `{segment_count,gini}`. Null quando índice vazio ou 1 segmento. Sprint #728.
-pub async fn segment_gini(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_gini(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let mut segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
 
@@ -1063,7 +1074,9 @@ pub async fn segment_gini(
     let gini = if sum == 0.0 {
         0.0
     } else {
-        let weighted_sum: f64 = vals.iter().enumerate()
+        let weighted_sum: f64 = vals
+            .iter()
+            .enumerate()
             .map(|(i, x)| (i + 1) as f64 * x)
             .sum();
         (2.0 * weighted_sum / (n as f64 * sum)) - (n as f64 + 1.0) / n as f64
@@ -1080,9 +1093,7 @@ pub async fn segment_gini(
 /// Calcula Q1 (25°) e Q3 (75°) via interpolação linear sobre valores ordenados.
 /// IQR é robusto a outliers vs stdev (#718). Null quando n < 2.
 /// Retorna `{segment_count,num_docs_q1,num_docs_q3,num_docs_iqr,disk_bytes_q1,disk_bytes_q3,disk_bytes_iqr}`. Sprint #733.
-pub async fn segment_iqr(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_iqr(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
 
@@ -1105,13 +1116,13 @@ pub async fn segment_iqr(
         sorted[lo] + (h - lo as f64) * (sorted[hi] - sorted[lo])
     }
 
-    let mut docs: Vec<f64>  = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mut docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
     let mut bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
     docs.sort_by(|a, b| a.partial_cmp(b).unwrap());
     bytes.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-    let dq1 = quantile(&docs,  0.25);
-    let dq3 = quantile(&docs,  0.75);
+    let dq1 = quantile(&docs, 0.25);
+    let dq3 = quantile(&docs, 0.75);
     let bq1 = quantile(&bytes, 0.25);
     let bq3 = quantile(&bytes, 0.75);
 
@@ -1130,9 +1141,7 @@ pub async fn segment_iqr(
 ///
 /// Medida simples de spread. Null quando n=0. Complementa stdev (#718) e IQR (#733).
 /// Retorna `{segment_count,num_docs_min,num_docs_max,num_docs_range,disk_bytes_min,disk_bytes_max,disk_bytes_range}`. Sprint #738.
-pub async fn segment_range(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
 
@@ -1168,9 +1177,7 @@ pub async fn segment_range(
 ///
 /// CV = stdev / mean — normaliza dispersão pela escala. Null quando n<2 ou mean=0.
 /// Retorna `{segment_count,num_docs_cv,disk_bytes_cv}`. Sprint #743.
-pub async fn segment_cv(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_cv(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
 
@@ -1185,12 +1192,14 @@ pub async fn segment_cv(
     fn cv(vals: &[f64]) -> Option<f64> {
         let n = vals.len() as f64;
         let mean = vals.iter().sum::<f64>() / n;
-        if mean == 0.0 { return None; }
+        if mean == 0.0 {
+            return None;
+        }
         let var = vals.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
         Some(var.sqrt() / mean)
     }
 
-    let docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
     let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
 
     Json(serde_json::json!({
@@ -1205,9 +1214,7 @@ pub async fn segment_cv(
 /// g1 = (n/((n-1)(n-2))) * Σ((xi-mean)³/stdev³) — fórmula Fisher sample skewness.
 /// Null quando n < 3. Positivo = cauda direita (muitos segmentos pequenos, alguns grandes).
 /// Retorna `{segment_count,num_docs_skewness,disk_bytes_skewness}`. Sprint #748.
-pub async fn segment_skewness(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_skewness(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
 
@@ -1222,14 +1229,16 @@ pub async fn segment_skewness(
     fn skewness(vals: &[f64]) -> Option<f64> {
         let n = vals.len() as f64;
         let mean = vals.iter().sum::<f64>() / n;
-        let var  = vals.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
-        let std  = var.sqrt();
-        if std == 0.0 { return Some(0.0); }
+        let var = vals.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
+        let std = var.sqrt();
+        if std == 0.0 {
+            return Some(0.0);
+        }
         let m3: f64 = vals.iter().map(|x| ((x - mean) / std).powi(3)).sum();
         Some((n / ((n - 1.0) * (n - 2.0))) * m3)
     }
 
-    let docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
     let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
 
     Json(serde_json::json!({
@@ -1243,9 +1252,7 @@ pub async fn segment_skewness(
 ///
 /// MAD = median(|xi - median(x)|) — robusto a outliers. Null quando n=0.
 /// Retorna `{segment_count,num_docs_median,num_docs_mad,disk_bytes_median,disk_bytes_mad}`. Sprint #753.
-pub async fn segment_mad(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_mad(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
 
@@ -1262,7 +1269,11 @@ pub async fn segment_mad(
     fn median_sorted(sorted: &mut Vec<f64>) -> f64 {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let m = sorted.len();
-        if m % 2 == 1 { sorted[m / 2] } else { (sorted[m / 2 - 1] + sorted[m / 2]) / 2.0 }
+        if m % 2 == 1 {
+            sorted[m / 2]
+        } else {
+            (sorted[m / 2 - 1] + sorted[m / 2]) / 2.0
+        }
     }
 
     fn mad(vals: &[f64]) -> (f64, f64) {
@@ -1273,7 +1284,7 @@ pub async fn segment_mad(
         (med, mad_val)
     }
 
-    let docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
     let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
     let (dm, dmad) = mad(&docs);
     let (bm, bmad) = mad(&bytes);
@@ -1291,9 +1302,7 @@ pub async fn segment_mad(
 ///
 /// g2 = [(n(n+1)/((n-1)(n-2)(n-3))) * Σ((xi-m)⁴/s⁴)] - 3(n-1)²/((n-2)(n-3)).
 /// Null quando n < 4. Positivo = caudas pesadas (leptocúrtico). Sprint #758.
-pub async fn segment_kurtosis(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_kurtosis(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
 
@@ -1308,16 +1317,18 @@ pub async fn segment_kurtosis(
     fn kurtosis(vals: &[f64]) -> Option<f64> {
         let n = vals.len() as f64;
         let mean = vals.iter().sum::<f64>() / n;
-        let var  = vals.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
-        let std  = var.sqrt();
-        if std == 0.0 { return Some(0.0); }
+        let var = vals.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
+        let std = var.sqrt();
+        if std == 0.0 {
+            return Some(0.0);
+        }
         let m4: f64 = vals.iter().map(|x| ((x - mean) / std).powi(4)).sum();
         let kurt = (n * (n + 1.0)) / ((n - 1.0) * (n - 2.0) * (n - 3.0)) * m4
             - 3.0 * (n - 1.0).powi(2) / ((n - 2.0) * (n - 3.0));
         Some(kurt)
     }
 
-    let docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
     let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
 
     Json(serde_json::json!({
@@ -1357,11 +1368,13 @@ pub async fn segment_trimmed_mean(
         vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let trim = (vals.len() * pct / 100).min(vals.len() / 2);
         let slice = &vals[trim..vals.len() - trim];
-        if slice.is_empty() { return 0.0; }
+        if slice.is_empty() {
+            return 0.0;
+        }
         slice.iter().sum::<f64>() / slice.len() as f64
     }
 
-    let mut docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mut docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
     let mut bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
 
     Json(serde_json::json!({
@@ -1375,9 +1388,7 @@ pub async fn segment_trimmed_mean(
 /// GET /api/v1/search/index/segments/harmonic-mean — média harmônica de num_docs.
 ///
 /// H = n / Σ(1/xi). Undefined quando algum xi=0 (retorna null). Sprint #768.
-pub async fn segment_harmonic_mean(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_harmonic_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
 
@@ -1390,12 +1401,14 @@ pub async fn segment_harmonic_mean(
     }
 
     fn harmonic(vals: &[f64]) -> Option<f64> {
-        if vals.iter().any(|&x| x == 0.0) { return None; }
+        if vals.iter().any(|&x| x == 0.0) {
+            return None;
+        }
         let sum_inv: f64 = vals.iter().map(|x| 1.0 / x).sum();
         Some(vals.len() as f64 / sum_inv)
     }
 
-    let docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
     let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
 
     Json(serde_json::json!({
@@ -1408,9 +1421,7 @@ pub async fn segment_harmonic_mean(
 /// GET /api/v1/search/index/segments/geometric-mean — média geométrica de num_docs e disk_bytes.
 ///
 /// G = exp(Σ(ln(xi))/n). Undefined quando algum xi=0 (retorna null). Sprint #773.
-pub async fn segment_geometric_mean(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_geometric_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
 
@@ -1423,12 +1434,14 @@ pub async fn segment_geometric_mean(
     }
 
     fn geometric(vals: &[f64]) -> Option<f64> {
-        if vals.iter().any(|&x| x <= 0.0) { return None; }
+        if vals.iter().any(|&x| x <= 0.0) {
+            return None;
+        }
         let sum_ln: f64 = vals.iter().map(|x| x.ln()).sum();
         Some((sum_ln / vals.len() as f64).exp())
     }
 
-    let docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
     let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
 
     Json(serde_json::json!({
@@ -1443,17 +1456,16 @@ pub async fn segment_geometric_mean(
 /// Ordena segmentos por num_docs ASC e calcula cumsum de num_docs e disk_bytes.
 /// Útil pra visualizar distribuição acumulada — quantos docs/bytes cobrem os N menores segmentos.
 /// Retorna `{segments:[{id,num_docs,disk_bytes,cum_docs,cum_bytes}]}`. Sprint #708.
-pub async fn segments_cumulative(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segments_cumulative(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let mut segs = store.list_segments().unwrap_or_default();
     segs.sort_by_key(|(_, num_docs, _)| *num_docs);
 
     let mut cum_docs: u64 = 0;
     let mut cum_bytes: u64 = 0;
-    let out: Vec<serde_json::Value> = segs.into_iter()
+    let out: Vec<serde_json::Value> = segs
+        .into_iter()
         .map(|(id, num_docs, disk_bytes)| {
-            cum_docs  += num_docs;
+            cum_docs += num_docs;
             cum_bytes += disk_bytes;
             serde_json::json!({
                 "id":        id,
@@ -1480,7 +1492,7 @@ pub struct OverlapQuery {
 
 pub async fn segments_overlap(
     State(store): State<IndexStore>,
-    Query(q):     Query<OverlapQuery>,
+    Query(q): Query<OverlapQuery>,
 ) -> Json<serde_json::Value> {
     let band = q.band.unwrap_or(1000).max(1);
     let segs = store.list_segments().unwrap_or_default();
@@ -1504,7 +1516,9 @@ pub async fn segments_overlap(
         }
     }
     pairs.sort_by(|a, b| {
-        a["docs_a"].as_u64().unwrap_or(0)
+        a["docs_a"]
+            .as_u64()
+            .unwrap_or(0)
             .cmp(&b["docs_a"].as_u64().unwrap_or(0))
     });
     Json(serde_json::json!({"band": band, "pair_count": pairs.len(), "pairs": pairs}))
@@ -1521,11 +1535,11 @@ pub struct WinsorizedMeanQuery {
 
 pub async fn segment_winsorized_mean(
     State(store): State<IndexStore>,
-    Query(q):     Query<WinsorizedMeanQuery>,
+    Query(q): Query<WinsorizedMeanQuery>,
 ) -> Json<serde_json::Value> {
-    let pct  = q.pct.unwrap_or(10).min(40);
+    let pct = q.pct.unwrap_or(10).min(40);
     let segs = store.list_segments().unwrap_or_default();
-    let n    = segs.len();
+    let n = segs.len();
 
     if n == 0 {
         return Json(serde_json::json!({
@@ -1546,7 +1560,7 @@ pub async fn segment_winsorized_mean(
         clamped.iter().sum::<f64>() / n as f64
     }
 
-    let mut docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mut docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
     let mut bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
 
     Json(serde_json::json!({
@@ -1565,7 +1579,7 @@ pub async fn segment_normalized_entropy(
     State(store): State<IndexStore>,
 ) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
-    let n    = segs.len();
+    let n = segs.len();
 
     if n < 2 {
         return Json(serde_json::json!({
@@ -1579,19 +1593,25 @@ pub async fn segment_normalized_entropy(
 
     fn entropy_and_norm(vals: &[u64]) -> (f64, f64) {
         let total: f64 = vals.iter().map(|&x| x as f64).sum();
-        if total == 0.0 { return (0.0, 0.0); }
-        let h: f64 = vals.iter().filter(|&&x| x > 0).map(|&x| {
-            let p = x as f64 / total;
-            -p * p.log2()
-        }).sum();
+        if total == 0.0 {
+            return (0.0, 0.0);
+        }
+        let h: f64 = vals
+            .iter()
+            .filter(|&&x| x > 0)
+            .map(|&x| {
+                let p = x as f64 / total;
+                -p * p.log2()
+            })
+            .sum();
         let max_h = (vals.len() as f64).log2();
         (h, if max_h > 0.0 { h / max_h } else { 0.0 })
     }
 
-    let docs:  Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    let docs: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
     let bytes: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
 
-    let (h_docs,  hn_docs)  = entropy_and_norm(&docs);
+    let (h_docs, hn_docs) = entropy_and_norm(&docs);
     let (h_bytes, hn_bytes) = entropy_and_norm(&bytes);
 
     Json(serde_json::json!({
@@ -1607,17 +1627,22 @@ pub async fn segment_normalized_entropy(
 ///
 /// Retorna `{total_bytes,segments:[{id,num_docs,disk_bytes,pct_bytes}]}` ordenado por disk_bytes DESC.
 /// Útil pra visualizar quais segmentos dominam o storage. Sprint #788.
-pub async fn segment_relative_sizes(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_relative_sizes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let mut segs = store.list_segments().unwrap_or_default();
     segs.sort_by(|a, b| b.2.cmp(&a.2));
 
     let total_bytes: u64 = segs.iter().map(|(_, _, b)| b).sum();
-    let out: Vec<serde_json::Value> = segs.iter().map(|(id, docs, bytes)| {
-        let pct = if total_bytes > 0 { *bytes as f64 / total_bytes as f64 * 100.0 } else { 0.0 };
-        serde_json::json!({"id": id, "num_docs": docs, "disk_bytes": bytes, "pct_bytes": pct})
-    }).collect();
+    let out: Vec<serde_json::Value> = segs
+        .iter()
+        .map(|(id, docs, bytes)| {
+            let pct = if total_bytes > 0 {
+                *bytes as f64 / total_bytes as f64 * 100.0
+            } else {
+                0.0
+            };
+            serde_json::json!({"id": id, "num_docs": docs, "disk_bytes": bytes, "pct_bytes": pct})
+        })
+        .collect();
 
     Json(serde_json::json!({"total_bytes": total_bytes, "segments": out}))
 }
@@ -1626,13 +1651,19 @@ pub async fn segment_relative_sizes(
 ///
 /// disk_bytes / num_docs por segmento — indica densidade de indexação.
 /// Segmentos com num_docs=0 têm size_ratio=null. Ordenado por size_ratio DESC. Sprint #793.
-pub async fn segment_size_ratio(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_size_ratio(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let mut segs = store.list_segments().unwrap_or_default();
     segs.sort_by(|a, b| {
-        let ra = if a.1 > 0 { a.2 as f64 / a.1 as f64 } else { 0.0 };
-        let rb = if b.1 > 0 { b.2 as f64 / b.1 as f64 } else { 0.0 };
+        let ra = if a.1 > 0 {
+            a.2 as f64 / a.1 as f64
+        } else {
+            0.0
+        };
+        let rb = if b.1 > 0 {
+            b.2 as f64 / b.1 as f64
+        } else {
+            0.0
+        };
         rb.partial_cmp(&ra).unwrap_or(std::cmp::Ordering::Equal)
     });
 
@@ -1648,11 +1679,9 @@ pub async fn segment_size_ratio(
 ///
 /// z = (x - mean) / stdev. Segmentos com |z| > 2 são outliers candidatos a merge/vacuum.
 /// Retorna `{segment_count,segments:[{id,num_docs,disk_bytes,docs_z,bytes_z}]}` docs_z DESC. Sprint #798.
-pub async fn segment_z_scores(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_z_scores(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
-    let n    = segs.len();
+    let n = segs.len();
 
     if n < 2 {
         return Json(serde_json::json!({"segment_count": n, "segments": []}));
@@ -1665,7 +1694,7 @@ pub async fn segment_z_scores(
         (m, var.sqrt())
     }
 
-    let docs_f:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let docs_f: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
     let bytes_f: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
     let (md, sd) = mean_stdev(&docs_f);
     let (mb, sb) = mean_stdev(&bytes_f);
@@ -1676,7 +1705,9 @@ pub async fn segment_z_scores(
         serde_json::json!({"id": id, "num_docs": docs, "disk_bytes": bytes, "docs_z": dz, "bytes_z": bz})
     }).collect();
     out.sort_by(|a, b| {
-        b["docs_z"].as_f64().unwrap_or(0.0)
+        b["docs_z"]
+            .as_f64()
+            .unwrap_or(0.0)
             .partial_cmp(&a["docs_z"].as_f64().unwrap_or(0.0))
             .unwrap_or(std::cmp::Ordering::Equal)
     });
@@ -1687,13 +1718,19 @@ pub async fn segment_z_scores(
 /// GET /api/v1/search/index/segments/doc-density — num_docs/disk_bytes por segmento (inverso de size_ratio).
 ///
 /// docs_per_byte = num_docs / disk_bytes. disk_bytes=0 → null. Ordenado por docs_per_byte DESC. Sprint #803.
-pub async fn segment_doc_density(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_doc_density(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let mut segs = store.list_segments().unwrap_or_default();
     segs.sort_by(|a, b| {
-        let ra = if a.2 > 0 { a.1 as f64 / a.2 as f64 } else { 0.0 };
-        let rb = if b.2 > 0 { b.1 as f64 / b.2 as f64 } else { 0.0 };
+        let ra = if a.2 > 0 {
+            a.1 as f64 / a.2 as f64
+        } else {
+            0.0
+        };
+        let rb = if b.2 > 0 {
+            b.1 as f64 / b.2 as f64
+        } else {
+            0.0
+        };
         rb.partial_cmp(&ra).unwrap_or(std::cmp::Ordering::Equal)
     });
 
@@ -1713,7 +1750,7 @@ pub async fn segment_coefficient_dispersion(
     State(store): State<IndexStore>,
 ) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
-    let n    = segs.len();
+    let n = segs.len();
 
     if n < 2 {
         return Json(serde_json::json!({
@@ -1727,10 +1764,14 @@ pub async fn segment_coefficient_dispersion(
         let min = *vals.iter().min()?;
         let max = *vals.iter().max()?;
         let mean = vals.iter().sum::<u64>() as f64 / vals.len() as f64;
-        if mean == 0.0 { None } else { Some((max - min) as f64 / mean) }
+        if mean == 0.0 {
+            None
+        } else {
+            Some((max - min) as f64 / mean)
+        }
     }
 
-    let docs:  Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    let docs: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
     let bytes: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
 
     Json(serde_json::json!({
@@ -1743,11 +1784,9 @@ pub async fn segment_coefficient_dispersion(
 /// GET /api/v1/search/index/segments/percentile-rank — percentis 25/50/75/90/95 de num_docs e disk_bytes.
 ///
 /// Interpolação linear nos valores ordenados. Sprint #813.
-pub async fn segment_percentile_rank(
-    State(store): State<IndexStore>,
-) -> Json<serde_json::Value> {
+pub async fn segment_percentile_rank(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
-    let n    = segs.len();
+    let n = segs.len();
 
     if n == 0 {
         return Json(serde_json::json!({"segment_count": 0}));
@@ -1755,23 +1794,29 @@ pub async fn segment_percentile_rank(
 
     fn quantile(sorted: &[f64], p: f64) -> f64 {
         let idx = p * (sorted.len() - 1) as f64;
-        let lo  = idx.floor() as usize;
-        let hi  = idx.ceil() as usize;
-        if lo == hi { sorted[lo] } else { sorted[lo] + (idx - lo as f64) * (sorted[hi] - sorted[lo]) }
+        let lo = idx.floor() as usize;
+        let hi = idx.ceil() as usize;
+        if lo == hi {
+            sorted[lo]
+        } else {
+            sorted[lo] + (idx - lo as f64) * (sorted[hi] - sorted[lo])
+        }
     }
 
-    let mut docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mut docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
     let mut bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
     docs.sort_by(|a, b| a.partial_cmp(b).unwrap());
     bytes.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
     let pcts = [0.25_f64, 0.50, 0.75, 0.90, 0.95];
-    let docs_pct:  Vec<serde_json::Value> = pcts.iter().map(|&p| {
-        serde_json::json!({"pct": (p * 100.0) as u32, "value": quantile(&docs, p)})
-    }).collect();
-    let bytes_pct: Vec<serde_json::Value> = pcts.iter().map(|&p| {
-        serde_json::json!({"pct": (p * 100.0) as u32, "value": quantile(&bytes, p)})
-    }).collect();
+    let docs_pct: Vec<serde_json::Value> = pcts
+        .iter()
+        .map(|&p| serde_json::json!({"pct": (p * 100.0) as u32, "value": quantile(&docs, p)}))
+        .collect();
+    let bytes_pct: Vec<serde_json::Value> = pcts
+        .iter()
+        .map(|&p| serde_json::json!({"pct": (p * 100.0) as u32, "value": quantile(&bytes, p)}))
+        .collect();
 
     Json(serde_json::json!({
         "segment_count":        n,
@@ -1782,17 +1827,20 @@ pub async fn segment_percentile_rank(
 
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
-    Query(q):     Query<StatsByTenantQuery>,
+    Query(q): Query<StatsByTenantQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
     let rows = store
         .docs_count_by_tenant(limit)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let out: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(tenant_id, doc_count)| serde_json::json!({
-            "tenant_id": tenant_id,
-            "doc_count": doc_count,
-        }))
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(tenant_id, doc_count)| {
+            serde_json::json!({
+                "tenant_id": tenant_id,
+                "doc_count": doc_count,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
 }
@@ -1803,14 +1851,14 @@ mod tests {
 
     fn p(q: &str, limit: usize) -> SearchParams {
         SearchParams {
-            q:                 q.to_string(),
-            tenant_id:         "00000000-0000-0000-0000-000000000000".into(),
+            q: q.to_string(),
+            tenant_id: "00000000-0000-0000-0000-000000000000".into(),
             limit,
-            offset:            0,
-            facet:             None,
+            offset: 0,
+            facet: None,
             facet_granularity: None,
-            after_secs:        None,
-            before_secs:       None,
+            after_secs: None,
+            before_secs: None,
         }
     }
 

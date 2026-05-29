@@ -9,14 +9,14 @@
 //!   GET  /health /ready  → liveness/readiness
 
 mod config;
-mod ratelimit;
 mod error;
 mod handlers;
 mod kc_admin;
 mod oidc;
+mod ratelimit;
 mod state;
 
-use std::{env, net::SocketAddr, sync::Arc, collections::HashMap};
+use std::{collections::HashMap, env, net::SocketAddr, sync::Arc};
 
 use axum::{
     extract::Extension,
@@ -38,13 +38,21 @@ use crate::{
 const SERVICE: &str = "expresso-auth";
 const DEFAULT_PORT: u16 = 8100;
 
-async fn health() -> Json<Value> { Json(json!({"service": SERVICE, "status": "ok"})) }
-async fn ready()  -> Json<Value> { Json(json!({"ready": true})) }
+async fn health() -> Json<Value> {
+    Json(json!({"service": SERVICE, "status": "ok"}))
+}
+async fn ready() -> Json<Value> {
+    Json(json!({"ready": true}))
+}
 
 fn resolve_addr() -> anyhow::Result<SocketAddr> {
     let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let port = env::var("PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(DEFAULT_PORT);
-    format!("{}:{}", host, port).parse::<SocketAddr>()
+    let port = env::var("PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_PORT);
+    format!("{}:{}", host, port)
+        .parse::<SocketAddr>()
         .map_err(|e| anyhow::anyhow!("invalid bind address: {}", e))
 }
 
@@ -58,15 +66,17 @@ async fn main() -> anyhow::Result<()> {
     let cfg = RpConfig::from_env()?;
 
     // Discover IdP endpoints (single-realm fallback).
-    let provider = ProviderMetadata::fetch(&cfg.issuer, cfg.http_timeout).await
+    let provider = ProviderMetadata::fetch(&cfg.issuer, cfg.http_timeout)
+        .await
         .map_err(|e| anyhow::anyhow!("discovery: {e}"))?;
     info!(issuer = %provider.issuer, "provider metadata loaded");
 
     // Single-realm JWKS validator (fallback for /auth/me).
     let validator_cfg = OidcConfig::new(cfg.issuer.clone(), cfg.client_id.clone());
     let validator = Arc::new(
-        OidcValidator::new(validator_cfg).await
-            .map_err(|e| anyhow::anyhow!("validator init: {e}"))?
+        OidcValidator::new(validator_cfg)
+            .await
+            .map_err(|e| anyhow::anyhow!("validator init: {e}"))?,
     );
     info!("JWKS loaded (single-realm fallback)");
 
@@ -79,17 +89,35 @@ async fn main() -> anyhow::Result<()> {
         Ok(url) if !url.is_empty() => match sqlx::postgres::PgPoolOptions::new()
             .max_connections(4)
             .acquire_timeout(std::time::Duration::from_secs(5))
-            .connect(&url).await {
-                Ok(p) => { info!("audit pool ready"); Some(p) }
-                Err(e) => { tracing::warn!(error=%e, "audit pool unavailable (continuing without audit)"); None }
-            },
-        _ => { info!("DATABASE_URL unset → audit writes disabled"); None }
+            .connect(&url)
+            .await
+        {
+            Ok(p) => {
+                info!("audit pool ready");
+                Some(p)
+            }
+            Err(e) => {
+                tracing::warn!(error=%e, "audit pool unavailable (continuing without audit)");
+                None
+            }
+        },
+        _ => {
+            info!("DATABASE_URL unset → audit writes disabled");
+            None
+        }
     };
 
     // Multi-realm validator (token validation — used by /auth/me + callback).
-    let (multi_validator, tenant_resolver): (Option<Arc<MultiRealmValidator>>, Option<Arc<TenantResolver>>) = {
-        let tpl = env::var("AUTH__OIDC_ISSUER_TEMPLATE").ok().filter(|v| !v.is_empty());
-        let aud = env::var("AUTH__OIDC_AUDIENCE").ok().filter(|v| !v.is_empty());
+    let (multi_validator, tenant_resolver): (
+        Option<Arc<MultiRealmValidator>>,
+        Option<Arc<TenantResolver>>,
+    ) = {
+        let tpl = env::var("AUTH__OIDC_ISSUER_TEMPLATE")
+            .ok()
+            .filter(|v| !v.is_empty());
+        let aud = env::var("AUTH__OIDC_AUDIENCE")
+            .ok()
+            .filter(|v| !v.is_empty());
         match (tpl, aud) {
             (Some(t), Some(a)) => {
                 let r = TenantResolver::from_env("AUTH__TENANT_HOSTS");
@@ -98,8 +126,14 @@ async fn main() -> anyhow::Result<()> {
                     (None, None)
                 } else {
                     match MultiRealmValidator::new(t.clone(), a.clone()) {
-                        Ok(m)  => { info!(template = %t, hosts = r.len(), "multi-realm validator ready"); (Some(Arc::new(m)), Some(Arc::new(r))) }
-                        Err(e) => { tracing::error!(error = %e, "multi-realm validator init failed"); (None, None) }
+                        Ok(m) => {
+                            info!(template = %t, hosts = r.len(), "multi-realm validator ready");
+                            (Some(Arc::new(m)), Some(Arc::new(r)))
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "multi-realm validator init failed");
+                            (None, None)
+                        }
                     }
                 }
             }
@@ -110,8 +144,14 @@ async fn main() -> anyhow::Result<()> {
     // Multi-realm provider cache (discovery per tenant — used by login/callback/logout).
     let multi_provider: Option<Arc<TenantProviderCache>> = match cfg.issuer_template.as_deref() {
         Some(tpl) => match TenantProviderCache::new(tpl.to_string(), cfg.http_timeout) {
-            Ok(c)  => { info!(template = %tpl, "tenant provider cache ready"); Some(Arc::new(c)) }
-            Err(e) => { tracing::error!(error = %e, "tenant provider cache init failed"); None }
+            Ok(c) => {
+                info!(template = %tpl, "tenant provider cache ready");
+                Some(Arc::new(c))
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "tenant provider cache init failed");
+                None
+            }
         },
         None => None,
     };
@@ -131,45 +171,67 @@ async fn main() -> anyhow::Result<()> {
     // Trust X-Forwarded-For SOMENTE quando deploy está atrás de proxy
     // que reescreve o header (nginx/traefik/envoy). Default off — sem
     // isso, atacante incrementa XFF a cada request e fura o limite.
-    let trust_proxy = std::env::var("AUTH_RP__TRUST_PROXY")
-        .ok().as_deref() == Some("1");
+    let trust_proxy = std::env::var("AUTH_RP__TRUST_PROXY").ok().as_deref() == Some("1");
 
-    let login_limiter = std::sync::Arc::new(
-        ratelimit::RateLimiter::with_trust_proxy(
-            std::time::Duration::from_secs(60), 20, trust_proxy,
-        )
-    );
+    let login_limiter = std::sync::Arc::new(ratelimit::RateLimiter::with_trust_proxy(
+        std::time::Duration::from_secs(60),
+        20,
+        trust_proxy,
+    ));
     // /auth/forgot dispara emails via KC SMTP — limite mais agressivo
     // pra impedir email-bombing de inbox alheia + abuso do relay.
-    let forgot_limiter = std::sync::Arc::new(
-        ratelimit::RateLimiter::with_trust_proxy(
-            std::time::Duration::from_secs(60), 5, trust_proxy,
-        )
-    );
+    let forgot_limiter = std::sync::Arc::new(ratelimit::RateLimiter::with_trust_proxy(
+        std::time::Duration::from_secs(60),
+        5,
+        trust_proxy,
+    ));
 
     let app = Router::new()
         .route("/health", get(health))
-        .route("/ready",  get(ready))
-        .route("/auth/login",    get(handlers::login::login)
-            .layer(axum::middleware::from_fn_with_state(login_limiter.clone(), ratelimit::rate_limit_mw)))
+        .route("/ready", get(ready))
+        .route(
+            "/auth/login",
+            get(handlers::login::login).layer(axum::middleware::from_fn_with_state(
+                login_limiter.clone(),
+                ratelimit::rate_limit_mw,
+            )),
+        )
         .route("/auth/callback", get(handlers::callback::callback))
-        .route("/auth/refresh",  post(handlers::refresh::refresh))
-        .route("/auth/logout",   get(handlers::logout::logout))
-        .route("/auth/me",       get(handlers::me::me))
+        .route("/auth/refresh", post(handlers::refresh::refresh))
+        .route("/auth/logout", get(handlers::logout::logout))
+        .route("/auth/me", get(handlers::me::me))
         .route("/auth/impersonate/end", post(handlers::impersonate::end))
-        .route("/auth/impersonate/:target_user_id", post(handlers::impersonate::start))
-        .route("/auth/forgot", post(handlers::forgot::forgot)
-            .layer(axum::middleware::from_fn_with_state(forgot_limiter.clone(), ratelimit::rate_limit_mw)))
+        .route(
+            "/auth/impersonate/:target_user_id",
+            post(handlers::impersonate::start),
+        )
+        .route(
+            "/auth/forgot",
+            post(handlers::forgot::forgot).layer(axum::middleware::from_fn_with_state(
+                forgot_limiter.clone(),
+                ratelimit::rate_limit_mw,
+            )),
+        )
         .merge(expresso_observability::metrics_router())
         .with_state(app_state)
         .layer(Extension(validator));
-    let app = match multi_validator { Some(m) => app.layer(Extension(m)), None => app };
-    let app = match tenant_resolver  { Some(r) => app.layer(Extension(r)), None => app };
+    let app = match multi_validator {
+        Some(m) => app.layer(Extension(m)),
+        None => app,
+    };
+    let app = match tenant_resolver {
+        Some(r) => app.layer(Extension(r)),
+        None => app,
+    };
 
     let addr = resolve_addr()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     info!(service = SERVICE, %addr, "listening");
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 

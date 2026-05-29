@@ -15,9 +15,9 @@ use crate::error::Result;
 
 #[derive(Debug, Clone)]
 pub struct DeadProp {
-    pub namespace:  String,
+    pub namespace: String,
     pub local_name: String,
-    pub xml_value:  String,
+    pub xml_value: String,
 }
 
 pub struct DeadPropRepo<'a> {
@@ -25,15 +25,17 @@ pub struct DeadPropRepo<'a> {
 }
 
 impl<'a> DeadPropRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     pub async fn upsert_addressbook(
         &self,
-        tenant_id:      Uuid,
+        tenant_id: Uuid,
         addressbook_id: Uuid,
-        namespace:      &str,
-        local_name:     &str,
-        value:          &str,
+        namespace: &str,
+        local_name: &str,
+        value: &str,
     ) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         sqlx::query(
@@ -59,10 +61,10 @@ impl<'a> DeadPropRepo<'a> {
     /// API: `tenant_id` now required — antes filtrava só por addressbook_id.
     pub async fn remove_addressbook(
         &self,
-        tenant_id:      Uuid,
+        tenant_id: Uuid,
         addressbook_id: Uuid,
-        namespace:      &str,
-        local_name:     &str,
+        namespace: &str,
+        local_name: &str,
     ) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         sqlx::query(
@@ -85,7 +87,7 @@ impl<'a> DeadPropRepo<'a> {
     /// API: `tenant_id` now required — antes filtrava só por addressbook_id.
     pub async fn list_for_addressbook(
         &self,
-        tenant_id:      Uuid,
+        tenant_id: Uuid,
         addressbook_id: Uuid,
     ) -> Result<Vec<DeadProp>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
@@ -105,9 +107,9 @@ impl<'a> DeadPropRepo<'a> {
         Ok(rows
             .into_iter()
             .map(|r| DeadProp {
-                namespace:  r.get("namespace"),
+                namespace: r.get("namespace"),
                 local_name: r.get("local_name"),
-                xml_value:  r.get("xml_value"),
+                xml_value: r.get("xml_value"),
             })
             .collect())
     }
@@ -120,9 +122,9 @@ mod tests {
     #[test]
     fn dead_prop_clone_preserves_fields() {
         let p = DeadProp {
-            namespace:  "urn:ietf:params:xml:ns:carddav".into(),
+            namespace: "urn:ietf:params:xml:ns:carddav".into(),
             local_name: "addressbook-description".into(),
-            xml_value:  "My addressbook".into(),
+            xml_value: "My addressbook".into(),
         };
         let cloned = p.clone();
         assert_eq!(cloned.namespace, p.namespace);
@@ -133,9 +135,9 @@ mod tests {
     #[test]
     fn dead_prop_debug_contains_namespace() {
         let p = DeadProp {
-            namespace:  "DAV:".into(),
+            namespace: "DAV:".into(),
             local_name: "displayname".into(),
-            xml_value:  "Contacts".into(),
+            xml_value: "Contacts".into(),
         };
         let dbg = format!("{p:?}");
         assert!(dbg.contains("DAV:"));
@@ -275,9 +277,9 @@ mod tests {
     #[test]
     fn dead_prop_fields_all_strings() {
         let p = DeadProp {
-            namespace:  "urn:x".into(),
+            namespace: "urn:x".into(),
             local_name: "prop".into(),
-            xml_value:  "val".into(),
+            xml_value: "val".into(),
         };
         // Verify all three fields are String (not &str) — compile-time guard.
         let _: String = p.namespace;
@@ -288,9 +290,9 @@ mod tests {
     #[test]
     fn dead_prop_clone_gives_equal_namespace() {
         let p = DeadProp {
-            namespace:  "DAV:".into(),
+            namespace: "DAV:".into(),
             local_name: "resourcetype".into(),
-            xml_value:  "<collection/>".into(),
+            xml_value: "<collection/>".into(),
         };
         let q = p.clone();
         assert_eq!(p.namespace, q.namespace);
@@ -299,9 +301,9 @@ mod tests {
     #[test]
     fn dead_prop_clone_gives_equal_local_name() {
         let p = DeadProp {
-            namespace:  "DAV:".into(),
+            namespace: "DAV:".into(),
             local_name: "resourcetype".into(),
-            xml_value:  "<collection/>".into(),
+            xml_value: "<collection/>".into(),
         };
         let q = p.clone();
         assert_eq!(p.local_name, q.local_name);
@@ -310,9 +312,9 @@ mod tests {
     #[test]
     fn dead_prop_clone_gives_equal_xml_value() {
         let p = DeadProp {
-            namespace:  "DAV:".into(),
+            namespace: "DAV:".into(),
             local_name: "displayname".into(),
-            xml_value:  "My Book".into(),
+            xml_value: "My Book".into(),
         };
         let q = p.clone();
         assert_eq!(p.xml_value, q.xml_value);
@@ -321,9 +323,9 @@ mod tests {
     #[test]
     fn dead_prop_clone_gives_equal_all_fields() {
         let p = DeadProp {
-            namespace:  "http://example.com/ns".into(),
+            namespace: "http://example.com/ns".into(),
             local_name: "custom-prop".into(),
-            xml_value:  "<value>42</value>".into(),
+            xml_value: "<value>42</value>".into(),
         };
         let q = p.clone();
         assert_eq!(p.namespace, q.namespace);
@@ -334,16 +336,20 @@ mod tests {
     #[test]
     fn dead_prop_xml_value_contains_tag_chars() {
         let p = DeadProp {
-            namespace:  "DAV:".into(),
+            namespace: "DAV:".into(),
             local_name: "prop".into(),
-            xml_value:  "<item>val</item>".into(),
+            xml_value: "<item>val</item>".into(),
         };
         assert!(p.xml_value.contains('<') && p.xml_value.contains('>'));
     }
 
     #[test]
     fn dead_prop_clone_is_independent_of_original() {
-        let p = DeadProp { namespace: "NS:".into(), local_name: "x".into(), xml_value: "v".into() };
+        let p = DeadProp {
+            namespace: "NS:".into(),
+            local_name: "x".into(),
+            xml_value: "v".into(),
+        };
         let mut q = p.clone();
         q.xml_value = "changed".into();
         assert_eq!(p.xml_value, "v");
@@ -351,7 +357,11 @@ mod tests {
 
     #[test]
     fn dead_prop_namespace_differs_from_local_name() {
-        let p = DeadProp { namespace: "DAV:".into(), local_name: "prop".into(), xml_value: "".into() };
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "prop".into(),
+            xml_value: "".into(),
+        };
         assert_ne!(p.namespace, p.local_name);
     }
 }

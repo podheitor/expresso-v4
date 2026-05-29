@@ -35,25 +35,36 @@ mod tests {
 
     #[test]
     fn tenant_not_set_display() {
-        assert_eq!(CoreError::TenantNotSet.to_string(), "tenant not set in context");
+        assert_eq!(
+            CoreError::TenantNotSet.to_string(),
+            "tenant not set in context"
+        );
     }
 
     #[test]
     fn not_found_display_contains_resource() {
-        let e = CoreError::NotFound { resource: "drive_file" };
+        let e = CoreError::NotFound {
+            resource: "drive_file",
+        };
         assert!(e.to_string().contains("drive_file"));
     }
 
     #[test]
     fn quota_exceeded_display_contains_used_and_limit() {
-        let e = CoreError::QuotaExceeded { used: 512, limit: 1024 };
+        let e = CoreError::QuotaExceeded {
+            used: 512,
+            limit: 1024,
+        };
         let s = e.to_string();
         assert!(s.contains("512") && s.contains("1024"));
     }
 
     #[test]
     fn quota_exceeded_zero_used() {
-        let e = CoreError::QuotaExceeded { used: 0, limit: 100 };
+        let e = CoreError::QuotaExceeded {
+            used: 0,
+            limit: 100,
+        };
         assert!(e.to_string().contains('0'));
     }
 
@@ -71,26 +82,36 @@ mod tests {
 
     #[test]
     fn not_found_mail_message() {
-        let e = CoreError::NotFound { resource: "mail_message" };
+        let e = CoreError::NotFound {
+            resource: "mail_message",
+        };
         assert!(e.to_string().contains("mail_message"));
     }
 
     #[test]
     fn quota_exceeded_fields_in_display() {
-        let e = CoreError::QuotaExceeded { used: 999, limit: 1000 };
+        let e = CoreError::QuotaExceeded {
+            used: 999,
+            limit: 1000,
+        };
         let s = e.to_string();
         assert!(s.contains("999") && s.contains("1000"));
     }
 
     #[test]
     fn not_found_calendar_event_in_display() {
-        let e = CoreError::NotFound { resource: "calendar_event" };
+        let e = CoreError::NotFound {
+            resource: "calendar_event",
+        };
         assert!(e.to_string().contains("calendar_event"));
     }
 
     #[test]
     fn quota_exceeded_equal_used_limit_in_display() {
-        let e = CoreError::QuotaExceeded { used: 1024, limit: 1024 };
+        let e = CoreError::QuotaExceeded {
+            used: 1024,
+            limit: 1024,
+        };
         let s = e.to_string();
         assert!(s.contains("1024"));
     }
@@ -103,7 +124,9 @@ mod tests {
 
     #[test]
     fn core_error_not_found_display_contains_resource() {
-        let e = CoreError::NotFound { resource: "calendar_event" };
+        let e = CoreError::NotFound {
+            resource: "calendar_event",
+        };
         assert!(e.to_string().contains("calendar_event"));
     }
 
@@ -115,7 +138,10 @@ mod tests {
 
     #[test]
     fn core_error_quota_exceeded_display_contains_bytes() {
-        let e = CoreError::QuotaExceeded { used: 100, limit: 50 };
+        let e = CoreError::QuotaExceeded {
+            used: 100,
+            limit: 50,
+        };
         let s = e.to_string();
         assert!(s.contains("100") && s.contains("50"));
     }
@@ -128,7 +154,9 @@ mod tests {
 
     #[test]
     fn core_error_not_found_display_contains_resource_name() {
-        let e = CoreError::NotFound { resource: "calendar_event" };
+        let e = CoreError::NotFound {
+            resource: "calendar_event",
+        };
         assert!(e.to_string().contains("calendar_event"));
     }
 
@@ -146,26 +174,36 @@ mod tests {
 
     #[test]
     fn not_found_display_is_nonempty() {
-        let e = CoreError::NotFound { resource: "drive_file" };
+        let e = CoreError::NotFound {
+            resource: "drive_file",
+        };
         assert!(!e.to_string().is_empty());
     }
 
     #[test]
     fn quota_exceeded_used_greater_than_limit_in_display() {
-        let e = CoreError::QuotaExceeded { used: 200, limit: 100 };
+        let e = CoreError::QuotaExceeded {
+            used: 200,
+            limit: 100,
+        };
         let s = e.to_string();
         assert!(s.contains("200") && s.contains("100"));
     }
 
     #[test]
     fn not_found_variant_display_starts_with_not_found() {
-        let e = CoreError::NotFound { resource: "contact" };
+        let e = CoreError::NotFound {
+            resource: "contact",
+        };
         assert!(e.to_string().starts_with("not found:"));
     }
 
     #[test]
     fn quota_exceeded_display_contains_limit_value() {
-        let e = CoreError::QuotaExceeded { used: 100, limit: 200 };
+        let e = CoreError::QuotaExceeded {
+            used: 100,
+            limit: 200,
+        };
         assert!(e.to_string().contains("200"));
     }
 
@@ -178,7 +216,10 @@ mod tests {
 
     #[test]
     fn quota_exceeded_display_contains_used_and_limit_bytes() {
-        let e = CoreError::QuotaExceeded { used: 500, limit: 1000 };
+        let e = CoreError::QuotaExceeded {
+            used: 500,
+            limit: 1000,
+        };
         let s = e.to_string();
         assert!(s.contains("500") && s.contains("1000") && s.contains("bytes"));
     }

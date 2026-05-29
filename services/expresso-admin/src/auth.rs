@@ -17,22 +17,27 @@ use crate::AppState;
 
 #[derive(Debug, Clone)]
 pub struct AuthConfig {
-    pub auth_base:    String,
-    pub admin_roles:  Vec<String>,
-    pub login_path:   String,
+    pub auth_base: String,
+    pub admin_roles: Vec<String>,
+    pub login_path: String,
     /// Iff true, admins must have performed TOTP/WebAuthn step-up (via `mfa.totp`|`mfa.webauthn`)
     /// for the current session. Controlled via `ADMIN_REQUIRE_2FA` env (default false).
-    pub require_2fa:  bool,
+    pub require_2fa: bool,
 }
 
 impl AuthConfig {
     pub fn from_env() -> Self {
         Self {
-            auth_base: std::env::var("BACKEND__AUTH").unwrap_or_else(|_| "http://expresso-auth:8012".into()),
+            auth_base: std::env::var("BACKEND__AUTH")
+                .unwrap_or_else(|_| "http://expresso-auth:8012".into()),
             admin_roles: std::env::var("ADMIN_ROLES")
                 .unwrap_or_else(|_| "super_admin,tenant_admin".into())
-                .split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
-            login_path: std::env::var("PUBLIC__AUTH_LOGIN").unwrap_or_else(|_| "/auth/login".into()),
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            login_path: std::env::var("PUBLIC__AUTH_LOGIN")
+                .unwrap_or_else(|_| "/auth/login".into()),
             require_2fa: std::env::var("ADMIN_REQUIRE_2FA")
                 .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
                 .unwrap_or(false),
@@ -43,7 +48,7 @@ impl AuthConfig {
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct MfaField {
     #[serde(default)]
-    pub totp:     bool,
+    pub totp: bool,
     #[serde(default)]
     pub webauthn: bool,
 }
@@ -51,19 +56,23 @@ pub struct MfaField {
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct MeResp {
     #[serde(default)]
-    pub roles:     Vec<String>,
+    pub roles: Vec<String>,
     #[serde(default)]
-    pub user_id:   Option<uuid::Uuid>,
+    pub user_id: Option<uuid::Uuid>,
     #[serde(default)]
     pub tenant_id: Option<uuid::Uuid>,
     #[serde(default)]
-    pub email:     Option<String>,
+    pub email: Option<String>,
     #[serde(default)]
-    pub mfa:       MfaField,
+    pub mfa: MfaField,
 }
 
 fn is_public_path(p: &str) -> bool {
-    p == "/health" || p == "/ready" || p.starts_with("/static") || p.starts_with("/metrics") || p == "/forbidden"
+    p == "/health"
+        || p == "/ready"
+        || p.starts_with("/static")
+        || p.starts_with("/metrics")
+        || p == "/forbidden"
 }
 
 fn login_redirect(login_path: &str, uri: &Uri) -> Response {
@@ -89,7 +98,13 @@ pub async fn require_admin(
     };
 
     let me_url = format!("{}/auth/me", st.auth.auth_base.trim_end_matches('/'));
-    let resp = match st.http.get(&me_url).header(header::COOKIE, cookie_v).send().await {
+    let resp = match st
+        .http
+        .get(&me_url)
+        .header(header::COOKIE, cookie_v)
+        .send()
+        .await
+    {
         Ok(r) => r,
         Err(e) => {
             tracing::error!(error = %e, "auth backend unreachable");
@@ -100,7 +115,11 @@ pub async fn require_admin(
         return login_redirect(&st.auth.login_path, &uri);
     }
     if !resp.status().is_success() {
-        return (StatusCode::BAD_GATEWAY, format!("auth/me {}", resp.status())).into_response();
+        return (
+            StatusCode::BAD_GATEWAY,
+            format!("auth/me {}", resp.status()),
+        )
+            .into_response();
     }
     let me: MeResp = match resp.json().await {
         Ok(v) => v,
@@ -110,7 +129,12 @@ pub async fn require_admin(
         }
     };
 
-    let allowed = me.roles.iter().any(|r| st.auth.admin_roles.iter().any(|a| a.eq_ignore_ascii_case(r) || a.replace('_', "").eq_ignore_ascii_case(&r.replace('_', ""))));
+    let allowed = me.roles.iter().any(|r| {
+        st.auth.admin_roles.iter().any(|a| {
+            a.eq_ignore_ascii_case(r)
+                || a.replace('_', "").eq_ignore_ascii_case(&r.replace('_', ""))
+        })
+    });
     if !allowed {
         return (
             StatusCode::FORBIDDEN,
@@ -126,7 +150,8 @@ pub async fn require_admin(
                 st.auth.admin_roles.join(", "),
                 me.roles.join(", ")
             ),
-        ).into_response();
+        )
+            .into_response();
     }
 
     // 2FA gate — require TOTP or WebAuthn step-up when enabled.
@@ -160,34 +185,56 @@ pub async fn require_admin(
 
 /// Fetch `/auth/me` roles list for the request. Returns empty vec on failure.
 pub async fn roles_for(st: &AppState, headers: &axum::http::HeaderMap) -> Vec<String> {
-    let Some(cookie) = headers.get(header::COOKIE).cloned() else { return vec![]; };
-    let me_url = format!("{}/auth/me", st.auth.auth_base.trim_end_matches('/'));
-    let Ok(resp) = st.http.get(&me_url).header(header::COOKIE, cookie).send().await else {
+    let Some(cookie) = headers.get(header::COOKIE).cloned() else {
         return vec![];
     };
-    if !resp.status().is_success() { return vec![]; }
-    resp.json::<MeResp>().await.map(|m| m.roles).unwrap_or_default()
+    let me_url = format!("{}/auth/me", st.auth.auth_base.trim_end_matches('/'));
+    let Ok(resp) = st
+        .http
+        .get(&me_url)
+        .header(header::COOKIE, cookie)
+        .send()
+        .await
+    else {
+        return vec![];
+    };
+    if !resp.status().is_success() {
+        return vec![];
+    }
+    resp.json::<MeResp>()
+        .await
+        .map(|m| m.roles)
+        .unwrap_or_default()
 }
 
 /// Returns `None` if caller holds `super_admin`; otherwise returns a 403 response.
-pub async fn require_super_admin(st: &AppState, headers: &axum::http::HeaderMap) -> Option<Response> {
+pub async fn require_super_admin(
+    st: &AppState,
+    headers: &axum::http::HeaderMap,
+) -> Option<Response> {
     let roles = roles_for(st, headers).await;
-    if roles.iter().any(|r| r.eq_ignore_ascii_case("super_admin") || r.eq_ignore_ascii_case("superadmin")) {
+    if roles
+        .iter()
+        .any(|r| r.eq_ignore_ascii_case("super_admin") || r.eq_ignore_ascii_case("superadmin"))
+    {
         None
     } else {
-        Some((
-            StatusCode::FORBIDDEN,
-            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-            format!(
-                "<!doctype html><meta charset=utf-8><title>403</title>\
+        Some(
+            (
+                StatusCode::FORBIDDEN,
+                [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                format!(
+                    "<!doctype html><meta charset=utf-8><title>403</title>\
                  <body style=\"font-family:system-ui;padding:2rem\">\
                  <h1>403 — Requer super_admin</h1>\
                  <p>Gestão de tenants exige role <code>super_admin</code>.</p>\
                  <p>Roles atuais: <code>{}</code></p>\
                  </body>",
-                roles.join(", ")
-            ),
-        ).into_response())
+                    roles.join(", ")
+                ),
+            )
+                .into_response(),
+        )
     }
 }
 
@@ -195,9 +242,9 @@ pub async fn require_super_admin(st: &AppState, headers: &axum::http::HeaderMap)
 /// underscore). Super-admins may operate across tenants; everyone else is
 /// confined to their own tenant_id.
 pub fn is_super_admin(roles: &[String]) -> bool {
-    roles.iter().any(|r| {
-        r.eq_ignore_ascii_case("super_admin") || r.eq_ignore_ascii_case("superadmin")
-    })
+    roles
+        .iter()
+        .any(|r| r.eq_ignore_ascii_case("super_admin") || r.eq_ignore_ascii_case("superadmin"))
 }
 
 /// Validates a tenant-scoped admin operation: super-admins pass through,
@@ -210,8 +257,8 @@ pub fn is_super_admin(roles: &[String]) -> bool {
 /// on another tenant's rows. Defense-in-depth: prefer this over relying on
 /// audit-log forensics to spot the abuse after the fact.
 pub async fn require_tenant_match(
-    st:        &AppState,
-    headers:   &axum::http::HeaderMap,
+    st: &AppState,
+    headers: &axum::http::HeaderMap,
     requested: uuid::Uuid,
 ) -> Option<Response> {
     let p = principal_for(st, headers).await;
@@ -227,15 +274,18 @@ pub async fn require_tenant_match(
                 requested_tenant = %requested,
                 "cross-tenant admin op blocked"
             );
-            Some((
-                StatusCode::FORBIDDEN,
-                [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-                "<!doctype html><meta charset=utf-8><title>403</title>\
+            Some(
+                (
+                    StatusCode::FORBIDDEN,
+                    [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                    "<!doctype html><meta charset=utf-8><title>403</title>\
                  <body style=\"font-family:system-ui;padding:2rem\">\
                  <h1>403 — Operação cross-tenant negada</h1>\
                  <p>Apenas <code>super_admin</code> pode operar fora do próprio tenant.</p>\
                  </body>",
-            ).into_response())
+                )
+                    .into_response(),
+            )
         }
     }
 }
@@ -246,7 +296,13 @@ pub async fn principal_for(st: &AppState, headers: &axum::http::HeaderMap) -> Me
         return MeResp::default();
     };
     let me_url = format!("{}/auth/me", st.auth.auth_base.trim_end_matches('/'));
-    let Ok(resp) = st.http.get(&me_url).header(axum::http::header::COOKIE, cookie).send().await else {
+    let Ok(resp) = st
+        .http
+        .get(&me_url)
+        .header(axum::http::header::COOKIE, cookie)
+        .send()
+        .await
+    else {
         return MeResp::default();
     };
     if !resp.status().is_success() {
@@ -370,7 +426,11 @@ mod tests {
 
     #[test]
     fn is_super_admin_with_multiple_roles_finds_super_admin() {
-        assert!(is_super_admin(&["viewer".into(), "super_admin".into(), "editor".into()]));
+        assert!(is_super_admin(&[
+            "viewer".into(),
+            "super_admin".into(),
+            "editor".into()
+        ]));
     }
 
     #[test]

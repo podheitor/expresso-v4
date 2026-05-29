@@ -19,19 +19,26 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
         let name_pos = search_start + rel;
         // Verifica char após o nome: deve ser '>' (sem atributos) ou whitespace (com attrs) ou '/' (self-close).
         let after = bytes.get(name_pos + local_name.len()).copied();
-        if !matches!(after, Some(b'>') | Some(b' ') | Some(b'\t') | Some(b'\n') | Some(b'\r') | Some(b'/')) {
+        if !matches!(
+            after,
+            Some(b'>') | Some(b' ') | Some(b'\t') | Some(b'\n') | Some(b'\r') | Some(b'/')
+        ) {
             search_start = name_pos + local_name.len();
             continue;
         }
         // Verifica char antes: deve ser '<' (sem prefixo) ou ':' (com prefixo).
-        let before = if name_pos > 0 { bytes.get(name_pos - 1).copied() } else { None };
+        let before = if name_pos > 0 {
+            bytes.get(name_pos - 1).copied()
+        } else {
+            None
+        };
         let valid_start = match before {
             Some(b'<') => true,
             Some(b':') if name_pos >= 2 => {
                 // Rastreia até o '<' — só válido se só houver caracteres de prefixo XML entre '<' e ':'.
                 let slice = &bytes[..name_pos];
                 matches!(slice.iter().rposition(|&c| c == b'<'), Some(_))
-            },
+            }
             _ => false,
         };
         if !valid_start {
@@ -40,7 +47,10 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
         }
         // Avança até '>' que fecha a tag de abertura.
         let rest = &body[name_pos + local_name.len()..];
-        let gt = match rest.find('>') { Some(g) => g, None => return None };
+        let gt = match rest.find('>') {
+            Some(g) => g,
+            None => return None,
+        };
         // Se a tag é self-closing "/>" → sem conteúdo.
         if rest.as_bytes().get(gt.saturating_sub(1)) == Some(&b'/') {
             return None;
@@ -58,14 +68,19 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
         let mut i = 0;
         while let Some(lt) = tail[i..].find("</") {
             let abs = i + lt + 2; // após "</"
-            // lê até '>' ou '/'
-            let seg_end = match tail[abs..].find('>') { Some(e) => e, None => break };
+                                  // lê até '>' ou '/'
+            let seg_end = match tail[abs..].find('>') {
+                Some(e) => e,
+                None => break,
+            };
             let segment = &tail[abs..abs + seg_end];
             // segment = "prefix:local_name" ou "local_name"
             let matches_close = segment == local_name
                 || (segment.ends_with(local_name)
                     && segment.len() > local_name.len()
-                    && &segment[segment.len() - local_name.len() - 1..segment.len() - local_name.len()] == ":");
+                    && &segment
+                        [segment.len() - local_name.len() - 1..segment.len() - local_name.len()]
+                        == ":");
             if matches_close {
                 let found = i + lt;
                 if close_pos.map_or(true, |p| found < p) {
@@ -75,7 +90,10 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
             }
             i = abs + seg_end + 1;
         }
-        let c = match close_pos { Some(c) => c, None => return None };
+        let c = match close_pos {
+            Some(c) => c,
+            None => return None,
+        };
         let raw = &tail[..c].trim();
         let s = unescape_xml(raw);
         return if s.is_empty() { None } else { Some(s) };
@@ -85,21 +103,24 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
 
 fn unescape_xml(s: &str) -> String {
     s.replace("&amp;", "&")
-     .replace("&lt;", "<")
-     .replace("&gt;", ">")
-     .replace("&quot;", "\"")
-     .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
 }
 
 pub async fn handle(
-    state:     AppState,
+    state: AppState,
     principal: CalDavPrincipal,
-    path:      &str,
-    body:      &str,
+    path: &str,
+    body: &str,
 ) -> Response {
     // Target deve ser Calendar (URL completa c/ user+cal UUID).
     let (user_id, calendar_id) = match classify(path) {
-        Target::Calendar { user_id, calendar_id } => (user_id, calendar_id),
+        Target::Calendar {
+            user_id,
+            calendar_id,
+        } => (user_id, calendar_id),
         _ => return bad_request("MKCALENDAR requires /caldav/<user-uuid>/<cal-uuid>/ URL"),
     };
     if user_id != principal.user_id {
@@ -118,14 +139,20 @@ pub async fn handle(
     let name = extract_prop(body, "displayname")
         .unwrap_or_else(|| format!("Calendar {}", &calendar_id.to_string()[..8]));
     let description = extract_prop(body, "calendar-description");
-    let color       = extract_prop(body, "calendar-color");
-    let timezone    = extract_prop(body, "calendar-timezone")
-        .and_then(|tz| extract_tzid(&tz));
+    let color = extract_prop(body, "calendar-color");
+    let timezone = extract_prop(body, "calendar-timezone").and_then(|tz| extract_tzid(&tz));
 
     let input = NewCalendar {
-        name, description, color, timezone, is_default: false,
+        name,
+        description,
+        color,
+        timezone,
+        is_default: false,
     };
-    match repo.create_with_id(calendar_id, principal.tenant_id, principal.user_id, &input).await {
+    match repo
+        .create_with_id(calendar_id, principal.tenant_id, principal.user_id, &input)
+        .await
+    {
         Ok(_) => created(),
         Err(e) => {
             tracing::warn!(error = %e, "MKCALENDAR insert failed");
@@ -174,12 +201,15 @@ fn error(status: StatusCode, msg: &'static str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_prop, unescape_xml, extract_tzid};
+    use super::{extract_prop, extract_tzid, unescape_xml};
 
     #[test]
     fn parse_plain_displayname() {
         let body = r#"<mkcalendar><set><prop><displayname>Trabalho</displayname></prop></set></mkcalendar>"#;
-        assert_eq!(extract_prop(body, "displayname").as_deref(), Some("Trabalho"));
+        assert_eq!(
+            extract_prop(body, "displayname").as_deref(),
+            Some("Trabalho")
+        );
     }
 
     #[test]
@@ -187,13 +217,19 @@ mod tests {
         let body = r#"<C:mkcalendar xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
             <D:set><D:prop><D:displayname>Estudos</D:displayname></D:prop></D:set>
         </C:mkcalendar>"#;
-        assert_eq!(extract_prop(body, "displayname").as_deref(), Some("Estudos"));
+        assert_eq!(
+            extract_prop(body, "displayname").as_deref(),
+            Some("Estudos")
+        );
     }
 
     #[test]
     fn parse_color() {
         let body = r#"<ICAL:calendar-color xmlns:ICAL="http://apple.com/ns/ical/">#3498db</ICAL:calendar-color>"#;
-        assert_eq!(extract_prop(body, "calendar-color").as_deref(), Some("#3498db"));
+        assert_eq!(
+            extract_prop(body, "calendar-color").as_deref(),
+            Some("#3498db")
+        );
     }
 
     #[test]
@@ -264,7 +300,10 @@ mod tests {
 
     #[test]
     fn unescape_xml_no_entities_returns_same_str() {
-        assert_eq!(unescape_xml("plain text no entities"), "plain text no entities");
+        assert_eq!(
+            unescape_xml("plain text no entities"),
+            "plain text no entities"
+        );
     }
 
     #[test]
@@ -279,7 +318,10 @@ mod tests {
 
     #[test]
     fn extract_prop_returns_none_for_missing_tag() {
-        assert_eq!(extract_prop("<D:displayname>My Cal</D:displayname>", "calendar-color"), None);
+        assert_eq!(
+            extract_prop("<D:displayname>My Cal</D:displayname>", "calendar-color"),
+            None
+        );
     }
 
     #[test]
@@ -297,7 +339,10 @@ mod tests {
 
     #[test]
     fn extract_prop_returns_none_for_different_tag() {
-        assert_eq!(extract_prop("<displayname>My Cal</displayname>", "calendar-color"), None);
+        assert_eq!(
+            extract_prop("<displayname>My Cal</displayname>", "calendar-color"),
+            None
+        );
     }
 
     #[test]

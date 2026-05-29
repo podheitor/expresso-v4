@@ -18,10 +18,16 @@ use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/calendars/stats/by-tenant",       get(stats_by_tenant))
-        .route("/api/v1/calendars/stats/event-density",   get(stats_event_density))
-        .route("/api/v1/calendars",       post(create).get(list))
-        .route("/api/v1/calendars/:id",   get(get_one).delete(delete).patch(update))
+        .route("/api/v1/calendars/stats/by-tenant", get(stats_by_tenant))
+        .route(
+            "/api/v1/calendars/stats/event-density",
+            get(stats_event_density),
+        )
+        .route("/api/v1/calendars", post(create).get(list))
+        .route(
+            "/api/v1/calendars/:id",
+            get(get_one).delete(delete).patch(update),
+        )
         .route("/api/v1/calendars/:id/ctag", get(ctag_one))
 }
 
@@ -53,7 +59,9 @@ async fn list(
     if let Some(ts) = max_updated {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -65,12 +73,19 @@ async fn list(
         .list_accessible(ctx.tenant_id, ctx.user_id)
         .await?;
     let mut resp = (
-        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        [(
+            header::HeaderName::from_static("x-total-count"),
+            total.to_string(),
+        )],
         Json(cals),
-    ).into_response();
+    )
+        .into_response();
     if let Some(ts) = max_updated {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -89,10 +104,15 @@ async fn get_one(
             return Ok(StatusCode::NOT_MODIFIED.into_response());
         }
     }
-    let lm = cal.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = cal
+        .updated_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if cal.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -100,8 +120,10 @@ async fn get_one(
         }
     }
     let mut resp = Json(cal).into_response();
-    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
@@ -112,7 +134,9 @@ async fn update(
     Json(body): Json<UpdateCalendar>,
 ) -> Result<Json<Calendar>> {
     let pool = state.db_or_unavailable()?;
-    let cal = CalendarRepo::new(pool).update(ctx.tenant_id, id, &body).await?;
+    let cal = CalendarRepo::new(pool)
+        .update(ctx.tenant_id, id, &body)
+        .await?;
     Ok(Json(cal))
 }
 
@@ -148,9 +172,9 @@ struct StatsByTenantQuery {
 
 async fn stats_by_tenant(
     State(state): State<AppState>,
-    Query(q):     Query<StatsByTenantQuery>,
+    Query(q): Query<StatsByTenantQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let pool  = state.db_or_unavailable()?;
+    let pool = state.db_or_unavailable()?;
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
 
     let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
@@ -167,12 +191,15 @@ async fn stats_by_tenant(
     .fetch_all(pool)
     .await?;
 
-    let out: Vec<serde_json::Value> = rows.into_iter()
-        .map(|(tid, cc, ec)| serde_json::json!({
-            "tenant_id":      tid,
-            "calendar_count": cc,
-            "event_count":    ec,
-        }))
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(tid, cc, ec)| {
+            serde_json::json!({
+                "tenant_id":      tid,
+                "calendar_count": cc,
+                "event_count":    ec,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
 }
@@ -189,18 +216,18 @@ struct EventDensityQuery {
 
 async fn stats_event_density(
     State(state): State<AppState>,
-    Query(q):     Query<EventDensityQuery>,
+    Query(q): Query<EventDensityQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     let bucket = match q.bucket.as_deref().unwrap_or("day") {
-        "week"  => "week",
+        "week" => "week",
         "month" => "month",
-        _       => "day",
+        _ => "day",
     };
     let fmt = match bucket {
-        "week"  => "IYYY-\"W\"IW",
+        "week" => "IYYY-\"W\"IW",
         "month" => "YYYY-MM",
-        _       => "YYYY-MM-DD",
+        _ => "YYYY-MM-DD",
     };
     let sql = format!(
         "SELECT to_char(date_trunc('{bucket}', dtstart), '{fmt}') AS period, \
@@ -211,11 +238,10 @@ async fn stats_event_density(
           ORDER BY period ASC"
     );
 
-    let rows: Vec<(String, i64)> = sqlx::query_as(&sql)
-        .fetch_all(pool)
-        .await?;
+    let rows: Vec<(String, i64)> = sqlx::query_as(&sql).fetch_all(pool).await?;
 
-    let out: Vec<serde_json::Value> = rows.into_iter()
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
         .map(|(period, count)| serde_json::json!({"period": period, "count": count}))
         .collect();
     Ok(Json(serde_json::json!({"bucket": bucket, "rows": out})))

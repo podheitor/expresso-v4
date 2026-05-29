@@ -38,15 +38,19 @@ pub fn init() {
 
     for listener in ["smtp25", "smtp587", "smtps465", "lmtp"] {
         for cmd in [
-            "EHLO", "HELO", "LHLO", "MAIL", "RCPT", "DATA",
-            "RSET", "NOOP", "QUIT", "VRFY", "STARTTLS", "AUTH", "OTHER",
+            "EHLO", "HELO", "LHLO", "MAIL", "RCPT", "DATA", "RSET", "NOOP", "QUIT", "VRFY",
+            "STARTTLS", "AUTH", "OTHER",
         ] {
             for outcome in ["ok", "reject", "error"] {
-                SMTP_COMMANDS_TOTAL.with_label_values(&[cmd, listener, outcome]).inc_by(0);
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&[cmd, listener, outcome])
+                    .inc_by(0);
             }
         }
         for result in ["accepted", "closed", "error"] {
-            SMTP_SESSIONS_TOTAL.with_label_values(&[listener, result]).inc_by(0);
+            SMTP_SESSIONS_TOTAL
+                .with_label_values(&[listener, result])
+                .inc_by(0);
         }
     }
 }
@@ -54,19 +58,19 @@ pub fn init() {
 /// Normalise raw command strings into the bounded label set.
 pub fn command_label(cmd: &str) -> &'static str {
     match cmd.to_ascii_uppercase().as_str() {
-        "EHLO"     => "EHLO",
-        "HELO"     => "HELO",
-        "LHLO"     => "LHLO",
-        "MAIL"     => "MAIL",
-        "RCPT"     => "RCPT",
-        "DATA"     => "DATA",
-        "RSET"     => "RSET",
-        "NOOP"     => "NOOP",
-        "QUIT"     => "QUIT",
-        "VRFY"     => "VRFY",
+        "EHLO" => "EHLO",
+        "HELO" => "HELO",
+        "LHLO" => "LHLO",
+        "MAIL" => "MAIL",
+        "RCPT" => "RCPT",
+        "DATA" => "DATA",
+        "RSET" => "RSET",
+        "NOOP" => "NOOP",
+        "QUIT" => "QUIT",
+        "VRFY" => "VRFY",
         "STARTTLS" => "STARTTLS",
-        "AUTH"     => "AUTH",
-        _          => "OTHER",
+        "AUTH" => "AUTH",
+        _ => "OTHER",
     }
 }
 
@@ -85,8 +89,15 @@ mod tests {
 
     #[test]
     fn all_known_commands_map() {
-        for cmd in ["HELO", "LHLO", "MAIL", "RCPT", "DATA", "RSET", "NOOP", "QUIT", "VRFY", "STARTTLS", "AUTH"] {
-            assert_ne!(command_label(cmd), "OTHER", "expected {cmd} to map to itself");
+        for cmd in [
+            "HELO", "LHLO", "MAIL", "RCPT", "DATA", "RSET", "NOOP", "QUIT", "VRFY", "STARTTLS",
+            "AUTH",
+        ] {
+            assert_ne!(
+                command_label(cmd),
+                "OTHER",
+                "expected {cmd} to map to itself"
+            );
         }
     }
 

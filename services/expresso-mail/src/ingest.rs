@@ -80,11 +80,11 @@ pub async fn process(
 
         let (user_id, tenant_id) = match user_rows.as_slice() {
             [(uid, tid)] => (*uid, *tid),
-            []           => {
+            [] => {
                 tracing::warn!(rcpt = %rcpt, "recipient not found; dropping delivery");
                 continue;
             }
-            _            => {
+            _ => {
                 // users.email is per-tenant unique; the same address in two
                 // tenants is legal schema-wise. Refuse rather than guess.
                 tracing::error!(rcpt = %rcpt, "recipient ambiguous across tenants; dropping delivery");
@@ -111,10 +111,10 @@ pub async fn process(
             }
         };
 
-        let (mailbox_id, uid) = lock_or_create_mailbox(&mut tx, tenant_id, user_id, &target_folder).await?;
+        let (mailbox_id, uid) =
+            lock_or_create_mailbox(&mut tx, tenant_id, user_id, &target_folder).await?;
 
         let thread_id = resolve_thread_id(&mut tx, tenant_id, &parsed).await?;
-
 
         let msg_row_id: Uuid = sqlx::query_scalar(
             r#"
@@ -185,7 +185,9 @@ pub async fn process(
                 let tid = tenant_id;
                 let uid_org = user_id;
                 tokio::spawn(async move {
-                    if let Err(e) = crate::imip::forward_reply(&calendar_url, tid, uid_org, &ics).await {
+                    if let Err(e) =
+                        crate::imip::forward_reply(&calendar_url, tid, uid_org, &ics).await
+                    {
                         tracing::warn!(error = %e, tenant_id = %tid, user_id = %uid_org,
                             "iMIP REPLY forward failed");
                     }
@@ -194,7 +196,7 @@ pub async fn process(
         }
 
         // Fire-and-forget: notify search service
-        let search_url   = state.cfg().search_url.clone();
+        let search_url = state.cfg().search_url.clone();
         let search_token = state.cfg().search_token.clone();
         if !search_url.is_empty() {
             let doc = serde_json::json!({
@@ -272,9 +274,9 @@ pub async fn process(
         // Fire-and-forget: journal a compliance copy to expresso-compliance.
         let compliance_url = state.cfg().compliance_url.clone();
         if !compliance_url.is_empty() {
-            let from_addr  = parsed.from_addr.clone();
-            let to_addrs   = parsed.to_addrs.clone();
-            let subject    = parsed.subject.clone();
+            let from_addr = parsed.from_addr.clone();
+            let to_addrs = parsed.to_addrs.clone();
+            let subject = parsed.subject.clone();
             let body_path2 = body_path.clone();
             tokio::spawn(async move {
                 let payload = serde_json::json!({
@@ -301,11 +303,11 @@ pub async fn process(
 
 /// Execute actions returned by expresso-flows (best-effort; errors are logged, not fatal).
 async fn apply_flow_actions(
-    state:      &AppState,
-    tenant_id:  Uuid,
-    user_id:    Uuid,
+    state: &AppState,
+    tenant_id: Uuid,
+    user_id: Uuid,
     message_id: Uuid,
-    body:       &serde_json::Value,
+    body: &serde_json::Value,
 ) {
     let actions = match body.get("actions").and_then(|v| v.as_array()) {
         Some(a) if !a.is_empty() => a,
@@ -316,9 +318,16 @@ async fn apply_flow_actions(
         let action_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("");
         match action_type {
             "move_to_folder" => {
-                let folder = match action.get("params").and_then(|p| p.get("folder")).and_then(|v| v.as_str()) {
+                let folder = match action
+                    .get("params")
+                    .and_then(|p| p.get("folder"))
+                    .and_then(|v| v.as_str())
+                {
                     Some(f) => f.to_owned(),
-                    None    => { tracing::warn!("flows: move_to_folder missing params.folder"); continue; }
+                    None => {
+                        tracing::warn!("flows: move_to_folder missing params.folder");
+                        continue;
+                    }
                 };
                 let res = sqlx::query(
                     "UPDATE messages SET mailbox_id = ( \
@@ -339,9 +348,16 @@ async fn apply_flow_actions(
                 }
             }
             "add_flag" => {
-                let flag = match action.get("params").and_then(|p| p.get("flag")).and_then(|v| v.as_str()) {
+                let flag = match action
+                    .get("params")
+                    .and_then(|p| p.get("flag"))
+                    .and_then(|v| v.as_str())
+                {
                     Some(f) => f.to_owned(),
-                    None    => { tracing::warn!("flows: add_flag missing params.flag"); continue; }
+                    None => {
+                        tracing::warn!("flows: add_flag missing params.flag");
+                        continue;
+                    }
                 };
                 let res = sqlx::query(
                     "UPDATE messages \
@@ -360,9 +376,14 @@ async fn apply_flow_actions(
                 }
             }
             "webhook" => {
-                if let Some(url) = action.get("params").and_then(|p| p.get("url")).and_then(|v| v.as_str()) {
+                if let Some(url) = action
+                    .get("params")
+                    .and_then(|p| p.get("url"))
+                    .and_then(|v| v.as_str())
+                {
                     let url = url.to_owned();
-                    let payload = serde_json::json!({ "message_id": message_id, "tenant_id": tenant_id });
+                    let payload =
+                        serde_json::json!({ "message_id": message_id, "tenant_id": tenant_id });
                     tokio::spawn(async move {
                         let _ = reqwest::Client::new()
                             .post(&url)
@@ -390,15 +411,22 @@ async fn apply_flow_actions(
                 }
             }
             "forward" => {
-                let to_addr = match action.get("params").and_then(|p| p.get("to")).and_then(|v| v.as_str()) {
+                let to_addr = match action
+                    .get("params")
+                    .and_then(|p| p.get("to"))
+                    .and_then(|v| v.as_str())
+                {
                     Some(a) => a.to_owned(),
-                    None    => { tracing::warn!("flows: forward missing params.to"); continue; }
+                    None => {
+                        tracing::warn!("flows: forward missing params.to");
+                        continue;
+                    }
                 };
-                let db          = state.db().clone();
-                let store       = state.store().cloned();
-                let relay_host  = state.cfg().mail_server.relay_host.clone();
-                let relay_port  = state.cfg().mail_server.relay_port;
-                let domain      = state.cfg().mail_server.domain.clone();
+                let db = state.db().clone();
+                let store = state.store().cloned();
+                let relay_host = state.cfg().mail_server.relay_host.clone();
+                let relay_port = state.cfg().mail_server.relay_port;
+                let domain = state.cfg().mail_server.domain.clone();
                 tokio::spawn(async move {
                     let body_path: Option<String> = sqlx::query_scalar(
                         "SELECT body_path FROM messages WHERE id = $1 AND tenant_id = $2 LIMIT 1",
@@ -409,7 +437,9 @@ async fn apply_flow_actions(
                     .await
                     .unwrap_or(None);
 
-                    let Some(path) = body_path else { return; };
+                    let Some(path) = body_path else {
+                        return;
+                    };
 
                     // Read raw bytes from store or filesystem.
                     let raw: Option<Vec<u8>> = if let Some(s3_path) = path.strip_prefix("s3://") {
@@ -417,11 +447,17 @@ async fn apply_flow_actions(
                             let key = &s3_path[idx + 1..];
                             if let Some(s) = &store {
                                 s.get(key).await.ok()
-                            } else { None }
-                        } else { None }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
                     } else if path.starts_with('/') {
                         tokio::fs::read(&path).await.ok()
-                    } else { None };
+                    } else {
+                        None
+                    };
 
                     let Some(raw) = raw else {
                         tracing::warn!(message_id = %message_id, "flows: forward — body not found");
@@ -449,9 +485,9 @@ async fn apply_flow_actions(
 async fn relay_forward(
     relay_host: &str,
     relay_port: u16,
-    domain:     &str,
-    to_addr:    &str,
-    raw:        &[u8],
+    domain: &str,
+    to_addr: &str,
+    raw: &[u8],
 ) -> anyhow::Result<()> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::TcpStream;
@@ -471,18 +507,24 @@ async fn relay_forward(
     }
 
     expect!("220");
-    writer.write_all(format!("EHLO {domain}\r\n").as_bytes()).await?;
+    writer
+        .write_all(format!("EHLO {domain}\r\n").as_bytes())
+        .await?;
     // consume multi-line EHLO response
     loop {
         let line = lines.next_line().await?.unwrap_or_default();
         if line.starts_with("250 ") || (!line.starts_with("250") && !line.is_empty()) {
             break;
         }
-        if line.is_empty() { break; }
+        if line.is_empty() {
+            break;
+        }
     }
     writer.write_all(b"MAIL FROM:<>\r\n").await?;
     expect!("250");
-    writer.write_all(format!("RCPT TO:<{to_addr}>\r\n").as_bytes()).await?;
+    writer
+        .write_all(format!("RCPT TO:<{to_addr}>\r\n").as_bytes())
+        .await?;
     expect!("250");
     writer.write_all(b"DATA\r\n").await?;
     expect!("354");
@@ -509,10 +551,10 @@ async fn relay_forward(
 /// has no UI for. The lookup is filtered by `tenant_id` for defense-in-depth
 /// in addition to RLS.
 async fn lock_or_create_mailbox(
-    tx:        &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     tenant_id: Uuid,
-    user_id:   Uuid,
-    target:    &str,
+    user_id: Uuid,
+    target: &str,
 ) -> anyhow::Result<(Uuid, i64)> {
     let row: Option<(Uuid, i64)> = sqlx::query_as(
         r#"
@@ -528,7 +570,9 @@ async fn lock_or_create_mailbox(
     .fetch_optional(&mut **tx)
     .await?;
 
-    if let Some(r) = row { return Ok(r); }
+    if let Some(r) = row {
+        return Ok(r);
+    }
 
     // Target folder not found. For INBOX, auto-create. For everything else,
     // fall through to INBOX so the message isn't lost.
@@ -563,7 +607,9 @@ async fn lock_or_create_mailbox(
     .bind(user_id)
     .fetch_optional(&mut **tx)
     .await?;
-    if let Some(r) = inbox { return Ok(r); }
+    if let Some(r) = inbox {
+        return Ok(r);
+    }
 
     let created: Uuid = sqlx::query_scalar(
         r#"
@@ -634,7 +680,9 @@ pub async fn write_raw_message(state: &AppState, raw: &[u8]) -> anyhow::Result<S
     // S3 path when object store available
     if let Some(store) = state.store() {
         let key = format!("raw/{msg_id}.eml");
-        store.put(&key, raw.to_vec(), Some("message/rfc822")).await?;
+        store
+            .put(&key, raw.to_vec(), Some("message/rfc822"))
+            .await?;
         return Ok(format!("s3://{}/{key}", store.bucket()));
     }
     // Fallback: local filesystem
@@ -828,7 +876,10 @@ mod tests {
 
         assert_eq!(
             got.into_iter().collect::<Vec<_>>(),
-            vec!["other@example.com".to_string(), "user@example.com".to_string()]
+            vec![
+                "other@example.com".to_string(),
+                "user@example.com".to_string()
+            ]
         );
     }
 
@@ -857,13 +908,19 @@ mod tests {
         assert_eq!(parsed.in_reply_to.as_deref(), Some("msg-0@example.com"));
         assert_eq!(
             parsed.references_,
-            vec!["msg-a@example.com".to_string(), "msg-b@example.com".to_string()]
+            vec![
+                "msg-a@example.com".to_string(),
+                "msg-b@example.com".to_string()
+            ]
         );
         assert_eq!(
             parsed.to_addrs,
             json!([{"addr": "recipient@example.com", "name": null}])
         );
-        assert_eq!(parsed.preview_text.as_deref(), Some("Hello world Second line"));
+        assert_eq!(
+            parsed.preview_text.as_deref(),
+            Some("Hello world Second line")
+        );
         assert!(parsed.date.is_some());
     }
 }
@@ -898,18 +955,27 @@ async fn apply_sieve(
     .unwrap_or(None);
 
     let mut combined = String::new();
-    if let Some(v) = vacation_script { combined.push_str(&v); combined.push('\n'); }
-    if let Some(f) = filter_script   { combined.push_str(&f); }
+    if let Some(v) = vacation_script {
+        combined.push_str(&v);
+        combined.push('\n');
+    }
+    if let Some(f) = filter_script {
+        combined.push_str(&f);
+    }
 
     if combined.trim().is_empty() {
-        return SieveDecision::Deliver { folder: "INBOX".to_string() };
+        return SieveDecision::Deliver {
+            folder: "INBOX".to_string(),
+        };
     }
 
     let actions = crate::sieve::evaluate(combined.as_bytes(), raw);
     for a in &actions {
         match a {
             crate::sieve::FilterAction::Reject { reason } => {
-                return SieveDecision::Reject { reason: reason.clone() };
+                return SieveDecision::Reject {
+                    reason: reason.clone(),
+                };
             }
             crate::sieve::FilterAction::Discard => return SieveDecision::Discard,
             _ => {}
@@ -917,10 +983,14 @@ async fn apply_sieve(
     }
     for a in &actions {
         if let crate::sieve::FilterAction::FileInto { folder, .. } = a {
-            return SieveDecision::Deliver { folder: folder.clone() };
+            return SieveDecision::Deliver {
+                folder: folder.clone(),
+            };
         }
     }
-    SieveDecision::Deliver { folder: "INBOX".to_string() }
+    SieveDecision::Deliver {
+        folder: "INBOX".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -989,7 +1059,10 @@ mod extra_tests {
 
     #[test]
     fn make_preview_collapses_whitespace() {
-        assert_eq!(make_preview("  hello   world  ").as_deref(), Some("hello world"));
+        assert_eq!(
+            make_preview("  hello   world  ").as_deref(),
+            Some("hello world")
+        );
     }
 
     #[test]
@@ -1047,7 +1120,8 @@ mod extra_tests {
 
     #[test]
     fn normalize_message_id_with_angle_brackets_strips_them() {
-        let result = normalize_message_id(Some("<abc@example.com>".to_string())).expect("should parse");
+        let result =
+            normalize_message_id(Some("<abc@example.com>".to_string())).expect("should parse");
         assert!(!result.starts_with('<'));
         assert!(!result.ends_with('>'));
     }

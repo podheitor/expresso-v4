@@ -1,13 +1,13 @@
 //! Axum HTTP router for expresso-calendar
 
-pub mod context;
 mod alarms;
 mod calendars;
+pub mod context;
 mod events;
 mod health;
 mod scheduling;
-mod stream;
 mod sharing;
+mod stream;
 mod users;
 mod wellknown;
 
@@ -36,7 +36,9 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(api)
         .merge(crate::caldav::routes())
-        .layer(axum::middleware::from_fn(expresso_observability::http_counter_mw))
+        .layer(axum::middleware::from_fn(
+            expresso_observability::http_counter_mw,
+        ))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         .with_state(state)

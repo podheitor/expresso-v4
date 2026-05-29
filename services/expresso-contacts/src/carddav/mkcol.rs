@@ -8,13 +8,16 @@ use crate::domain::{AddressbookRepo, NewAddressbook};
 use crate::state::AppState;
 
 pub async fn handle(
-    state:     AppState,
+    state: AppState,
     principal: CardDavPrincipal,
-    path:      &str,
-    body:      &str,
+    path: &str,
+    body: &str,
 ) -> Response {
     let (user_id, ab_id) = match classify(path) {
-        Target::Addressbook { user_id, addressbook_id } => (user_id, addressbook_id),
+        Target::Addressbook {
+            user_id,
+            addressbook_id,
+        } => (user_id, addressbook_id),
         _ => return bad_request("MKCOL requires /carddav/<user-uuid>/<ab-uuid>/ URL"),
     };
     if user_id != principal.user_id {
@@ -22,7 +25,10 @@ pub async fn handle(
     }
     // Verifica resourcetype contém "addressbook" — ≠ MKCOL genérico p/ outra coisa.
     if !body.is_empty() && !body.contains("addressbook") {
-        return error(StatusCode::BAD_REQUEST, "resourcetype must include addressbook");
+        return error(
+            StatusCode::BAD_REQUEST,
+            "resourcetype must include addressbook",
+        );
     }
     let Some(pool) = state.db() else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "db unavailable");
@@ -35,8 +41,15 @@ pub async fn handle(
         .unwrap_or_else(|| format!("Addressbook {}", &ab_id.to_string()[..8]));
     let description = extract_prop(body, "addressbook-description");
 
-    let input = NewAddressbook { name, description, is_default: false };
-    match repo.create_with_id(ab_id, principal.tenant_id, principal.user_id, input).await {
+    let input = NewAddressbook {
+        name,
+        description,
+        is_default: false,
+    };
+    match repo
+        .create_with_id(ab_id, principal.tenant_id, principal.user_id, input)
+        .await
+    {
         Ok(_) => created(),
         Err(e) => {
             tracing::warn!(error = %e, "MKCOL addressbook insert failed");
@@ -51,16 +64,31 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
     while let Some(rel) = body[search_start..].find(local_name) {
         let name_pos = search_start + rel;
         let after = bytes.get(name_pos + local_name.len()).copied();
-        if !matches!(after, Some(b'>') | Some(b' ') | Some(b'\t') | Some(b'\n') | Some(b'\r') | Some(b'/')) {
+        if !matches!(
+            after,
+            Some(b'>') | Some(b' ') | Some(b'\t') | Some(b'\n') | Some(b'\r') | Some(b'/')
+        ) {
             search_start = name_pos + local_name.len();
             continue;
         }
-        let before = if name_pos > 0 { bytes.get(name_pos - 1).copied() } else { None };
+        let before = if name_pos > 0 {
+            bytes.get(name_pos - 1).copied()
+        } else {
+            None
+        };
         let valid_start = matches!(before, Some(b'<') | Some(b':'));
-        if !valid_start { search_start = name_pos + local_name.len(); continue; }
+        if !valid_start {
+            search_start = name_pos + local_name.len();
+            continue;
+        }
         let rest = &body[name_pos + local_name.len()..];
-        let gt = match rest.find('>') { Some(g) => g, None => return None };
-        if rest.as_bytes().get(gt.saturating_sub(1)) == Some(&b'/') { return None; }
+        let gt = match rest.find('>') {
+            Some(g) => g,
+            None => return None,
+        };
+        if rest.as_bytes().get(gt.saturating_sub(1)) == Some(&b'/') {
+            return None;
+        }
         let content_start = name_pos + local_name.len() + gt + 1;
         let tail = &body[content_start..];
         let close_plain = format!("</{local_name}>");
@@ -68,7 +96,10 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
         let mut i = 0;
         while let Some(lt) = tail[i..].find("</") {
             let abs = i + lt + 2;
-            let seg_end = match tail[abs..].find('>') { Some(e) => e, None => break };
+            let seg_end = match tail[abs..].find('>') {
+                Some(e) => e,
+                None => break,
+            };
             let seg = &tail[abs..abs + seg_end];
             let is_match = seg == local_name
                 || (seg.ends_with(local_name)
@@ -76,37 +107,55 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
                     && &seg[seg.len() - local_name.len() - 1..seg.len() - local_name.len()] == ":");
             if is_match {
                 let found = i + lt;
-                if close_pos.map_or(true, |p| found < p) { close_pos = Some(found); }
+                if close_pos.map_or(true, |p| found < p) {
+                    close_pos = Some(found);
+                }
                 break;
             }
             i = abs + seg_end + 1;
         }
-        let c = match close_pos { Some(c) => c, None => return None };
-        let s = tail[..c].trim()
+        let c = match close_pos {
+            Some(c) => c,
+            None => return None,
+        };
+        let s = tail[..c]
+            .trim()
             .replace("&amp;", "&")
-            .replace("&lt;",  "<")
-            .replace("&gt;",  ">")
-            .replace("&quot;","\"")
-            .replace("&apos;","'");
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'");
         return if s.is_empty() { None } else { Some(s) };
     }
     None
 }
 
 fn created() -> Response {
-    Response::builder().status(StatusCode::CREATED).body(Body::empty()).unwrap()
+    Response::builder()
+        .status(StatusCode::CREATED)
+        .body(Body::empty())
+        .unwrap()
 }
 
 fn bad_request(msg: &'static str) -> Response {
-    Response::builder().status(StatusCode::BAD_REQUEST).body(Body::from(msg)).unwrap()
+    Response::builder()
+        .status(StatusCode::BAD_REQUEST)
+        .body(Body::from(msg))
+        .unwrap()
 }
 
 fn forbidden(msg: &'static str) -> Response {
-    Response::builder().status(StatusCode::FORBIDDEN).body(Body::from(msg)).unwrap()
+    Response::builder()
+        .status(StatusCode::FORBIDDEN)
+        .body(Body::from(msg))
+        .unwrap()
 }
 
 fn error(status: StatusCode, msg: &'static str) -> Response {
-    Response::builder().status(status).body(Body::from(msg)).unwrap()
+    Response::builder()
+        .status(status)
+        .body(Body::from(msg))
+        .unwrap()
 }
 
 #[cfg(test)]
@@ -128,7 +177,10 @@ mod tests {
     #[test]
     fn description_prop_extracted() {
         let b = r#"<C:addressbook-description>My contacts</C:addressbook-description>"#;
-        assert_eq!(extract_prop(b, "addressbook-description").as_deref(), Some("My contacts"));
+        assert_eq!(
+            extract_prop(b, "addressbook-description").as_deref(),
+            Some("My contacts")
+        );
     }
 
     #[test]
@@ -157,7 +209,10 @@ mod tests {
     #[test]
     fn extracts_addressbook_description() {
         let b = r#"<C:addressbook-description>My Contacts</C:addressbook-description>"#;
-        assert_eq!(extract_prop(b, "addressbook-description").as_deref(), Some("My Contacts"));
+        assert_eq!(
+            extract_prop(b, "addressbook-description").as_deref(),
+            Some("My Contacts")
+        );
     }
 
     #[test]
@@ -169,7 +224,10 @@ mod tests {
     #[test]
     fn extract_prop_multiline_value_preserved() {
         let b = "<displayname>Personal Contacts</displayname>";
-        assert_eq!(extract_prop(b, "displayname").as_deref(), Some("Personal Contacts"));
+        assert_eq!(
+            extract_prop(b, "displayname").as_deref(),
+            Some("Personal Contacts")
+        );
     }
 
     #[test]
@@ -192,7 +250,10 @@ mod tests {
     #[test]
     fn extract_prop_description_tag_extracted() {
         let b = "<description>My personal contacts</description>";
-        assert_eq!(extract_prop(b, "description").as_deref(), Some("My personal contacts"));
+        assert_eq!(
+            extract_prop(b, "description").as_deref(),
+            Some("My personal contacts")
+        );
     }
 
     #[test]
@@ -216,7 +277,10 @@ mod tests {
     #[test]
     fn extract_prop_numeric_value_preserved() {
         let b = "<max-resource-size>102400</max-resource-size>";
-        assert_eq!(extract_prop(b, "max-resource-size").as_deref(), Some("102400"));
+        assert_eq!(
+            extract_prop(b, "max-resource-size").as_deref(),
+            Some("102400")
+        );
     }
 
     #[test]
@@ -235,7 +299,10 @@ mod tests {
     #[test]
     fn extract_prop_quot_entity_unescaped() {
         let b = r#"<displayname>say &quot;hi&quot;</displayname>"#;
-        assert_eq!(extract_prop(b, "displayname").as_deref(), Some(r#"say "hi""#));
+        assert_eq!(
+            extract_prop(b, "displayname").as_deref(),
+            Some(r#"say "hi""#)
+        );
     }
 
     #[test]

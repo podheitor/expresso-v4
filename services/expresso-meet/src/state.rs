@@ -13,23 +13,30 @@ use crate::webhook::WebhookConfig;
 pub struct AppState(Arc<Inner>);
 
 struct Inner {
-    db:           Option<DbPool>,
-    jitsi:        Option<Jitsi>,
-    webhook:      Option<WebhookConfig>,
+    db: Option<DbPool>,
+    jitsi: Option<Jitsi>,
+    webhook: Option<WebhookConfig>,
     invite_mailer: Option<InviteMailer>,
 }
 
 impl AppState {
     pub fn new(
-        db:            Option<DbPool>,
-        jitsi:         Option<Jitsi>,
-        webhook:       Option<WebhookConfig>,
+        db: Option<DbPool>,
+        jitsi: Option<Jitsi>,
+        webhook: Option<WebhookConfig>,
         invite_mailer: Option<InviteMailer>,
     ) -> Self {
-        Self(Arc::new(Inner { db, jitsi, webhook, invite_mailer }))
+        Self(Arc::new(Inner {
+            db,
+            jitsi,
+            webhook,
+            invite_mailer,
+        }))
     }
 
-    pub fn db(&self) -> Option<&DbPool> { self.0.db.as_ref() }
+    pub fn db(&self) -> Option<&DbPool> {
+        self.0.db.as_ref()
+    }
 
     pub fn db_or_unavailable(&self) -> Result<&DbPool> {
         self.0.db.as_ref().ok_or(MeetError::DatabaseUnavailable)
@@ -39,9 +46,13 @@ impl AppState {
         self.0.jitsi.as_ref().ok_or(MeetError::JitsiUnavailable)
     }
 
-    pub fn webhook(&self) -> Option<&WebhookConfig> { self.0.webhook.as_ref() }
+    pub fn webhook(&self) -> Option<&WebhookConfig> {
+        self.0.webhook.as_ref()
+    }
 
-    pub fn invite_mailer(&self) -> Option<&InviteMailer> { self.0.invite_mailer.as_ref() }
+    pub fn invite_mailer(&self) -> Option<&InviteMailer> {
+        self.0.invite_mailer.as_ref()
+    }
 }
 
 impl std::fmt::Debug for AppState {

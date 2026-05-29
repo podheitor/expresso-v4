@@ -39,7 +39,12 @@ impl ObjectStore {
 
     /// Upload bytes to key
     #[instrument(skip(self, data), fields(bucket = %self.bucket))]
-    pub async fn put(&self, key: &str, data: Vec<u8>, content_type: Option<&str>) -> anyhow::Result<()> {
+    pub async fn put(
+        &self,
+        key: &str,
+        data: Vec<u8>,
+        content_type: Option<&str>,
+    ) -> anyhow::Result<()> {
         let mut req = self
             .client
             .put_object()
@@ -82,7 +87,14 @@ impl ObjectStore {
     /// Check if object exists
     #[instrument(skip(self), fields(bucket = %self.bucket))]
     pub async fn exists(&self, key: &str) -> anyhow::Result<bool> {
-        match self.client.head_object().bucket(&self.bucket).key(key).send().await {
+        match self
+            .client
+            .head_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .send()
+            .await
+        {
             Ok(_) => Ok(true),
             Err(e) => {
                 let svc = e.into_service_error();

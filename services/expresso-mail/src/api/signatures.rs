@@ -21,10 +21,10 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use uuid::Uuid;
 
-use expresso_core::begin_tenant_tx;
 use crate::api::context::RequestCtx;
 use crate::error::{MailError, Result};
 use crate::state::AppState;
+use expresso_core::begin_tenant_tx;
 
 pub const MAX_SIGNATURE_BYTES: usize = 32 * 1024;
 pub const MAX_SIGNATURE_NAME_BYTES: usize = 128;
@@ -32,8 +32,16 @@ pub const MAX_SIGNATURES_PER_USER: usize = 10;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/mail/signatures",     get(list_signatures).post(create_signature))
-        .route("/mail/signatures/:id", get(get_signature).put(update_signature).delete(delete_signature))
+        .route(
+            "/mail/signatures",
+            get(list_signatures).post(create_signature),
+        )
+        .route(
+            "/mail/signatures/:id",
+            get(get_signature)
+                .put(update_signature)
+                .delete(delete_signature),
+        )
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -46,7 +54,7 @@ pub enum SignatureFormat {
 impl SignatureFormat {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Html  => "html",
+            Self::Html => "html",
             Self::Plain => "plain",
         }
     }
@@ -56,7 +64,7 @@ impl SignatureFormat {
     fn from_db(s: &str) -> Self {
         match s {
             "html" => Self::Html,
-            _      => Self::Plain,
+            _ => Self::Plain,
         }
     }
 }
@@ -69,42 +77,41 @@ impl std::fmt::Display for SignatureFormat {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Signature {
-    pub id:         Uuid,
-    pub user_id:    Uuid,
-    pub tenant_id:  Uuid,
-    pub name:       String,
-    pub content:    String,
-    pub format:     SignatureFormat,
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub tenant_id: Uuid,
+    pub name: String,
+    pub content: String,
+    pub format: SignatureFormat,
     pub is_default: bool,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CreateSignatureBody {
-    pub name:       String,
-    pub content:    String,
-    pub format:     Option<SignatureFormat>,
+    pub name: String,
+    pub content: String,
+    pub format: Option<SignatureFormat>,
     pub is_default: Option<bool>,
 }
 
 fn row_to_signature(r: &sqlx::postgres::PgRow) -> Signature {
     let fmt: String = r.get("format");
     Signature {
-        id:         r.get("id"),
-        user_id:    r.get("user_id"),
-        tenant_id:  r.get("tenant_id"),
-        name:       r.get("name"),
-        content:    r.get("content"),
-        format:     SignatureFormat::from_db(&fmt),
+        id: r.get("id"),
+        user_id: r.get("user_id"),
+        tenant_id: r.get("tenant_id"),
+        name: r.get("name"),
+        content: r.get("content"),
+        format: SignatureFormat::from_db(&fmt),
         is_default: r.get("is_default"),
     }
 }
 
-const SELECT_COLS: &str =
-    "id, user_id, tenant_id, name, content, format, is_default";
+const SELECT_COLS: &str = "id, user_id, tenant_id, name, content, format, is_default";
 
 async fn list_signatures(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
 ) -> Result<Json<Vec<Signature>>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let rows = sqlx::query(&format!(
@@ -122,8 +129,8 @@ async fn list_signatures(
 
 async fn get_signature(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<Signature>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row = sqlx::query(&format!(
@@ -136,13 +143,16 @@ async fn get_signature(
     .fetch_optional(&mut *tx)
     .await?;
     tx.commit().await?;
-    row.as_ref().map(row_to_signature).map(Json).ok_or(MailError::NotFound)
+    row.as_ref()
+        .map(row_to_signature)
+        .map(Json)
+        .ok_or(MailError::NotFound)
 }
 
 async fn create_signature(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Json(body):   Json<CreateSignatureBody>,
+    ctx: RequestCtx,
+    Json(body): Json<CreateSignatureBody>,
 ) -> Result<(StatusCode, Json<Signature>)> {
     validate(&body.name, &body.content)?;
     let format = body.format.unwrap_or(SignatureFormat::Html);
@@ -151,7 +161,7 @@ async fn create_signature(
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     let count: i64 = sqlx::query(
-        "SELECT count(*) AS n FROM user_signatures WHERE tenant_id = $1 AND user_id = $2"
+        "SELECT count(*) AS n FROM user_signatures WHERE tenant_id = $1 AND user_id = $2",
     )
     .bind(ctx.tenant_id)
     .bind(ctx.user_id)
@@ -188,9 +198,9 @@ async fn create_signature(
 
 async fn update_signature(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<CreateSignatureBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<CreateSignatureBody>,
 ) -> Result<Json<Signature>> {
     validate(&body.name, &body.content)?;
     let format = body.format.unwrap_or(SignatureFormat::Html);
@@ -225,12 +235,12 @@ async fn update_signature(
 
 async fn delete_signature(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let r = sqlx::query(
-        "DELETE FROM user_signatures WHERE id = $1 AND tenant_id = $2 AND user_id = $3"
+        "DELETE FROM user_signatures WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
     )
     .bind(id)
     .bind(ctx.tenant_id)
@@ -247,13 +257,13 @@ async fn delete_signature(
 /// Demote the user's current default, if any. Called inside the write tx
 /// before promoting a new default so at most one row stays `is_default`.
 async fn clear_default(
-    tx:        &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     tenant_id: Uuid,
-    user_id:   Uuid,
+    user_id: Uuid,
 ) -> Result<()> {
     sqlx::query(
         "UPDATE user_signatures SET is_default = false \
-         WHERE tenant_id = $1 AND user_id = $2 AND is_default = true"
+         WHERE tenant_id = $1 AND user_id = $2 AND is_default = true",
     )
     .bind(tenant_id)
     .bind(user_id)
@@ -407,9 +417,13 @@ mod tests {
     #[test]
     fn signature_serde_roundtrip() {
         let sig = Signature {
-            id: Uuid::nil(), user_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            name: "Work".into(), content: "<p>Best</p>".into(),
-            format: SignatureFormat::Html, is_default: true,
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            name: "Work".into(),
+            content: "<p>Best</p>".into(),
+            format: SignatureFormat::Html,
+            is_default: true,
         };
         let s = serde_json::to_string(&sig).unwrap();
         let back: Signature = serde_json::from_str(&s).unwrap();
@@ -441,9 +455,13 @@ mod tests {
     #[test]
     fn signature_clone_preserves_name() {
         let sig = Signature {
-            id: Uuid::nil(), user_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            name: "Clone me".into(), content: "...".into(),
-            format: SignatureFormat::Plain, is_default: false,
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            name: "Clone me".into(),
+            content: "...".into(),
+            format: SignatureFormat::Plain,
+            is_default: false,
         };
         assert_eq!(sig.clone().name, "Clone me");
     }
@@ -451,9 +469,13 @@ mod tests {
     #[test]
     fn signature_is_default_false_field() {
         let sig = Signature {
-            id: Uuid::nil(), user_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            name: "S".into(), content: "C".into(),
-            format: SignatureFormat::Html, is_default: false,
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            name: "S".into(),
+            content: "C".into(),
+            format: SignatureFormat::Html,
+            is_default: false,
         };
         assert!(!sig.is_default);
     }
@@ -471,9 +493,13 @@ mod tests {
     #[test]
     fn signature_serde_json_contains_format_key() {
         let sig = Signature {
-            id: Uuid::nil(), user_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            name: "S".into(), content: "C".into(),
-            format: SignatureFormat::Html, is_default: false,
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            name: "S".into(),
+            content: "C".into(),
+            format: SignatureFormat::Html,
+            is_default: false,
         };
         let s = serde_json::to_string(&sig).unwrap();
         assert!(s.contains("format"));
@@ -482,9 +508,13 @@ mod tests {
     #[test]
     fn signature_serde_json_contains_is_default_key() {
         let sig = Signature {
-            id: Uuid::nil(), user_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            name: "S".into(), content: "C".into(),
-            format: SignatureFormat::Plain, is_default: true,
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            name: "S".into(),
+            content: "C".into(),
+            format: SignatureFormat::Plain,
+            is_default: true,
         };
         let s = serde_json::to_string(&sig).unwrap();
         assert!(s.contains("is_default"));
@@ -494,9 +524,13 @@ mod tests {
     fn signature_user_id_accessible() {
         let uid = Uuid::new_v4();
         let sig = Signature {
-            id: Uuid::nil(), user_id: uid, tenant_id: Uuid::nil(),
-            name: "S".into(), content: "C".into(),
-            format: SignatureFormat::Html, is_default: false,
+            id: Uuid::nil(),
+            user_id: uid,
+            tenant_id: Uuid::nil(),
+            name: "S".into(),
+            content: "C".into(),
+            format: SignatureFormat::Html,
+            is_default: false,
         };
         assert_eq!(sig.user_id, uid);
     }
@@ -529,9 +563,13 @@ mod tests {
     #[test]
     fn signature_serde_json_contains_content_key() {
         let sig = Signature {
-            id: Uuid::nil(), user_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            name: "S".into(), content: "my content".into(),
-            format: SignatureFormat::Plain, is_default: false,
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            name: "S".into(),
+            content: "my content".into(),
+            format: SignatureFormat::Plain,
+            is_default: false,
         };
         let s = serde_json::to_string(&sig).unwrap();
         assert!(s.contains("content"));

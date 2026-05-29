@@ -37,24 +37,24 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use expresso_auth_client::{AuthContext, Authenticated, AuthRejection, OidcConfig, OidcValidator};
+use expresso_auth_client::{AuthContext, AuthRejection, Authenticated, OidcConfig, OidcValidator};
 use expresso_core::{begin_tenant_tx, create_db_pool, init_tracing, run_migrations, AppConfig};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{info, warn};
 use uuid::Uuid;
 
-const SERVICE:                     &str = "expresso-compliance";
-const DEFAULT_PORT:                 u16 = 8009;
-const DEFAULT_RETENTION_INTERVAL:   u64 = 3600; // seconds
+const SERVICE: &str = "expresso-compliance";
+const DEFAULT_PORT: u16 = 8009;
+const DEFAULT_RETENTION_INTERVAL: u64 = 3600; // seconds
 
 // ─── App state ────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 struct AppState {
-    db:        expresso_core::DbPool,
+    db: expresso_core::DbPool,
     #[allow(dead_code)] // configured for bulk-delete calls to expresso-mail; not yet invoked
-    mail_url:  String,   // expresso-mail base URL for bulk delete
+    mail_url: String, // expresso-mail base URL for bulk delete
     validator: Option<Arc<OidcValidator>>,
 }
 
@@ -62,96 +62,96 @@ struct AppState {
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 struct RetentionPolicy {
-    pub id:          Uuid,
-    pub tenant_id:   Uuid,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
     pub folder_name: Option<String>,
     pub retain_days: i32,
-    pub action:      String,
-    pub enabled:     bool,
+    pub action: String,
+    pub enabled: bool,
 }
 
 #[derive(Debug, sqlx::FromRow)]
 struct RetentionPolicyDetail {
-    pub id:          Uuid,
-    pub tenant_id:   Uuid,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
     pub folder_name: Option<String>,
     pub retain_days: i32,
-    pub action:      String,
-    pub enabled:     bool,
-    pub updated_at:  time::OffsetDateTime,
+    pub action: String,
+    pub enabled: bool,
+    pub updated_at: time::OffsetDateTime,
 }
 
 #[derive(Debug, Deserialize)]
 struct CreatePolicyRequest {
     pub folder_name: Option<String>,
     pub retain_days: i32,
-    pub action:      Option<String>,
-    pub enabled:     Option<bool>,
+    pub action: Option<String>,
+    pub enabled: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
 struct UpdatePolicyRequest {
     pub retain_days: Option<i32>,
-    pub action:      Option<String>,
-    pub enabled:     Option<bool>,
+    pub action: Option<String>,
+    pub enabled: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 struct ArchiveEntry {
-    pub id:          Uuid,
-    pub tenant_id:   Uuid,
-    pub user_id:     Uuid,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
     pub original_id: Option<Uuid>,
-    pub body_path:   String,
-    pub from_addr:   Option<String>,
-    pub to_addrs:    serde_json::Value,
-    pub subject:     Option<String>,
+    pub body_path: String,
+    pub from_addr: Option<String>,
+    pub to_addrs: serde_json::Value,
+    pub subject: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
     pub archived_at: time::OffsetDateTime,
-    pub size_bytes:  i32,
+    pub size_bytes: i32,
 }
 
 /// Payload from expresso-mail for journaling.
 #[derive(Debug, Deserialize)]
 struct ArchiveRequest {
-    pub tenant_id:   Uuid,
-    pub user_id:     Uuid,
-    pub message_id:  Option<Uuid>,
-    pub body_path:   String,
-    pub from_addr:   Option<String>,
-    pub to_addrs:    Option<serde_json::Value>,
-    pub subject:     Option<String>,
-    pub size_bytes:  Option<i32>,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub message_id: Option<Uuid>,
+    pub body_path: String,
+    pub from_addr: Option<String>,
+    pub to_addrs: Option<serde_json::Value>,
+    pub subject: Option<String>,
+    pub size_bytes: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ArchiveListParams {
-    pub limit:     Option<i64>,
+    pub limit: Option<i64>,
     /// Legacy offset (ignored when before_id/after_id is set).
-    pub offset:    Option<i64>,
+    pub offset: Option<i64>,
     /// ISO-8601 date prefix (YYYY-MM-DD) — entries archived on or after this date.
-    pub since:     Option<String>,
+    pub since: Option<String>,
     /// ISO-8601 date prefix (YYYY-MM-DD) — entries archived strictly before this date.
-    pub before:    Option<String>,
+    pub before: Option<String>,
     /// Keyset cursor — entries archived strictly before this entry (DESC order, next page).
     pub before_id: Option<Uuid>,
     /// Keyset cursor — entries archived strictly after this entry (ASC, then reversed).
-    pub after_id:  Option<Uuid>,
+    pub after_id: Option<Uuid>,
     /// ILIKE filter on subject field.
-    pub subject:   Option<String>,
+    pub subject: Option<String>,
     /// ILIKE filter on from_addr field.
     pub from_addr: Option<String>,
     /// ILIKE filter on any element in the to_addrs JSON array.
-    pub to_addr:   Option<String>,
+    pub to_addr: Option<String>,
     /// Return only entries with size_bytes >= this value.
-    pub size_min:  Option<i32>,
+    pub size_min: Option<i32>,
     /// Return only entries with size_bytes <= this value.
-    pub size_max:  Option<i32>,
+    pub size_max: Option<i32>,
     /// Sort order for offset pagination: "asc" or "desc" (default "desc").
     /// Ignored when keyset cursors (before_id/after_id) are used.
-    pub sort:      Option<String>,
+    pub sort: Option<String>,
     /// Optional AES-256 password to encrypt the exported ZIP.
-    pub password:  Option<String>,
+    pub password: Option<String>,
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -167,11 +167,7 @@ impl<S: Send + Sync> FromRequestParts<S> for AuthCtx {
     }
 }
 
-async fn inject_validator(
-    State(st): State<AppState>,
-    mut req:   Request,
-    next:      Next,
-) -> Response {
+async fn inject_validator(State(st): State<AppState>, mut req: Request, next: Next) -> Response {
     if let Some(v) = &st.validator {
         req.extensions_mut().insert(v.clone());
     }
@@ -187,29 +183,36 @@ struct ListPoliciesParams {
 }
 
 async fn list_policies(
-    State(st):      State<AppState>,
-    AuthCtx(ctx):   AuthCtx,
-    Query(params):  Query<ListPoliciesParams>,
-    req_headers:    axum::http::HeaderMap,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Query(params): Query<ListPoliciesParams>,
+    req_headers: axum::http::HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
-    let order = if params.sort.as_deref().map(|s| s.eq_ignore_ascii_case("desc")).unwrap_or(false) {
+    let order = if params
+        .sort
+        .as_deref()
+        .map(|s| s.eq_ignore_ascii_case("desc"))
+        .unwrap_or(false)
+    {
         "DESC"
     } else {
         "ASC"
     };
 
-    let max_ts: Option<time::OffsetDateTime> = sqlx::query_scalar(
-        "SELECT MAX(updated_at) FROM retention_policies WHERE tenant_id = $1",
-    )
-    .bind(ctx.tenant_id)
-    .fetch_one(&st.db)
-    .await
-    .unwrap_or(None);
+    let max_ts: Option<time::OffsetDateTime> =
+        sqlx::query_scalar("SELECT MAX(updated_at) FROM retention_policies WHERE tenant_id = $1")
+            .bind(ctx.tenant_id)
+            .fetch_one(&st.db)
+            .await
+            .unwrap_or(None);
 
     if let Some(ts) = max_ts {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) = time::OffsetDateTime::parse(
+                    ims_str,
+                    &time::format_description::well_known::Rfc2822,
+                ) {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -218,13 +221,17 @@ async fn list_policies(
         }
     }
 
-    let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM retention_policies WHERE tenant_id = $1",
-    )
-    .bind(ctx.tenant_id)
-    .fetch_one(&st.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let total: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM retention_policies WHERE tenant_id = $1")
+            .bind(ctx.tenant_id)
+            .fetch_one(&st.db)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": e.to_string()})),
+                )
+            })?;
     let sql = format!(
         "SELECT id, tenant_id, folder_name, retain_days, action, enabled \
          FROM retention_policies \
@@ -235,31 +242,52 @@ async fn list_policies(
         .bind(ctx.tenant_id)
         .fetch_all(&st.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     let mut resp = (
         StatusCode::OK,
-        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        [(
+            header::HeaderName::from_static("x-total-count"),
+            total.to_string(),
+        )],
         Json(rows),
-    ).into_response();
+    )
+        .into_response();
     if let Some(ts) = max_ts {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, axum::http::HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut().insert(
+            header::LAST_MODIFIED,
+            axum::http::HeaderValue::from_str(&lm).unwrap(),
+        );
     }
     Ok(resp)
 }
 
 async fn create_policy(
-    State(st):   State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Json(req):   Json<CreatePolicyRequest>,
+    Json(req): Json<CreatePolicyRequest>,
 ) -> Result<(StatusCode, Json<RetentionPolicy>), (StatusCode, Json<serde_json::Value>)> {
     if req.retain_days <= 0 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "retain_days must be > 0"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "retain_days must be > 0"})),
+        ));
     }
 
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let policy: RetentionPolicy = sqlx::query_as(
         "INSERT INTO retention_policies (tenant_id, folder_name, retain_days, action, enabled) \
@@ -273,19 +301,28 @@ async fn create_policy(
     .bind(req.enabled.unwrap_or(true))
     .fetch_one(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    tx.commit().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok((StatusCode::CREATED, Json(policy)))
 }
 
 async fn get_policy(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
-    req_headers:  axum::http::HeaderMap,
+    Path(id): Path<Uuid>,
+    req_headers: axum::http::HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let row: Option<RetentionPolicyDetail> = sqlx::query_as(
         "SELECT id, tenant_id, folder_name, retain_days, action, enabled, updated_at \
@@ -296,12 +333,23 @@ async fn get_policy(
     .bind(ctx.tenant_id)
     .fetch_optional(&st.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let p = row.ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "policy not found"}))))?;
+    let p = row.ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "policy not found"})),
+        )
+    })?;
 
     let etag = format!("\"{}-{}\"", p.updated_at.unix_timestamp(), p.id);
-    let last_modified = p.updated_at
+    let last_modified = p
+        .updated_at
         .format(&time::format_description::well_known::Rfc2822)
         .unwrap_or_default();
 
@@ -312,7 +360,9 @@ async fn get_policy(
     }
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if p.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -321,37 +371,42 @@ async fn get_policy(
     }
 
     let policy = RetentionPolicy {
-        id:          p.id,
-        tenant_id:   p.tenant_id,
+        id: p.id,
+        tenant_id: p.tenant_id,
         folder_name: p.folder_name,
         retain_days: p.retain_days,
-        action:      p.action,
-        enabled:     p.enabled,
+        action: p.action,
+        enabled: p.enabled,
     };
     Ok((
         StatusCode::OK,
-        [
-            (header::ETAG,          etag),
-            (header::LAST_MODIFIED, last_modified),
-        ],
+        [(header::ETAG, etag), (header::LAST_MODIFIED, last_modified)],
         Json(policy),
-    ).into_response())
+    )
+        .into_response())
 }
 
 async fn update_policy(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
-    Json(req):    Json<UpdatePolicyRequest>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdatePolicyRequest>,
 ) -> Result<Json<RetentionPolicy>, (StatusCode, Json<serde_json::Value>)> {
     if let Some(d) = req.retain_days {
         if d <= 0 {
-            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "retain_days must be > 0"}))));
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "retain_days must be > 0"})),
+            ));
         }
     }
 
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let policy: Option<RetentionPolicy> = sqlx::query_as(
         "UPDATE retention_policies \
@@ -369,34 +424,59 @@ async fn update_policy(
     .bind(req.enabled)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    tx.commit().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     match policy {
         Some(p) => Ok(Json(p)),
-        None    => Err((StatusCode::NOT_FOUND, Json(json!({"error": "policy not found"})))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "policy not found"})),
+        )),
     }
 }
 
 async fn delete_policy(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     sqlx::query("DELETE FROM retention_policies WHERE id = $1 AND tenant_id = $2")
         .bind(id)
         .bind(ctx.tenant_id)
         .execute(&mut *tx)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
-    tx.commit().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -404,8 +484,8 @@ async fn delete_policy(
 // ─── Archive ──────────────────────────────────────────────────────────────────
 
 async fn archive_message(
-    State(st):   State<AppState>,
-    Json(req):   Json<ArchiveRequest>,
+    State(st): State<AppState>,
+    Json(req): Json<ArchiveRequest>,
 ) -> Json<serde_json::Value> {
     let result = sqlx::query(
         "INSERT INTO compliance_archive \
@@ -424,46 +504,75 @@ async fn archive_message(
     .await;
 
     match result {
-        Ok(_)  => Json(json!({"ok": true})),
-        Err(e) => { warn!(error = %e, "archive insert failed"); Json(json!({"ok": false})) }
+        Ok(_) => Json(json!({"ok": true})),
+        Err(e) => {
+            warn!(error = %e, "archive insert failed");
+            Json(json!({"ok": false}))
+        }
     }
 }
 
 async fn list_archive(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<ArchiveListParams>,
-    req_headers:   HeaderMap,
+    req_headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(50).min(200);
-    let order = if params.sort.as_deref().map(|s| s.eq_ignore_ascii_case("asc")).unwrap_or(false) {
+    let order = if params
+        .sort
+        .as_deref()
+        .map(|s| s.eq_ignore_ascii_case("asc"))
+        .unwrap_or(false)
+    {
         "ASC"
     } else {
         "DESC"
     };
 
-    let since_filter = params.since
-        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+    let since_filter = params
+        .since
+        .map(|d| {
+            format!(
+                "AND archived_at >= '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
-    let before_date_filter = params.before
+    let before_date_filter = params
+        .before
         .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
-    let subject_filter = params.subject.map(|s| {
-        let esc = s.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-        format!("AND subject ILIKE '%{esc}%'")
-    }).unwrap_or_default();
-    let from_addr_filter = params.from_addr.map(|f| {
-        let esc = f.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-        format!("AND from_addr ILIKE '%{esc}%'")
-    }).unwrap_or_default();
+    let subject_filter = params
+        .subject
+        .map(|s| {
+            let esc = s
+                .replace('\'', "''")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            format!("AND subject ILIKE '%{esc}%'")
+        })
+        .unwrap_or_default();
+    let from_addr_filter = params
+        .from_addr
+        .map(|f| {
+            let esc = f
+                .replace('\'', "''")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            format!("AND from_addr ILIKE '%{esc}%'")
+        })
+        .unwrap_or_default();
     let to_addr_filter = params.to_addr.map(|t| {
         let esc = t.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
         format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(to_addrs) t WHERE t ILIKE '%{esc}%')")
     }).unwrap_or_default();
-    let size_min_filter = params.size_min
+    let size_min_filter = params
+        .size_min
         .map(|v| format!("AND size_bytes >= {v}"))
         .unwrap_or_default();
-    let size_max_filter = params.size_max
+    let size_max_filter = params
+        .size_max
         .map(|v| format!("AND size_bytes <= {v}"))
         .unwrap_or_default();
 
@@ -479,7 +588,10 @@ async fn list_archive(
     if let Some(ts) = max_archived {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) = time::OffsetDateTime::parse(
+                    ims_str,
+                    &time::format_description::well_known::Rfc2822,
+                ) {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -488,8 +600,7 @@ async fn list_archive(
         }
     }
 
-    let base =
-        "SELECT id, tenant_id, user_id, original_id, body_path, from_addr, \
+    let base = "SELECT id, tenant_id, user_id, original_id, body_path, from_addr, \
                 to_addrs, subject, archived_at, size_bytes \
          FROM compliance_archive \
          WHERE tenant_id = $1 AND user_id = $2";
@@ -506,10 +617,18 @@ async fn list_archive(
         .bind(ctx.user_id)
         .fetch_optional(&st.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
         let (anchor_ts, anchor_id) = anchor.ok_or_else(|| {
-            (StatusCode::NOT_FOUND, Json(json!({"error": "cursor entry not found"})))
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "cursor entry not found"})),
+            )
         })?;
 
         if is_before {
@@ -526,7 +645,12 @@ async fn list_archive(
                 .bind(anchor_id)
                 .fetch_all(&st.db)
                 .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": e.to_string()})),
+                    )
+                })?
         } else {
             let sql = format!(
                 "{base} {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
@@ -541,7 +665,12 @@ async fn list_archive(
                 .bind(anchor_id)
                 .fetch_all(&st.db)
                 .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": e.to_string()})),
+                    )
+                })?;
             rows.reverse();
             rows
         }
@@ -557,7 +686,12 @@ async fn list_archive(
             .bind(ctx.user_id)
             .fetch_all(&st.db)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": e.to_string()})),
+                )
+            })?
     };
 
     // Count total matching rows (same filters, no pagination) for X-Total-Count header.
@@ -576,12 +710,19 @@ async fn list_archive(
 
     let mut resp = (
         StatusCode::OK,
-        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        [(
+            header::HeaderName::from_static("x-total-count"),
+            total.to_string(),
+        )],
         Json(rows),
-    ).into_response();
+    )
+        .into_response();
     if let Some(ts) = max_archived {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -591,32 +732,53 @@ async fn list_archive(
 /// subject, from_addr, to_addr, size_min, size_max), sem listar nem paginar
 /// (sprint #425). Útil pra dashboards e badges sem custo de serializar payload.
 async fn count_archive(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<ArchiveListParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let since_filter = params.since
-        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+    let since_filter = params
+        .since
+        .map(|d| {
+            format!(
+                "AND archived_at >= '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
-    let before_date_filter = params.before
+    let before_date_filter = params
+        .before
         .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
-    let subject_filter = params.subject.map(|s| {
-        let esc = s.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-        format!("AND subject ILIKE '%{esc}%'")
-    }).unwrap_or_default();
-    let from_addr_filter = params.from_addr.map(|f| {
-        let esc = f.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-        format!("AND from_addr ILIKE '%{esc}%'")
-    }).unwrap_or_default();
+    let subject_filter = params
+        .subject
+        .map(|s| {
+            let esc = s
+                .replace('\'', "''")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            format!("AND subject ILIKE '%{esc}%'")
+        })
+        .unwrap_or_default();
+    let from_addr_filter = params
+        .from_addr
+        .map(|f| {
+            let esc = f
+                .replace('\'', "''")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            format!("AND from_addr ILIKE '%{esc}%'")
+        })
+        .unwrap_or_default();
     let to_addr_filter = params.to_addr.map(|t| {
         let esc = t.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
         format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(to_addrs) t WHERE t ILIKE '%{esc}%')")
     }).unwrap_or_default();
-    let size_min_filter = params.size_min
+    let size_min_filter = params
+        .size_min
         .map(|v| format!("AND size_bytes >= {v}"))
         .unwrap_or_default();
-    let size_max_filter = params.size_max
+    let size_max_filter = params
+        .size_max
         .map(|v| format!("AND size_bytes <= {v}"))
         .unwrap_or_default();
 
@@ -631,7 +793,12 @@ async fn count_archive(
         .bind(ctx.user_id)
         .fetch_one(&st.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     Ok(Json(json!({"count": count})))
 }
@@ -639,7 +806,7 @@ async fn count_archive(
 #[derive(Debug, Deserialize)]
 struct ArchiveHistogramParams {
     /// ISO-8601 date prefix (YYYY-MM-DD) — bucket inferior inclusive.
-    pub since:  Option<String>,
+    pub since: Option<String>,
     /// ISO-8601 date prefix — bucket superior exclusive.
     pub before: Option<String>,
     /// "day" (default), "week", or "month". Whitelist evita injection no date_trunc.
@@ -652,24 +819,35 @@ struct ArchiveHistogramParams {
 /// usa `date_trunc()` no Postgres pra agrupar archived_at. Não exposto outros filtros
 /// (subject/from_addr) — histogram é primariamente pra dashboards de volume temporal.
 async fn histogram_archive(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<ArchiveHistogramParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let bucket = match params.bucket.as_deref().unwrap_or("day") {
-        "day"   => "day",
-        "week"  => "week",
+        "day" => "day",
+        "week" => "week",
         "month" => "month",
-        other   => return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": format!("invalid bucket '{other}': expected day/week/month")})),
-        )),
+        other => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(
+                    json!({"error": format!("invalid bucket '{other}': expected day/week/month")}),
+                ),
+            ))
+        }
     };
 
-    let since_filter = params.since
-        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+    let since_filter = params
+        .since
+        .map(|d| {
+            format!(
+                "AND archived_at >= '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
-    let before_filter = params.before
+    let before_filter = params
+        .before
         .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
 
@@ -686,7 +864,12 @@ async fn histogram_archive(
         .bind(ctx.user_id)
         .fetch_all(&st.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     let series: Vec<_> = rows.into_iter()
         .map(|(ts, c)| json!({
@@ -701,12 +884,12 @@ async fn histogram_archive(
 #[derive(Debug, Deserialize)]
 struct TopSendersParams {
     /// ISO-8601 date prefix (YYYY-MM-DD) — limite inferior inclusive.
-    pub since:  Option<String>,
+    pub since: Option<String>,
     /// ISO-8601 date prefix — limite superior exclusive.
     pub before: Option<String>,
     /// Top-N (default 10, cap 100). Sidebar de "top remetentes" não precisa
     /// mais que isso; cap protege payload contra `?limit=999999`.
-    pub limit:  Option<i64>,
+    pub limit: Option<i64>,
 }
 
 /// GET /api/v1/compliance/archive/top-senders?since=&before=&limit=10 — retorna
@@ -716,16 +899,23 @@ struct TopSendersParams {
 /// padrão de escape do count_archive (#425) e histogram (#435). Útil pra dashboards
 /// de "quem mais arquivou", complementa histogram (volume temporal).
 async fn top_senders_archive(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<TopSendersParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(10).clamp(1, 100);
 
-    let since_filter = params.since
-        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+    let since_filter = params
+        .since
+        .map(|d| {
+            format!(
+                "AND archived_at >= '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
-    let before_filter = params.before
+    let before_filter = params
+        .before
         .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
 
@@ -742,9 +932,15 @@ async fn top_senders_archive(
         .bind(ctx.user_id)
         .fetch_all(&st.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
-    let senders: Vec<_> = rows.into_iter()
+    let senders: Vec<_> = rows
+        .into_iter()
         .map(|(sender, count)| json!({ "sender": sender, "count": count }))
         .collect();
 
@@ -759,16 +955,23 @@ async fn top_senders_archive(
 /// retention/legal-hold dashboards. Entries sem to_addrs ficam fora do count
 /// (jsonb_array_elements_text de NULL ou '[]' não produz linhas).
 async fn top_recipients_archive(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<TopSendersParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(10).clamp(1, 100);
 
-    let since_filter = params.since
-        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+    let since_filter = params
+        .since
+        .map(|d| {
+            format!(
+                "AND archived_at >= '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
-    let before_filter = params.before
+    let before_filter = params
+        .before
         .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
 
@@ -786,9 +989,15 @@ async fn top_recipients_archive(
         .bind(ctx.user_id)
         .fetch_all(&st.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
-    let recipients: Vec<_> = rows.into_iter()
+    let recipients: Vec<_> = rows
+        .into_iter()
         .map(|(recipient, count)| json!({ "recipient": recipient, "count": count }))
         .collect();
 
@@ -803,16 +1012,23 @@ async fn top_recipients_archive(
 /// Útil pra "qual assunto domina o archive" — threads recorrentes, alertas
 /// automatizados, newsletters em massa.
 async fn top_subjects_archive(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<TopSendersParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(10).clamp(1, 100);
 
-    let since_filter = params.since
-        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+    let since_filter = params
+        .since
+        .map(|d| {
+            format!(
+                "AND archived_at >= '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
-    let before_filter = params.before
+    let before_filter = params
+        .before
         .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
 
@@ -829,9 +1045,15 @@ async fn top_subjects_archive(
         .bind(ctx.user_id)
         .fetch_all(&st.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
-    let subjects: Vec<_> = rows.into_iter()
+    let subjects: Vec<_> = rows
+        .into_iter()
         .map(|(subject, count)| json!({ "subject": subject, "count": count }))
         .collect();
 
@@ -847,16 +1069,23 @@ async fn top_subjects_archive(
 /// Útil pra "quais domínios dominam o tráfego arquivado" — detecta vendors,
 /// newsletters massivas, parceiros B2B recorrentes.
 async fn top_domains_archive(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<TopSendersParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(10).clamp(1, 100);
 
-    let since_filter = params.since
-        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+    let since_filter = params
+        .since
+        .map(|d| {
+            format!(
+                "AND archived_at >= '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
-    let before_filter = params.before
+    let before_filter = params
+        .before
         .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
 
@@ -876,9 +1105,15 @@ async fn top_domains_archive(
         .bind(ctx.user_id)
         .fetch_all(&st.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
-    let domains: Vec<_> = rows.into_iter()
+    let domains: Vec<_> = rows
+        .into_iter()
         .map(|(domain, count)| json!({ "domain": domain, "count": count }))
         .collect();
 
@@ -895,14 +1130,21 @@ async fn top_domains_archive(
 /// `/archive/:id` (lição #443/#448 — rotas estáticas precedem `:id`, mas mantemos
 /// hífen porque `size-histogram` tem dois segmentos lógicos).
 async fn size_histogram_archive(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<TopSendersParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let since_filter = params.since
-        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+    let since_filter = params
+        .since
+        .map(|d| {
+            format!(
+                "AND archived_at >= '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
-    let before_filter = params.before
+    let before_filter = params
+        .before
         .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
 
@@ -930,29 +1172,42 @@ async fn size_histogram_archive(
         .bind(ctx.user_id)
         .fetch_all(&st.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     let labels: [(&str, i64, Option<i64>); 7] = [
-        ("<1KB",        0,         Some(1024)),
-        ("1-10KB",      1024,      Some(10240)),
-        ("10-100KB",    10240,     Some(102400)),
-        ("100KB-1MB",   102400,    Some(1048576)),
-        ("1-10MB",      1048576,   Some(10485760)),
-        ("10-25MB",     10485760,  Some(26214400)),
-        (">25MB",       26214400,  None),
+        ("<1KB", 0, Some(1024)),
+        ("1-10KB", 1024, Some(10240)),
+        ("10-100KB", 10240, Some(102400)),
+        ("100KB-1MB", 102400, Some(1048576)),
+        ("1-10MB", 1048576, Some(10485760)),
+        ("10-25MB", 10485760, Some(26214400)),
+        (">25MB", 26214400, None),
     ];
 
     // Materializa todos os buckets (mesmo zero) pra UI estável.
     let mut counts = [0i64; 7];
-    for (b, c) in rows { if (0..7).contains(&b) { counts[b as usize] = c; } }
+    for (b, c) in rows {
+        if (0..7).contains(&b) {
+            counts[b as usize] = c;
+        }
+    }
 
-    let buckets: Vec<_> = labels.iter().enumerate()
-        .map(|(i, (label, lo, hi))| json!({
-            "bucket":    label,
-            "min_bytes": lo,
-            "max_bytes": hi,
-            "count":     counts[i],
-        }))
+    let buckets: Vec<_> = labels
+        .iter()
+        .enumerate()
+        .map(|(i, (label, lo, hi))| {
+            json!({
+                "bucket":    label,
+                "min_bytes": lo,
+                "max_bytes": hi,
+                "count":     counts[i],
+            })
+        })
         .collect();
 
     Ok(Json(json!({ "buckets": buckets })))
@@ -964,17 +1219,29 @@ async fn size_histogram_archive(
 /// archived_at range). Retorna `{limit, tags: [{tag, count}]}`. Útil pra
 /// dashboard de e-discovery — quais case-IDs/hold-tags concentram volume.
 async fn top_tags_archive(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<TopSendersParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(10).clamp(1, 100);
 
-    let since_filter = params.since
-        .map(|d| format!("AND a.archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+    let since_filter = params
+        .since
+        .map(|d| {
+            format!(
+                "AND a.archived_at >= '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
-    let before_filter = params.before
-        .map(|d| format!("AND a.archived_at < '{}'::timestamptz", d.replace('\'', "''")))
+    let before_filter = params
+        .before
+        .map(|d| {
+            format!(
+                "AND a.archived_at < '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
 
     let sql = format!(
@@ -991,9 +1258,15 @@ async fn top_tags_archive(
         .bind(ctx.user_id)
         .fetch_all(&st.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
-    let tags: Vec<_> = rows.into_iter()
+    let tags: Vec<_> = rows
+        .into_iter()
         .map(|(tag, count)| json!({ "tag": tag, "count": count }))
         .collect();
 
@@ -1013,8 +1286,8 @@ struct ArchiveIntersectQuery {
 }
 
 async fn archive_entries_intersect(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<ArchiveIntersectQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let mut tags: Vec<String> = params
@@ -1026,10 +1299,16 @@ async fn archive_entries_intersect(
     tags.sort();
     tags.dedup();
     if tags.is_empty() || tags.len() > 32 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "tags must be 1..32 entries"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "tags must be 1..32 entries"})),
+        ));
     }
     if tags.iter().any(|t| t.chars().count() > 64) {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "each tag must be 1-64 characters"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "each tag must be 1-64 characters"})),
+        ));
     }
     let n = tags.len() as i64;
 
@@ -1049,7 +1328,12 @@ async fn archive_entries_intersect(
     .bind(n)
     .fetch_all(&st.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({ "tags": tags, "entries": entries })))
 }
@@ -1065,13 +1349,13 @@ async fn archive_entries_intersect(
 /// MAS sem privileged". Path com hífen `/intersect-exclude` precede `/:tag`.
 #[derive(Debug, Deserialize)]
 struct ArchiveIntersectExcludeQuery {
-    tags:    String,
+    tags: String,
     exclude: Option<String>,
 }
 
 async fn archive_entries_intersect_exclude(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<ArchiveIntersectExcludeQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     fn norm(raw: &str) -> Vec<String> {
@@ -1088,10 +1372,20 @@ async fn archive_entries_intersect_exclude(
     let exclude = norm(params.exclude.as_deref().unwrap_or(""));
 
     if tags.is_empty() || tags.len() > 32 || exclude.len() > 32 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "tags must be 1..32, exclude must be 0..32"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "tags must be 1..32, exclude must be 0..32"})),
+        ));
     }
-    if tags.iter().chain(exclude.iter()).any(|t| t.chars().count() > 64) {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "each tag must be 1-64 characters"}))));
+    if tags
+        .iter()
+        .chain(exclude.iter())
+        .any(|t| t.chars().count() > 64)
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "each tag must be 1-64 characters"})),
+        ));
     }
     let n = tags.len() as i64;
 
@@ -1119,7 +1413,12 @@ async fn archive_entries_intersect_exclude(
     .bind(&exclude)
     .fetch_all(&st.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({
         "tags":    tags,
@@ -1135,8 +1434,8 @@ async fn archive_entries_intersect_exclude(
 /// OR-set: `WHERE t.tag = ANY($3::text[]) + GROUP BY a.id` (sem HAVING — basta
 /// match em qualquer tag). Static `/tags/union` precede `/tags/:tag`.
 async fn archive_entries_union(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<ArchiveIntersectQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let mut tags: Vec<String> = params
@@ -1148,10 +1447,16 @@ async fn archive_entries_union(
     tags.sort();
     tags.dedup();
     if tags.is_empty() || tags.len() > 32 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "tags must be 1..32 entries"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "tags must be 1..32 entries"})),
+        ));
     }
     if tags.iter().any(|t| t.chars().count() > 64) {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "each tag must be 1-64 characters"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "each tag must be 1-64 characters"})),
+        ));
     }
 
     let entries: Vec<ArchiveEntry> = sqlx::query_as(
@@ -1168,22 +1473,27 @@ async fn archive_entries_union(
     .bind(&tags)
     .fetch_all(&st.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({ "tags": tags, "entries": entries })))
 }
 
 #[derive(Debug, Deserialize)]
 struct ArchiveCoOccurrenceQuery {
-    limit:     Option<i64>,
-    tag:       Option<String>,
+    limit: Option<i64>,
+    tag: Option<String>,
     min_count: Option<i64>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 struct ArchiveTagCoOccurrence {
-    tag_a:    String,
-    tag_b:    String,
+    tag_a: String,
+    tag_b: String,
     co_count: i64,
 }
 
@@ -1198,12 +1508,12 @@ struct ArchiveTagCoOccurrence {
 /// 1). Default limit 50, cap 1..500. Static `/tags/co-occurrence` precede
 /// `/tags/:tag` (lição #443/#448).
 async fn archive_tag_co_occurrence(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Query(q):     Query<ArchiveCoOccurrenceQuery>,
+    Query(q): Query<ArchiveCoOccurrenceQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let limit      = q.limit.unwrap_or(50).clamp(1, 500);
-    let min_count  = q.min_count.unwrap_or(1).max(1);
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let min_count = q.min_count.unwrap_or(1).max(1);
     let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
 
     let rows: Vec<ArchiveTagCoOccurrence> = sqlx::query_as(
@@ -1231,7 +1541,12 @@ async fn archive_tag_co_occurrence(
     .bind(limit)
     .fetch_all(&st.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({
         "limit":     limit,
@@ -1247,13 +1562,16 @@ async fn archive_tag_co_occurrence(
 /// é distinto de `:id` (UUID) — sem colisão. Complementa top-tags (#461)
 /// permitindo drill-down por rótulo.
 async fn archive_entries_by_tag(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(tag):    Path<String>,
+    Path(tag): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let tag = tag.trim().to_lowercase();
     if tag.is_empty() || tag.chars().count() > 64 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "tag must be 1-64 characters"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "tag must be 1-64 characters"})),
+        ));
     }
 
     let entries: Vec<ArchiveEntry> = sqlx::query_as(
@@ -1269,7 +1587,12 @@ async fn archive_entries_by_tag(
     .bind(&tag)
     .fetch_all(&st.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({ "tag": tag, "entries": entries })))
 }
@@ -1288,26 +1611,38 @@ struct RenameArchiveTagBody {
 /// audit trail e undo manual. Rename é escopado a `user_id` (archive tags são
 /// user-scoped por design — cada user gerencia seus próprios rótulos).
 async fn rename_archive_tag(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(tag):    Path<String>,
-    Json(body):   Json<RenameArchiveTagBody>,
+    Path(tag): Path<String>,
+    Json(body): Json<RenameArchiveTagBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let old = tag.trim().to_lowercase();
     let new = body.new_tag.trim().to_lowercase();
     if old.is_empty() || old.chars().count() > 64 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "tag must be 1-64 characters"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "tag must be 1-64 characters"})),
+        ));
     }
     if new.is_empty() || new.chars().count() > 64 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "new_tag must be 1-64 characters"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "new_tag must be 1-64 characters"})),
+        ));
     }
     if new == old {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "new_tag must differ from old tag"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "new_tag must differ from old tag"})),
+        ));
     }
 
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     // Apaga registros que já tinham new_tag nos archives que também têm old_tag.
     let _ = sqlx::query(
@@ -1325,7 +1660,12 @@ async fn rename_archive_tag(
     .bind(ctx.user_id)
     .execute(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let r = sqlx::query(
         "UPDATE compliance_archive_tags SET tag = $2 \
@@ -1341,7 +1681,12 @@ async fn rename_archive_tag(
     .bind(ctx.user_id)
     .execute(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let renamed = r.rows_affected();
 
@@ -1359,11 +1704,19 @@ async fn rename_archive_tag(
     .bind(ctx.user_id)
     .fetch_one(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    tx.commit()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({
         "renamed":    renamed,
@@ -1375,21 +1728,21 @@ async fn rename_archive_tag(
 
 #[derive(Debug, Deserialize)]
 struct ArchiveTagRenameHistoryQuery {
-    limit:  Option<i64>,
-    since:  Option<time::OffsetDateTime>,
+    limit: Option<i64>,
+    since: Option<time::OffsetDateTime>,
     before: Option<time::OffsetDateTime>,
-    tag:    Option<String>,
+    tag: Option<String>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 struct ArchiveTagRenameHistoryEntry {
-    id:            Uuid,
-    old_tag:       String,
-    new_tag:       String,
+    id: Uuid,
+    old_tag: String,
+    new_tag: String,
     renamed_count: i64,
-    renamed_by:    Uuid,
+    renamed_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
-    renamed_at:    time::OffsetDateTime,
+    renamed_at: time::OffsetDateTime,
 }
 
 /// GET /api/v1/compliance/archive/tags/rename-history?limit=&since=&before=&tag=
@@ -1397,9 +1750,9 @@ struct ArchiveTagRenameHistoryEntry {
 /// opcionais: range temporal e `tag` matching old_tag OR new_tag (lowercase).
 /// Limit padrão 50, cap 1..500. Escopado por `user_id` igual ao rename.
 async fn list_archive_tag_rename_history(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Query(q):     Query<ArchiveTagRenameHistoryQuery>,
+    Query(q): Query<ArchiveTagRenameHistoryQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let limit = q.limit.unwrap_or(50).clamp(1, 500);
     let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
@@ -1422,7 +1775,12 @@ async fn list_archive_tag_rename_history(
     .bind(limit)
     .fetch_all(&st.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({ "limit": limit, "entries": entries })))
 }
@@ -1436,13 +1794,16 @@ async fn list_archive_tag_rename_history(
 /// `{undone_id, reverted, old_tag, new_tag, history_id}` — habilita "undo do
 /// undo" mantendo audit trail completo.
 async fn undo_archive_tag_rename(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let entry: Option<(String, String)> = sqlx::query_as(
         "SELECT old_tag, new_tag FROM compliance_archive_tag_rename_history \
@@ -1453,16 +1814,26 @@ async fn undo_archive_tag_rename(
     .bind(ctx.user_id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let (orig_old, orig_new) = match entry {
         Some(t) => t,
-        None => return Err((StatusCode::NOT_FOUND, Json(json!({"error": "history entry not found"})))),
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "history entry not found"})),
+            ))
+        }
     };
 
     // Reverse: undo do rename (old→new) é (new→old).
     let from = orig_new;
-    let to   = orig_old;
+    let to = orig_old;
 
     // Pré-DELETE de conflitos: archives que já têm `to` e também `from`.
     let _ = sqlx::query(
@@ -1480,7 +1851,12 @@ async fn undo_archive_tag_rename(
     .bind(ctx.user_id)
     .execute(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let r = sqlx::query(
         "UPDATE compliance_archive_tags SET tag = $2 \
@@ -1496,7 +1872,12 @@ async fn undo_archive_tag_rename(
     .bind(ctx.user_id)
     .execute(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let reverted = r.rows_affected();
 
@@ -1514,11 +1895,19 @@ async fn undo_archive_tag_rename(
     .bind(ctx.user_id)
     .fetch_one(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    tx.commit()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({
         "undone_id":  id,
@@ -1548,25 +1937,37 @@ struct MergeArchiveTagBody {
 /// com merged_count = renamed.rows_affected() (só os UPDATEs, não os DELETEs).
 /// Escopado por user_id. Retorna `{src, dst, merged, dropped, history_id}`.
 async fn merge_archive_tags(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Json(body):   Json<MergeArchiveTagBody>,
+    Json(body): Json<MergeArchiveTagBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let src = body.src.trim().to_lowercase();
     let dst = body.dst.trim().to_lowercase();
     if src.is_empty() || src.chars().count() > 64 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "src must be 1-64 characters"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "src must be 1-64 characters"})),
+        ));
     }
     if dst.is_empty() || dst.chars().count() > 64 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "dst must be 1-64 characters"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "dst must be 1-64 characters"})),
+        ));
     }
     if src == dst {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "src and dst must differ"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "src and dst must differ"})),
+        ));
     }
 
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     // archives que têm AMBAS as tags (src e dst) — vão sofrer DELETE de src
     let dropped_rows: Vec<(Uuid,)> = sqlx::query_as(
@@ -1584,7 +1985,12 @@ async fn merge_archive_tags(
     .bind(ctx.user_id)
     .fetch_all(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
     let dropped_ids: Vec<Uuid> = dropped_rows.into_iter().map(|(id,)| id).collect();
 
     // Pré-DELETE de src nos archives que já tinham dst
@@ -1603,7 +2009,12 @@ async fn merge_archive_tags(
     .bind(ctx.user_id)
     .execute(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     // archives que ainda têm src (só src; já apagamos os que tinham ambos) — vão sofrer UPDATE
     let merged_rows: Vec<(Uuid,)> = sqlx::query_as(
@@ -1616,7 +2027,12 @@ async fn merge_archive_tags(
     .bind(ctx.user_id)
     .fetch_all(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
     let merged_ids: Vec<Uuid> = merged_rows.into_iter().map(|(id,)| id).collect();
 
     let r = sqlx::query(
@@ -1633,7 +2049,12 @@ async fn merge_archive_tags(
     .bind(ctx.user_id)
     .execute(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
     let merged = r.rows_affected();
 
     let history_id: (Uuid,) = sqlx::query_as(
@@ -1654,9 +2075,12 @@ async fn merge_archive_tags(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    tx.commit()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({
         "src":        src,
@@ -1669,23 +2093,23 @@ async fn merge_archive_tags(
 
 #[derive(Debug, Deserialize)]
 struct ArchiveTagMergeHistoryQuery {
-    limit:  Option<i64>,
-    since:  Option<time::OffsetDateTime>,
+    limit: Option<i64>,
+    since: Option<time::OffsetDateTime>,
     before: Option<time::OffsetDateTime>,
-    tag:    Option<String>,
+    tag: Option<String>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 struct ArchiveTagMergeHistoryEntry {
-    id:                   Uuid,
-    src_tag:              String,
-    dst_tag:              String,
-    merged_count:         i64,
-    merged_archive_ids:   Vec<Uuid>,
-    dropped_archive_ids:  Vec<Uuid>,
-    merged_by:            Uuid,
+    id: Uuid,
+    src_tag: String,
+    dst_tag: String,
+    merged_count: i64,
+    merged_archive_ids: Vec<Uuid>,
+    dropped_archive_ids: Vec<Uuid>,
+    merged_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
-    merged_at:            time::OffsetDateTime,
+    merged_at: time::OffsetDateTime,
 }
 
 /// GET /api/v1/compliance/archive/tags/merge-history?limit=&since=&before=&tag=
@@ -1693,9 +2117,9 @@ struct ArchiveTagMergeHistoryEntry {
 /// matching src_tag OR dst_tag (lowercase). Limit padrão 50, cap 1..500.
 /// Escopado por user_id.
 async fn list_archive_tag_merge_history(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Query(q):     Query<ArchiveTagMergeHistoryQuery>,
+    Query(q): Query<ArchiveTagMergeHistoryQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let limit = q.limit.unwrap_or(50).clamp(1, 500);
     let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
@@ -1731,13 +2155,16 @@ async fn list_archive_tag_merge_history(
 /// (que NÃO tinham dst originalmente). Atomicidade via begin_tenant_tx.
 /// Grava nova history row com src/dst invertidos pra completar audit.
 async fn undo_archive_tag_merge(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let entry: Option<(String, String, Vec<Uuid>, Vec<Uuid>)> = sqlx::query_as(
         "SELECT src_tag, dst_tag, merged_archive_ids, dropped_archive_ids \
@@ -1749,11 +2176,21 @@ async fn undo_archive_tag_merge(
     .bind(ctx.user_id)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let (src, dst, merged_ids, dropped_ids) = match entry {
         Some(t) => t,
-        None => return Err((StatusCode::NOT_FOUND, Json(json!({"error": "merge-history entry not found"})))),
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "merge-history entry not found"})),
+            ))
+        }
     };
 
     let mut all_targets: Vec<Uuid> = Vec::with_capacity(merged_ids.len() + dropped_ids.len());
@@ -1774,7 +2211,12 @@ async fn undo_archive_tag_merge(
     .bind(&all_targets)
     .execute(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?
     .rows_affected();
 
     // DELETE dst dos archives que ANTES não tinham dst (merged_ids only) —
@@ -1789,7 +2231,12 @@ async fn undo_archive_tag_merge(
     .bind(&merged_ids)
     .execute(&mut *tx)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?
     .rows_affected();
 
     let new_history_id: (Uuid,) = sqlx::query_as(
@@ -1810,9 +2257,12 @@ async fn undo_archive_tag_merge(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    tx.commit()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     Ok(Json(json!({
         "undone_id":      id,
@@ -1831,30 +2281,47 @@ async fn undo_archive_tag_merge(
 ///   - `manifest.json` — JSON array of all entry metadata
 ///   - `messages/<id>.eml` — raw message bytes for each entry (best-effort; skipped on I/O error)
 async fn export_archive(
-    State(st):     State<AppState>,
-    AuthCtx(ctx):  AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Query(params): Query<ArchiveListParams>,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     // Build the same filter clauses as list_archive but without pagination.
-    let since_filter = params.since.as_deref()
-        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+    let since_filter = params
+        .since
+        .as_deref()
+        .map(|d| {
+            format!(
+                "AND archived_at >= '{}'::timestamptz",
+                d.replace('\'', "''")
+            )
+        })
         .unwrap_or_default();
-    let before_date_filter = params.before.as_deref()
+    let before_date_filter = params
+        .before
+        .as_deref()
         .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
-    let subject_filter = params.subject.as_deref()
+    let subject_filter = params
+        .subject
+        .as_deref()
         .map(|s| format!("AND subject ILIKE '%{}%'", s.replace('\'', "''")))
         .unwrap_or_default();
-    let from_addr_filter = params.from_addr.as_deref()
+    let from_addr_filter = params
+        .from_addr
+        .as_deref()
         .map(|s| format!("AND from_addr ILIKE '%{}%'", s.replace('\'', "''")))
         .unwrap_or_default();
-    let to_addr_filter = params.to_addr.as_deref()
+    let to_addr_filter = params
+        .to_addr
+        .as_deref()
         .map(|s| format!("AND to_addrs::text ILIKE '%{}%'", s.replace('\'', "''")))
         .unwrap_or_default();
-    let size_min_filter = params.size_min
+    let size_min_filter = params
+        .size_min
         .map(|v| format!("AND size_bytes >= {v}"))
         .unwrap_or_default();
-    let size_max_filter = params.size_max
+    let size_max_filter = params
+        .size_max
         .map(|v| format!("AND size_bytes <= {v}"))
         .unwrap_or_default();
 
@@ -1873,7 +2340,12 @@ async fn export_archive(
         .bind(ctx.user_id)
         .fetch_all(&st.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
 
     // Build ZIP in memory.
     let buf = std::io::Cursor::new(Vec::new());
@@ -1884,17 +2356,29 @@ async fn export_archive(
         () => {{
             let o = zip::write::SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated);
-            if let Some(pw) = pw_ref { o.with_aes_encryption(zip::AesMode::Aes256, pw) } else { o }
+            if let Some(pw) = pw_ref {
+                o.with_aes_encryption(zip::AesMode::Aes256, pw)
+            } else {
+                o
+            }
         }};
     }
 
     // manifest.json
-    let manifest = serde_json::to_vec(&rows)
-        .unwrap_or_else(|_| b"[]".to_vec());
+    let manifest = serde_json::to_vec(&rows).unwrap_or_else(|_| b"[]".to_vec());
     zw.start_file("manifest.json", file_options!())
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
-    std::io::Write::write_all(&mut zw, &manifest)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+        })?;
+    std::io::Write::write_all(&mut zw, &manifest).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     // One .eml file per entry — best-effort, skip unreadable files.
     for entry in &rows {
@@ -1906,15 +2390,19 @@ async fn export_archive(
         }
     }
 
-    let buf = zw.finish()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let buf = zw.finish().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
     let zip_bytes = buf.into_inner();
 
     // HMAC-SHA256 signature over ZIP bytes, keyed by COMPLIANCE__EXPORT_SECRET.
     // Emitted as hex in X-Export-Signature; omitted when the env var is absent.
     let signature = env::var("COMPLIANCE__EXPORT_SECRET").ok().map(|secret| {
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-            .expect("HMAC accepts any key length");
+        let mut mac =
+            HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
         mac.update(&zip_bytes);
         hex::encode(mac.finalize().into_bytes())
     });
@@ -1922,12 +2410,16 @@ async fn export_archive(
     let mut resp = (
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE,        "application/zip".to_string()),
-            (header::CONTENT_DISPOSITION, "attachment; filename=\"compliance-export.zip\"".to_string()),
-            (header::CONTENT_LENGTH,      zip_bytes.len().to_string()),
+            (header::CONTENT_TYPE, "application/zip".to_string()),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=\"compliance-export.zip\"".to_string(),
+            ),
+            (header::CONTENT_LENGTH, zip_bytes.len().to_string()),
         ],
         zip_bytes,
-    ).into_response();
+    )
+        .into_response();
     if let Some(sig) = signature {
         resp.headers_mut().insert(
             header::HeaderName::from_static("x-export-signature"),
@@ -1940,10 +2432,10 @@ async fn export_archive(
 /// GET /api/v1/compliance/archive/:id — fetch a single archived entry by ID.
 /// Returns ETag (`"{archived_at_unix}-{id}"`) and Last-Modified. Responds 304 if If-None-Match matches.
 async fn get_archive_entry(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
-    req_headers:  axum::http::HeaderMap,
+    Path(id): Path<Uuid>,
+    req_headers: axum::http::HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let row: Option<ArchiveEntry> = sqlx::query_as(
         "SELECT id, tenant_id, user_id, original_id, body_path, from_addr, \
@@ -1956,12 +2448,23 @@ async fn get_archive_entry(
     .bind(ctx.user_id)
     .fetch_optional(&st.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    let entry = row.ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "archive entry not found"}))))?;
+    let entry = row.ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "archive entry not found"})),
+        )
+    })?;
 
     let etag = format!("\"{}-{}\"", entry.archived_at.unix_timestamp(), entry.id);
-    let last_modified = entry.archived_at
+    let last_modified = entry
+        .archived_at
         .format(&time::format_description::well_known::Rfc2822)
         .unwrap_or_default();
 
@@ -1972,7 +2475,9 @@ async fn get_archive_entry(
     }
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if entry.archived_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -1982,19 +2487,17 @@ async fn get_archive_entry(
 
     Ok((
         StatusCode::OK,
-        [
-            (header::ETAG,          etag),
-            (header::LAST_MODIFIED, last_modified),
-        ],
+        [(header::ETAG, etag), (header::LAST_MODIFIED, last_modified)],
         Json(entry),
-    ).into_response())
+    )
+        .into_response())
 }
 
 /// DELETE /api/v1/compliance/archive/:id — remove a single archived entry (GDPR/legal hold).
 async fn delete_archive_entry(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
     let result = sqlx::query(
         "DELETE FROM compliance_archive WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
@@ -2004,10 +2507,18 @@ async fn delete_archive_entry(
     .bind(ctx.user_id)
     .execute(&st.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     if result.rows_affected() == 0 {
-        return Err((StatusCode::NOT_FOUND, Json(json!({"error": "archive entry not found"}))));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "archive entry not found"})),
+        ));
     }
 
     Ok(StatusCode::NO_CONTENT)
@@ -2016,7 +2527,9 @@ async fn delete_archive_entry(
 // ─── Archive entry tags (sprint #460) ────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-struct ArchiveTagBody { tag: String }
+struct ArchiveTagBody {
+    tag: String,
+}
 
 /// Garante que o entry exista no tenant/user antes de mexer em tags. Reusa o
 /// mesmo filtro de get_archive_entry/delete_archive_entry pra consistência.
@@ -2030,11 +2543,22 @@ async fn assert_archive_entry_exists(
         "SELECT id FROM compliance_archive \
          WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
     )
-    .bind(id).bind(tenant_id).bind(user_id)
-    .fetch_optional(db).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .bind(id)
+    .bind(tenant_id)
+    .bind(user_id)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
     if exists.is_none() {
-        return Err((StatusCode::NOT_FOUND, Json(json!({"error": "archive entry not found"}))));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "archive entry not found"})),
+        ));
     }
     Ok(())
 }
@@ -2046,14 +2570,17 @@ async fn assert_archive_entry_exists(
 /// rotular evidências em e-discovery (case-IDs, hold-tags, classificação
 /// regulatória) sem mexer no schema do archive em si.
 async fn add_archive_tag(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<ArchiveTagBody>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<ArchiveTagBody>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     let tag = body.tag.trim().to_lowercase();
     if tag.is_empty() || tag.chars().count() > 64 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "tag must be 1-64 characters"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "tag must be 1-64 characters"})),
+        ));
     }
     assert_archive_entry_exists(&st.db, id, ctx.tenant_id, ctx.user_id).await?;
 
@@ -2064,27 +2591,39 @@ async fn add_archive_tag(
              SET created_at = compliance_archive_tags.created_at \
          RETURNING id, archive_id, tenant_id, tag, created_by, created_at",
     )
-    .bind(id).bind(ctx.tenant_id).bind(&tag).bind(ctx.user_id)
-    .fetch_one(&st.db).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(&tag)
+    .bind(ctx.user_id)
+    .fetch_one(&st.db)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
-    Ok((StatusCode::CREATED, Json(json!({
-        "id":         row.0,
-        "archive_id": row.1,
-        "tenant_id":  row.2,
-        "tag":        row.3,
-        "created_by": row.4,
-        "created_at": row.5.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "id":         row.0,
+            "archive_id": row.1,
+            "tenant_id":  row.2,
+            "tag":        row.3,
+            "created_by": row.4,
+            "created_at": row.5.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
+        })),
+    ))
 }
 
 /// GET /api/v1/compliance/archive/:id/tags — lista tags de um entry do archive
 /// (sprint #460). Retorna `{tags: ["...", ...]}` ordenado alfabeticamente. 404
 /// se o entry não existe ou não pertence ao user.
 async fn list_archive_tags(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Path(id):     Path<Uuid>,
+    Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     assert_archive_entry_exists(&st.db, id, ctx.tenant_id, ctx.user_id).await?;
 
@@ -2093,9 +2632,16 @@ async fn list_archive_tags(
          WHERE archive_id = $1 AND tenant_id = $2 \
          ORDER BY tag ASC",
     )
-    .bind(id).bind(ctx.tenant_id)
-    .fetch_all(&st.db).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .fetch_all(&st.db)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let tags: Vec<String> = rows.into_iter().map(|(t,)| t).collect();
     Ok(Json(json!({ "archive_id": id, "tags": tags })))
@@ -2105,8 +2651,8 @@ async fn list_archive_tags(
 /// (sprint #460). 404 se o par (archive_id, tag) não existir. Tag normalizada
 /// lowercase pra match com add_archive_tag.
 async fn remove_archive_tag(
-    State(st):       State<AppState>,
-    AuthCtx(ctx):    AuthCtx,
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
     Path((id, tag)): Path<(Uuid, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
     let tag = tag.trim().to_lowercase();
@@ -2114,12 +2660,23 @@ async fn remove_archive_tag(
         "DELETE FROM compliance_archive_tags \
          WHERE archive_id = $1 AND tenant_id = $2 AND tag = $3",
     )
-    .bind(id).bind(ctx.tenant_id).bind(&tag)
-    .execute(&st.db).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(&tag)
+    .execute(&st.db)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     if r.rows_affected() == 0 {
-        return Err((StatusCode::NOT_FOUND, Json(json!({"error": "tag not found on entry"}))));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "tag not found on entry"})),
+        ));
     }
     Ok(StatusCode::NO_CONTENT)
 }
@@ -2145,9 +2702,13 @@ async fn enforce_retention(db: &expresso_core::DbPool, mail_url: &str) {
          WHERE enabled = TRUE",
     )
     .fetch_all(db)
-    .await {
-        Ok(p)  => p,
-        Err(e) => { warn!(error = %e, "retention: failed to fetch policies"); return; }
+    .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            warn!(error = %e, "retention: failed to fetch policies");
+            return;
+        }
     };
 
     for policy in &policies {
@@ -2178,8 +2739,11 @@ async fn enforce_retention(db: &expresso_core::DbPool, mail_url: &str) {
             .fetch_all(db)
             .await
         {
-            Ok(r)  => r,
-            Err(e) => { warn!(error = %e, "retention: query failed"); continue; }
+            Ok(r) => r,
+            Err(e) => {
+                warn!(error = %e, "retention: query failed");
+                continue;
+            }
         };
 
         if ids.is_empty() {
@@ -2216,10 +2780,10 @@ async fn enforce_retention(db: &expresso_core::DbPool, mail_url: &str) {
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 struct TenantRetention {
-    tenant_id:   Uuid,
+    tenant_id: Uuid,
     retain_days: i32,
     #[serde(with = "time::serde::rfc3339")]
-    updated_at:  time::OffsetDateTime,
+    updated_at: time::OffsetDateTime,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2231,9 +2795,9 @@ struct SetTenantRetentionRequest {
 ///
 /// Returns 200 with the current setting, or a default of 365 days when not set.
 async fn get_tenant_retention(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    req_headers:  axum::http::HeaderMap,
+    req_headers: axum::http::HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     let row: Option<TenantRetention> = sqlx::query_as(
         "SELECT tenant_id, retain_days, updated_at \
@@ -2242,7 +2806,12 @@ async fn get_tenant_retention(
     .bind(ctx.tenant_id)
     .fetch_optional(&st.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let (retention, updated_at) = match row {
         Some(r) => {
@@ -2251,19 +2820,24 @@ async fn get_tenant_retention(
         }
         None => (
             TenantRetention {
-                tenant_id:   ctx.tenant_id,
+                tenant_id: ctx.tenant_id,
                 retain_days: 365,
-                updated_at:  time::OffsetDateTime::UNIX_EPOCH,
+                updated_at: time::OffsetDateTime::UNIX_EPOCH,
             },
             None,
         ),
     };
 
     if let Some(ts) = updated_at {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) = time::OffsetDateTime::parse(
+                    ims_str,
+                    &time::format_description::well_known::Rfc2822,
+                ) {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -2271,7 +2845,10 @@ async fn get_tenant_retention(
             }
         }
         let mut resp = Json(&retention).into_response();
-        resp.headers_mut().insert(header::LAST_MODIFIED, axum::http::HeaderValue::from_str(&lm).unwrap());
+        resp.headers_mut().insert(
+            header::LAST_MODIFIED,
+            axum::http::HeaderValue::from_str(&lm).unwrap(),
+        );
         return Ok(resp);
     }
 
@@ -2280,15 +2857,21 @@ async fn get_tenant_retention(
 
 /// PUT /api/v1/compliance/retention — set or update tenant-wide default retention days.
 async fn put_tenant_retention(
-    State(st):    State<AppState>,
+    State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
-    Json(body):   Json<SetTenantRetentionRequest>,
+    Json(body): Json<SetTenantRetentionRequest>,
 ) -> Result<Json<TenantRetention>, (StatusCode, Json<serde_json::Value>)> {
     if body.retain_days <= 0 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "retain_days must be > 0"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "retain_days must be > 0"})),
+        ));
     }
     if body.retain_days > 36500 {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "retain_days must be <= 36500 (100 years)"}))));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "retain_days must be <= 36500 (100 years)"})),
+        ));
     }
     let row: TenantRetention = sqlx::query_as(
         "INSERT INTO compliance_tenant_retention (tenant_id, retain_days, updated_at) \
@@ -2302,7 +2885,12 @@ async fn put_tenant_retention(
     .bind(body.retain_days)
     .fetch_one(&st.db)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
 
     tracing::info!(target: "audit",
         event = "compliance.retention.set",
@@ -2321,22 +2909,33 @@ async fn ready() -> Json<serde_json::Value> {
 }
 
 async fn maybe_build_validator() -> Option<Arc<OidcValidator>> {
-    let issuer   = env::var("AUTH__OIDC_ISSUER").ok().filter(|v| !v.is_empty())?;
-    let audience = env::var("AUTH__OIDC_AUDIENCE").ok().filter(|v| !v.is_empty())?;
+    let issuer = env::var("AUTH__OIDC_ISSUER")
+        .ok()
+        .filter(|v| !v.is_empty())?;
+    let audience = env::var("AUTH__OIDC_AUDIENCE")
+        .ok()
+        .filter(|v| !v.is_empty())?;
     let cfg = OidcConfig::new(issuer.clone(), audience);
     match OidcValidator::new(cfg).await {
-        Ok(v)  => { info!(issuer = %issuer, "OIDC validator ready"); Some(Arc::new(v)) }
-        Err(e) => { warn!(error = %e, "OIDC init failed — no JWT auth"); None }
+        Ok(v) => {
+            info!(issuer = %issuer, "OIDC validator ready");
+            Some(Arc::new(v))
+        }
+        Err(e) => {
+            warn!(error = %e, "OIDC init failed — no JWT auth");
+            None
+        }
     }
 }
 
 fn resolve_addr() -> anyhow::Result<SocketAddr> {
     let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let port  = env::var("PORT")
+    let port = env::var("PORT")
         .ok()
         .and_then(|v| v.parse::<u16>().ok())
         .unwrap_or(DEFAULT_PORT);
-    format!("{host}:{port}").parse::<SocketAddr>()
+    format!("{host}:{port}")
+        .parse::<SocketAddr>()
         .map_err(|e| anyhow::anyhow!("invalid bind address: {}", e))
 }
 
@@ -2355,7 +2954,11 @@ async fn main() -> anyhow::Result<()> {
     let mail_url = env::var("MAIL_URL").unwrap_or_default();
     let validator = maybe_build_validator().await;
 
-    let state = AppState { db: db.clone(), mail_url: mail_url.clone(), validator };
+    let state = AppState {
+        db: db.clone(),
+        mail_url: mail_url.clone(),
+        validator,
+    };
 
     // Background retention enforcement.
     let interval = env::var("RETENTION_CHECK_INTERVAL_SECS")
@@ -2365,39 +2968,106 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(run_retention_loop(db, mail_url, interval));
 
     let app = Router::new()
-        .route("/health",                              get(health))
-        .route("/ready",                               get(ready))
-        .route("/internal/archive",                    post(archive_message))
-        .route("/api/v1/compliance/retention-policies",
-               get(list_policies).post(create_policy))
-        .route("/api/v1/compliance/retention-policies/:id",
-               get(get_policy).patch(update_policy).delete(delete_policy))
-        .route("/api/v1/compliance/archive",           get(list_archive))
-        .route("/api/v1/compliance/archive/count",     get(count_archive))
-        .route("/api/v1/compliance/archive/histogram", get(histogram_archive))
-        .route("/api/v1/compliance/archive/top-senders", get(top_senders_archive))
-        .route("/api/v1/compliance/archive/top-recipients", get(top_recipients_archive))
-        .route("/api/v1/compliance/archive/top-subjects", get(top_subjects_archive))
-        .route("/api/v1/compliance/archive/top-domains", get(top_domains_archive))
-        .route("/api/v1/compliance/archive/size-histogram", get(size_histogram_archive))
-        .route("/api/v1/compliance/archive/top-tags",  get(top_tags_archive))
-        .route("/api/v1/compliance/archive/tags/intersect", get(archive_entries_intersect))
-        .route("/api/v1/compliance/archive/tags/intersect-exclude", get(archive_entries_intersect_exclude))
-        .route("/api/v1/compliance/archive/tags/union", get(archive_entries_union))
-        .route("/api/v1/compliance/archive/tags/co-occurrence", get(archive_tag_co_occurrence))
-        .route("/api/v1/compliance/archive/tags/rename-history", get(list_archive_tag_rename_history))
-        .route("/api/v1/compliance/archive/tags/rename-history/:id/undo", post(undo_archive_tag_rename))
-        .route("/api/v1/compliance/archive/tags/merge", post(merge_archive_tags))
-        .route("/api/v1/compliance/archive/tags/merge-history", get(list_archive_tag_merge_history))
-        .route("/api/v1/compliance/archive/tags/merge-history/:id/undo", post(undo_archive_tag_merge))
-        .route("/api/v1/compliance/archive/tags/:tag", get(archive_entries_by_tag).patch(rename_archive_tag))
-        .route("/api/v1/compliance/archive/export",    get(export_archive))
-        .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
-        .route("/api/v1/compliance/archive/:id/tags",  get(list_archive_tags).post(add_archive_tag))
-        .route("/api/v1/compliance/archive/:id/tags/:tag", delete(remove_archive_tag))
-        .route("/api/v1/compliance/retention",         get(get_tenant_retention).put(put_tenant_retention))
+        .route("/health", get(health))
+        .route("/ready", get(ready))
+        .route("/internal/archive", post(archive_message))
+        .route(
+            "/api/v1/compliance/retention-policies",
+            get(list_policies).post(create_policy),
+        )
+        .route(
+            "/api/v1/compliance/retention-policies/:id",
+            get(get_policy).patch(update_policy).delete(delete_policy),
+        )
+        .route("/api/v1/compliance/archive", get(list_archive))
+        .route("/api/v1/compliance/archive/count", get(count_archive))
+        .route(
+            "/api/v1/compliance/archive/histogram",
+            get(histogram_archive),
+        )
+        .route(
+            "/api/v1/compliance/archive/top-senders",
+            get(top_senders_archive),
+        )
+        .route(
+            "/api/v1/compliance/archive/top-recipients",
+            get(top_recipients_archive),
+        )
+        .route(
+            "/api/v1/compliance/archive/top-subjects",
+            get(top_subjects_archive),
+        )
+        .route(
+            "/api/v1/compliance/archive/top-domains",
+            get(top_domains_archive),
+        )
+        .route(
+            "/api/v1/compliance/archive/size-histogram",
+            get(size_histogram_archive),
+        )
+        .route("/api/v1/compliance/archive/top-tags", get(top_tags_archive))
+        .route(
+            "/api/v1/compliance/archive/tags/intersect",
+            get(archive_entries_intersect),
+        )
+        .route(
+            "/api/v1/compliance/archive/tags/intersect-exclude",
+            get(archive_entries_intersect_exclude),
+        )
+        .route(
+            "/api/v1/compliance/archive/tags/union",
+            get(archive_entries_union),
+        )
+        .route(
+            "/api/v1/compliance/archive/tags/co-occurrence",
+            get(archive_tag_co_occurrence),
+        )
+        .route(
+            "/api/v1/compliance/archive/tags/rename-history",
+            get(list_archive_tag_rename_history),
+        )
+        .route(
+            "/api/v1/compliance/archive/tags/rename-history/:id/undo",
+            post(undo_archive_tag_rename),
+        )
+        .route(
+            "/api/v1/compliance/archive/tags/merge",
+            post(merge_archive_tags),
+        )
+        .route(
+            "/api/v1/compliance/archive/tags/merge-history",
+            get(list_archive_tag_merge_history),
+        )
+        .route(
+            "/api/v1/compliance/archive/tags/merge-history/:id/undo",
+            post(undo_archive_tag_merge),
+        )
+        .route(
+            "/api/v1/compliance/archive/tags/:tag",
+            get(archive_entries_by_tag).patch(rename_archive_tag),
+        )
+        .route("/api/v1/compliance/archive/export", get(export_archive))
+        .route(
+            "/api/v1/compliance/archive/:id",
+            get(get_archive_entry).delete(delete_archive_entry),
+        )
+        .route(
+            "/api/v1/compliance/archive/:id/tags",
+            get(list_archive_tags).post(add_archive_tag),
+        )
+        .route(
+            "/api/v1/compliance/archive/:id/tags/:tag",
+            delete(remove_archive_tag),
+        )
+        .route(
+            "/api/v1/compliance/retention",
+            get(get_tenant_retention).put(put_tenant_retention),
+        )
         .merge(expresso_observability::metrics_router())
-        .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            inject_validator,
+        ))
         .with_state(state);
 
     let addr = resolve_addr()?;

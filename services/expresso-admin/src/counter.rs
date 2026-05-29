@@ -23,38 +23,39 @@ use crate::{audit, auth, AppState};
 
 #[derive(Debug)]
 pub struct CounterRow {
-    pub id:                String,
-    pub tenant_id:         String,
-    pub event_id:          String,
-    pub event_summary:     String,
-    pub attendee_email:    String,
-    pub proposed_dtstart:  String,
-    pub proposed_dtend:    String,
+    pub id: String,
+    pub tenant_id: String,
+    pub event_id: String,
+    pub event_summary: String,
+    pub attendee_email: String,
+    pub proposed_dtstart: String,
+    pub proposed_dtend: String,
     pub received_sequence: String,
-    pub comment:           Option<String>,
-    pub created_at_fmt:    String,
+    pub comment: Option<String>,
+    pub created_at_fmt: String,
 }
 
 #[derive(Template)]
 #[template(path = "counter_admin.html")]
 pub struct CounterAdminTpl {
     pub current: &'static str,
-    pub rows:    Vec<CounterRow>,
-    pub flash:   Option<String>,
+    pub rows: Vec<CounterRow>,
+    pub flash: Option<String>,
 }
 
 fn fmt_opt_ts(t: Option<OffsetDateTime>) -> String {
     match t {
-        Some(v) => v.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
+        Some(v) => v
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_default(),
         None => "—".into(),
     }
 }
 
-pub async fn page(
-    State(st): State<Arc<AppState>>,
-    headers:   HeaderMap,
-) -> Response {
-    if let Some(r) = auth::require_super_admin(&st, &headers).await { return r; }
+pub async fn page(State(st): State<Arc<AppState>>, headers: HeaderMap) -> Response {
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return r;
+    }
     let Some(pool) = st.db.as_ref() else {
         return (StatusCode::SERVICE_UNAVAILABLE, "db unavailable").into_response();
     };
@@ -74,45 +75,93 @@ pub async fn page(
 
     let (rows, flash) = match rs {
         Ok(rows) => {
-            let mapped = rows.into_iter().map(|r| CounterRow {
-                id:                r.try_get::<Uuid, _>("id").map(|u| u.to_string()).unwrap_or_default(),
-                tenant_id:         r.try_get::<Uuid, _>("tenant_id").map(|u| u.to_string()).unwrap_or_default(),
-                event_id:          r.try_get::<Uuid, _>("event_id").map(|u| u.to_string()).unwrap_or_default(),
-                event_summary:     r.try_get::<String, _>("event_summary").unwrap_or_default(),
-                attendee_email:    r.try_get::<String, _>("attendee_email").unwrap_or_default(),
-                proposed_dtstart:  fmt_opt_ts(r.try_get::<Option<OffsetDateTime>, _>("proposed_dtstart").unwrap_or(None)),
-                proposed_dtend:    fmt_opt_ts(r.try_get::<Option<OffsetDateTime>, _>("proposed_dtend").unwrap_or(None)),
-                received_sequence: r.try_get::<Option<i32>, _>("received_sequence").unwrap_or(None).map(|v| v.to_string()).unwrap_or("—".into()),
-                comment:           r.try_get::<Option<String>, _>("comment").unwrap_or(None)
-                                    .filter(|s| !s.trim().is_empty()),
-                created_at_fmt:    r.try_get::<OffsetDateTime, _>("created_at")
-                    .ok()
-                    .and_then(|t| t.format(&time::format_description::well_known::Rfc3339).ok())
-                    .unwrap_or_default(),
-            }).collect();
+            let mapped = rows
+                .into_iter()
+                .map(|r| CounterRow {
+                    id: r
+                        .try_get::<Uuid, _>("id")
+                        .map(|u| u.to_string())
+                        .unwrap_or_default(),
+                    tenant_id: r
+                        .try_get::<Uuid, _>("tenant_id")
+                        .map(|u| u.to_string())
+                        .unwrap_or_default(),
+                    event_id: r
+                        .try_get::<Uuid, _>("event_id")
+                        .map(|u| u.to_string())
+                        .unwrap_or_default(),
+                    event_summary: r.try_get::<String, _>("event_summary").unwrap_or_default(),
+                    attendee_email: r.try_get::<String, _>("attendee_email").unwrap_or_default(),
+                    proposed_dtstart: fmt_opt_ts(
+                        r.try_get::<Option<OffsetDateTime>, _>("proposed_dtstart")
+                            .unwrap_or(None),
+                    ),
+                    proposed_dtend: fmt_opt_ts(
+                        r.try_get::<Option<OffsetDateTime>, _>("proposed_dtend")
+                            .unwrap_or(None),
+                    ),
+                    received_sequence: r
+                        .try_get::<Option<i32>, _>("received_sequence")
+                        .unwrap_or(None)
+                        .map(|v| v.to_string())
+                        .unwrap_or("—".into()),
+                    comment: r
+                        .try_get::<Option<String>, _>("comment")
+                        .unwrap_or(None)
+                        .filter(|s| !s.trim().is_empty()),
+                    created_at_fmt: r
+                        .try_get::<OffsetDateTime, _>("created_at")
+                        .ok()
+                        .and_then(|t| {
+                            t.format(&time::format_description::well_known::Rfc3339)
+                                .ok()
+                        })
+                        .unwrap_or_default(),
+                })
+                .collect();
             (mapped, None)
         }
         Err(e) => (vec![], Some(format!("query failed: {e}"))),
     };
 
-    let tpl = CounterAdminTpl { current: "counter", rows, flash };
+    let tpl = CounterAdminTpl {
+        current: "counter",
+        rows,
+        flash,
+    };
     match tpl.render() {
-        Ok(html) => (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], html).into_response(),
-        Err(e)   => (StatusCode::INTERNAL_SERVER_ERROR, format!("template: {e}")).into_response(),
+        Ok(html) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            html,
+        )
+            .into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("template: {e}")).into_response(),
     }
 }
 
 // ─── Accept / Reject actions ────────────────────────────────────────────────
 
-async fn load_proposal(pool: &sqlx::PgPool, id: Uuid)
-    -> Result<(Uuid, Uuid, Option<OffsetDateTime>, Option<OffsetDateTime>, String), sqlx::Error>
-{
+async fn load_proposal(
+    pool: &sqlx::PgPool,
+    id: Uuid,
+) -> Result<
+    (
+        Uuid,
+        Uuid,
+        Option<OffsetDateTime>,
+        Option<OffsetDateTime>,
+        String,
+    ),
+    sqlx::Error,
+> {
     let r = sqlx::query(
         r#"SELECT tenant_id, event_id, proposed_dtstart, proposed_dtend, status
              FROM scheduling_counter_proposals WHERE id = $1"#,
     )
     .bind(id)
-    .fetch_one(pool).await?;
+    .fetch_one(pool)
+    .await?;
     Ok((
         r.try_get("tenant_id")?,
         r.try_get("event_id")?,
@@ -124,10 +173,12 @@ async fn load_proposal(pool: &sqlx::PgPool, id: Uuid)
 
 pub async fn accept(
     State(st): State<Arc<AppState>>,
-    headers:   HeaderMap,
-    Path(id):  Path<Uuid>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
 ) -> Response {
-    if let Some(r) = auth::require_super_admin(&st, &headers).await { return r; }
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return r;
+    }
     let Some(pool) = st.db.as_ref() else {
         return (StatusCode::SERVICE_UNAVAILABLE, "db unavailable").into_response();
     };
@@ -153,8 +204,12 @@ pub async fn accept(
                   END
             WHERE tenant_id = $1 AND id = $2"#,
     )
-    .bind(tenant_id).bind(event_id).bind(dtstart).bind(dtend)
-    .execute(pool).await;
+    .bind(tenant_id)
+    .bind(event_id)
+    .bind(dtstart)
+    .bind(dtend)
+    .execute(pool)
+    .await;
     if let Err(e) = upd {
         tracing::warn!(error=%e, %id, "counter accept: event UPDATE failed");
         return Redirect::to("/counter.html?error=update-failed").into_response();
@@ -167,26 +222,35 @@ pub async fn accept(
               SET status='accepted', resolved_at=NOW(), resolved_by=$2
             WHERE id=$1 AND status='pending'"#,
     )
-    .bind(id).bind(who)
-    .execute(pool).await;
+    .bind(id)
+    .bind(who)
+    .execute(pool)
+    .await;
 
     audit::record(
-        &st, &headers, &Method::POST, "/counter/:id/accept",
+        &st,
+        &headers,
+        &Method::POST,
+        "/counter/:id/accept",
         "admin.counter.accept",
-        Some("counter_proposal"), Some(id.to_string()),
+        Some("counter_proposal"),
+        Some(id.to_string()),
         Some(200),
         serde_json::json!({ "event_id": event_id.to_string(), "tenant_id": tenant_id.to_string() }),
-    ).await;
+    )
+    .await;
 
     Redirect::to("/counter.html?accepted=1").into_response()
 }
 
 pub async fn reject(
     State(st): State<Arc<AppState>>,
-    headers:   HeaderMap,
-    Path(id):  Path<Uuid>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
 ) -> Response {
-    if let Some(r) = auth::require_super_admin(&st, &headers).await { return r; }
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return r;
+    }
     let Some(pool) = st.db.as_ref() else {
         return (StatusCode::SERVICE_UNAVAILABLE, "db unavailable").into_response();
     };
@@ -197,20 +261,27 @@ pub async fn reject(
               SET status='rejected', resolved_at=NOW(), resolved_by=$2
             WHERE id=$1 AND status='pending'"#,
     )
-    .bind(id).bind(who)
-    .execute(pool).await;
+    .bind(id)
+    .bind(who)
+    .execute(pool)
+    .await;
     if let Err(e) = res {
         tracing::warn!(error=%e, %id, "counter reject: UPDATE failed");
         return Redirect::to("/counter.html?error=reject-failed").into_response();
     }
 
     audit::record(
-        &st, &headers, &Method::POST, "/counter/:id/reject",
+        &st,
+        &headers,
+        &Method::POST,
+        "/counter/:id/reject",
         "admin.counter.reject",
-        Some("counter_proposal"), Some(id.to_string()),
+        Some("counter_proposal"),
+        Some(id.to_string()),
         Some(200),
         serde_json::json!({}),
-    ).await;
+    )
+    .await;
 
     Redirect::to("/counter.html?rejected=1").into_response()
 }
@@ -258,7 +329,7 @@ mod tests {
             event_summary: "Standup".into(),
             attendee_email: "a@ex.com".into(),
             proposed_dtstart: "2026-06-01T09:00:00Z".into(),
-            proposed_dtend:   "2026-06-01T10:00:00Z".into(),
+            proposed_dtend: "2026-06-01T10:00:00Z".into(),
             received_sequence: "1".into(),
             comment: None,
             created_at_fmt: "2026-05-22T08:00:00Z".into(),
@@ -269,10 +340,15 @@ mod tests {
     #[test]
     fn counter_row_comment_none() {
         let row = CounterRow {
-            id: "1".into(), tenant_id: "t".into(), event_id: "e".into(),
-            event_summary: "Mtg".into(), attendee_email: "a@x.com".into(),
-            proposed_dtstart: "".into(), proposed_dtend: "".into(),
-            received_sequence: "0".into(), comment: None,
+            id: "1".into(),
+            tenant_id: "t".into(),
+            event_id: "e".into(),
+            event_summary: "Mtg".into(),
+            attendee_email: "a@x.com".into(),
+            proposed_dtstart: "".into(),
+            proposed_dtend: "".into(),
+            received_sequence: "0".into(),
+            comment: None,
             created_at_fmt: "2026-05-22".into(),
         };
         assert!(row.comment.is_none());
@@ -286,11 +362,15 @@ mod tests {
     #[test]
     fn counter_row_received_sequence_stored() {
         let row = CounterRow {
-            id: "9".into(), tenant_id: "t".into(), event_id: "e".into(),
-            event_summary: "Stand-up".into(), attendee_email: "b@x.com".into(),
+            id: "9".into(),
+            tenant_id: "t".into(),
+            event_id: "e".into(),
+            event_summary: "Stand-up".into(),
+            attendee_email: "b@x.com".into(),
             proposed_dtstart: "2026-06-01T10:00:00Z".into(),
             proposed_dtend: "2026-06-01T11:00:00Z".into(),
-            received_sequence: "3".into(), comment: Some("Please reschedule".into()),
+            received_sequence: "3".into(),
+            comment: Some("Please reschedule".into()),
             created_at_fmt: "2026-05-22".into(),
         };
         assert_eq!(row.received_sequence, "3");
@@ -341,11 +421,15 @@ mod tests {
     #[test]
     fn counter_row_created_at_fmt_preserved() {
         let r = CounterRow {
-            id: "00000000-0000-0000-0000-000000000000".into(), tenant_id: "00000000-0000-0000-0000-000000000000".into(), event_id: "00000000-0000-0000-0000-000000000000".into(),
-            event_summary: "Sync".into(), attendee_email: "a@b.com".into(),
+            id: "00000000-0000-0000-0000-000000000000".into(),
+            tenant_id: "00000000-0000-0000-0000-000000000000".into(),
+            event_id: "00000000-0000-0000-0000-000000000000".into(),
+            event_summary: "Sync".into(),
+            attendee_email: "a@b.com".into(),
             proposed_dtstart: "2026-09-01T09:00:00Z".into(),
             proposed_dtend: "2026-09-01T10:00:00Z".into(),
-            received_sequence: "1".into(), comment: None,
+            received_sequence: "1".into(),
+            comment: None,
             created_at_fmt: "2026-09-01".into(),
         };
         assert_eq!(r.created_at_fmt, "2026-09-01");
@@ -354,11 +438,15 @@ mod tests {
     #[test]
     fn counter_row_event_summary_preserved() {
         let r = CounterRow {
-            id: "00000000-0000-0000-0000-000000000000".into(), tenant_id: "00000000-0000-0000-0000-000000000000".into(), event_id: "00000000-0000-0000-0000-000000000000".into(),
-            event_summary: "Team Standup".into(), attendee_email: "b@c.com".into(),
+            id: "00000000-0000-0000-0000-000000000000".into(),
+            tenant_id: "00000000-0000-0000-0000-000000000000".into(),
+            event_id: "00000000-0000-0000-0000-000000000000".into(),
+            event_summary: "Team Standup".into(),
+            attendee_email: "b@c.com".into(),
             proposed_dtstart: "2026-09-02T09:00:00Z".into(),
             proposed_dtend: "2026-09-02T09:30:00Z".into(),
-            received_sequence: "0".into(), comment: None,
+            received_sequence: "0".into(),
+            comment: None,
             created_at_fmt: "2026-09-02".into(),
         };
         assert_eq!(r.event_summary, "Team Standup");
@@ -367,11 +455,15 @@ mod tests {
     #[test]
     fn counter_row_attendee_email_preserved() {
         let r = CounterRow {
-            id: "00000000-0000-0000-0000-000000000000".into(), tenant_id: "00000000-0000-0000-0000-000000000000".into(), event_id: "00000000-0000-0000-0000-000000000000".into(),
-            event_summary: "Q3 Review".into(), attendee_email: "carol@corp.com".into(),
+            id: "00000000-0000-0000-0000-000000000000".into(),
+            tenant_id: "00000000-0000-0000-0000-000000000000".into(),
+            event_id: "00000000-0000-0000-0000-000000000000".into(),
+            event_summary: "Q3 Review".into(),
+            attendee_email: "carol@corp.com".into(),
             proposed_dtstart: "2026-10-01T10:00:00Z".into(),
             proposed_dtend: "2026-10-01T11:00:00Z".into(),
-            received_sequence: "1".into(), comment: None,
+            received_sequence: "1".into(),
+            comment: None,
             created_at_fmt: "2026-10-01".into(),
         };
         assert_eq!(r.attendee_email, "carol@corp.com");
@@ -380,11 +472,15 @@ mod tests {
     #[test]
     fn counter_row_comment_none_by_default_construction() {
         let r = CounterRow {
-            id: "00000000-0000-0000-0000-000000000000".into(), tenant_id: "00000000-0000-0000-0000-000000000000".into(), event_id: "00000000-0000-0000-0000-000000000000".into(),
-            event_summary: "Meeting".into(), attendee_email: "a@b.com".into(),
+            id: "00000000-0000-0000-0000-000000000000".into(),
+            tenant_id: "00000000-0000-0000-0000-000000000000".into(),
+            event_id: "00000000-0000-0000-0000-000000000000".into(),
+            event_summary: "Meeting".into(),
+            attendee_email: "a@b.com".into(),
             proposed_dtstart: "2026-01-01T09:00:00Z".into(),
             proposed_dtend: "2026-01-01T10:00:00Z".into(),
-            received_sequence: "0".into(), comment: None,
+            received_sequence: "0".into(),
+            comment: None,
             created_at_fmt: "2026-01-01".into(),
         };
         assert!(r.comment.is_none());

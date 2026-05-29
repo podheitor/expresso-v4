@@ -18,42 +18,42 @@ use crate::error::{DriveError, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct DriveFile {
-    pub id:            Uuid,
-    pub tenant_id:     Uuid,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
     pub owner_user_id: Uuid,
-    pub parent_id:     Option<Uuid>,
-    pub name:          String,
-    pub kind:          String,
-    pub mime_type:     Option<String>,
-    pub size_bytes:    i64,
-    pub sha256:        Option<String>,
-    pub storage_key:   Option<String>,
+    pub parent_id: Option<Uuid>,
+    pub name: String,
+    pub kind: String,
+    pub mime_type: Option<String>,
+    pub size_bytes: i64,
+    pub sha256: Option<String>,
+    pub storage_key: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
-    pub created_at:    OffsetDateTime,
+    pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    pub updated_at:    OffsetDateTime,
+    pub updated_at: OffsetDateTime,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    pub deleted_at:    Option<OffsetDateTime>,
+    pub deleted_at: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    pub expires_at:    Option<OffsetDateTime>,
-    pub locked_by:     Option<Uuid>,
+    pub expires_at: Option<OffsetDateTime>,
+    pub locked_by: Option<Uuid>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    pub locked_at:     Option<OffsetDateTime>,
+    pub locked_at: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    pub starred_at:    Option<OffsetDateTime>,
+    pub starred_at: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone)]
 pub struct NewFile {
-    pub tenant_id:     Uuid,
+    pub tenant_id: Uuid,
     pub owner_user_id: Uuid,
-    pub parent_id:     Option<Uuid>,
-    pub name:          String,
-    pub kind:          String,
-    pub mime_type:     Option<String>,
-    pub size_bytes:    i64,
-    pub sha256:        Option<String>,
-    pub storage_key:   Option<String>,
+    pub parent_id: Option<Uuid>,
+    pub name: String,
+    pub kind: String,
+    pub mime_type: Option<String>,
+    pub size_bytes: i64,
+    pub sha256: Option<String>,
+    pub storage_key: Option<String>,
 }
 
 pub struct FileRepo<'a> {
@@ -65,7 +65,9 @@ const SELECT_COLS: &str = "id, tenant_id, owner_user_id, parent_id, name, kind, 
     locked_by, locked_at, starred_at";
 
 impl<'a> FileRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     pub async fn insert(&self, f: &NewFile) -> Result<DriveFile> {
         let mut tx = begin_tenant_tx(self.pool, f.tenant_id).await?;
@@ -100,8 +102,10 @@ impl<'a> FileRepo<'a> {
              WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL"
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
-            .bind(id).bind(tenant_id)
-            .fetch_optional(&mut *tx).await?;
+            .bind(id)
+            .bind(tenant_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         tx.commit().await?;
         row.ok_or(DriveError::NotFound(id))
     }
@@ -111,7 +115,8 @@ impl<'a> FileRepo<'a> {
         tenant_id: Uuid,
         parent_id: Option<Uuid>,
     ) -> Result<Vec<DriveFile>> {
-        self.list_children_sorted(tenant_id, parent_id, "name", "asc").await
+        self.list_children_sorted(tenant_id, parent_id, "name", "asc")
+            .await
     }
 
     /// Like `list_children` but with caller-specified sort column and direction.
@@ -121,19 +126,19 @@ impl<'a> FileRepo<'a> {
         &self,
         tenant_id: Uuid,
         parent_id: Option<Uuid>,
-        sort_col:  &str,
-        order:     &str,
+        sort_col: &str,
+        order: &str,
     ) -> Result<Vec<DriveFile>> {
         let order_clause = match (sort_col, order) {
-            ("name",       "asc")  => "kind DESC, lower(name) ASC",
-            ("name",       _)      => "kind DESC, lower(name) DESC",
-            ("updated_at", "asc")  => "updated_at ASC",
-            ("updated_at", _)      => "updated_at DESC",
-            ("created_at", "asc")  => "created_at ASC",
-            ("created_at", _)      => "created_at DESC",
-            ("size_bytes", "asc")  => "size_bytes ASC",
-            ("size_bytes", _)      => "size_bytes DESC",
-            _                      => "kind DESC, lower(name) ASC",
+            ("name", "asc") => "kind DESC, lower(name) ASC",
+            ("name", _) => "kind DESC, lower(name) DESC",
+            ("updated_at", "asc") => "updated_at ASC",
+            ("updated_at", _) => "updated_at DESC",
+            ("created_at", "asc") => "created_at ASC",
+            ("created_at", _) => "created_at DESC",
+            ("size_bytes", "asc") => "size_bytes ASC",
+            ("size_bytes", _) => "size_bytes DESC",
+            _ => "kind DESC, lower(name) ASC",
         };
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
@@ -144,8 +149,10 @@ impl<'a> FileRepo<'a> {
              ORDER BY {order_clause}"
         );
         let rows: Vec<DriveFile> = sqlx::query_as(&sql)
-            .bind(tenant_id).bind(parent_id)
-            .fetch_all(&mut *tx).await?;
+            .bind(tenant_id)
+            .bind(parent_id)
+            .fetch_all(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(rows)
     }
@@ -154,21 +161,21 @@ impl<'a> FileRepo<'a> {
         &self,
         tenant_id: Uuid,
         parent_id: Option<Uuid>,
-        sort_col:  &str,
-        order:     &str,
-        limit:     i64,
-        offset:    i64,
+        sort_col: &str,
+        order: &str,
+        limit: i64,
+        offset: i64,
     ) -> Result<Vec<DriveFile>> {
         let order_clause = match (sort_col, order) {
-            ("name",       "asc")  => "kind DESC, lower(name) ASC",
-            ("name",       _)      => "kind DESC, lower(name) DESC",
-            ("updated_at", "asc")  => "updated_at ASC",
-            ("updated_at", _)      => "updated_at DESC",
-            ("created_at", "asc")  => "created_at ASC",
-            ("created_at", _)      => "created_at DESC",
-            ("size_bytes", "asc")  => "size_bytes ASC",
-            ("size_bytes", _)      => "size_bytes DESC",
-            _                      => "kind DESC, lower(name) ASC",
+            ("name", "asc") => "kind DESC, lower(name) ASC",
+            ("name", _) => "kind DESC, lower(name) DESC",
+            ("updated_at", "asc") => "updated_at ASC",
+            ("updated_at", _) => "updated_at DESC",
+            ("created_at", "asc") => "created_at ASC",
+            ("created_at", _) => "created_at DESC",
+            ("size_bytes", "asc") => "size_bytes ASC",
+            ("size_bytes", _) => "size_bytes DESC",
+            _ => "kind DESC, lower(name) ASC",
         };
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
@@ -180,8 +187,12 @@ impl<'a> FileRepo<'a> {
              LIMIT $3 OFFSET $4"
         );
         let rows: Vec<DriveFile> = sqlx::query_as(&sql)
-            .bind(tenant_id).bind(parent_id).bind(limit).bind(offset)
-            .fetch_all(&mut *tx).await?;
+            .bind(tenant_id)
+            .bind(parent_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(rows)
     }
@@ -195,17 +206,17 @@ impl<'a> FileRepo<'a> {
         );
         let rows: Vec<DriveFile> = sqlx::query_as(&sql)
             .bind(tenant_id)
-            .fetch_all(&mut *tx).await?;
+            .fetch_all(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(rows)
     }
-
 
     pub async fn find_by_name(
         &self,
         tenant_id: Uuid,
         parent_id: Option<Uuid>,
-        name:      &str,
+        name: &str,
     ) -> Result<Option<DriveFile>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
@@ -216,8 +227,11 @@ impl<'a> FileRepo<'a> {
                AND deleted_at IS NULL"
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
-            .bind(tenant_id).bind(parent_id).bind(name)
-            .fetch_optional(&mut *tx).await?;
+            .bind(tenant_id)
+            .bind(parent_id)
+            .bind(name)
+            .fetch_optional(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -227,10 +241,10 @@ impl<'a> FileRepo<'a> {
     /// Folders get an empty-content copy (storage_key = None, size = 0).
     pub async fn copy_file(
         &self,
-        tenant_id:     Uuid,
+        tenant_id: Uuid,
         owner_user_id: Uuid,
-        src_id:        Uuid,
-        new_name:      String,
+        src_id: Uuid,
+        new_name: String,
         new_parent_id: Option<Uuid>,
     ) -> Result<DriveFile> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
@@ -260,12 +274,12 @@ impl<'a> FileRepo<'a> {
     /// substitui versão corrente (histórico já foi arquivado em drive_file_versions).
     pub async fn update_content(
         &self,
-        tenant_id:   Uuid,
-        id:          Uuid,
+        tenant_id: Uuid,
+        id: Uuid,
         storage_key: &str,
-        size_bytes:  i64,
-        sha256:      Option<&str>,
-        mime_type:   Option<&str>,
+        size_bytes: i64,
+        sha256: Option<&str>,
+        mime_type: Option<&str>,
     ) -> Result<DriveFile> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
@@ -276,9 +290,14 @@ impl<'a> FileRepo<'a> {
               RETURNING {SELECT_COLS}"
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
-            .bind(id).bind(tenant_id)
-            .bind(storage_key).bind(size_bytes).bind(sha256).bind(mime_type)
-            .fetch_optional(&mut *tx).await?;
+            .bind(id)
+            .bind(tenant_id)
+            .bind(storage_key)
+            .bind(size_bytes)
+            .bind(sha256)
+            .bind(mime_type)
+            .fetch_optional(&mut *tx)
+            .await?;
         tx.commit().await?;
         row.ok_or(DriveError::NotFound(id))
     }
@@ -289,8 +308,10 @@ impl<'a> FileRepo<'a> {
             "UPDATE drive_files SET deleted_at = now() \
              WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL",
         )
-        .bind(id).bind(tenant_id)
-        .execute(&mut *tx).await?;
+        .bind(id)
+        .bind(tenant_id)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(r.rows_affected())
     }
@@ -305,7 +326,8 @@ impl<'a> FileRepo<'a> {
         )
         .bind(tenant_id)
         .bind(ids)
-        .execute(&mut *tx).await
+        .execute(&mut *tx)
+        .await
         .map_err(map_conflict)?;
         tx.commit().await?;
         Ok(r.rows_affected())
@@ -321,7 +343,8 @@ impl<'a> FileRepo<'a> {
         )
         .bind(tenant_id)
         .bind(ids)
-        .execute(&mut *tx).await?;
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(r.rows_affected())
     }
@@ -336,8 +359,10 @@ impl<'a> FileRepo<'a> {
              RETURNING {SELECT_COLS}"
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
-            .bind(id).bind(tenant_id)
-            .fetch_optional(&mut *tx).await
+            .bind(id)
+            .bind(tenant_id)
+            .fetch_optional(&mut *tx)
+            .await
             .map_err(map_conflict)?;
         tx.commit().await?;
         row.ok_or(DriveError::NotFound(id))
@@ -348,8 +373,8 @@ impl<'a> FileRepo<'a> {
     /// to a different tenant (they simply don't match the WHERE predicate).
     pub async fn bulk_move(
         &self,
-        tenant_id:     Uuid,
-        ids:           &[Uuid],
+        tenant_id: Uuid,
+        ids: &[Uuid],
         new_parent_id: Option<Uuid>,
     ) -> Result<Vec<DriveFile>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
@@ -370,7 +395,12 @@ impl<'a> FileRepo<'a> {
     }
 
     /// Move file/folder to a different parent (or root when parent_id = None).
-    pub async fn move_to(&self, tenant_id: Uuid, id: Uuid, new_parent_id: Option<Uuid>) -> Result<DriveFile> {
+    pub async fn move_to(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        new_parent_id: Option<Uuid>,
+    ) -> Result<DriveFile> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "UPDATE drive_files SET parent_id = $3, updated_at = now() \
@@ -378,8 +408,11 @@ impl<'a> FileRepo<'a> {
              RETURNING {SELECT_COLS}"
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
-            .bind(id).bind(tenant_id).bind(new_parent_id)
-            .fetch_optional(&mut *tx).await
+            .bind(id)
+            .bind(tenant_id)
+            .bind(new_parent_id)
+            .fetch_optional(&mut *tx)
+            .await
             .map_err(map_conflict)?;
         tx.commit().await?;
         row.ok_or(DriveError::NotFound(id))
@@ -394,8 +427,11 @@ impl<'a> FileRepo<'a> {
              RETURNING {SELECT_COLS}"
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
-            .bind(id).bind(tenant_id).bind(new_name)
-            .fetch_optional(&mut *tx).await
+            .bind(id)
+            .bind(tenant_id)
+            .bind(new_name)
+            .fetch_optional(&mut *tx)
+            .await
             .map_err(map_conflict)?;
         tx.commit().await?;
         row.ok_or(DriveError::NotFound(id))
@@ -406,9 +442,9 @@ impl<'a> FileRepo<'a> {
     /// that were successfully copied; missing/deleted source ids are skipped.
     pub async fn bulk_copy_files(
         &self,
-        tenant_id:    Uuid,
-        owner_id:     Uuid,
-        ids:          &[Uuid],
+        tenant_id: Uuid,
+        owner_id: Uuid,
+        ids: &[Uuid],
         new_parent_id: Option<Uuid>,
     ) -> Result<Vec<DriveFile>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
@@ -445,7 +481,7 @@ impl<'a> FileRepo<'a> {
         &self,
         tenant_id: Uuid,
         folder_id: Uuid,
-        prefix:    &str,
+        prefix: &str,
     ) -> Result<Vec<(String, DriveFile)>> {
         let mut results: Vec<(String, DriveFile)> = Vec::new();
         let children = self.list_children(tenant_id, Some(folder_id)).await?;
@@ -458,7 +494,8 @@ impl<'a> FileRepo<'a> {
             if child.kind == "file" {
                 results.push((entry_path, child));
             } else if child.kind == "folder" {
-                let sub = Box::pin(self.collect_files_recursive(tenant_id, child.id, &entry_path)).await?;
+                let sub = Box::pin(self.collect_files_recursive(tenant_id, child.id, &entry_path))
+                    .await?;
                 results.extend(sub);
             }
         }
@@ -469,8 +506,8 @@ impl<'a> FileRepo<'a> {
     /// Pass `expires_at = None` to remove a previously set expiry.
     pub async fn set_expiry(
         &self,
-        tenant_id:  Uuid,
-        id:         Uuid,
+        tenant_id: Uuid,
+        id: Uuid,
         expires_at: Option<OffsetDateTime>,
     ) -> Result<DriveFile> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
@@ -480,8 +517,11 @@ impl<'a> FileRepo<'a> {
              RETURNING {SELECT_COLS}"
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
-            .bind(id).bind(tenant_id).bind(expires_at)
-            .fetch_optional(&mut *tx).await?;
+            .bind(id)
+            .bind(tenant_id)
+            .bind(expires_at)
+            .fetch_optional(&mut *tx)
+            .await?;
         tx.commit().await?;
         row.ok_or(DriveError::NotFound(id))
     }
@@ -531,8 +571,11 @@ impl<'a> FileRepo<'a> {
              RETURNING {SELECT_COLS}"
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
-            .bind(id).bind(tenant_id).bind(user_id)
-            .fetch_optional(&mut *tx).await?;
+            .bind(id)
+            .bind(tenant_id)
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         tx.commit().await?;
         row.ok_or(DriveError::NotFound(id))
     }
@@ -546,8 +589,11 @@ impl<'a> FileRepo<'a> {
              RETURNING {SELECT_COLS}"
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
-            .bind(id).bind(tenant_id).bind(user_id)
-            .fetch_optional(&mut *tx).await?;
+            .bind(id)
+            .bind(tenant_id)
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         tx.commit().await?;
         row.ok_or(DriveError::NotFound(id))
     }
@@ -562,8 +608,10 @@ impl<'a> FileRepo<'a> {
              ORDER BY starred_at DESC"
         );
         let rows: Vec<DriveFile> = sqlx::query_as(&sql)
-            .bind(tenant_id).bind(user_id)
-            .fetch_all(&mut *tx).await?;
+            .bind(tenant_id)
+            .bind(user_id)
+            .fetch_all(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(rows)
     }
@@ -578,20 +626,17 @@ impl<'a> FileRepo<'a> {
              WHERE tenant_id = $1 AND owner_user_id = $2 \
                AND starred_at IS NOT NULL AND deleted_at IS NULL",
         )
-        .bind(tenant_id).bind(user_id)
-        .fetch_one(&mut *tx).await?;
+        .bind(tenant_id)
+        .bind(user_id)
+        .fetch_one(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(count)
     }
 
     /// Acquire an optimistic lock on a file. Returns `Conflict` if already locked
     /// by a different user, `NotFound` if the file does not exist.
-    pub async fn lock_file(
-        &self,
-        tenant_id: Uuid,
-        id:        Uuid,
-        user_id:   Uuid,
-    ) -> Result<DriveFile> {
+    pub async fn lock_file(&self, tenant_id: Uuid, id: Uuid, user_id: Uuid) -> Result<DriveFile> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "UPDATE drive_files \
@@ -601,8 +646,11 @@ impl<'a> FileRepo<'a> {
              RETURNING {SELECT_COLS}"
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
-            .bind(id).bind(tenant_id).bind(user_id)
-            .fetch_optional(&mut *tx).await?;
+            .bind(id)
+            .bind(tenant_id)
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         tx.commit().await?;
         match row {
             Some(f) => Ok(f),
@@ -614,7 +662,9 @@ impl<'a> FileRepo<'a> {
                 .bind(id).bind(tenant_id)
                 .fetch_optional(self.pool).await?;
                 if exists.is_some() {
-                    Err(DriveError::Conflict("file is locked by another user".into()))
+                    Err(DriveError::Conflict(
+                        "file is locked by another user".into(),
+                    ))
                 } else {
                     Err(DriveError::NotFound(id))
                 }
@@ -623,12 +673,7 @@ impl<'a> FileRepo<'a> {
     }
 
     /// Release a lock on a file. Only the lock owner may unlock.
-    pub async fn unlock_file(
-        &self,
-        tenant_id: Uuid,
-        id:        Uuid,
-        user_id:   Uuid,
-    ) -> Result<DriveFile> {
+    pub async fn unlock_file(&self, tenant_id: Uuid, id: Uuid, user_id: Uuid) -> Result<DriveFile> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "UPDATE drive_files \
@@ -637,8 +682,11 @@ impl<'a> FileRepo<'a> {
              RETURNING {SELECT_COLS}"
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
-            .bind(id).bind(tenant_id).bind(user_id)
-            .fetch_optional(&mut *tx).await?;
+            .bind(id)
+            .bind(tenant_id)
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         tx.commit().await?;
         match row {
             Some(f) => Ok(f),
@@ -666,8 +714,10 @@ impl<'a> FileRepo<'a> {
              WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NOT NULL \
              RETURNING storage_key",
         )
-        .bind(id).bind(tenant_id)
-        .fetch_optional(&mut *tx).await?;
+        .bind(id)
+        .bind(tenant_id)
+        .fetch_optional(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row.and_then(|(k,)| k))
     }
@@ -689,23 +739,23 @@ mod tests {
 
     fn sample_file() -> DriveFile {
         DriveFile {
-            id:            Uuid::nil(),
-            tenant_id:     Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             owner_user_id: Uuid::nil(),
-            parent_id:     None,
-            name:          "report.pdf".into(),
-            kind:          "file".into(),
-            mime_type:     Some("application/pdf".into()),
-            size_bytes:    1024,
-            sha256:        Some("deadbeef".into()),
-            storage_key:   Some("blobs/report".into()),
-            created_at:    datetime!(2026-05-22 08:00:00 UTC),
-            updated_at:    datetime!(2026-05-22 08:00:00 UTC),
-            deleted_at:    None,
-            expires_at:    None,
-            locked_by:     None,
-            locked_at:     None,
-            starred_at:    None,
+            parent_id: None,
+            name: "report.pdf".into(),
+            kind: "file".into(),
+            mime_type: Some("application/pdf".into()),
+            size_bytes: 1024,
+            sha256: Some("deadbeef".into()),
+            storage_key: Some("blobs/report".into()),
+            created_at: datetime!(2026-05-22 08:00:00 UTC),
+            updated_at: datetime!(2026-05-22 08:00:00 UTC),
+            deleted_at: None,
+            expires_at: None,
+            locked_by: None,
+            locked_at: None,
+            starred_at: None,
         }
     }
 
@@ -747,7 +797,8 @@ mod tests {
     fn drive_file_storage_key_none_is_null() {
         let mut f = sample_file();
         f.storage_key = None;
-        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
         assert!(v["storage_key"].is_null());
     }
 
@@ -755,21 +806,24 @@ mod tests {
     fn drive_file_size_zero_serialises() {
         let mut f = sample_file();
         f.size_bytes = 0;
-        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
         assert_eq!(v["size_bytes"], 0);
     }
 
     #[test]
     fn drive_file_locked_by_none_is_null() {
         let f = sample_file();
-        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
         assert!(v["locked_by"].is_null());
     }
 
     #[test]
     fn drive_file_parent_id_none_is_null() {
         let f = sample_file();
-        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
         assert!(v["parent_id"].is_null());
     }
 

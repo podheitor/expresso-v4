@@ -18,40 +18,40 @@ use crate::error::{CalendarError, Result};
 /// Stored calendar collection.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Calendar {
-    pub id:            Uuid,
-    pub tenant_id:     Uuid,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
     pub owner_user_id: Uuid,
-    pub name:          String,
-    pub description:   Option<String>,
-    pub color:         Option<String>,
-    pub timezone:      String,
-    pub ctag:          i64,
-    pub is_default:    bool,
+    pub name: String,
+    pub description: Option<String>,
+    pub color: Option<String>,
+    pub timezone: String,
+    pub ctag: i64,
+    pub is_default: bool,
     #[serde(with = "time::serde::rfc3339")]
-    pub created_at:    OffsetDateTime,
+    pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    pub updated_at:    OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 /// Creation payload.
 #[derive(Debug, Clone, Deserialize)]
 pub struct NewCalendar {
-    pub name:         String,
-    pub description:  Option<String>,
-    pub color:        Option<String>,
-    pub timezone:     Option<String>,
+    pub name: String,
+    pub description: Option<String>,
+    pub color: Option<String>,
+    pub timezone: Option<String>,
     #[serde(default)]
-    pub is_default:   bool,
+    pub is_default: bool,
 }
 
 /// Partial update payload — None fields are left untouched.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UpdateCalendar {
-    pub name:        Option<String>,
+    pub name: Option<String>,
     pub description: Option<String>,
-    pub color:       Option<String>,
-    pub timezone:    Option<String>,
-    pub is_default:  Option<bool>,
+    pub color: Option<String>,
+    pub timezone: Option<String>,
+    pub is_default: Option<bool>,
 }
 
 /// Repository handle — holds the pool reference.
@@ -97,7 +97,6 @@ impl<'a> CalendarRepo<'a> {
         tx.commit().await.map_err(CalendarError::from)?;
         Ok(row)
     }
-
 
     /// Insert calendar honoring caller-supplied UUID (CalDAV MKCALENDAR).
     pub async fn create_with_id(
@@ -227,14 +226,12 @@ impl<'a> CalendarRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id)
             .await
             .map_err(CalendarError::from)?;
-        let res = sqlx::query(
-            r#"DELETE FROM calendars WHERE tenant_id = $1 AND id = $2"#,
-        )
-        .bind(tenant_id)
-        .bind(id)
-        .execute(&mut *tx)
-        .await
-        .map_err(CalendarError::from)?;
+        let res = sqlx::query(r#"DELETE FROM calendars WHERE tenant_id = $1 AND id = $2"#)
+            .bind(tenant_id)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(CalendarError::from)?;
 
         if res.rows_affected() == 0 {
             return Err(CalendarError::CalendarNotFound(id.to_string()));
@@ -248,25 +245,20 @@ impl<'a> CalendarRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id)
             .await
             .map_err(CalendarError::from)?;
-        let (ctag,): (i64,) = sqlx::query_as(
-            r#"SELECT ctag FROM calendars WHERE tenant_id = $1 AND id = $2"#,
-        )
-        .bind(tenant_id)
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(CalendarError::from)?
-        .ok_or(CalendarError::CalendarNotFound(id.to_string()))?;
+        let (ctag,): (i64,) =
+            sqlx::query_as(r#"SELECT ctag FROM calendars WHERE tenant_id = $1 AND id = $2"#)
+                .bind(tenant_id)
+                .bind(id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(CalendarError::from)?
+                .ok_or(CalendarError::CalendarNotFound(id.to_string()))?;
         tx.commit().await.map_err(CalendarError::from)?;
         Ok(ctag)
     }
 
     /// List calendars visible to user: owned + shared via `calendar_acl`.
-    pub async fn list_accessible(
-        &self,
-        tenant_id: Uuid,
-        user_id: Uuid,
-    ) -> Result<Vec<Calendar>> {
+    pub async fn list_accessible(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<Calendar>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id)
             .await
             .map_err(CalendarError::from)?;
@@ -307,14 +299,13 @@ impl<'a> CalendarRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id)
             .await
             .map_err(CalendarError::from)?;
-        let owner: Option<(Uuid,)> = sqlx::query_as(
-            "SELECT owner_user_id FROM calendars WHERE id = $1 AND tenant_id = $2",
-        )
-        .bind(cal_id)
-        .bind(tenant_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(CalendarError::from)?;
+        let owner: Option<(Uuid,)> =
+            sqlx::query_as("SELECT owner_user_id FROM calendars WHERE id = $1 AND tenant_id = $2")
+                .bind(cal_id)
+                .bind(tenant_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(CalendarError::from)?;
         match owner {
             None => {
                 tx.commit().await.map_err(CalendarError::from)?;
@@ -341,7 +332,6 @@ impl<'a> CalendarRepo<'a> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,17 +339,17 @@ mod tests {
 
     fn sample() -> Calendar {
         Calendar {
-            id:            Uuid::nil(),
-            tenant_id:     Uuid::nil(),
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             owner_user_id: Uuid::nil(),
-            name:          "Personal".into(),
-            description:   Some("My calendar".into()),
-            color:         Some("#ff0000".into()),
-            timezone:      "America/Sao_Paulo".into(),
-            ctag:          42,
-            is_default:    true,
-            created_at:    datetime!(2026-05-22 08:00:00 UTC),
-            updated_at:    datetime!(2026-05-22 08:00:00 UTC),
+            name: "Personal".into(),
+            description: Some("My calendar".into()),
+            color: Some("#ff0000".into()),
+            timezone: "America/Sao_Paulo".into(),
+            ctag: 42,
+            is_default: true,
+            created_at: datetime!(2026-05-22 08:00:00 UTC),
+            updated_at: datetime!(2026-05-22 08:00:00 UTC),
         }
     }
 
@@ -422,7 +412,8 @@ mod tests {
 
     #[test]
     fn update_calendar_timezone_set() {
-        let u: UpdateCalendar = serde_json::from_str(r#"{"timezone":"America/Sao_Paulo"}"#).unwrap();
+        let u: UpdateCalendar =
+            serde_json::from_str(r#"{"timezone":"America/Sao_Paulo"}"#).unwrap();
         assert_eq!(u.timezone.as_deref(), Some("America/Sao_Paulo"));
     }
 
@@ -457,7 +448,9 @@ mod tests {
         let n = NewCalendar {
             name: "Work".into(),
             description: None,
-            color: None, timezone: None, is_default: false,
+            color: None,
+            timezone: None,
+            is_default: false,
         };
         assert!(n.color.is_none());
     }
@@ -467,7 +460,9 @@ mod tests {
         let n = NewCalendar {
             name: "Team".into(),
             description: None,
-            color: None, timezone: None, is_default: false,
+            color: None,
+            timezone: None,
+            is_default: false,
         };
         assert!(n.timezone.is_none());
     }
@@ -477,7 +472,9 @@ mod tests {
         let n = NewCalendar {
             name: "Personal".into(),
             description: None,
-            color: None, timezone: None, is_default: false,
+            color: None,
+            timezone: None,
+            is_default: false,
         };
         assert_eq!(n.name, "Personal");
     }
@@ -487,7 +484,9 @@ mod tests {
         let n = NewCalendar {
             name: "Work".into(),
             description: None,
-            color: None, timezone: None, is_default: false,
+            color: None,
+            timezone: None,
+            is_default: false,
         };
         assert!(!n.is_default);
     }
@@ -497,7 +496,9 @@ mod tests {
         let n = NewCalendar {
             name: "Primary".into(),
             description: None,
-            color: None, timezone: None, is_default: true,
+            color: None,
+            timezone: None,
+            is_default: true,
         };
         assert!(n.is_default);
     }
@@ -507,7 +508,9 @@ mod tests {
         let n = NewCalendar {
             name: "Events".into(),
             description: Some("All my events".into()),
-            color: None, timezone: None, is_default: false,
+            color: None,
+            timezone: None,
+            is_default: false,
         };
         assert_eq!(n.description.as_deref(), Some("All my events"));
     }
@@ -569,7 +572,13 @@ mod tests {
 
     #[test]
     fn update_calendar_all_fields_none_is_no_change() {
-        let u = UpdateCalendar { name: None, description: None, color: None, timezone: None, is_default: None };
+        let u = UpdateCalendar {
+            name: None,
+            description: None,
+            color: None,
+            timezone: None,
+            is_default: None,
+        };
         assert!(u.name.is_none() && u.description.is_none() && u.color.is_none());
     }
 

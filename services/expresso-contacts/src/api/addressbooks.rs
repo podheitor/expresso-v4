@@ -12,14 +12,17 @@ use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
 use crate::domain::{Addressbook, AddressbookRepo, NewAddressbook, UpdateAddressbook};
-use crate::events::ContactsEvent;
 use crate::error::Result;
+use crate::events::ContactsEvent;
 use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/addressbooks",       post(create).get(list))
-        .route("/api/v1/addressbooks/:id",   get(get_one).delete(delete).patch(update))
+        .route("/api/v1/addressbooks", post(create).get(list))
+        .route(
+            "/api/v1/addressbooks/:id",
+            get(get_one).delete(delete).patch(update),
+        )
         .route("/api/v1/addressbooks/:id/ctag", get(ctag_one))
 }
 
@@ -29,9 +32,13 @@ async fn create(
     Json(body): Json<NewAddressbook>,
 ) -> Result<(StatusCode, Json<Addressbook>)> {
     let pool = state.db_or_unavailable()?;
-    let ab = AddressbookRepo::new(pool).create(ctx.tenant_id, ctx.user_id, body).await?;
+    let ab = AddressbookRepo::new(pool)
+        .create(ctx.tenant_id, ctx.user_id, body)
+        .await?;
     state.bus().publish(ContactsEvent::AddressbookCreated {
-        tenant_id: ctx.tenant_id, addressbook_id: ab.id, name: Some(ab.name.clone()),
+        tenant_id: ctx.tenant_id,
+        addressbook_id: ab.id,
+        name: Some(ab.name.clone()),
     });
     Ok((StatusCode::CREATED, Json(ab)))
 }
@@ -52,7 +59,9 @@ async fn list(
     if let Some(ts) = max_updated {
         if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
             if let Ok(ims_str) = ims_val.to_str() {
-                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if let Ok(ims_dt) =
+                    OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+                {
                     if ts <= ims_dt {
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
@@ -60,14 +69,23 @@ async fn list(
             }
         }
     }
-    let abs  = AddressbookRepo::new(pool).list_accessible(ctx.tenant_id, ctx.user_id).await?;
+    let abs = AddressbookRepo::new(pool)
+        .list_accessible(ctx.tenant_id, ctx.user_id)
+        .await?;
     let mut resp = (
-        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        [(
+            header::HeaderName::from_static("x-total-count"),
+            total.to_string(),
+        )],
         Json(abs),
-    ).into_response();
+    )
+        .into_response();
     if let Some(ts) = max_updated {
-        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        let lm = ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_default();
+        resp.headers_mut()
+            .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
 }
@@ -86,10 +104,15 @@ async fn get_one(
             return Ok(StatusCode::NOT_MODIFIED.into_response());
         }
     }
-    let lm = ab.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    let lm = ab
+        .updated_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
-            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if let Ok(ims_dt) =
+                OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
+            {
                 if ab.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
@@ -97,8 +120,10 @@ async fn get_one(
         }
     }
     let mut resp = Json(ab).into_response();
-    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    resp.headers_mut()
+        .insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut()
+        .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
@@ -109,7 +134,9 @@ async fn update(
     Json(body): Json<UpdateAddressbook>,
 ) -> Result<Json<Addressbook>> {
     let pool = state.db_or_unavailable()?;
-    let ab = AddressbookRepo::new(pool).update(ctx.tenant_id, id, body).await?;
+    let ab = AddressbookRepo::new(pool)
+        .update(ctx.tenant_id, id, body)
+        .await?;
     Ok(Json(ab))
 }
 
@@ -121,7 +148,8 @@ async fn delete(
     let pool = state.db_or_unavailable()?;
     AddressbookRepo::new(pool).delete(ctx.tenant_id, id).await?;
     state.bus().publish(ContactsEvent::AddressbookDeleted {
-        tenant_id: ctx.tenant_id, addressbook_id: id,
+        tenant_id: ctx.tenant_id,
+        addressbook_id: id,
     });
     Ok(StatusCode::NO_CONTENT)
 }

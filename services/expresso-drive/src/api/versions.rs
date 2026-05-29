@@ -26,22 +26,22 @@ use crate::state::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct FileVersion {
-    pub id:          Uuid,
-    pub file_id:     Uuid,
-    pub tenant_id:   Uuid,
+    pub id: Uuid,
+    pub file_id: Uuid,
+    pub tenant_id: Uuid,
     pub version_num: i64,
-    pub size_bytes:  i64,
-    pub sha256:      Option<String>,
+    pub size_bytes: i64,
+    pub sha256: Option<String>,
     pub storage_key: Option<String>,
-    pub created_by:  Uuid,
+    pub created_by: Uuid,
     #[serde(with = "time::serde::rfc3339")]
-    pub created_at:  OffsetDateTime,
+    pub created_at: OffsetDateTime,
 }
 
 #[derive(Debug, Deserialize)]
 struct CreateVersionBody {
-    size_bytes:  Option<i64>,
-    sha256:      Option<String>,
+    size_bytes: Option<i64>,
+    sha256: Option<String>,
     storage_key: Option<String>,
 }
 
@@ -80,8 +80,8 @@ struct VersionsCount {
 /// 404 se o arquivo não pertence ao tenant ou está soft-deleted.
 async fn count_versions(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
 
@@ -110,14 +110,14 @@ async fn count_versions(
 
 #[derive(Debug, Serialize)]
 struct VersionDiff {
-    file_id:     Uuid,
-    version_a:   i64,
-    version_b:   i64,
-    size_a:      i64,
-    size_b:      i64,
-    size_delta:  i64,
-    sha_a:       Option<String>,
-    sha_b:       Option<String>,
+    file_id: Uuid,
+    version_a: i64,
+    version_b: i64,
+    size_a: i64,
+    size_b: i64,
+    size_delta: i64,
+    sha_a: Option<String>,
+    sha_b: Option<String>,
     sha_changed: bool,
 }
 
@@ -126,7 +126,7 @@ struct VersionDiff {
 /// só `size_delta` (b - a) e `sha_changed`. 404 se qualquer das versões não existe.
 async fn diff_versions(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, a, b)): Path<(Uuid, i64, i64)>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
@@ -149,14 +149,14 @@ async fn diff_versions(
     };
 
     let diff = VersionDiff {
-        file_id:     id,
-        version_a:   a,
-        version_b:   b,
-        size_a:      va.1,
-        size_b:      vb.1,
-        size_delta:  vb.1 - va.1,
-        sha_a:       va.2.clone(),
-        sha_b:       vb.2.clone(),
+        file_id: id,
+        version_a: a,
+        version_b: b,
+        size_a: va.1,
+        size_b: vb.1,
+        size_delta: vb.1 - va.1,
+        sha_a: va.2.clone(),
+        sha_b: vb.2.clone(),
         sha_changed: va.2 != vb.2,
     };
 
@@ -168,7 +168,7 @@ async fn diff_versions(
 /// (sprint #420). Retorna a nova FileVersion criada.
 async fn restore_version(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, version_num)): Path<(Uuid, i64)>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
@@ -204,15 +204,15 @@ async fn restore_version(
 
     match new_version {
         Some(v) => Ok((StatusCode::CREATED, Json(v))),
-        None    => Err(DriveError::NotFound(id)),
+        None => Err(DriveError::NotFound(id)),
     }
 }
 
 /// GET /api/v1/drive/files/:id/versions — list version history (newest first).
 async fn list_versions(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
 
@@ -244,7 +244,7 @@ async fn list_versions(
 /// GET /api/v1/drive/files/:id/versions/:version_num — get a specific version.
 async fn get_version(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
+    ctx: RequestCtx,
     Path((id, version_num)): Path<(Uuid, i64)>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
@@ -262,7 +262,7 @@ async fn get_version(
 
     match version {
         Some(v) => Ok(Json(v)),
-        None    => Err(DriveError::NotFound(id)),
+        None => Err(DriveError::NotFound(id)),
     }
 }
 
@@ -271,9 +271,9 @@ async fn get_version(
 /// Assigns the next version_num atomically via MAX(version_num)+1.
 async fn create_version(
     State(state): State<AppState>,
-    ctx:          RequestCtx,
-    Path(id):     Path<Uuid>,
-    Json(body):   Json<CreateVersionBody>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<CreateVersionBody>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
 
@@ -318,15 +318,15 @@ mod tests {
     #[test]
     fn file_version_serde_roundtrip() {
         let v = FileVersion {
-            id:          Uuid::nil(),
-            file_id:     Uuid::nil(),
-            tenant_id:   Uuid::nil(),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
             version_num: 5,
-            size_bytes:  2048,
-            sha256:      Some("abc123".into()),
+            size_bytes: 2048,
+            sha256: Some("abc123".into()),
             storage_key: Some("blobs/v5".into()),
-            created_by:  Uuid::nil(),
-            created_at:  datetime!(2026-05-22 10:00:00 UTC),
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-05-22 10:00:00 UTC),
         };
         let s = serde_json::to_string(&v).unwrap();
         let back: FileVersion = serde_json::from_str(&s).unwrap();
@@ -381,7 +381,8 @@ mod tests {
 
     #[test]
     fn create_version_body_storage_key_optional() {
-        let b: CreateVersionBody = serde_json::from_str(r#"{"storage_key":"blobs/abc123"}"#).unwrap();
+        let b: CreateVersionBody =
+            serde_json::from_str(r#"{"storage_key":"blobs/abc123"}"#).unwrap();
         assert_eq!(b.storage_key.as_deref(), Some("blobs/abc123"));
         assert!(b.size_bytes.is_none());
     }
@@ -395,14 +396,16 @@ mod tests {
 
     #[test]
     fn create_version_body_sha256_preserved() {
-        let b: CreateVersionBody = serde_json::from_str(r#"{"sha256":"abc123","size_bytes":1024}"#).unwrap();
+        let b: CreateVersionBody =
+            serde_json::from_str(r#"{"sha256":"abc123","size_bytes":1024}"#).unwrap();
         assert_eq!(b.sha256.as_deref(), Some("abc123"));
         assert_eq!(b.size_bytes, Some(1024));
     }
 
     #[test]
     fn create_version_body_storage_key_preserved() {
-        let b: CreateVersionBody = serde_json::from_str(r#"{"storage_key":"blobs/abc123"}"#).unwrap();
+        let b: CreateVersionBody =
+            serde_json::from_str(r#"{"storage_key":"blobs/abc123"}"#).unwrap();
         assert_eq!(b.storage_key.as_deref(), Some("blobs/abc123"));
     }
 
@@ -428,7 +431,8 @@ mod tests {
     fn create_version_body_all_fields_set() {
         let b: CreateVersionBody = serde_json::from_str(
             r#"{"size_bytes":2048,"sha256":"deadbeef","storage_key":"blobs/v1"}"#,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(b.size_bytes, Some(2048));
         assert_eq!(b.sha256.as_deref(), Some("deadbeef"));
         assert_eq!(b.storage_key.as_deref(), Some("blobs/v1"));
@@ -438,9 +442,15 @@ mod tests {
     fn file_version_sha256_optional_none() {
         use time::macros::datetime;
         let v = FileVersion {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            version_num: 1, size_bytes: 0, sha256: None, storage_key: None,
-            created_by: Uuid::nil(), created_at: datetime!(2026-01-01 00:00:00 UTC),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            version_num: 1,
+            size_bytes: 0,
+            sha256: None,
+            storage_key: None,
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
         };
         assert!(v.sha256.is_none());
     }
@@ -449,9 +459,15 @@ mod tests {
     fn file_version_storage_key_none_serializes_null() {
         use time::macros::datetime;
         let v = FileVersion {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            version_num: 2, size_bytes: 512, sha256: None, storage_key: None,
-            created_by: Uuid::nil(), created_at: datetime!(2026-03-01 00:00:00 UTC),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            version_num: 2,
+            size_bytes: 512,
+            sha256: None,
+            storage_key: None,
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-03-01 00:00:00 UTC),
         };
         let j: serde_json::Value = serde_json::to_value(&v).unwrap();
         assert!(j["storage_key"].is_null());
@@ -508,9 +524,15 @@ mod tests {
     fn file_version_version_num_accessible() {
         use time::macros::datetime;
         let v = FileVersion {
-            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
-            version_num: 42, size_bytes: 0, sha256: None, storage_key: None,
-            created_by: Uuid::nil(), created_at: datetime!(2026-01-01 00:00:00 UTC),
+            id: Uuid::nil(),
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            version_num: 42,
+            size_bytes: 0,
+            sha256: None,
+            storage_key: None,
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
         };
         assert_eq!(v.version_num, 42);
     }

@@ -21,8 +21,8 @@ use crate::error::Result;
 use crate::state::AppState;
 
 const LIVE_PROPS: &[(&str, &str)] = &[
-    ("DAV:",                                  "displayname"),
-    ("urn:ietf:params:xml:ns:carddav",        "addressbook-description"),
+    ("DAV:", "displayname"),
+    ("urn:ietf:params:xml:ns:carddav", "addressbook-description"),
 ];
 
 fn is_live_prop(ns: &str, local: &str) -> bool {
@@ -31,14 +31,17 @@ fn is_live_prop(ns: &str, local: &str) -> bool {
 }
 
 pub async fn handle(
-    state:     AppState,
+    state: AppState,
     principal: CardDavPrincipal,
-    path:      &str,
-    body:      &str,
+    path: &str,
+    body: &str,
 ) -> Result<Response> {
     let addressbook_id = match uri::classify(path) {
         Target::Home { user_id } if user_id == principal.user_id => None,
-        Target::Addressbook { user_id, addressbook_id } if user_id == principal.user_id => Some(addressbook_id),
+        Target::Addressbook {
+            user_id,
+            addressbook_id,
+        } if user_id == principal.user_id => Some(addressbook_id),
         Target::Home { .. } | Target::Addressbook { .. } => return Ok(forbidden()),
         _ => return Ok(not_found()),
     };
@@ -56,21 +59,33 @@ pub async fn handle(
         }
 
         // Dead props → persist.
-        let has_dead = set_props.iter().any(|p| !is_live_prop(&p.namespace, &p.local))
-                    || remove_props.iter().any(|p| !is_live_prop(&p.namespace, &p.local));
+        let has_dead = set_props
+            .iter()
+            .any(|p| !is_live_prop(&p.namespace, &p.local))
+            || remove_props
+                .iter()
+                .any(|p| !is_live_prop(&p.namespace, &p.local));
         if has_dead {
             let pool = state.db_or_unavailable()?;
             let repo = DeadPropRepo::new(pool);
             for p in &set_props {
                 if !is_live_prop(&p.namespace, &p.local) {
-                    let _ = repo.upsert_addressbook(
-                        principal.tenant_id, id, &p.namespace, &p.local, &p.value,
-                    ).await;
+                    let _ = repo
+                        .upsert_addressbook(
+                            principal.tenant_id,
+                            id,
+                            &p.namespace,
+                            &p.local,
+                            &p.value,
+                        )
+                        .await;
                 }
             }
             for p in &remove_props {
                 if !is_live_prop(&p.namespace, &p.local) {
-                    let _ = repo.remove_addressbook(principal.tenant_id, id, &p.namespace, &p.local).await;
+                    let _ = repo
+                        .remove_addressbook(principal.tenant_id, id, &p.namespace, &p.local)
+                        .await;
                 }
             }
         }
@@ -91,7 +106,7 @@ pub async fn handle(
         out.push_str(&format!(
             r#"<{local} xmlns="{ns}"/>"#,
             local = p.local,
-            ns    = escape(&p.namespace),
+            ns = escape(&p.namespace),
         ));
         out.push_str("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>");
     }
@@ -110,14 +125,14 @@ pub async fn handle(
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct Prop {
     pub namespace: String,
-    pub local:     String,
-    pub value:     String,
+    pub local: String,
+    pub value: String,
 }
 
 fn parse_set_remove(body: &str) -> (Vec<Prop>, Vec<Prop>) {
     let mut reader = NsReader::from_str(body);
     reader.config_mut().trim_text(true);
-    let mut set_props    = Vec::new();
+    let mut set_props = Vec::new();
     let mut remove_props = Vec::new();
     let mut mode: Option<&'static str> = None;
     let mut in_prop = false;
@@ -128,9 +143,9 @@ fn parse_set_remove(body: &str) -> (Vec<Prop>, Vec<Prop>) {
             Ok((nsr, Event::Start(e))) => {
                 let local = local_name_str(&e);
                 match local.to_ascii_lowercase().as_str() {
-                    "set"    => mode = Some("set"),
+                    "set" => mode = Some("set"),
                     "remove" => mode = Some("remove"),
-                    "prop"   => in_prop = true,
+                    "prop" => in_prop = true,
                     _ if in_prop && current.is_none() => {
                         let ns = ns_to_string(&nsr);
                         current = Some((ns, local, String::new()));
@@ -141,24 +156,42 @@ fn parse_set_remove(body: &str) -> (Vec<Prop>, Vec<Prop>) {
             Ok((nsr, Event::Empty(e))) => {
                 if in_prop {
                     let local = local_name_str(&e);
-                    let ns    = ns_to_string(&nsr);
-                    push_entry(&mut set_props, &mut remove_props, mode, ns, local, String::new());
+                    let ns = ns_to_string(&nsr);
+                    push_entry(
+                        &mut set_props,
+                        &mut remove_props,
+                        mode,
+                        ns,
+                        local,
+                        String::new(),
+                    );
                 }
             }
             Ok((_, Event::Text(t))) => {
                 if let Some((_, _, buf)) = current.as_mut() {
-                    if let Ok(s) = t.decode() { buf.push_str(&s); }
+                    if let Ok(s) = t.decode() {
+                        buf.push_str(&s);
+                    }
                 }
             }
             Ok((_, Event::End(e))) => {
                 let name = e.name();
-                let local = std::str::from_utf8(name.local_name().as_ref()).unwrap_or("").to_string();
+                let local = std::str::from_utf8(name.local_name().as_ref())
+                    .unwrap_or("")
+                    .to_string();
                 match local.to_ascii_lowercase().as_str() {
                     "set" | "remove" => mode = None,
-                    "prop"           => in_prop = false,
+                    "prop" => in_prop = false,
                     _ => {
                         if let Some((ns, local, buf)) = current.take() {
-                            push_entry(&mut set_props, &mut remove_props, mode, ns, local, buf.trim().to_string());
+                            push_entry(
+                                &mut set_props,
+                                &mut remove_props,
+                                mode,
+                                ns,
+                                local,
+                                buf.trim().to_string(),
+                            );
                         }
                     }
                 }
@@ -172,23 +205,29 @@ fn parse_set_remove(body: &str) -> (Vec<Prop>, Vec<Prop>) {
 }
 
 fn push_entry(
-    set:    &mut Vec<Prop>,
+    set: &mut Vec<Prop>,
     remove: &mut Vec<Prop>,
-    mode:   Option<&'static str>,
-    ns:     String,
-    local:  String,
-    value:  String,
+    mode: Option<&'static str>,
+    ns: String,
+    local: String,
+    value: String,
 ) {
-    let p = Prop { namespace: ns, local, value };
+    let p = Prop {
+        namespace: ns,
+        local,
+        value,
+    };
     match mode {
-        Some("set")    => set.push(p),
+        Some("set") => set.push(p),
         Some("remove") => remove.push(p),
         _ => {}
     }
 }
 
 fn local_name_str<'a>(e: &quick_xml::events::BytesStart<'a>) -> String {
-    std::str::from_utf8(e.local_name().as_ref()).unwrap_or("").to_string()
+    std::str::from_utf8(e.local_name().as_ref())
+        .unwrap_or("")
+        .to_string()
 }
 
 fn ns_to_string(nsr: &ResolveResult<'_>) -> String {
@@ -201,10 +240,14 @@ fn ns_to_string(nsr: &ResolveResult<'_>) -> String {
 fn build_patch(set_props: &[Prop]) -> UpdateAddressbook {
     let mut patch = UpdateAddressbook::default();
     for p in set_props {
-        if p.value.is_empty() { continue; }
-        if !is_live_prop(&p.namespace, &p.local) { continue; }
+        if p.value.is_empty() {
+            continue;
+        }
+        if !is_live_prop(&p.namespace, &p.local) {
+            continue;
+        }
         match p.local.to_ascii_lowercase().as_str() {
-            "displayname"             => patch.name = Some(p.value.clone()),
+            "displayname" => patch.name = Some(p.value.clone()),
             "addressbook-description" => patch.description = Some(p.value.clone()),
             _ => {}
         }
@@ -217,15 +260,21 @@ fn patch_has_changes(p: &UpdateAddressbook) -> bool {
 }
 
 fn forbidden() -> Response {
-    Response::builder().status(StatusCode::FORBIDDEN).body(Body::from("forbidden")).unwrap()
+    Response::builder()
+        .status(StatusCode::FORBIDDEN)
+        .body(Body::from("forbidden"))
+        .unwrap()
 }
 fn not_found() -> Response {
-    Response::builder().status(StatusCode::NOT_FOUND).body(Body::from("not found")).unwrap()
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Body::from("not found"))
+        .unwrap()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{build_patch, parse_set_remove, patch_has_changes, is_live_prop, LIVE_PROPS};
+    use super::{build_patch, is_live_prop, parse_set_remove, patch_has_changes, LIVE_PROPS};
 
     #[test]
     fn parses_set_with_values() {
@@ -261,7 +310,10 @@ mod tests {
     #[test]
     fn dead_prop_classification() {
         assert!(is_live_prop("DAV:", "displayname"));
-        assert!(is_live_prop("urn:ietf:params:xml:ns:carddav", "addressbook-description"));
+        assert!(is_live_prop(
+            "urn:ietf:params:xml:ns:carddav",
+            "addressbook-description"
+        ));
         assert!(!is_live_prop("http://example.com/x", "foo"));
     }
 
@@ -388,7 +440,10 @@ mod tests {
 
     #[test]
     fn is_live_prop_carddav_addressbook_description_accepted() {
-        assert!(is_live_prop("urn:ietf:params:xml:ns:carddav", "addressbook-description"));
+        assert!(is_live_prop(
+            "urn:ietf:params:xml:ns:carddav",
+            "addressbook-description"
+        ));
     }
 
     #[test]

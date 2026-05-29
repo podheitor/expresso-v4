@@ -18,58 +18,65 @@ use crate::error::Result;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
-pub enum ParticipantRole { Moderator, Participant }
+pub enum ParticipantRole {
+    Moderator,
+    Participant,
+}
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Meeting {
-    pub id:            Uuid,
-    pub tenant_id:     Uuid,
-    pub room_name:     String,
-    pub title:         String,
-    pub channel_id:    Option<Uuid>,
-    pub created_by:    Uuid,
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub room_name: String,
+    pub title: String,
+    pub channel_id: Option<Uuid>,
+    pub created_by: Uuid,
     #[serde(with = "time::serde::rfc3339::option")]
     pub scheduled_for: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option")]
-    pub ends_at:       Option<OffsetDateTime>,
-    pub is_recurring:  bool,
-    pub is_archived:   bool,
+    pub ends_at: Option<OffsetDateTime>,
+    pub is_recurring: bool,
+    pub is_archived: bool,
     pub lobby_enabled: bool,
-    pub password:      Option<String>,
+    pub password: Option<String>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub recording_started_at: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339")]
-    pub created_at:    OffsetDateTime,
+    pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
-    pub updated_at:    OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct MeetingParticipant {
     pub meeting_id: Uuid,
-    pub tenant_id:  Uuid,
-    pub user_id:    Uuid,
-    pub role:       ParticipantRole,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub role: ParticipantRole,
     #[serde(with = "time::serde::rfc3339")]
     pub invited_at: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct NewMeeting {
-    pub room_name:     String,
-    pub title:         String,
-    pub channel_id:    Option<Uuid>,
+    pub room_name: String,
+    pub title: String,
+    pub channel_id: Option<Uuid>,
     pub scheduled_for: Option<OffsetDateTime>,
-    pub ends_at:       Option<OffsetDateTime>,
-    pub is_recurring:  Option<bool>,
+    pub ends_at: Option<OffsetDateTime>,
+    pub is_recurring: Option<bool>,
     pub lobby_enabled: Option<bool>,
-    pub password:      Option<String>,
+    pub password: Option<String>,
 }
 
-pub struct MeetingRepo<'a> { pool: &'a DbPool }
+pub struct MeetingRepo<'a> {
+    pool: &'a DbPool,
+}
 
 impl<'a> MeetingRepo<'a> {
-    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
 
     pub async fn create(&self, tenant: Uuid, creator: Uuid, n: NewMeeting) -> Result<Meeting> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
@@ -80,19 +87,30 @@ impl<'a> MeetingRepo<'a> {
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, is_archived,
-                         lobby_enabled, password, recording_started_at, created_at, updated_at"#)
-            .bind(tenant).bind(&n.room_name).bind(&n.title).bind(n.channel_id)
-            .bind(creator).bind(n.scheduled_for).bind(n.ends_at)
-            .bind(n.is_recurring.unwrap_or(false))
-            .bind(n.lobby_enabled.unwrap_or(true))
-            .bind(&n.password)
-            .fetch_one(&mut *tx).await?;
+                         lobby_enabled, password, recording_started_at, created_at, updated_at"#,
+        )
+        .bind(tenant)
+        .bind(&n.room_name)
+        .bind(&n.title)
+        .bind(n.channel_id)
+        .bind(creator)
+        .bind(n.scheduled_for)
+        .bind(n.ends_at)
+        .bind(n.is_recurring.unwrap_or(false))
+        .bind(n.lobby_enabled.unwrap_or(true))
+        .bind(&n.password)
+        .fetch_one(&mut *tx)
+        .await?;
         // Creator is an automatic moderator.
         sqlx::query(
             r#"INSERT INTO meeting_participants (meeting_id, tenant_id, user_id, role)
-               VALUES ($1,$2,$3,'moderator')"#)
-            .bind(row.id).bind(tenant).bind(creator)
-            .execute(&mut *tx).await?;
+               VALUES ($1,$2,$3,'moderator')"#,
+        )
+        .bind(row.id)
+        .bind(tenant)
+        .bind(creator)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -103,8 +121,12 @@ impl<'a> MeetingRepo<'a> {
             r#"SELECT id, tenant_id, room_name, title, channel_id, created_by,
                       scheduled_for, ends_at, is_recurring, is_archived,
                       lobby_enabled, password, recording_started_at, created_at, updated_at
-               FROM meetings WHERE tenant_id=$1 AND id=$2"#)
-            .bind(tenant).bind(id).fetch_one(&mut *tx).await?;
+               FROM meetings WHERE tenant_id=$1 AND id=$2"#,
+        )
+        .bind(tenant)
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -129,8 +151,8 @@ impl<'a> MeetingRepo<'a> {
     pub async fn list_for_user_filtered(
         &self,
         tenant: Uuid,
-        user:   Uuid,
-        after:  Option<OffsetDateTime>,
+        user: Uuid,
+        after: Option<OffsetDateTime>,
         before: Option<OffsetDateTime>,
     ) -> Result<Vec<Meeting>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
@@ -174,9 +196,13 @@ impl<'a> MeetingRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let row: Option<(ParticipantRole,)> = sqlx::query_as(
             r#"SELECT role FROM meeting_participants
-               WHERE tenant_id=$1 AND meeting_id=$2 AND user_id=$3"#)
-            .bind(tenant).bind(meeting).bind(user)
-            .fetch_optional(&mut *tx).await?;
+               WHERE tenant_id=$1 AND meeting_id=$2 AND user_id=$3"#,
+        )
+        .bind(tenant)
+        .bind(meeting)
+        .bind(user)
+        .fetch_optional(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row.map(|(r,)| r))
     }
@@ -192,9 +218,14 @@ impl<'a> MeetingRepo<'a> {
         sqlx::query(
             r#"INSERT INTO meeting_participants (meeting_id, tenant_id, user_id, role)
                VALUES ($1,$2,$3,$4)
-               ON CONFLICT (meeting_id, user_id) DO UPDATE SET role = EXCLUDED.role"#)
-            .bind(meeting).bind(tenant).bind(user).bind(role)
-            .execute(&mut *tx).await?;
+               ON CONFLICT (meeting_id, user_id) DO UPDATE SET role = EXCLUDED.role"#,
+        )
+        .bind(meeting)
+        .bind(tenant)
+        .bind(user)
+        .bind(role)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -203,17 +234,22 @@ impl<'a> MeetingRepo<'a> {
     /// Returns the updated row, or None if the participant doesn't exist.
     pub async fn set_participant_role(
         &self,
-        tenant:  Uuid,
+        tenant: Uuid,
         meeting: Uuid,
-        user:    Uuid,
-        role:    ParticipantRole,
+        user: Uuid,
+        role: ParticipantRole,
     ) -> Result<bool> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let r = sqlx::query(
             r#"UPDATE meeting_participants SET role = $4
-               WHERE tenant_id=$1 AND meeting_id=$2 AND user_id=$3"#)
-            .bind(tenant).bind(meeting).bind(user).bind(role)
-            .execute(&mut *tx).await?;
+               WHERE tenant_id=$1 AND meeting_id=$2 AND user_id=$3"#,
+        )
+        .bind(tenant)
+        .bind(meeting)
+        .bind(user)
+        .bind(role)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(r.rows_affected() > 0)
     }
@@ -222,16 +258,20 @@ impl<'a> MeetingRepo<'a> {
     /// Caller must ensure the meeting's creator is never removed.
     pub async fn remove_participant(
         &self,
-        tenant:  Uuid,
+        tenant: Uuid,
         meeting: Uuid,
-        user:    Uuid,
+        user: Uuid,
     ) -> Result<bool> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let r = sqlx::query(
             r#"DELETE FROM meeting_participants
-               WHERE tenant_id=$1 AND meeting_id=$2 AND user_id=$3"#)
-            .bind(tenant).bind(meeting).bind(user)
-            .execute(&mut *tx).await?;
+               WHERE tenant_id=$1 AND meeting_id=$2 AND user_id=$3"#,
+        )
+        .bind(tenant)
+        .bind(meeting)
+        .bind(user)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(r.rows_affected() > 0)
     }
@@ -241,46 +281,73 @@ impl<'a> MeetingRepo<'a> {
         let (n,): (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM meeting_participants WHERE tenant_id=$1 AND meeting_id=$2",
         )
-        .bind(tenant).bind(meeting).fetch_one(&mut *tx).await?;
+        .bind(tenant)
+        .bind(meeting)
+        .fetch_one(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(n)
     }
 
     pub async fn get_participant(
         &self,
-        tenant:  Uuid,
+        tenant: Uuid,
         meeting: Uuid,
-        user:    Uuid,
+        user: Uuid,
     ) -> Result<Option<MeetingParticipant>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let row: Option<MeetingParticipant> = sqlx::query_as(
             r#"SELECT meeting_id, tenant_id, user_id, role, invited_at
-               FROM meeting_participants WHERE tenant_id=$1 AND meeting_id=$2 AND user_id=$3"#)
-            .bind(tenant).bind(meeting).bind(user)
-            .fetch_optional(&mut *tx).await?;
+               FROM meeting_participants WHERE tenant_id=$1 AND meeting_id=$2 AND user_id=$3"#,
+        )
+        .bind(tenant)
+        .bind(meeting)
+        .bind(user)
+        .fetch_optional(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row)
     }
 
     #[allow(dead_code)] // participant listing API; not yet called by a handler
-    pub async fn list_participants(&self, tenant: Uuid, meeting: Uuid) -> Result<Vec<MeetingParticipant>> {
+    pub async fn list_participants(
+        &self,
+        tenant: Uuid,
+        meeting: Uuid,
+    ) -> Result<Vec<MeetingParticipant>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows: Vec<MeetingParticipant> = sqlx::query_as(
             r#"SELECT meeting_id, tenant_id, user_id, role, invited_at
-               FROM meeting_participants WHERE tenant_id=$1 AND meeting_id=$2"#)
-            .bind(tenant).bind(meeting).fetch_all(&mut *tx).await?;
+               FROM meeting_participants WHERE tenant_id=$1 AND meeting_id=$2"#,
+        )
+        .bind(tenant)
+        .bind(meeting)
+        .fetch_all(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(rows)
     }
 
-    pub async fn list_participants_paged(&self, tenant: Uuid, meeting: Uuid, limit: i64, offset: i64) -> Result<Vec<MeetingParticipant>> {
+    pub async fn list_participants_paged(
+        &self,
+        tenant: Uuid,
+        meeting: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<MeetingParticipant>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows: Vec<MeetingParticipant> = sqlx::query_as(
             r#"SELECT meeting_id, tenant_id, user_id, role, invited_at
                FROM meeting_participants WHERE tenant_id=$1 AND meeting_id=$2
                ORDER BY invited_at ASC
-               LIMIT $3 OFFSET $4"#)
-            .bind(tenant).bind(meeting).bind(limit).bind(offset).fetch_all(&mut *tx).await?;
+               LIMIT $3 OFFSET $4"#,
+        )
+        .bind(tenant)
+        .bind(meeting)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(rows)
     }
@@ -289,8 +356,12 @@ impl<'a> MeetingRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         sqlx::query(
             r#"UPDATE meetings SET is_archived = TRUE, updated_at = NOW()
-               WHERE tenant_id=$1 AND id=$2"#)
-            .bind(tenant).bind(id).execute(&mut *tx).await?;
+               WHERE tenant_id=$1 AND id=$2"#,
+        )
+        .bind(tenant)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -302,22 +373,26 @@ impl<'a> MeetingRepo<'a> {
                WHERE tenant_id=$1 AND id=$2 AND is_archived = TRUE
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, is_archived,
-                         lobby_enabled, password, recording_started_at, created_at, updated_at"#)
-            .bind(tenant).bind(id).fetch_optional(&mut *tx).await?;
+                         lobby_enabled, password, recording_started_at, created_at, updated_at"#,
+        )
+        .bind(tenant)
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row)
     }
 
     pub async fn update(
         &self,
-        tenant:        Uuid,
-        id:            Uuid,
-        title:         Option<String>,
+        tenant: Uuid,
+        id: Uuid,
+        title: Option<String>,
         scheduled_for: Option<Option<OffsetDateTime>>,
-        ends_at:       Option<Option<OffsetDateTime>>,
+        ends_at: Option<Option<OffsetDateTime>>,
         lobby_enabled: Option<bool>,
-        password:      Option<Option<String>>,
-        is_recurring:  Option<bool>,
+        password: Option<Option<String>>,
+        is_recurring: Option<bool>,
     ) -> Result<Option<Meeting>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let row: Option<Meeting> = sqlx::query_as(
@@ -332,19 +407,21 @@ impl<'a> MeetingRepo<'a> {
                WHERE tenant_id = $1 AND id = $2 AND is_archived = FALSE
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, is_archived,
-                         lobby_enabled, password, recording_started_at, created_at, updated_at"#)
-            .bind(tenant)
-            .bind(id)
-            .bind(title)
-            .bind(scheduled_for.is_some())
-            .bind(scheduled_for.and_then(|v| v))
-            .bind(ends_at.is_some())
-            .bind(ends_at.and_then(|v| v))
-            .bind(lobby_enabled)
-            .bind(password.is_some())
-            .bind(password.and_then(|v| v))
-            .bind(is_recurring)
-            .fetch_optional(&mut *tx).await?;
+                         lobby_enabled, password, recording_started_at, created_at, updated_at"#,
+        )
+        .bind(tenant)
+        .bind(id)
+        .bind(title)
+        .bind(scheduled_for.is_some())
+        .bind(scheduled_for.and_then(|v| v))
+        .bind(ends_at.is_some())
+        .bind(ends_at.and_then(|v| v))
+        .bind(lobby_enabled)
+        .bind(password.is_some())
+        .bind(password.and_then(|v| v))
+        .bind(is_recurring)
+        .fetch_optional(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -358,8 +435,12 @@ impl<'a> MeetingRepo<'a> {
                  AND recording_started_at IS NULL
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, is_archived,
-                         lobby_enabled, password, recording_started_at, created_at, updated_at"#)
-        .bind(tenant).bind(id).fetch_optional(&mut *tx).await?;
+                         lobby_enabled, password, recording_started_at, created_at, updated_at"#,
+        )
+        .bind(tenant)
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -373,8 +454,12 @@ impl<'a> MeetingRepo<'a> {
                  AND recording_started_at IS NOT NULL
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, is_archived,
-                         lobby_enabled, password, recording_started_at, created_at, updated_at"#)
-        .bind(tenant).bind(id).fetch_optional(&mut *tx).await?;
+                         lobby_enabled, password, recording_started_at, created_at, updated_at"#,
+        )
+        .bind(tenant)
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -395,8 +480,14 @@ mod tests {
 
     #[test]
     fn participant_role_serializes_lowercase() {
-        assert_eq!(serde_json::to_string(&ParticipantRole::Moderator).unwrap(), r#""moderator""#);
-        assert_eq!(serde_json::to_string(&ParticipantRole::Participant).unwrap(), r#""participant""#);
+        assert_eq!(
+            serde_json::to_string(&ParticipantRole::Moderator).unwrap(),
+            r#""moderator""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ParticipantRole::Participant).unwrap(),
+            r#""participant""#
+        );
     }
 
     #[test]
@@ -430,7 +521,10 @@ mod tests {
 
     #[test]
     fn participant_role_moderator_serializes() {
-        assert_eq!(serde_json::to_string(&ParticipantRole::Moderator).unwrap(), r#""moderator""#);
+        assert_eq!(
+            serde_json::to_string(&ParticipantRole::Moderator).unwrap(),
+            r#""moderator""#
+        );
     }
 
     #[test]
@@ -447,7 +541,10 @@ mod tests {
 
     #[test]
     fn participant_role_participant_serializes() {
-        assert_eq!(serde_json::to_string(&ParticipantRole::Participant).unwrap(), r#""participant""#);
+        assert_eq!(
+            serde_json::to_string(&ParticipantRole::Participant).unwrap(),
+            r#""participant""#
+        );
     }
 
     #[test]

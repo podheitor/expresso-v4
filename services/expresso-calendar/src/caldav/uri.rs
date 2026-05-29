@@ -12,11 +12,24 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub enum Target {
-    Home { user_id: Uuid },
-    ScheduleInbox  { user_id: Uuid },
-    ScheduleOutbox { user_id: Uuid },
-    Calendar { user_id: Uuid, calendar_id: Uuid },
-    Event { user_id: Uuid, calendar_id: Uuid, uid: String },
+    Home {
+        user_id: Uuid,
+    },
+    ScheduleInbox {
+        user_id: Uuid,
+    },
+    ScheduleOutbox {
+        user_id: Uuid,
+    },
+    Calendar {
+        user_id: Uuid,
+        calendar_id: Uuid,
+    },
+    Event {
+        user_id: Uuid,
+        calendar_id: Uuid,
+        uid: String,
+    },
     Unknown,
 }
 
@@ -48,12 +61,15 @@ pub fn classify(path: &str) -> Target {
         2 if trailing_slash => {
             let u = parse_uuid(segments[0]);
             match (u, segments[1]) {
-                (Some(u), "schedule-inbox")  => Target::ScheduleInbox  { user_id: u },
+                (Some(u), "schedule-inbox") => Target::ScheduleInbox { user_id: u },
                 (Some(u), "schedule-outbox") => Target::ScheduleOutbox { user_id: u },
                 _ => {
                     let c = parse_uuid(segments[1]);
                     match (u, c) {
-                        (Some(u), Some(c)) => Target::Calendar { user_id: u, calendar_id: c },
+                        (Some(u), Some(c)) => Target::Calendar {
+                            user_id: u,
+                            calendar_id: c,
+                        },
                         _ => Target::Unknown,
                     }
                 }
@@ -63,12 +79,13 @@ pub fn classify(path: &str) -> Target {
             let u = parse_uuid(segments[0]);
             let c = parse_uuid(segments[1]);
             let last = segments[2];
-            let uid = last
-                .strip_suffix(".ics")
-                .map(|s| percent_decode(s));
+            let uid = last.strip_suffix(".ics").map(|s| percent_decode(s));
             match (u, c, uid) {
-                (Some(u), Some(c), Some(uid)) =>
-                    Target::Event { user_id: u, calendar_id: c, uid },
+                (Some(u), Some(c), Some(uid)) => Target::Event {
+                    user_id: u,
+                    calendar_id: c,
+                    uid,
+                },
                 _ => Target::Unknown,
             }
         }
@@ -124,7 +141,9 @@ mod tests {
         let u = Uuid::new_v4();
         let c = Uuid::new_v4();
         let t = classify(&format!("/caldav/{u}/{c}/"));
-        assert!(matches!(t, Target::Calendar { user_id, calendar_id } if user_id == u && calendar_id == c));
+        assert!(
+            matches!(t, Target::Calendar { user_id, calendar_id } if user_id == u && calendar_id == c)
+        );
     }
 
     #[test]
@@ -133,7 +152,11 @@ mod tests {
         let c = Uuid::new_v4();
         let t = classify(&format!("/caldav/{u}/{c}/abc-123%40ex.ics"));
         match t {
-            Target::Event { user_id, calendar_id, uid } => {
+            Target::Event {
+                user_id,
+                calendar_id,
+                uid,
+            } => {
                 assert_eq!(user_id, u);
                 assert_eq!(calendar_id, c);
                 assert_eq!(uid, "abc-123@ex");
@@ -141,7 +164,6 @@ mod tests {
             _ => panic!("wrong target {t:?}"),
         }
     }
-
 
     #[test]
     fn parse_schedule_inbox() {

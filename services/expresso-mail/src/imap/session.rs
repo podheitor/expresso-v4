@@ -13,32 +13,31 @@
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 
+use chrono::{DateTime as ChronoDateTime, FixedOffset, Utc};
+use imap_codec::imap_types::datetime::DateTime as ImapDateTime;
 use imap_codec::{
-    CommandCodec, GreetingCodec, ResponseCodec,
     decode::{CommandDecodeError, Decoder},
     encode::Encoder,
     imap_types::{
         auth::AuthMechanism,
         body::{BasicFields, Body, BodyStructure, SpecificFields},
         command::{Command, CommandBody},
-        core::{Atom, AString, IString, Literal, NString, Tag, Text, Vec1},
-        fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Section},
-        flag::{Flag, FlagFetch, FlagNameAttribute, FlagPerm, StoreResponse},
-        mailbox::{Mailbox as ImapMailbox, ListMailbox},
-        response::{
-            Bye, Capability, Code, Data, Greeting, Response, Status, StatusBody,
-            StatusKind, Tagged,
-        },
-        status::{StatusDataItem, StatusDataItemName},
+        core::{AString, Atom, IString, Literal, NString, Tag, Text, Vec1},
         extensions::binary::LiteralOrLiteral8,
         extensions::namespace::Namespace,
         extensions::uidplus::{UidElement, UidSet},
+        fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Section},
+        flag::{Flag, FlagFetch, FlagNameAttribute, FlagPerm, StoreResponse},
+        mailbox::{ListMailbox, Mailbox as ImapMailbox},
+        response::{
+            Bye, Capability, Code, Data, Greeting, Response, Status, StatusBody, StatusKind, Tagged,
+        },
         search::SearchKey,
+        status::{StatusDataItem, StatusDataItemName},
         IntoStatic,
     },
+    CommandCodec, GreetingCodec, ResponseCodec,
 };
-use chrono::{DateTime as ChronoDateTime, FixedOffset, Utc};
-use imap_codec::imap_types::datetime::DateTime as ImapDateTime;
 use sqlx::Row;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -47,11 +46,11 @@ use uuid::Uuid;
 
 use std::sync::OnceLock;
 
-use crate::state::AppState;
 use crate::imap::lockout::LoginLockout;
 use crate::imap::metrics::{
     command_label, IMAP_COMMANDS_TOTAL, IMAP_LOGINS_TOTAL, IMAP_SESSIONS_TOTAL,
 };
+use crate::state::AppState;
 
 /// Singleton de lockout por-username — cross-connection (defesa contra
 /// brute-force distribuído no mesmo username vindo de N clientes).
@@ -102,8 +101,7 @@ where
     let greet_codec = GreetingCodec::default();
 
     // Send greeting via GreetingCodec
-    let greeting = Greeting::ok(None, "Expresso IMAP4rev1 ready")
-        .expect("valid greeting text");
+    let greeting = Greeting::ok(None, "Expresso IMAP4rev1 ready").expect("valid greeting text");
     writer
         .write_all(&greet_codec.encode(&greeting).dump())
         .await?;
@@ -136,15 +134,23 @@ where
                     // AUTHENTICATE PLAIN (RFC 4616 + RFC 3501 §6.2.2) — tratado inline
                     // pois pode precisar de um round-trip extra para leitura de dados
                     // quando o cliente não usa SASL-IR (initial_response == None).
-                    if let CommandBody::Authenticate { mechanism, initial_response } = &cmd.body {
+                    if let CommandBody::Authenticate {
+                        mechanism,
+                        initial_response,
+                    } = &cmd.body
+                    {
                         if sess != SessionState::NotAuthenticated {
                             let resp = no_tagged(cmd.tag.clone(), "already authenticated");
                             writer.write_all(&resp_codec.encode(&resp).dump()).await?;
-                            IMAP_COMMANDS_TOTAL.with_label_values(&["AUTHENTICATE", "no"]).inc();
+                            IMAP_COMMANDS_TOTAL
+                                .with_label_values(&["AUTHENTICATE", "no"])
+                                .inc();
                         } else if !matches!(mechanism, AuthMechanism::Plain) {
                             let resp = no_tagged(cmd.tag.clone(), "unsupported mechanism");
                             writer.write_all(&resp_codec.encode(&resp).dump()).await?;
-                            IMAP_COMMANDS_TOTAL.with_label_values(&["AUTHENTICATE", "no"]).inc();
+                            IMAP_COMMANDS_TOTAL
+                                .with_label_values(&["AUTHENTICATE", "no"])
+                                .inc();
                         } else {
                             // Try to get PLAIN blob: prefer SASL-IR (initial_response),
                             // fall back to a challenge round-trip.
@@ -157,33 +163,49 @@ where
                                 let mut tmp2 = [0u8; 512];
                                 'auth_read: loop {
                                     let n = reader.read(&mut tmp2).await?;
-                                    if n == 0 { break 'auth_read; }
+                                    if n == 0 {
+                                        break 'auth_read;
+                                    }
                                     line_buf.extend_from_slice(&tmp2[..n]);
-                                    if line_buf.contains(&b'\n') { break 'auth_read; }
+                                    if line_buf.contains(&b'\n') {
+                                        break 'auth_read;
+                                    }
                                 }
                                 let line = String::from_utf8_lossy(&line_buf);
                                 let trimmed = line.trim();
                                 // Client may send "*" to cancel AUTHENTICATE.
                                 if trimmed == "*" {
-                                    let resp = bad_tagged(cmd.tag.clone(), "AUTHENTICATE cancelled");
+                                    let resp =
+                                        bad_tagged(cmd.tag.clone(), "AUTHENTICATE cancelled");
                                     writer.write_all(&resp_codec.encode(&resp).dump()).await?;
-                                    IMAP_COMMANDS_TOTAL.with_label_values(&["AUTHENTICATE", "bad"]).inc();
+                                    IMAP_COMMANDS_TOTAL
+                                        .with_label_values(&["AUTHENTICATE", "bad"])
+                                        .inc();
                                     buf.clear();
                                     break 'decode;
                                 }
                                 let decoded: Option<Vec<u8>> = {
                                     use base64::Engine as _;
-                                    base64::engine::general_purpose::STANDARD.decode(trimmed.as_bytes()).ok()
+                                    base64::engine::general_purpose::STANDARD
+                                        .decode(trimmed.as_bytes())
+                                        .ok()
                                 };
                                 decoded
                             };
 
                             let outcome = handle_authenticate_plain(
-                                &state, cmd.tag.clone(), plain_bytes.as_deref(),
-                                &mut sess, &mut user_id, &mut tenant_id,
-                            ).await;
+                                &state,
+                                cmd.tag.clone(),
+                                plain_bytes.as_deref(),
+                                &mut sess,
+                                &mut user_id,
+                                &mut tenant_id,
+                            )
+                            .await;
                             let outcome_label = outcome_of(&outcome);
-                            IMAP_COMMANDS_TOTAL.with_label_values(&["AUTHENTICATE", outcome_label]).inc();
+                            IMAP_COMMANDS_TOTAL
+                                .with_label_values(&["AUTHENTICATE", outcome_label])
+                                .inc();
                             for resp in &outcome {
                                 writer.write_all(&resp_codec.encode(resp).dump()).await?;
                             }
@@ -202,18 +224,31 @@ where
                             "no"
                         } else {
                             handle_idle(
-                                cmd.tag.clone(), &mut reader, &mut writer,
-                                &resp_codec, &state, &mut selected, tenant_id,
-                            ).await?;
+                                cmd.tag.clone(),
+                                &mut reader,
+                                &mut writer,
+                                &resp_codec,
+                                &state,
+                                &mut selected,
+                                tenant_id,
+                            )
+                            .await?;
                             "ok"
                         };
-                        IMAP_COMMANDS_TOTAL.with_label_values(&["IDLE", outcome]).inc();
+                        IMAP_COMMANDS_TOTAL
+                            .with_label_values(&["IDLE", outcome])
+                            .inc();
                         buf.clear();
                         break 'decode;
                     }
 
                     let responses = dispatch(
-                        &state, &cmd, &mut sess, &mut user_id, &mut tenant_id, &mut selected,
+                        &state,
+                        &cmd,
+                        &mut sess,
+                        &mut user_id,
+                        &mut tenant_id,
+                        &mut selected,
                     )
                     .await;
 
@@ -243,7 +278,9 @@ where
                     break 'decode;
                 }
                 Err(CommandDecodeError::Failed) => {
-                    IMAP_SESSIONS_TOTAL.with_label_values(&["parse_error"]).inc();
+                    IMAP_SESSIONS_TOTAL
+                        .with_label_values(&["parse_error"])
+                        .inc();
                     writer.write_all(b"* BAD parse error\r\n").await?;
                     buf.clear();
                     break 'decode;
@@ -282,45 +319,115 @@ async fn dispatch(
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_list(state, tag, reference, mailbox_wildcard, user_id.unwrap(), tenant_id.unwrap()).await
+            cmd_list(
+                state,
+                tag,
+                reference,
+                mailbox_wildcard,
+                user_id.unwrap(),
+                tenant_id.unwrap(),
+            )
+            .await
         }
         CommandBody::Select { mailbox, .. } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_select(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), sess, selected, false).await
+            cmd_select(
+                state,
+                tag,
+                mailbox,
+                user_id.unwrap(),
+                tenant_id.unwrap(),
+                sess,
+                selected,
+                false,
+            )
+            .await
         }
         CommandBody::Examine { mailbox, .. } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_select(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), sess, selected, true).await
+            cmd_select(
+                state,
+                tag,
+                mailbox,
+                user_id.unwrap(),
+                tenant_id.unwrap(),
+                sess,
+                selected,
+                true,
+            )
+            .await
         }
         CommandBody::Subscribe { mailbox } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_subscribe(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), true).await
+            cmd_subscribe(
+                state,
+                tag,
+                mailbox,
+                user_id.unwrap(),
+                tenant_id.unwrap(),
+                true,
+            )
+            .await
         }
         CommandBody::Unsubscribe { mailbox } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_subscribe(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), false).await
+            cmd_subscribe(
+                state,
+                tag,
+                mailbox,
+                user_id.unwrap(),
+                tenant_id.unwrap(),
+                false,
+            )
+            .await
         }
-        CommandBody::Lsub { reference, mailbox_wildcard } => {
+        CommandBody::Lsub {
+            reference,
+            mailbox_wildcard,
+        } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_lsub(state, tag, reference, mailbox_wildcard, user_id.unwrap(), tenant_id.unwrap()).await
+            cmd_lsub(
+                state,
+                tag,
+                reference,
+                mailbox_wildcard,
+                user_id.unwrap(),
+                tenant_id.unwrap(),
+            )
+            .await
         }
-        CommandBody::Status { mailbox, item_names } => {
+        CommandBody::Status {
+            mailbox,
+            item_names,
+        } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_status(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), item_names.as_ref()).await
+            cmd_status(
+                state,
+                tag,
+                mailbox,
+                user_id.unwrap(),
+                tenant_id.unwrap(),
+                item_names.as_ref(),
+            )
+            .await
         }
-        CommandBody::Search { criteria, uid, charset } => {
+        CommandBody::Search {
+            criteria,
+            uid,
+            charset,
+        } => {
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
@@ -334,18 +441,42 @@ async fn dispatch(
                         body: StatusBody {
                             kind: StatusKind::No,
                             code: Some(Code::BadCharset { allowed: vec![] }),
-                            text: Text::try_from("unsupported charset — use UTF-8 or US-ASCII").unwrap(),
+                            text: Text::try_from("unsupported charset — use UTF-8 or US-ASCII")
+                                .unwrap(),
                         },
                     }))];
                 }
             }
-            cmd_search(state, tag, criteria.as_ref(), *uid, selected.as_ref().unwrap(), tenant_id.unwrap()).await
+            cmd_search(
+                state,
+                tag,
+                criteria.as_ref(),
+                *uid,
+                selected.as_ref().unwrap(),
+                tenant_id.unwrap(),
+            )
+            .await
         }
-        CommandBody::Append { mailbox, flags, message, .. } => {
+        CommandBody::Append {
+            mailbox,
+            flags,
+            message,
+            ..
+        } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_append(state, tag, mailbox, flags, message, user_id.unwrap(), tenant_id.unwrap(), selected).await
+            cmd_append(
+                state,
+                tag,
+                mailbox,
+                flags,
+                message,
+                user_id.unwrap(),
+                tenant_id.unwrap(),
+                selected,
+            )
+            .await
         }
         CommandBody::Fetch {
             sequence_set,
@@ -364,7 +495,17 @@ async fn dispatch(
                     None
                 }
             });
-            cmd_fetch(state, tag, sequence_set, macro_or_item_names, *uid, selected.as_ref().unwrap(), tenant_id.unwrap(), changedsince).await
+            cmd_fetch(
+                state,
+                tag,
+                sequence_set,
+                macro_or_item_names,
+                *uid,
+                selected.as_ref().unwrap(),
+                tenant_id.unwrap(),
+                changedsince,
+            )
+            .await
         }
         CommandBody::Store {
             sequence_set,
@@ -377,7 +518,18 @@ async fn dispatch(
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_store(state, tag, sequence_set, kind, response, flags, *uid, selected.as_mut().unwrap(), tenant_id.unwrap()).await
+            cmd_store(
+                state,
+                tag,
+                sequence_set,
+                kind,
+                response,
+                flags,
+                *uid,
+                selected.as_mut().unwrap(),
+                tenant_id.unwrap(),
+            )
+            .await
         }
         CommandBody::Close => cmd_close(state, tag, sess, selected, *tenant_id).await,
         CommandBody::Expunge => {
@@ -386,27 +538,62 @@ async fn dispatch(
             }
             cmd_expunge(state, tag, selected.as_mut().unwrap(), tenant_id.unwrap()).await
         }
-        CommandBody::Copy { sequence_set, mailbox, uid, .. } => {
+        CommandBody::Copy {
+            sequence_set,
+            mailbox,
+            uid,
+            ..
+        } => {
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_copy(state, tag, sequence_set, mailbox, *uid, selected.as_mut().unwrap(), user_id.unwrap(), tenant_id.unwrap()).await
+            cmd_copy(
+                state,
+                tag,
+                sequence_set,
+                mailbox,
+                *uid,
+                selected.as_mut().unwrap(),
+                user_id.unwrap(),
+                tenant_id.unwrap(),
+            )
+            .await
         }
-        CommandBody::Move { sequence_set, mailbox, uid, .. } => {
+        CommandBody::Move {
+            sequence_set,
+            mailbox,
+            uid,
+            ..
+        } => {
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_move(state, tag, sequence_set, mailbox, *uid, selected.as_mut().unwrap(), user_id.unwrap(), tenant_id.unwrap()).await
+            cmd_move(
+                state,
+                tag,
+                sequence_set,
+                mailbox,
+                *uid,
+                selected.as_mut().unwrap(),
+                user_id.unwrap(),
+                tenant_id.unwrap(),
+            )
+            .await
         }
         CommandBody::ExpungeUid { sequence_set } => {
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_expunge_uid(state, tag, sequence_set, selected.as_mut().unwrap(), tenant_id.unwrap()).await
+            cmd_expunge_uid(
+                state,
+                tag,
+                sequence_set,
+                selected.as_mut().unwrap(),
+                tenant_id.unwrap(),
+            )
+            .await
         }
-        CommandBody::Unselect => {
-            cmd_unselect(tag, sess, selected)
-        }
+        CommandBody::Unselect => cmd_unselect(tag, sess, selected),
         // CHECK — RFC 3501 §6.4.1: server checkpoint (equivalent to NOOP for us).
         // Clients use this to request a server checkpoint; we treat it as NOOP.
         CommandBody::Check => {
@@ -429,14 +616,18 @@ async fn dispatch(
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            let enabled: Vec<CapabilityEnable<'static>> = capabilities.as_ref().iter().filter_map(|c| {
-                match c {
+            let enabled: Vec<CapabilityEnable<'static>> = capabilities
+                .as_ref()
+                .iter()
+                .filter_map(|c| match c {
                     CapabilityEnable::CondStore => Some(CapabilityEnable::CondStore),
                     _ => None,
-                }
-            }).collect();
+                })
+                .collect();
             vec![
-                Response::Data(Data::Enabled { capabilities: enabled }),
+                Response::Data(Data::Enabled {
+                    capabilities: enabled,
+                }),
                 ok_tagged(tag, None, "ENABLE completed"),
             ]
         }
@@ -462,23 +653,48 @@ async fn dispatch(
         // We honour the sort criteria against DB columns; unsupported keys
         // fall back to received_at (Arrival).  Filter criteria reuse the
         // existing search_key_matches logic (nil result = include all).
-        CommandBody::Sort { sort_criteria, uid, search_criteria, .. } => {
+        CommandBody::Sort {
+            sort_criteria,
+            uid,
+            search_criteria,
+            ..
+        } => {
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_sort(state, tag, sort_criteria.as_ref(), *uid,
-                search_criteria.as_ref(), selected.as_ref().unwrap(), tenant_id.unwrap()).await
+            cmd_sort(
+                state,
+                tag,
+                sort_criteria.as_ref(),
+                *uid,
+                search_criteria.as_ref(),
+                selected.as_ref().unwrap(),
+                tenant_id.unwrap(),
+            )
+            .await
         }
         // THREAD — RFC 5256: group messages into threads.
         // We implement the ORDEREDSUBJECT algorithm: sort by subject+date,
         // group messages sharing the same base subject, emit each group as a
         // flat list of sequence numbers in a * THREAD response.
-        CommandBody::Thread { algorithm: _, search_criteria, uid, .. } => {
+        CommandBody::Thread {
+            algorithm: _,
+            search_criteria,
+            uid,
+            ..
+        } => {
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_thread(state, tag, *uid,
-                search_criteria.as_ref(), selected.as_ref().unwrap(), tenant_id.unwrap()).await
+            cmd_thread(
+                state,
+                tag,
+                *uid,
+                search_criteria.as_ref(),
+                selected.as_ref().unwrap(),
+                tenant_id.unwrap(),
+            )
+            .await
         }
         // NAMESPACE — RFC 2342: advertise personal/other/shared namespace prefixes.
         // We expose a single personal namespace (prefix "" delimiter ".") and empty
@@ -516,7 +732,8 @@ fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
         Capability::Namespace,
         Capability::CondStore,
         Capability::QResync,
-    ]).unwrap();
+    ])
+    .unwrap();
     vec![
         Response::Data(Data::Capability(caps)),
         ok_tagged(tag, None, "CAPABILITY completed"),
@@ -527,14 +744,14 @@ fn cmd_namespace(tag: Tag<'static>) -> Vec<Response<'static>> {
     // Personal namespace: prefix "" delimiter "." (matches folder naming convention).
     // Other users and shared namespaces are empty — not supported in this deployment.
     let personal = vec![Namespace {
-        prefix:     imap_codec::imap_types::core::IString::try_from("").unwrap(),
-        delimiter:  Some(imap_codec::imap_types::core::QuotedChar::try_from('.').unwrap()),
+        prefix: imap_codec::imap_types::core::IString::try_from("").unwrap(),
+        delimiter: Some(imap_codec::imap_types::core::QuotedChar::try_from('.').unwrap()),
         extensions: vec![],
     }];
     vec![
         Response::Data(Data::Namespace {
             personal,
-            other:  vec![],
+            other: vec![],
             shared: vec![],
         }),
         ok_tagged(tag, None, "NAMESPACE completed"),
@@ -673,8 +890,8 @@ fn list_mailbox_pattern(wc: &ListMailbox<'_>) -> String {
         ListMailbox::Token(lcs) => String::from_utf8_lossy(lcs.as_ref()).into_owned(),
         ListMailbox::String(is) => match is {
             // Quoted::as_ref() yields &str in imap-types 2.0; Literal yields &[u8].
-            IString::Quoted(q)   => q.as_ref().to_string(),
-            IString::Literal(l)  => String::from_utf8_lossy(l.as_ref()).into_owned(),
+            IString::Quoted(q) => q.as_ref().to_string(),
+            IString::Literal(l) => String::from_utf8_lossy(l.as_ref()).into_owned(),
         },
     }
 }
@@ -694,7 +911,7 @@ fn list_matches(name: &str, pattern: &str) -> bool {
 fn list_match_recursive(name: &[u8], pat: &[u8]) -> bool {
     match (pat.first(), name.first()) {
         (None, None) => true,
-        (None, _)    => false,
+        (None, _) => false,
         (Some(b'*'), _) => {
             // * matches any sequence (including empty and including the delimiter).
             for i in 0..=name.len() {
@@ -709,7 +926,9 @@ fn list_match_recursive(name: &[u8], pat: &[u8]) -> bool {
             // The server's hierarchy delimiter is '.' (see the Namespace/LIST
             // responses), so % must not cross a '.'.
             for i in 0..=name.len() {
-                if name[..i].contains(&b'.') { break; }
+                if name[..i].contains(&b'.') {
+                    break;
+                }
                 if list_match_recursive(&name[i..], &pat[1..]) {
                     return true;
                 }
@@ -752,9 +971,10 @@ async fn cmd_list(
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for (name, special_use, unseen, msg_count) in &rows {
         // If pattern is * or % at top level, all folders match; otherwise filter.
-        if !list_matches(name, &pattern) { continue; }
-        let mailbox = ImapMailbox::try_from(name.to_owned())
-            .unwrap_or_else(|_| ImapMailbox::Inbox);
+        if !list_matches(name, &pattern) {
+            continue;
+        }
+        let mailbox = ImapMailbox::try_from(name.to_owned()).unwrap_or_else(|_| ImapMailbox::Inbox);
 
         let mut items: Vec<FlagNameAttribute<'static>> = Vec::new();
 
@@ -762,8 +982,12 @@ async fn cmd_list(
         // DB stores with backslash; Atom rejects backslash — strip before conversion.
         if let Some(attr) = special_use.as_deref().and_then(|s| {
             let bare = s.trim().trim_start_matches('\\');
-            if bare.is_empty() { return None; }
-            Atom::try_from(bare.to_owned()).ok().map(FlagNameAttribute::from)
+            if bare.is_empty() {
+                return None;
+            }
+            Atom::try_from(bare.to_owned())
+                .ok()
+                .map(FlagNameAttribute::from)
         }) {
             items.push(attr);
         }
@@ -811,7 +1035,11 @@ async fn cmd_subscribe(
     .execute(state.db())
     .await;
 
-    let msg = if subscribe { "SUBSCRIBE completed" } else { "UNSUBSCRIBE completed" };
+    let msg = if subscribe {
+        "SUBSCRIBE completed"
+    } else {
+        "UNSUBSCRIBE completed"
+    };
     vec![ok_tagged(tag, None, msg)]
 }
 
@@ -840,15 +1068,20 @@ async fn cmd_lsub(
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for (name, special_use) in &rows {
-        if !list_matches(name, &pattern) { continue; }
-        let mailbox = ImapMailbox::try_from(name.to_owned())
-            .unwrap_or_else(|_| ImapMailbox::Inbox);
+        if !list_matches(name, &pattern) {
+            continue;
+        }
+        let mailbox = ImapMailbox::try_from(name.to_owned()).unwrap_or_else(|_| ImapMailbox::Inbox);
         let items: Vec<FlagNameAttribute<'static>> = special_use
             .as_deref()
             .and_then(|s| {
                 let bare = s.trim().trim_start_matches('\\');
-                if bare.is_empty() { return None; }
-                Atom::try_from(bare.to_owned()).ok().map(FlagNameAttribute::from)
+                if bare.is_empty() {
+                    return None;
+                }
+                Atom::try_from(bare.to_owned())
+                    .ok()
+                    .map(FlagNameAttribute::from)
             })
             .into_iter()
             .collect();
@@ -900,7 +1133,7 @@ async fn cmd_select(
         Some((mailbox_id, uid_validity_raw, next_uid_raw, count)) => {
             let exists = count as u32;
             let uid_validity = NonZeroU32::new(uid_validity_raw as u32).unwrap_or(NonZeroU32::MIN);
-            let uid_next    = NonZeroU32::new(next_uid_raw    as u32).unwrap_or(NonZeroU32::MIN);
+            let uid_next = NonZeroU32::new(next_uid_raw as u32).unwrap_or(NonZeroU32::MIN);
 
             // RFC 3501 §7.3.1 SHOULD: UNSEEN — seq (1-based) da 1ª msg sem \Seen.
             // Subquery conta msgs com received_at < menor received_at de msgs sem \Seen.
@@ -950,7 +1183,12 @@ async fn cmd_select(
             .unwrap_or(None);
 
             *sess = SessionState::Selected;
-            *selected = Some(SelectedMailbox { mailbox_id, exists, read_only, flags_snapshot });
+            *selected = Some(SelectedMailbox {
+                mailbox_id,
+                exists,
+                read_only,
+                flags_snapshot,
+            });
 
             // RFC 3501 §7.3.1: FLAGS, EXISTS, RECENT, UIDVALIDITY, UIDNEXT e
             // PERMANENTFLAGS são todos obrigatórios/SHOULD na resposta SELECT.
@@ -985,7 +1223,11 @@ async fn cmd_select(
                             FlagPerm::Asterisk,
                         ]
                     }),
-                    if read_only { "No permanent flags in read-only mailbox" } else { "Limited" },
+                    if read_only {
+                        "No permanent flags in read-only mailbox"
+                    } else {
+                        "Limited"
+                    },
                 ),
             ];
             // Emite UNSEEN apenas se há de fato msgs não-vistas (seq <= exists).
@@ -995,7 +1237,10 @@ async fn cmd_select(
             }
             // RFC 7162 §3.1.1: emit [HIGHESTMODSEQ N] when mailbox has messages.
             if let Some(modseq) = highest_modseq.and_then(|v| std::num::NonZeroU64::new(v as u64)) {
-                out.push(untagged_ok(Code::HighestModSeq(modseq), "highest mod sequence"));
+                out.push(untagged_ok(
+                    Code::HighestModSeq(modseq),
+                    "highest mod sequence",
+                ));
             }
             let (access_code, done_msg) = if read_only {
                 (Code::ReadOnly, "EXAMINE completed")
@@ -1042,12 +1287,14 @@ async fn cmd_status(
     };
 
     let uid_validity = NonZeroU32::new(uid_validity_raw as u32).unwrap_or(NonZeroU32::MIN);
-    let uid_next     = NonZeroU32::new(next_uid_raw    as u32).unwrap_or(NonZeroU32::MIN);
+    let uid_next = NonZeroU32::new(next_uid_raw as u32).unwrap_or(NonZeroU32::MIN);
 
     // STATUS SIZE (RFC 8438) is unsupported: imap-types 2.0.0-alpha.7 exposes no
     // StatusDataItemName::Size / StatusDataItem::Size, so it is neither requested
     // nor answered. Re-add when the crate gains the variant.
-    let needs_modseq   = item_names.iter().any(|n| matches!(n, StatusDataItemName::HighestModSeq));
+    let needs_modseq = item_names
+        .iter()
+        .any(|n| matches!(n, StatusDataItemName::HighestModSeq));
 
     let highest_modseq: u64 = if needs_modseq {
         sqlx::query_scalar(
@@ -1069,11 +1316,11 @@ async fn cmd_status(
     let mut items: Vec<StatusDataItem> = Vec::with_capacity(item_names.len());
     for name in item_names {
         let item = match name {
-            StatusDataItemName::Messages      => StatusDataItem::Messages(msg_count as u32),
-            StatusDataItemName::Recent        => StatusDataItem::Recent(0),
-            StatusDataItemName::UidNext       => StatusDataItem::UidNext(uid_next),
-            StatusDataItemName::UidValidity   => StatusDataItem::UidValidity(uid_validity),
-            StatusDataItemName::Unseen        => StatusDataItem::Unseen(unseen_count as u32),
+            StatusDataItemName::Messages => StatusDataItem::Messages(msg_count as u32),
+            StatusDataItemName::Recent => StatusDataItem::Recent(0),
+            StatusDataItemName::UidNext => StatusDataItem::UidNext(uid_next),
+            StatusDataItemName::UidValidity => StatusDataItem::UidValidity(uid_validity),
+            StatusDataItemName::Unseen => StatusDataItem::Unseen(unseen_count as u32),
             StatusDataItemName::HighestModSeq => StatusDataItem::HighestModSeq(highest_modseq),
             // Deleted/DeletedStorage not tracked — skip silently.
             _ => continue,
@@ -1127,22 +1374,34 @@ async fn cmd_search(
         let recv: Option<ChronoDateTime<Utc>> = row.try_get("received_at").ok();
         let sent: Option<ChronoDateTime<Utc>> = row.try_get("date").ok().flatten();
         let size: Option<i32> = row.try_get("size_bytes").ok();
-        let subject:   Option<String>             = row.try_get("subject").ok().flatten();
-        let from_addr: Option<String>             = row.try_get("from_addr").ok().flatten();
-        let to_addrs:  Option<serde_json::Value>  = row.try_get("to_addrs").ok();
-        let cc_addrs:  Option<serde_json::Value>  = row.try_get("cc_addrs").ok();
+        let subject: Option<String> = row.try_get("subject").ok().flatten();
+        let from_addr: Option<String> = row.try_get("from_addr").ok().flatten();
+        let to_addrs: Option<serde_json::Value> = row.try_get("to_addrs").ok();
+        let cc_addrs: Option<serde_json::Value> = row.try_get("cc_addrs").ok();
 
         // First pass: check all non-body criteria. TEXT/BODY return true here
         // (conservative) so we avoid fetching bytes for messages that already
         // fail on flags/date/size/envelope criteria.
-        let meta_ok = criteria.iter().all(|key| search_key_matches(
-            key, &flags, recv.as_ref(), sent.as_ref(), size,
-            subject.as_deref(), from_addr.as_deref(),
-            to_addrs.as_ref(), cc_addrs.as_ref(),
-            seq_val as u32, uid_val as u32, sel.exists,
-            None,
-        ));
-        if !meta_ok { continue; }
+        let meta_ok = criteria.iter().all(|key| {
+            search_key_matches(
+                key,
+                &flags,
+                recv.as_ref(),
+                sent.as_ref(),
+                size,
+                subject.as_deref(),
+                from_addr.as_deref(),
+                to_addrs.as_ref(),
+                cc_addrs.as_ref(),
+                seq_val as u32,
+                uid_val as u32,
+                sel.exists,
+                None,
+            )
+        });
+        if !meta_ok {
+            continue;
+        }
 
         // Second pass: if TEXT/BODY present, fetch bytes and re-evaluate those keys.
         if needs_body {
@@ -1154,14 +1413,26 @@ async fn cmd_search(
             };
             // Re-check only TEXT/BODY criteria with actual bytes.
             // Non-body keys re-evaluated too (cheap, all already passed).
-            let body_ok = criteria.iter().all(|key| search_key_matches(
-                key, &flags, recv.as_ref(), sent.as_ref(), size,
-                subject.as_deref(), from_addr.as_deref(),
-                to_addrs.as_ref(), cc_addrs.as_ref(),
-                seq_val as u32, uid_val as u32, sel.exists,
-                raw.as_deref(),
-            ));
-            if !body_ok { continue; }
+            let body_ok = criteria.iter().all(|key| {
+                search_key_matches(
+                    key,
+                    &flags,
+                    recv.as_ref(),
+                    sent.as_ref(),
+                    size,
+                    subject.as_deref(),
+                    from_addr.as_deref(),
+                    to_addrs.as_ref(),
+                    cc_addrs.as_ref(),
+                    seq_val as u32,
+                    uid_val as u32,
+                    sel.exists,
+                    raw.as_deref(),
+                )
+            });
+            if !body_ok {
+                continue;
+            }
         }
 
         let n = if uid {
@@ -1187,7 +1458,9 @@ fn search_key_needs_body(key: &SearchKey<'_>) -> bool {
     match key {
         SearchKey::Text(_) | SearchKey::Body(_) => true,
         SearchKey::Not(inner) => search_key_needs_body(inner.as_ref()),
-        SearchKey::Or(a, b) => search_key_needs_body(a.as_ref()) || search_key_needs_body(b.as_ref()),
+        SearchKey::Or(a, b) => {
+            search_key_needs_body(a.as_ref()) || search_key_needs_body(b.as_ref())
+        }
         SearchKey::And(inner) => inner.as_ref().iter().any(search_key_needs_body),
         _ => false,
     }
@@ -1223,38 +1496,41 @@ fn search_key_matches(
     let has = |f: &str| flags.iter().any(|x| x == f);
     // Case-insensitive substring check — mirrors RFC 3501 §6.4.4 ILIKE semantics.
     let icontains = |haystack: Option<&str>, needle: &str| -> bool {
-        haystack.map_or(true, |h| h.to_ascii_lowercase().contains(&needle.to_ascii_lowercase()))
+        haystack.map_or(true, |h| {
+            h.to_ascii_lowercase()
+                .contains(&needle.to_ascii_lowercase())
+        })
     };
     // Check if a value falls within any of the (start, end) ranges derived from a SequenceSet.
     let in_ranges = |ranges: &[(u32, u32)], val: u32| -> bool {
         ranges.iter().any(|&(s, e)| val >= s && val <= e)
     };
     match key {
-        SearchKey::All     => true,
-        SearchKey::Recent  => false, // \Recent not tracked per-session
-        SearchKey::New     => false, // New = Recent + Unseen; \Recent not tracked
-        SearchKey::Seen    => has("\\Seen"),
-        SearchKey::Unseen  => !has("\\Seen"),
-        SearchKey::Flagged   => has("\\Flagged"),
+        SearchKey::All => true,
+        SearchKey::Recent => false, // \Recent not tracked per-session
+        SearchKey::New => false,    // New = Recent + Unseen; \Recent not tracked
+        SearchKey::Seen => has("\\Seen"),
+        SearchKey::Unseen => !has("\\Seen"),
+        SearchKey::Flagged => has("\\Flagged"),
         SearchKey::Unflagged => !has("\\Flagged"),
-        SearchKey::Answered   => has("\\Answered"),
+        SearchKey::Answered => has("\\Answered"),
         SearchKey::Unanswered => !has("\\Answered"),
-        SearchKey::Deleted   => has("\\Deleted"),
+        SearchKey::Deleted => has("\\Deleted"),
         SearchKey::Undeleted => !has("\\Deleted"),
-        SearchKey::Draft     => has("\\Draft"),
-        SearchKey::Undraft   => !has("\\Draft"),
+        SearchKey::Draft => has("\\Draft"),
+        SearchKey::Undraft => !has("\\Draft"),
         // Internal-date criteria: compare against received_at (UTC midnight boundary).
         SearchKey::Since(date) => recv.map_or(true, |r| r.date_naive() >= *date.as_ref()),
         SearchKey::Before(date) => recv.map_or(true, |r| r.date_naive() < *date.as_ref()),
         SearchKey::On(date) => recv.map_or(true, |r| r.date_naive() == *date.as_ref()),
         // SentSince/SentBefore/SentOn compare against the envelope Date header stored in DB.
         // Conservative true when Date header is absent (NULL) — no false negatives.
-        SearchKey::SentSince(date)  => sent.map_or(true, |s| s.date_naive() >= *date.as_ref()),
+        SearchKey::SentSince(date) => sent.map_or(true, |s| s.date_naive() >= *date.as_ref()),
         SearchKey::SentBefore(date) => sent.map_or(true, |s| s.date_naive() < *date.as_ref()),
-        SearchKey::SentOn(date)     => sent.map_or(true, |s| s.date_naive() == *date.as_ref()),
+        SearchKey::SentOn(date) => sent.map_or(true, |s| s.date_naive() == *date.as_ref()),
         // Size criteria: size_bytes comes from DB (set by APPEND/ingest).
         // Conservative true when size_bytes is NULL (e.g. old messages before APPEND sprint).
-        SearchKey::Larger(n)  => size.map_or(true, |s| (s as u64) > (*n as u64)),
+        SearchKey::Larger(n) => size.map_or(true, |s| (s as u64) > (*n as u64)),
         SearchKey::Smaller(n) => size.map_or(true, |s| (s as u64) < (*n as u64)),
         // Envelope criteria — matched against DB columns (ILIKE).
         // Subject uses subject column; From matches from_addr.
@@ -1282,10 +1558,10 @@ fn search_key_matches(
             let val_str = astring_to_string(value);
             match field_lower.as_str() {
                 "subject" => icontains(subject, &val_str),
-                "from"    => icontains(from_addr, &val_str),
-                "to"      => json_addr_contains(to_addrs, &val_str),
-                "cc"      => json_addr_contains(cc_addrs, &val_str),
-                _         => true,
+                "from" => icontains(from_addr, &val_str),
+                "to" => json_addr_contains(to_addrs, &val_str),
+                "cc" => json_addr_contains(cc_addrs, &val_str),
+                _ => true,
             }
         }
         // TEXT — RFC 3501 §6.4.4: search entire message (headers + body).
@@ -1310,7 +1586,9 @@ fn search_key_matches(
                 None => true,
                 Some(raw) => {
                     // BODY searches only after the \r\n\r\n header separator.
-                    let body_start = raw.windows(4).position(|w| w == b"\r\n\r\n")
+                    let body_start = raw
+                        .windows(4)
+                        .position(|w| w == b"\r\n\r\n")
                         .map_or(raw.len(), |i| i + 4);
                     let haystack = String::from_utf8_lossy(&raw[body_start..]).to_ascii_lowercase();
                     haystack.contains(&needle)
@@ -1332,12 +1610,58 @@ fn search_key_matches(
             in_ranges(&ranges, msg_uid)
         }
         // Recursive logical operators
-        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists, body_bytes),
-        SearchKey::Or(a, b)   => {
-            search_key_matches(a.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists, body_bytes)
-                || search_key_matches(b.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists, body_bytes)
+        SearchKey::Not(inner) => !search_key_matches(
+            inner.as_ref(),
+            flags,
+            recv,
+            sent,
+            size,
+            subject,
+            from_addr,
+            to_addrs,
+            cc_addrs,
+            seq,
+            msg_uid,
+            exists,
+            body_bytes,
+        ),
+        SearchKey::Or(a, b) => {
+            search_key_matches(
+                a.as_ref(),
+                flags,
+                recv,
+                sent,
+                size,
+                subject,
+                from_addr,
+                to_addrs,
+                cc_addrs,
+                seq,
+                msg_uid,
+                exists,
+                body_bytes,
+            ) || search_key_matches(
+                b.as_ref(),
+                flags,
+                recv,
+                sent,
+                size,
+                subject,
+                from_addr,
+                to_addrs,
+                cc_addrs,
+                seq,
+                msg_uid,
+                exists,
+                body_bytes,
+            )
         }
-        SearchKey::And(inner) => inner.as_ref().iter().all(|k| search_key_matches(k, flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists, body_bytes)),
+        SearchKey::And(inner) => inner.as_ref().iter().all(|k| {
+            search_key_matches(
+                k, flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid,
+                exists, body_bytes,
+            )
+        }),
         // Remaining criteria (Bcc) — conservative true (not stored in DB).
         _ => true,
     }
@@ -1363,7 +1687,7 @@ async fn cmd_append(
 
     // Extract raw bytes from either Literal or Literal8 (BINARY extension).
     let raw_bytes: &[u8] = match message {
-        LiteralOrLiteral8::Literal(l)  => l.as_ref(),
+        LiteralOrLiteral8::Literal(l) => l.as_ref(),
         LiteralOrLiteral8::Literal8(l) => l.data.as_ref(),
     };
 
@@ -1403,7 +1727,11 @@ async fn cmd_append(
 
     let body_path = if let Some(store) = state.store() {
         let key = format!("raw/{msg_id}.eml");
-        if store.put(&key, raw_bytes.to_vec(), Some("message/rfc822")).await.is_err() {
+        if store
+            .put(&key, raw_bytes.to_vec(), Some("message/rfc822"))
+            .await
+            .is_err()
+        {
             let _ = tx.rollback().await;
             return vec![no_tagged(tag, "storage error")];
         }
@@ -1461,7 +1789,10 @@ async fn cmd_append(
     }
     out.push(ok_tagged(
         tag,
-        Some(Code::AppendUid { uid_validity, uid: appended_uid }),
+        Some(Code::AppendUid {
+            uid_validity,
+            uid: appended_uid,
+        }),
         "APPEND completed",
     ));
     out
@@ -1481,7 +1812,7 @@ async fn cmd_fetch(
     // mod_sequence > N are returned.
     let cs_clause = match changedsince {
         Some(v) => format!(" AND mod_sequence > {v}"),
-        None    => String::new(),
+        None => String::new(),
     };
 
     // UID FETCH: sequence_set holds UID values; * resolves to u32::MAX (all).
@@ -1520,28 +1851,28 @@ async fn cmd_fetch(
         .unwrap_or_default()
     };
 
-    let w_flags        = wants(macro_or, "FLAGS");
-    let w_envelope     = wants(macro_or, "ENVELOPE");
-    let w_size         = wants(macro_or, "RFC822.SIZE");
+    let w_flags = wants(macro_or, "FLAGS");
+    let w_envelope = wants(macro_or, "ENVELOPE");
+    let w_size = wants(macro_or, "RFC822.SIZE");
     // RFC 3501 §6.4.8 + RFC 4315 §3: UID MUST be in every UID FETCH response,
     // even when the client didn't explicitly request it.
-    let w_uid            = uid || wants(macro_or, "UID");
-    let w_internaldate   = wants(macro_or, "INTERNALDATE");
+    let w_uid = uid || wants(macro_or, "UID");
+    let w_internaldate = wants(macro_or, "INTERNALDATE");
     // RFC 7162 §3.1: MODSEQ data item — always included when CHANGEDSINCE modifier present.
-    let w_modseq         = changedsince.is_some() || wants(macro_or, "MODSEQ");
+    let w_modseq = changedsince.is_some() || wants(macro_or, "MODSEQ");
     // BODYSTRUCTURE — RFC 3501 §7.4.2: extensible body structure.
     // Macro::Full includes BODY (non-extensible). We serve a minimal single-part
     // TEXT/PLAIN structure for both BODYSTRUCTURE and BODY macros. Clients
     // use this for preview/thread-pane rendering without downloading the body.
-    let w_bodystructure  = wants(macro_or, "BODYSTRUCTURE") || wants(macro_or, "BODY");
+    let w_bodystructure = wants(macro_or, "BODYSTRUCTURE") || wants(macro_or, "BODY");
 
     // RFC822 / RFC822.HEADER / RFC822.TEXT aliases (RFC 3501 §6.4.5).
     // RFC822       ≡ BODY[] (full message, sets \Seen implicitly)
     // RFC822.HEADER ≡ BODY.PEEK[HEADER] (header only, does NOT set \Seen)
     // RFC822.TEXT   ≡ BODY[TEXT] (body text, sets \Seen implicitly)
-    let w_rfc822        = wants(macro_or, "RFC822");
+    let w_rfc822 = wants(macro_or, "RFC822");
     let w_rfc822_header = wants(macro_or, "RFC822.HEADER");
-    let w_rfc822_text   = wants(macro_or, "RFC822.TEXT");
+    let w_rfc822_text = wants(macro_or, "RFC822.TEXT");
 
     // Determine which body sections the client wants.
     // BODY[HEADER] / BODY.PEEK[HEADER] → want_header
@@ -1569,31 +1900,39 @@ async fn cmd_fetch(
     let mut want_part_body: bool = false;
     let mut want_part_mime: bool = false;
     // (part number as u32, original Part clone for echo-back in response)
-    let mut part_body_reqs:   Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
-    let mut part_mime_reqs:   Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
+    let mut part_body_reqs: Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
+    let mut part_mime_reqs: Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
     // BODY[N.HEADER] — header block of part N.
     let mut part_header_reqs: Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
     // BODY[N.TEXT]   — body text of part N.
-    let mut part_text_reqs:   Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
+    let mut part_text_reqs: Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
     if let MacroOrMessageDataItemNames::MessageDataItemNames(names) = macro_or {
         for name in names.iter() {
-            if let MessageDataItemName::BodyExt { section, peek, partial, .. } = name {
+            if let MessageDataItemName::BodyExt {
+                section,
+                peek,
+                partial,
+                ..
+            } = name
+            {
                 // Non-peek body fetch implicitly sets \Seen (RFC 3501 §6.4.5).
-                if !peek { set_seen = true; }
+                if !peek {
+                    set_seen = true;
+                }
                 // Partial fetch: BODY[<section>]<offset.count>
                 if let Some((offset, count)) = partial {
                     let tag = match section {
                         Some(Section::Header(_)) => 1u8,
-                        Some(Section::Text(_))   => 2u8,
-                        _                        => 0u8,
+                        Some(Section::Text(_)) => 2u8,
+                        _ => 0u8,
                     };
                     partial_reqs.push((tag, *offset, count.get()));
                     continue;
                 }
                 match section {
-                    None                      => want_full_body = true,
-                    Some(Section::Header(None))  => want_header = true,
-                    Some(Section::Text(None))    => want_text = true,
+                    None => want_full_body = true,
+                    Some(Section::Header(None)) => want_header = true,
+                    Some(Section::Text(None)) => want_text = true,
                     // BODY[N.HEADER] — header block of part N (for multipart) or message header (flat).
                     Some(Section::Header(Some(p))) => {
                         let nums_ref: &[NonZeroU32] = p.0.as_ref();
@@ -1607,13 +1946,17 @@ async fn cmd_fetch(
                         part_text_reqs.push((part_num, nums_ref.to_vec()));
                     }
                     Some(Section::HeaderFields(_, fields)) => {
-                        let names_lc: Vec<String> = fields.as_ref().iter()
+                        let names_lc: Vec<String> = fields
+                            .as_ref()
+                            .iter()
                             .map(|f| astring_to_string(f).to_ascii_lowercase())
                             .collect();
                         header_fields_reqs.push((names_lc, false));
                     }
                     Some(Section::HeaderFieldsNot(_, fields)) => {
-                        let names_lc: Vec<String> = fields.as_ref().iter()
+                        let names_lc: Vec<String> = fields
+                            .as_ref()
+                            .iter()
                             .map(|f| astring_to_string(f).to_ascii_lowercase())
                             .collect();
                         header_fields_reqs.push((names_lc, true));
@@ -1635,9 +1978,8 @@ async fn cmd_fetch(
                         let part_num = nums_ref.first().map(|n| n.get()).unwrap_or(1);
                         let nums_vec: Vec<NonZeroU32> = nums_ref.to_vec();
                         part_mime_reqs.push((part_num, nums_vec));
-                    }
-                    // All section kinds (incl. None/Header(None)/Text(None)) are
-                    // matched above; no catch-all is needed.
+                    } // All section kinds (incl. None/Header(None)/Text(None)) are
+                      // matched above; no catch-all is needed.
                 }
             }
         }
@@ -1649,9 +1991,16 @@ async fn cmd_fetch(
         part_mime_reqs.push((1u32, vec![NonZeroU32::new(1).unwrap()]));
     }
     // Fetch body bytes for BODYSTRUCTURE too — needed to detect Content-Type.
-    let need_body = want_full_body || want_header || want_text || want_part_body || want_part_mime
-        || w_bodystructure || !header_fields_reqs.is_empty() || !partial_reqs.is_empty()
-        || !part_header_reqs.is_empty() || !part_text_reqs.is_empty();
+    let need_body = want_full_body
+        || want_header
+        || want_text
+        || want_part_body
+        || want_part_mime
+        || w_bodystructure
+        || !header_fields_reqs.is_empty()
+        || !partial_reqs.is_empty()
+        || !part_header_reqs.is_empty()
+        || !part_text_reqs.is_empty();
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for row in &rows {
@@ -1710,15 +2059,15 @@ async fn cmd_fetch(
             items.push(MessageDataItem::Rfc822Size(sz as u32));
         }
         if w_envelope {
-            let subject:    Option<String> = row.get("subject");
-            let from_addr:  Option<String> = row.get("from_addr");
-            let from_name:  Option<String> = row.get("from_name");
-            let to_addrs:   Option<serde_json::Value> = row.try_get("to_addrs").ok();
-            let cc_addrs:   Option<serde_json::Value> = row.try_get("cc_addrs").ok();
+            let subject: Option<String> = row.get("subject");
+            let from_addr: Option<String> = row.get("from_addr");
+            let from_name: Option<String> = row.get("from_name");
+            let to_addrs: Option<serde_json::Value> = row.try_get("to_addrs").ok();
+            let cc_addrs: Option<serde_json::Value> = row.try_get("cc_addrs").ok();
             let message_id: Option<String> = row.try_get("message_id").ok().flatten();
-            let in_reply_to:Option<String> = row.try_get("in_reply_to").ok().flatten();
-            let reply_to:   Option<String> = row.try_get("reply_to").ok().flatten();
-            let date_ts:    Option<ChronoDateTime<Utc>> = row.try_get("date").ok().flatten();
+            let in_reply_to: Option<String> = row.try_get("in_reply_to").ok().flatten();
+            let reply_to: Option<String> = row.try_get("reply_to").ok().flatten();
+            let date_ts: Option<ChronoDateTime<Utc>> = row.try_get("date").ok().flatten();
             let date_str = date_ts.map(|t| t.format("%a, %d %b %Y %H:%M:%S +0000").to_string());
             items.push(MessageDataItem::Envelope(build_envelope(
                 date_str.as_deref(),
@@ -1738,7 +2087,8 @@ async fn cmd_fetch(
             // RFC 3501 §2.3.3: "the internal date and time of the message".
             let ts: Option<ChronoDateTime<Utc>> = row.try_get("received_at").ok();
             if let Some(t) = ts {
-                let fixed: ChronoDateTime<FixedOffset> = t.with_timezone(&FixedOffset::east_opt(0).unwrap());
+                let fixed: ChronoDateTime<FixedOffset> =
+                    t.with_timezone(&FixedOffset::east_opt(0).unwrap());
                 if let Ok(imap_dt) = ImapDateTime::try_from(fixed) {
                     items.push(MessageDataItem::InternalDate(imap_dt));
                 }
@@ -1752,28 +2102,30 @@ async fn cmd_fetch(
                     // BODYSTRUCTURE — parsed from raw Content-Type header so that
                     // text/html, text/plain, and multipart/* are reported correctly.
                     if w_bodystructure {
-                        items.push(MessageDataItem::BodyStructure(
-                            build_body_structure(sz as u32, Some(&raw))));
+                        items.push(MessageDataItem::BodyStructure(build_body_structure(
+                            sz as u32,
+                            Some(&raw),
+                        )));
                     }
                     // RFC822.HEADER ≡ BODY.PEEK[HEADER] — emits Rfc822Header item (no \Seen).
                     if w_rfc822_header {
                         let hdr = email_header_bytes(&raw);
-                        items.push(MessageDataItem::Rfc822Header(
-                            NString::from(Literal::unvalidated(hdr.clone())),
-                        ));
+                        items.push(MessageDataItem::Rfc822Header(NString::from(
+                            Literal::unvalidated(hdr.clone()),
+                        )));
                     }
                     // RFC822.TEXT ≡ BODY[TEXT] — emits Rfc822Text item (sets \Seen above).
                     if w_rfc822_text {
                         let txt = email_text_bytes(&raw);
-                        items.push(MessageDataItem::Rfc822Text(
-                            NString::from(Literal::unvalidated(txt.clone())),
-                        ));
+                        items.push(MessageDataItem::Rfc822Text(NString::from(
+                            Literal::unvalidated(txt.clone()),
+                        )));
                     }
                     // RFC822 ≡ BODY[] — emits Rfc822 item (sets \Seen above).
                     if w_rfc822 {
-                        items.push(MessageDataItem::Rfc822(
-                            NString::from(Literal::unvalidated(raw.clone())),
-                        ));
+                        items.push(MessageDataItem::Rfc822(NString::from(
+                            Literal::unvalidated(raw.clone()),
+                        )));
                     }
                     // BODY[HEADER] — RFC 3501 §6.4.5: header lines up to and
                     // including the blank separator (\r\n\r\n).
@@ -1781,8 +2133,8 @@ async fn cmd_fetch(
                         let hdr = email_header_bytes(&raw);
                         items.push(MessageDataItem::BodyExt {
                             section: Some(Section::Header(None)),
-                            origin:  None,
-                            data:    NString::from(Literal::unvalidated(hdr)),
+                            origin: None,
+                            data: NString::from(Literal::unvalidated(hdr)),
                         });
                     }
                     // BODY[HEADER.FIELDS (...)] / BODY[HEADER.FIELDS.NOT (...)] —
@@ -1790,7 +2142,8 @@ async fn cmd_fetch(
                     // header lines EXCEPT the named ones for NOT variant).
                     for (field_names, is_not) in &header_fields_reqs {
                         let filtered = filter_header_fields(&raw, field_names, *is_not);
-                        let astrings: Vec<AString<'static>> = field_names.iter()
+                        let astrings: Vec<AString<'static>> = field_names
+                            .iter()
                             .filter_map(|f| AString::try_from(f.clone()).ok())
                             .collect();
                         let section = if let Ok(v1) = Vec1::try_from(astrings.clone()) {
@@ -1805,8 +2158,8 @@ async fn cmd_fetch(
                         };
                         items.push(MessageDataItem::BodyExt {
                             section: Some(section),
-                            origin:  None,
-                            data:    NString::from(Literal::unvalidated(filtered)),
+                            origin: None,
+                            data: NString::from(Literal::unvalidated(filtered)),
                         });
                     }
                     // BODY[TEXT] — everything after the blank separator.
@@ -1814,8 +2167,8 @@ async fn cmd_fetch(
                         let txt = email_text_bytes(&raw);
                         items.push(MessageDataItem::BodyExt {
                             section: Some(Section::Text(None)),
-                            origin:  None,
-                            data:    NString::from(Literal::unvalidated(txt)),
+                            origin: None,
+                            data: NString::from(Literal::unvalidated(txt)),
                         });
                     }
                     // BODY[N] / BODY[N.M] — body of the part at the given path.
@@ -1826,11 +2179,13 @@ async fn cmd_fetch(
                         for (_, nums) in &part_body_reqs {
                             let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
                             let bytes = mime_part_body_path(&raw, &path);
-                            let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()));
+                            let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| {
+                                Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()
+                            }));
                             items.push(MessageDataItem::BodyExt {
                                 section: Some(Section::Part(part)),
-                                origin:  None,
-                                data:    NString::from(Literal::unvalidated(bytes)),
+                                origin: None,
+                                data: NString::from(Literal::unvalidated(bytes)),
                             });
                         }
                     }
@@ -1841,11 +2196,13 @@ async fn cmd_fetch(
                         for (_, nums) in &part_mime_reqs {
                             let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
                             let bytes = mime_part_mime_headers_path(&raw, &path);
-                            let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()));
+                            let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| {
+                                Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()
+                            }));
                             items.push(MessageDataItem::BodyExt {
                                 section: Some(Section::Mime(part)),
-                                origin:  None,
-                                data:    NString::from(Literal::unvalidated(bytes)),
+                                origin: None,
+                                data: NString::from(Literal::unvalidated(bytes)),
                             });
                         }
                     }
@@ -1860,14 +2217,16 @@ async fn cmd_fetch(
                         } else {
                             match mime_navigate(&raw, &path) {
                                 Some(part) => email_header_bytes(&part),
-                                None       => email_header_bytes(&raw),
+                                None => email_header_bytes(&raw),
                             }
                         };
-                        let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()));
+                        let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| {
+                            Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()
+                        }));
                         items.push(MessageDataItem::BodyExt {
                             section: Some(Section::Header(Some(part))),
-                            origin:  None,
-                            data:    NString::from(Literal::unvalidated(hdr_bytes)),
+                            origin: None,
+                            data: NString::from(Literal::unvalidated(hdr_bytes)),
                         });
                     }
                     // BODY[N.TEXT] — body text of part N.
@@ -1881,22 +2240,24 @@ async fn cmd_fetch(
                         } else {
                             match mime_navigate(&raw, &path) {
                                 Some(part) => email_text_bytes(&part),
-                                None       => email_text_bytes(&raw),
+                                None => email_text_bytes(&raw),
                             }
                         };
-                        let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()));
+                        let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| {
+                            Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()
+                        }));
                         items.push(MessageDataItem::BodyExt {
                             section: Some(Section::Text(Some(part))),
-                            origin:  None,
-                            data:    NString::from(Literal::unvalidated(txt_bytes)),
+                            origin: None,
+                            data: NString::from(Literal::unvalidated(txt_bytes)),
                         });
                     }
                     // BODY[] or fallback for unrecognised section specs.
                     if want_full_body && !w_rfc822 {
                         items.push(MessageDataItem::BodyExt {
                             section: None,
-                            origin:  None,
-                            data:    NString::from(Literal::unvalidated(raw.clone())),
+                            origin: None,
+                            data: NString::from(Literal::unvalidated(raw.clone())),
                         });
                     }
                     // Partial fetch: BODY[<section>]<offset.count>
@@ -1914,23 +2275,25 @@ async fn cmd_fetch(
                             _ => None,
                         };
                         let start = (*offset as usize).min(source.len());
-                        let end   = (start + *count as usize).min(source.len());
+                        let end = (start + *count as usize).min(source.len());
                         let slice = source[start..end].to_vec();
                         items.push(MessageDataItem::BodyExt {
                             section,
-                            origin:  Some(*offset),
-                            data:    NString::from(Literal::unvalidated(slice)),
+                            origin: Some(*offset),
+                            data: NString::from(Literal::unvalidated(slice)),
                         });
                     }
                 } else if w_bodystructure {
                     // body_path fetch failed — emit minimal structure from size only.
-                    items.push(MessageDataItem::BodyStructure(
-                        build_body_structure(sz as u32, None)));
+                    items.push(MessageDataItem::BodyStructure(build_body_structure(
+                        sz as u32, None,
+                    )));
                 }
             } else if w_bodystructure {
                 // No body_path stored — emit minimal structure from size only.
-                items.push(MessageDataItem::BodyStructure(
-                    build_body_structure(sz as u32, None)));
+                items.push(MessageDataItem::BodyStructure(build_body_structure(
+                    sz as u32, None,
+                )));
             }
         }
 
@@ -2196,7 +2559,11 @@ async fn cmd_copy(
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|r| { let s: i64 = r.get("seq"); let f: Vec<String> = r.get("flags"); (s as u32, f) })
+        .map(|r| {
+            let s: i64 = r.get("seq");
+            let f: Vec<String> = r.get("flags");
+            (s as u32, f)
+        })
         .collect();
         sel.exists = fresh.len() as u32;
         sel.flags_snapshot = fresh.into_iter().collect();
@@ -2404,24 +2771,43 @@ async fn cmd_sort(
     .unwrap_or_default();
 
     // Apply SEARCH filter (same logic as cmd_search).
-    let mut candidates: Vec<(i64, i64, Option<ChronoDateTime<Utc>>, Option<ChronoDateTime<Utc>>, Option<i32>, Option<String>, Option<String>)> = Vec::new();
+    let mut candidates: Vec<(
+        i64,
+        i64,
+        Option<ChronoDateTime<Utc>>,
+        Option<ChronoDateTime<Utc>>,
+        Option<i32>,
+        Option<String>,
+        Option<String>,
+    )> = Vec::new();
     for row in &rows {
-        let seq_val: i64  = row.get("seq");
-        let uid_val: i64  = row.get("uid");
-        let flags: Vec<String>  = row.get("flags");
+        let seq_val: i64 = row.get("seq");
+        let uid_val: i64 = row.get("uid");
+        let flags: Vec<String> = row.get("flags");
         let recv: Option<ChronoDateTime<Utc>> = row.try_get("received_at").ok();
         let sent: Option<ChronoDateTime<Utc>> = row.try_get("date").ok().flatten();
         let size: Option<i32> = row.try_get("size_bytes").ok();
-        let subject: Option<String>  = row.try_get("subject").ok().flatten();
+        let subject: Option<String> = row.try_get("subject").ok().flatten();
         let from_addr: Option<String> = row.try_get("from_addr").ok().flatten();
         let to_addrs: Option<serde_json::Value> = row.try_get("to_addrs").ok();
         let cc_addrs: Option<serde_json::Value> = row.try_get("cc_addrs").ok();
-        if search_criteria.iter().all(|k| search_key_matches(
-            k, &flags, recv.as_ref(), sent.as_ref(), size,
-            subject.as_deref(), from_addr.as_deref(),
-            to_addrs.as_ref(), cc_addrs.as_ref(),
-            seq_val as u32, uid_val as u32, sel.exists, None,
-        )) {
+        if search_criteria.iter().all(|k| {
+            search_key_matches(
+                k,
+                &flags,
+                recv.as_ref(),
+                sent.as_ref(),
+                size,
+                subject.as_deref(),
+                from_addr.as_deref(),
+                to_addrs.as_ref(),
+                cc_addrs.as_ref(),
+                seq_val as u32,
+                uid_val as u32,
+                sel.exists,
+                None,
+            )
+        }) {
             candidates.push((seq_val, uid_val, recv, sent, size, subject, from_addr));
         }
     }
@@ -2433,22 +2819,29 @@ async fn cmd_sort(
         let key = &crit.key;
         candidates.sort_by(|a, b| {
             let ord = match key {
-                SortKey::Arrival  => a.2.cmp(&b.2),
-                SortKey::Date     => a.3.cmp(&b.3),
-                SortKey::Size     => a.4.cmp(&b.4),
-                SortKey::Subject  => a.5.as_deref().cmp(&b.5.as_deref()),
-                SortKey::From     => a.6.as_deref().cmp(&b.6.as_deref()),
+                SortKey::Arrival => a.2.cmp(&b.2),
+                SortKey::Date => a.3.cmp(&b.3),
+                SortKey::Size => a.4.cmp(&b.4),
+                SortKey::Subject => a.5.as_deref().cmp(&b.5.as_deref()),
+                SortKey::From => a.6.as_deref().cmp(&b.6.as_deref()),
                 // Cc/To/Reverse/Other: fall back to arrival order.
-                _                 => a.0.cmp(&b.0),
+                _ => a.0.cmp(&b.0),
             };
-            if reverse { ord.reverse() } else { ord }
+            if reverse {
+                ord.reverse()
+            } else {
+                ord
+            }
         });
     }
 
-    let nums: Vec<NonZeroU32> = candidates.iter().filter_map(|(seq, uid_val, ..)| {
-        let n = if uid { *uid_val as u32 } else { *seq as u32 };
-        NonZeroU32::new(n)
-    }).collect();
+    let nums: Vec<NonZeroU32> = candidates
+        .iter()
+        .filter_map(|(seq, uid_val, ..)| {
+            let n = if uid { *uid_val as u32 } else { *seq as u32 };
+            NonZeroU32::new(n)
+        })
+        .collect();
 
     vec![
         Response::Data(Data::Sort(nums, None)),
@@ -2494,12 +2887,23 @@ async fn cmd_thread(
         let from_addr: Option<String> = row.try_get("from_addr").ok().flatten();
         let to_addrs: Option<serde_json::Value> = row.try_get("to_addrs").ok();
         let cc_addrs: Option<serde_json::Value> = row.try_get("cc_addrs").ok();
-        if search_criteria.iter().all(|k| search_key_matches(
-            k, &flags, recv.as_ref(), sent.as_ref(), size,
-            subject.as_deref(), from_addr.as_deref(),
-            to_addrs.as_ref(), cc_addrs.as_ref(),
-            seq_val as u32, uid_val as u32, sel.exists, None,
-        )) {
+        if search_criteria.iter().all(|k| {
+            search_key_matches(
+                k,
+                &flags,
+                recv.as_ref(),
+                sent.as_ref(),
+                size,
+                subject.as_deref(),
+                from_addr.as_deref(),
+                to_addrs.as_ref(),
+                cc_addrs.as_ref(),
+                seq_val as u32,
+                uid_val as u32,
+                sel.exists,
+                None,
+            )
+        }) {
             let base_subj = base_subject(subject.as_deref().unwrap_or(""));
             let num = if uid { uid_val as u32 } else { seq_val as u32 };
             candidates.push((num, uid_val as u32, recv, base_subj));
@@ -2528,12 +2932,21 @@ async fn cmd_thread(
         // Thread::Members { prefix: Vec<NonZeroU32>, answers: Option<VecN<Thread,2>> }
         // For ORDEREDSUBJECT: root as prefix=[root_n], siblings as nested answers.
         use imap_codec::imap_types::core::VecN;
-        let sibling_threads: Vec<Thread> = siblings.into_iter().map(|n| {
-            // prefix is a VecN<_, 1> (min length 1) in imap-types 2.0.
-            Thread::Members { prefix: VecN::from([n]), answers: None }
-        }).collect();
+        let sibling_threads: Vec<Thread> = siblings
+            .into_iter()
+            .map(|n| {
+                // prefix is a VecN<_, 1> (min length 1) in imap-types 2.0.
+                Thread::Members {
+                    prefix: VecN::from([n]),
+                    answers: None,
+                }
+            })
+            .collect();
         let answers = VecN::try_from(sibling_threads).ok();
-        threads.push(Thread::Members { prefix: VecN::from([root_n]), answers });
+        threads.push(Thread::Members {
+            prefix: VecN::from([root_n]),
+            answers,
+        });
     }
 
     vec![
@@ -2865,7 +3278,10 @@ async fn cmd_noop(
 
         let mut new_snapshot: HashMap<u32, Vec<String>> = HashMap::with_capacity(current.len());
         for (seq, flags_now) in &current {
-            let changed = sel.flags_snapshot.get(seq).map_or(true, |prev| prev != flags_now);
+            let changed = sel
+                .flags_snapshot
+                .get(seq)
+                .map_or(true, |prev| prev != flags_now);
             if changed {
                 let flag_items: Vec<FlagFetch<'static>> = flags_now
                     .iter()
@@ -2941,12 +3357,12 @@ fn cmd_unselect(
 /// DONE do cliente pode chegar em qualquer burst de leitura; aceita como
 /// prefixo case-insensitive (clientes enviam "DONE\r\n").
 async fn handle_idle<R, W>(
-    tag:       Tag<'static>,
-    reader:    &mut R,
-    writer:    &mut W,
+    tag: Tag<'static>,
+    reader: &mut R,
+    writer: &mut W,
     resp_codec: &ResponseCodec,
-    state:     &AppState,
-    selected:  &mut Option<SelectedMailbox>,
+    state: &AppState,
+    selected: &mut Option<SelectedMailbox>,
     tenant_id: Option<Uuid>,
 ) -> anyhow::Result<()>
 where
@@ -2957,7 +3373,7 @@ where
 
     // 63 ticks × 28s ≈ 29.4 minutes → keep-alive; 65 ticks ≈ 30.3 min → timeout.
     const KEEPALIVE_TICKS: u32 = 63;
-    const TIMEOUT_TICKS:   u32 = 65;
+    const TIMEOUT_TICKS: u32 = 65;
     let mut ticks: u32 = 0;
 
     let mut ibuf = [0u8; 32];
@@ -3045,7 +3461,10 @@ where
 /// - `/path/to/file`   → lê via sistema de arquivos (dev/fallback)
 /// Retorna None silenciosamente se o store não estiver configurado ou a leitura falhar.
 async fn fetch_body_bytes(state: &AppState, body_path: &str) -> Option<Vec<u8>> {
-    if let Some(idx) = body_path.strip_prefix("s3://").and_then(|s| s.find('/').map(|i| "s3://".len() + i + 1)) {
+    if let Some(idx) = body_path
+        .strip_prefix("s3://")
+        .and_then(|s| s.find('/').map(|i| "s3://".len() + i + 1))
+    {
         let key = &body_path[idx..];
         state.store()?.get(key).await.ok()
     } else if body_path.starts_with('/') {
@@ -3080,7 +3499,8 @@ fn email_text_bytes(raw: &[u8]) -> Vec<u8> {
 /// e.g. `multipart/mixed; boundary="abc"` → `Some("abc".to_owned())`.
 fn mime_boundary(raw: &[u8]) -> Option<String> {
     let (_, _, params, _) = parse_content_type(raw);
-    params.into_iter()
+    params
+        .into_iter()
         .find(|(k, _)| k.eq_ignore_ascii_case("boundary"))
         .map(|(_, v)| v)
 }
@@ -3091,15 +3511,17 @@ fn mime_boundary(raw: &[u8]) -> Option<String> {
 fn mime_split_parts(raw: &[u8]) -> Vec<Vec<u8>> {
     let boundary = match mime_boundary(raw) {
         Some(b) => b,
-        None    => return vec![],
+        None => return vec![],
     };
     // Body starts after the \r\n\r\n separator.
-    let body_start = raw.windows(4).position(|w| w == b"\r\n\r\n")
+    let body_start = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
         .map_or(raw.len(), |i| i + 4);
     let body = &raw[body_start..];
 
     // Delimiters: "--boundary" (open) and "--boundary--" (close).
-    let delim      = format!("--{boundary}");
+    let delim = format!("--{boundary}");
     let _delim_end = format!("--{boundary}--");
 
     let mut parts: Vec<Vec<u8>> = Vec::new();
@@ -3122,9 +3544,13 @@ fn mime_split_parts(raw: &[u8]) -> Vec<Vec<u8>> {
             break;
         }
         // Skip CR/LF after the opening delimiter.
-        let part_start_offset = if after_delim.starts_with(b"\r\n") { 2 }
-            else if after_delim.starts_with(b"\n") { 1 }
-            else { 0 };
+        let part_start_offset = if after_delim.starts_with(b"\r\n") {
+            2
+        } else if after_delim.starts_with(b"\n") {
+            1
+        } else {
+            0
+        };
         let part_body = &after_delim[part_start_offset..];
 
         // Find the end of this part (next delimiter occurrence).
@@ -3152,9 +3578,13 @@ fn mime_split_parts(raw: &[u8]) -> Vec<Vec<u8>> {
 /// `path` is the sequence of 1-based part numbers, e.g. [1, 2] = part 1.2.
 /// Returns None when any step in the path is out of range.
 fn mime_navigate(raw: &[u8], path: &[u32]) -> Option<Vec<u8>> {
-    if path.is_empty() { return Some(raw.to_vec()); }
+    if path.is_empty() {
+        return Some(raw.to_vec());
+    }
     let (head, tail) = (path[0], &path[1..]);
-    if head == 0 { return None; }
+    if head == 0 {
+        return None;
+    }
 
     let parts = mime_split_parts(raw);
     if parts.is_empty() {
@@ -3209,8 +3639,11 @@ fn mime_part_mime_headers(raw: &[u8], part_num: u32) -> Vec<u8> {
 /// Return MIME header bytes for a hierarchical path like [1, 2] (= BODY[1.2.MIME]).
 fn mime_part_mime_headers_path(raw: &[u8], path: &[u32]) -> Vec<u8> {
     const MIME_FIELDS: &[&str] = &[
-        "content-type", "content-transfer-encoding",
-        "content-disposition", "content-id", "content-description",
+        "content-type",
+        "content-transfer-encoding",
+        "content-disposition",
+        "content-id",
+        "content-description",
     ];
     let field_names: Vec<String> = MIME_FIELDS.iter().map(|s| s.to_string()).collect();
 
@@ -3229,15 +3662,15 @@ fn mime_part_mime_headers_path(raw: &[u8], path: &[u32]) -> Vec<u8> {
 }
 
 struct ParsedHeaders {
-    subject:    Option<String>,
-    from_addr:  Option<String>,
-    from_name:  Option<String>,
-    to_addrs:   serde_json::Value,
-    cc_addrs:   serde_json::Value,
+    subject: Option<String>,
+    from_addr: Option<String>,
+    from_name: Option<String>,
+    to_addrs: serde_json::Value,
+    cc_addrs: serde_json::Value,
     message_id: Option<String>,
-    in_reply_to:Option<String>,
-    reply_to:   Option<String>,
-    date:       Option<ChronoDateTime<Utc>>,
+    in_reply_to: Option<String>,
+    reply_to: Option<String>,
+    date: Option<ChronoDateTime<Utc>>,
 }
 
 /// Parse the RFC 2822 header block of `raw` into structured envelope fields.
@@ -3246,7 +3679,7 @@ fn parse_rfc2822_headers(raw: &[u8]) -> ParsedHeaders {
     let header_end = raw.windows(4).position(|w| w == b"\r\n\r\n");
     let header_bytes = match header_end {
         Some(p) => &raw[..p],
-        None    => raw,
+        None => raw,
     };
     let text = String::from_utf8_lossy(header_bytes);
 
@@ -3259,14 +3692,17 @@ fn parse_rfc2822_headers(raw: &[u8]) -> ParsedHeaders {
                 last.1.push_str(line.trim());
             }
         } else if let Some(colon) = line.find(':') {
-            let name  = line[..colon].trim().to_ascii_lowercase();
+            let name = line[..colon].trim().to_ascii_lowercase();
             let value = line[colon + 1..].trim().to_owned();
             unfolded.push((name, value));
         }
     }
 
     let get = |name: &str| -> Option<String> {
-        unfolded.iter().find(|(n, _)| n == name).map(|(_, v)| v.clone())
+        unfolded
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.clone())
     };
 
     // Parse "Display Name <addr@host>" or plain "addr@host".
@@ -3288,10 +3724,13 @@ fn parse_rfc2822_headers(raw: &[u8]) -> ParsedHeaders {
 
     // Parse comma-separated address list into JSONB [{addr, name}] format.
     let parse_addr_list = |raw_list: &str| -> serde_json::Value {
-        let entries: Vec<serde_json::Value> = raw_list.split(',').filter_map(|part| {
-            let (addr, name) = parse_addr(part);
-            addr.map(|a| serde_json::json!({"addr": a, "name": name.unwrap_or_default()}))
-        }).collect();
+        let entries: Vec<serde_json::Value> = raw_list
+            .split(',')
+            .filter_map(|part| {
+                let (addr, name) = parse_addr(part);
+                addr.map(|a| serde_json::json!({"addr": a, "name": name.unwrap_or_default()}))
+            })
+            .collect();
         serde_json::Value::Array(entries)
     };
 
@@ -3299,18 +3738,24 @@ fn parse_rfc2822_headers(raw: &[u8]) -> ParsedHeaders {
 
     use chrono::DateTime as CDateTime;
     let date: Option<ChronoDateTime<Utc>> = get("date").and_then(|d| {
-        CDateTime::parse_from_rfc2822(d.trim()).ok().map(|dt| dt.with_timezone(&Utc))
+        CDateTime::parse_from_rfc2822(d.trim())
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
     });
 
     ParsedHeaders {
-        subject:     get("subject"),
+        subject: get("subject"),
         from_addr,
         from_name,
-        to_addrs:    get("to").map(|v| parse_addr_list(&v)).unwrap_or(serde_json::Value::Array(vec![])),
-        cc_addrs:    get("cc").map(|v| parse_addr_list(&v)).unwrap_or(serde_json::Value::Array(vec![])),
-        message_id:  get("message-id").map(|v| v.trim_matches(&['<', '>'][..]).to_owned()),
+        to_addrs: get("to")
+            .map(|v| parse_addr_list(&v))
+            .unwrap_or(serde_json::Value::Array(vec![])),
+        cc_addrs: get("cc")
+            .map(|v| parse_addr_list(&v))
+            .unwrap_or(serde_json::Value::Array(vec![])),
+        message_id: get("message-id").map(|v| v.trim_matches(&['<', '>'][..]).to_owned()),
         in_reply_to: get("in-reply-to").map(|v| v.trim_matches(&['<', '>'][..]).to_owned()),
-        reply_to:    get("reply-to").and_then(|v| parse_addr(&v).0),
+        reply_to: get("reply-to").and_then(|v| parse_addr(&v).0),
         date,
     }
 }
@@ -3358,8 +3803,8 @@ fn outcome_of(responses: &[Response<'static>]) -> &'static str {
     for r in responses {
         if let Response::Status(Status::Tagged(t)) = r {
             return match t.body.kind {
-                StatusKind::Ok  => "ok",
-                StatusKind::No  => "no",
+                StatusKind::Ok => "ok",
+                StatusKind::No => "no",
                 StatusKind::Bad => "bad",
             };
         }
@@ -3423,9 +3868,7 @@ fn astring_to_string(a: &AString<'_>) -> String {
 fn mailbox_to_string(m: &ImapMailbox<'_>) -> String {
     match m {
         ImapMailbox::Inbox => "INBOX".to_owned(),
-        ImapMailbox::Other(other) => {
-            String::from_utf8_lossy(other.as_ref()).to_string()
-        }
+        ImapMailbox::Other(other) => String::from_utf8_lossy(other.as_ref()).to_string(),
     }
 }
 
@@ -3458,8 +3901,11 @@ fn sequence_ranges(
     seq_set: &imap_codec::imap_types::sequence::SequenceSet,
     exists: u32,
 ) -> Vec<(u32, u32)> {
-    seq_set.0.as_ref().iter().map(|seq| {
-        match seq {
+    seq_set
+        .0
+        .as_ref()
+        .iter()
+        .map(|seq| match seq {
             imap_codec::imap_types::sequence::Sequence::Single(val) => {
                 let n = seq_or_uid_val(val, exists).max(1).min(exists);
                 (n, n)
@@ -3471,8 +3917,8 @@ fn sequence_ranges(
                 let e = a.max(b).min(exists);
                 (s, e)
             }
-        }
-    }).collect()
+        })
+        .collect()
 }
 
 /// Build a SQL fragment matching uid against a set of (start,end) ranges.
@@ -3483,7 +3929,8 @@ fn uid_clause(ranges: &[(u32, u32)]) -> String {
     if ranges.is_empty() {
         return "FALSE".to_string();
     }
-    ranges.iter()
+    ranges
+        .iter()
         .map(|(s, e)| format!("(uid >= {s} AND uid <= {e})"))
         .collect::<Vec<_>>()
         .join(" OR ")
@@ -3494,12 +3941,12 @@ fn seq_clause(ranges: &[(u32, u32)]) -> String {
     if ranges.is_empty() {
         return "FALSE".to_string();
     }
-    ranges.iter()
+    ranges
+        .iter()
         .map(|(s, e)| format!("(seq >= {s} AND seq <= {e})"))
         .collect::<Vec<_>>()
         .join(" OR ")
 }
-
 
 fn seq_or_uid_val(val: &imap_codec::imap_types::sequence::SeqOrUid, exists: u32) -> u32 {
     match val {
@@ -3512,31 +3959,34 @@ fn wants(macro_or: &MacroOrMessageDataItemNames<'_>, name: &str) -> bool {
     use imap_codec::imap_types::fetch::{Macro, MessageDataItemName};
     match macro_or {
         MacroOrMessageDataItemNames::Macro(m) => match m {
-            Macro::All  => matches!(name, "FLAGS" | "ENVELOPE" | "RFC822.SIZE" | "INTERNALDATE"),
+            Macro::All => matches!(name, "FLAGS" | "ENVELOPE" | "RFC822.SIZE" | "INTERNALDATE"),
             Macro::Fast => matches!(name, "FLAGS" | "RFC822.SIZE" | "INTERNALDATE"),
-            Macro::Full => matches!(name, "FLAGS" | "ENVELOPE" | "RFC822.SIZE" | "INTERNALDATE" | "BODY" | "BODYSTRUCTURE"),
+            Macro::Full => matches!(
+                name,
+                "FLAGS" | "ENVELOPE" | "RFC822.SIZE" | "INTERNALDATE" | "BODY" | "BODYSTRUCTURE"
+            ),
             _ => false,
         },
         // Pattern matching explícito por variante — o Debug repr anterior
         // produzia "Rfc822Size" (sem ponto) para RFC822.SIZE, quebrando a
         // detecção quando o cliente listava itens explicitamente.
-        MacroOrMessageDataItemNames::MessageDataItemNames(items) => {
-            items.iter().any(|item| matches!(
+        MacroOrMessageDataItemNames::MessageDataItemNames(items) => items.iter().any(|item| {
+            matches!(
                 (name, item),
-                ("FLAGS",         MessageDataItemName::Flags)
-                | ("ENVELOPE",    MessageDataItemName::Envelope)
-                | ("RFC822.SIZE", MessageDataItemName::Rfc822Size)
-                | ("UID",         MessageDataItemName::Uid)
-                | ("INTERNALDATE",MessageDataItemName::InternalDate)
-                | ("BODYEXT",     MessageDataItemName::BodyExt { .. })
-                | ("BODY",        MessageDataItemName::Body)
-                | ("BODYSTRUCTURE", MessageDataItemName::BodyStructure)
-                | ("RFC822",        MessageDataItemName::Rfc822)
-                | ("RFC822.HEADER", MessageDataItemName::Rfc822Header)
-                | ("RFC822.TEXT",   MessageDataItemName::Rfc822Text)
-                | ("MODSEQ",        MessageDataItemName::ModSeq)
-            ))
-        }
+                ("FLAGS", MessageDataItemName::Flags)
+                    | ("ENVELOPE", MessageDataItemName::Envelope)
+                    | ("RFC822.SIZE", MessageDataItemName::Rfc822Size)
+                    | ("UID", MessageDataItemName::Uid)
+                    | ("INTERNALDATE", MessageDataItemName::InternalDate)
+                    | ("BODYEXT", MessageDataItemName::BodyExt { .. })
+                    | ("BODY", MessageDataItemName::Body)
+                    | ("BODYSTRUCTURE", MessageDataItemName::BodyStructure)
+                    | ("RFC822", MessageDataItemName::Rfc822)
+                    | ("RFC822.HEADER", MessageDataItemName::Rfc822Header)
+                    | ("RFC822.TEXT", MessageDataItemName::Rfc822Text)
+                    | ("MODSEQ", MessageDataItemName::ModSeq)
+            )
+        }),
     }
 }
 
@@ -3551,16 +4001,27 @@ fn build_body_structure(size_bytes: u32, raw: Option<&[u8]>) -> BodyStructure<'s
     let (ct_type, ct_subtype, ct_params, ct_encoding) = if let Some(bytes) = raw {
         parse_content_type(bytes)
     } else {
-        ("TEXT".to_owned(), "PLAIN".to_owned(), vec![], "7BIT".to_owned())
+        (
+            "TEXT".to_owned(),
+            "PLAIN".to_owned(),
+            vec![],
+            "7BIT".to_owned(),
+        )
     };
 
     // For multipart/* emit a Multi structure. Walk MIME boundaries to build the
     // real inner-part list; fall back to a single TEXT/PLAIN placeholder if
     // boundary parsing yields nothing.
     if ct_type.eq_ignore_ascii_case("MULTIPART") {
-        let subtype = IString::try_from(ct_subtype.to_uppercase()).unwrap_or_else(|_| IString::try_from("MIXED").unwrap());
-        let raw_parts = if let Some(bytes) = raw { mime_split_parts(bytes) } else { vec![] };
-        let inner_structures: Vec<BodyStructure<'static>> = raw_parts.iter()
+        let subtype = IString::try_from(ct_subtype.to_uppercase())
+            .unwrap_or_else(|_| IString::try_from("MIXED").unwrap());
+        let raw_parts = if let Some(bytes) = raw {
+            mime_split_parts(bytes)
+        } else {
+            vec![]
+        };
+        let inner_structures: Vec<BodyStructure<'static>> = raw_parts
+            .iter()
             .map(|part_bytes| {
                 let part_sz = part_bytes.len() as u32;
                 build_body_structure(part_sz, Some(part_bytes))
@@ -3580,7 +4041,11 @@ fn build_body_structure(size_bytes: u32, raw: Option<&[u8]>) -> BodyStructure<'s
                     number_of_lines: 0,
                 },
             };
-            Vec1::try_from(vec![BodyStructure::Single { body: placeholder, extension_data: None }]).unwrap()
+            Vec1::try_from(vec![BodyStructure::Single {
+                body: placeholder,
+                extension_data: None,
+            }])
+            .unwrap()
         });
         return BodyStructure::Multi {
             bodies,
@@ -3589,23 +4054,36 @@ fn build_body_structure(size_bytes: u32, raw: Option<&[u8]>) -> BodyStructure<'s
         };
     }
 
-    let type_str  = IString::try_from(ct_type.to_uppercase()).unwrap_or_else(|_| IString::try_from("TEXT").unwrap());
-    let sub_str   = IString::try_from(ct_subtype.to_uppercase()).unwrap_or_else(|_| IString::try_from("PLAIN").unwrap());
-    let enc_str   = IString::try_from(ct_encoding.to_uppercase()).unwrap_or_else(|_| IString::try_from("7BIT").unwrap());
+    let type_str = IString::try_from(ct_type.to_uppercase())
+        .unwrap_or_else(|_| IString::try_from("TEXT").unwrap());
+    let sub_str = IString::try_from(ct_subtype.to_uppercase())
+        .unwrap_or_else(|_| IString::try_from("PLAIN").unwrap());
+    let enc_str = IString::try_from(ct_encoding.to_uppercase())
+        .unwrap_or_else(|_| IString::try_from("7BIT").unwrap());
 
     let specific = if ct_type.eq_ignore_ascii_case("TEXT") {
         // Count approximate lines in the body for TEXT/* parts.
         let lines = raw.map_or(0, |b| {
-            let body_start = b.windows(4).position(|w| w == b"\r\n\r\n").map_or(b.len(), |i| i + 4);
+            let body_start = b
+                .windows(4)
+                .position(|w| w == b"\r\n\r\n")
+                .map_or(b.len(), |i| i + 4);
             b[body_start..].iter().filter(|&&c| c == b'\n').count() as u32
         });
-        SpecificFields::Text { subtype: sub_str, number_of_lines: lines }
+        SpecificFields::Text {
+            subtype: sub_str,
+            number_of_lines: lines,
+        }
     } else {
-        SpecificFields::Basic { r#type: type_str, subtype: sub_str }
+        SpecificFields::Basic {
+            r#type: type_str,
+            subtype: sub_str,
+        }
     };
 
     // Build parameter_list from Content-Type params (charset etc.).
-    let parameter_list: Vec<(IString<'static>, IString<'static>)> = ct_params.into_iter()
+    let parameter_list: Vec<(IString<'static>, IString<'static>)> = ct_params
+        .into_iter()
         .filter_map(|(k, v)| {
             let ks = IString::try_from(k).ok()?;
             let vs = IString::try_from(v).ok()?;
@@ -3631,11 +4109,16 @@ fn build_body_structure(size_bytes: u32, raw: Option<&[u8]>) -> BodyStructure<'s
 /// Parse Content-Type and Content-Transfer-Encoding from message headers.
 /// Returns (type, subtype, params[(name,value)], transfer_encoding).
 fn parse_content_type(raw: &[u8]) -> (String, String, Vec<(String, String)>, String) {
-    let default = ("TEXT".to_owned(), "PLAIN".to_owned(), vec![], "7BIT".to_owned());
+    let default = (
+        "TEXT".to_owned(),
+        "PLAIN".to_owned(),
+        vec![],
+        "7BIT".to_owned(),
+    );
     let header_end = raw.windows(4).position(|w| w == b"\r\n\r\n");
     let header_bytes = match header_end {
         Some(p) => &raw[..p],
-        None    => raw,
+        None => raw,
     };
     let text = String::from_utf8_lossy(header_bytes);
 
@@ -3648,26 +4131,33 @@ fn parse_content_type(raw: &[u8]) -> (String, String, Vec<(String, String)>, Str
                 last.1.push_str(line.trim());
             }
         } else if let Some(colon) = line.find(':') {
-            let name  = line[..colon].trim().to_ascii_lowercase();
+            let name = line[..colon].trim().to_ascii_lowercase();
             let value = line[colon + 1..].trim().to_owned();
             headers.push((name, value));
         }
     }
 
-    let ct_line = headers.iter().find(|(n, _)| n == "content-type")
+    let ct_line = headers
+        .iter()
+        .find(|(n, _)| n == "content-type")
         .map(|(_, v)| v.as_str())
         .unwrap_or("text/plain");
-    let enc_line = headers.iter().find(|(n, _)| n == "content-transfer-encoding")
+    let enc_line = headers
+        .iter()
+        .find(|(n, _)| n == "content-transfer-encoding")
         .map(|(_, v)| v.trim().to_ascii_uppercase())
         .unwrap_or_else(|| "7BIT".to_owned());
 
     // Parse "type/subtype; param=value; ..." from Content-Type.
     let mut parts = ct_line.splitn(2, ';');
     let type_subtype = parts.next().unwrap_or("text/plain").trim();
-    let params_str   = parts.next().unwrap_or("");
+    let params_str = parts.next().unwrap_or("");
 
     let (ct_type, ct_subtype) = if let Some(pos) = type_subtype.find('/') {
-        (type_subtype[..pos].trim().to_owned(), type_subtype[pos + 1..].trim().to_owned())
+        (
+            type_subtype[..pos].trim().to_owned(),
+            type_subtype[pos + 1..].trim().to_owned(),
+        )
     } else {
         return default;
     };
@@ -3679,32 +4169,47 @@ fn parse_content_type(raw: &[u8]) -> (String, String, Vec<(String, String)>, Str
         if let Some(eq) = param.find('=') {
             let k = param[..eq].trim().to_ascii_lowercase();
             let v = param[eq + 1..].trim().trim_matches('"').to_owned();
-            if !k.is_empty() { params.push((k, v)); }
+            if !k.is_empty() {
+                params.push((k, v));
+            }
         }
     }
 
     (ct_type, ct_subtype, params, enc_line)
 }
 
-fn addr_from_str(addr: &str, name: Option<&str>) -> imap_codec::imap_types::envelope::Address<'static> {
+fn addr_from_str(
+    addr: &str,
+    name: Option<&str>,
+) -> imap_codec::imap_types::envelope::Address<'static> {
     use imap_codec::imap_types::envelope::Address;
     let (local, domain) = addr.split_once('@').unwrap_or((addr, ""));
     Address {
-        name: name.and_then(|n| NString::try_from(n.to_owned()).ok()).unwrap_or(NString(None)),
+        name: name
+            .and_then(|n| NString::try_from(n.to_owned()).ok())
+            .unwrap_or(NString(None)),
         adl: NString(None),
-        mailbox: NString::try_from(local.to_owned()).ok().unwrap_or(NString(None)),
-        host: NString::try_from(domain.to_owned()).ok().unwrap_or(NString(None)),
+        mailbox: NString::try_from(local.to_owned())
+            .ok()
+            .unwrap_or(NString(None)),
+        host: NString::try_from(domain.to_owned())
+            .ok()
+            .unwrap_or(NString(None)),
     }
 }
 
-fn json_to_addr_list(v: Option<&serde_json::Value>) -> Vec<imap_codec::imap_types::envelope::Address<'static>> {
+fn json_to_addr_list(
+    v: Option<&serde_json::Value>,
+) -> Vec<imap_codec::imap_types::envelope::Address<'static>> {
     v.and_then(|j| j.as_array())
         .map(|arr| {
-            arr.iter().filter_map(|item| {
-                let addr = item.get("addr").and_then(|a| a.as_str())?;
-                let name = item.get("name").and_then(|n| n.as_str());
-                Some(addr_from_str(addr, name))
-            }).collect()
+            arr.iter()
+                .filter_map(|item| {
+                    let addr = item.get("addr").and_then(|a| a.as_str())?;
+                    let name = item.get("name").and_then(|n| n.as_str());
+                    Some(addr_from_str(addr, name))
+                })
+                .collect()
         })
         .unwrap_or_default()
 }
@@ -3737,10 +4242,14 @@ fn build_envelope(
         .map(|a| addr_from_str(a, None))
         .into_iter()
         .collect::<Vec<_>>();
-    let reply_to_list = if reply_to_list.is_empty() { from_list.clone() } else { reply_to_list };
+    let reply_to_list = if reply_to_list.is_empty() {
+        from_list.clone()
+    } else {
+        reply_to_list
+    };
 
     let to_list = json_to_addr_list(to_addrs);
-    let cc_list  = json_to_addr_list(cc_addrs);
+    let cc_list = json_to_addr_list(cc_addrs);
 
     Envelope {
         date: date_ns,
@@ -3762,9 +4271,10 @@ fn build_envelope(
 
 #[cfg(test)]
 mod tests {
-    use super::{mime_split_parts, mime_part_body, mime_part_mime_headers,
-                mime_boundary, mime_navigate, mime_part_body_path, mime_part_mime_headers_path,
-                list_matches, email_text_bytes};
+    use super::{
+        email_text_bytes, list_matches, mime_boundary, mime_navigate, mime_part_body,
+        mime_part_body_path, mime_part_mime_headers, mime_part_mime_headers_path, mime_split_parts,
+    };
 
     const MULTIPART_MSG: &[u8] = b"\
 From: sender@example.com\r\n\

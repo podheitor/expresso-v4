@@ -40,7 +40,7 @@ pub const MAX_PUTFILE_BYTES: usize = 256 * 1024 * 1024;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/wopi/files/:id",          get(check_file_info).post(wopi_post))
+        .route("/wopi/files/:id", get(check_file_info).post(wopi_post))
         .route(
             "/wopi/files/:id/contents",
             get(get_file)
@@ -58,17 +58,25 @@ pub struct TokenQuery {
 #[derive(Debug, Clone, Copy)]
 struct Claims {
     tenant_id: Uuid,
-    user_id:   Uuid,
+    user_id: Uuid,
 }
 
 fn wopi_secret() -> Option<String> {
-    env::var("WOPI_SECRET").ok().filter(|v| !v.trim().is_empty())
+    env::var("WOPI_SECRET")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
 }
 
 /// Emite token `{file_id}.{tenant_id}.{user_id}.{exp}.{hmac_hex}`.
 /// Exposto p/ ferramentas / testes — emissor real vive em expresso-web.
 #[allow(dead_code)]
-pub fn sign_token(secret: &[u8], file_id: Uuid, tenant_id: Uuid, user_id: Uuid, ttl_seconds: i64) -> String {
+pub fn sign_token(
+    secret: &[u8],
+    file_id: Uuid,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    ttl_seconds: i64,
+) -> String {
     let exp = OffsetDateTime::now_utc().unix_timestamp() + ttl_seconds;
     let canonical = format!("{file_id}|{tenant_id}|{user_id}|{exp}");
     let mut mac = HmacSha256::new_from_slice(secret).expect("hmac key");
@@ -79,15 +87,21 @@ pub fn sign_token(secret: &[u8], file_id: Uuid, tenant_id: Uuid, user_id: Uuid, 
 
 fn verify_token(secret: &[u8], token: &str, expected_file: Uuid) -> Option<Claims> {
     let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 5 { return None; }
-    let file_id   = Uuid::parse_str(parts[0]).ok()?;
+    if parts.len() != 5 {
+        return None;
+    }
+    let file_id = Uuid::parse_str(parts[0]).ok()?;
     let tenant_id = Uuid::parse_str(parts[1]).ok()?;
-    let user_id   = Uuid::parse_str(parts[2]).ok()?;
-    let exp       = parts[3].parse::<i64>().ok()?;
-    let sig       = parts[4];
+    let user_id = Uuid::parse_str(parts[2]).ok()?;
+    let exp = parts[3].parse::<i64>().ok()?;
+    let sig = parts[4];
 
-    if file_id != expected_file { return None; }
-    if exp < OffsetDateTime::now_utc().unix_timestamp() { return None; }
+    if file_id != expected_file {
+        return None;
+    }
+    if exp < OffsetDateTime::now_utc().unix_timestamp() {
+        return None;
+    }
 
     let canonical = format!("{file_id}|{tenant_id}|{user_id}|{exp}");
     let mut mac = HmacSha256::new_from_slice(secret).ok()?;
@@ -95,18 +109,25 @@ fn verify_token(secret: &[u8], token: &str, expected_file: Uuid) -> Option<Claim
     let expected = mac.finalize().into_bytes();
     let provided = hex::decode(sig).ok()?;
     // constant-time compare
-    if expected.as_slice().len() != provided.len() { return None; }
-    let eq = expected.iter().zip(provided.iter()).fold(0u8, |acc, (a, b)| acc | (a ^ b));
-    if eq != 0 { return None; }
+    if expected.as_slice().len() != provided.len() {
+        return None;
+    }
+    let eq = expected
+        .iter()
+        .zip(provided.iter())
+        .fold(0u8, |acc, (a, b)| acc | (a ^ b));
+    if eq != 0 {
+        return None;
+    }
 
     let _ = (file_id, exp);
     Some(Claims { tenant_id, user_id })
 }
 
 fn authorize(expected: Uuid, q: &TokenQuery) -> Result<Claims> {
-    let secret = wopi_secret().ok_or_else(|| DriveError::BadRequest("WOPI_SECRET not configured".into()))?;
-    verify_token(secret.as_bytes(), &q.access_token, expected)
-        .ok_or(DriveError::Unauthorized)
+    let secret =
+        wopi_secret().ok_or_else(|| DriveError::BadRequest("WOPI_SECRET not configured".into()))?;
+    verify_token(secret.as_bytes(), &q.access_token, expected).ok_or(DriveError::Unauthorized)
 }
 
 // ---------- CheckFileInfo ----------
@@ -114,49 +135,52 @@ fn authorize(expected: Uuid, q: &TokenQuery) -> Result<Claims> {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "PascalCase")]
 struct CheckFileInfo {
-    base_file_name:         String,
-    owner_id:               String,
-    size:                   i64,
-    user_id:                String,
-    user_friendly_name:     String,
-    version:                String,
-    user_can_write:         bool,
+    base_file_name: String,
+    owner_id: String,
+    size: i64,
+    user_id: String,
+    user_friendly_name: String,
+    version: String,
+    user_can_write: bool,
     user_can_not_write_relative: bool,
-    supports_update:        bool,
-    supports_locks:         bool,
-    last_modified_time:     Option<String>,
+    supports_update: bool,
+    supports_locks: bool,
+    last_modified_time: Option<String>,
     /// Breadcrumb labels rendered by Collabora's chrome above the document
     /// (MS-WOPI [MS-WOPI] §3.3.5.1.1). `BreadcrumbBrandName` is the leftmost
     /// segment ("Expresso Drive") and `BreadcrumbFolderName` is the parent
     /// folder of the file (or "Meu Drive" when the file lives at the root).
     /// They are best-effort: when the parent fetch fails we still respond
     /// 200 so Collabora can open the doc — the breadcrumb just collapses.
-    breadcrumb_brand_name:  String,
+    breadcrumb_brand_name: String,
     breadcrumb_folder_name: String,
 }
 
 async fn check_file_info(
     State(state): State<AppState>,
-    Path(id):     Path<Uuid>,
-    Query(q):     Query<TokenQuery>,
+    Path(id): Path<Uuid>,
+    Query(q): Query<TokenQuery>,
 ) -> Result<Json<CheckFileInfo>> {
     let r = check_file_info_impl(state, id, q).await;
-    wopi_metrics::record("check_file_info", match &r {
-        Ok(_)  => "ok",
-        Err(e) => wopi_metrics::outcome_for_err(e),
-    });
+    wopi_metrics::record(
+        "check_file_info",
+        match &r {
+            Ok(_) => "ok",
+            Err(e) => wopi_metrics::outcome_for_err(e),
+        },
+    );
     r
 }
 
 async fn check_file_info_impl(
     state: AppState,
-    id:    Uuid,
-    q:     TokenQuery,
+    id: Uuid,
+    q: TokenQuery,
 ) -> Result<Json<CheckFileInfo>> {
     let claims = authorize(id, &q)?;
-    let pool   = state.db_or_unavailable()?;
-    let repo   = FileRepo::new(pool);
-    let file   = repo.get(claims.tenant_id, id).await?;
+    let pool = state.db_or_unavailable()?;
+    let repo = FileRepo::new(pool);
+    let file = repo.get(claims.tenant_id, id).await?;
 
     if file.kind != "file" {
         return Err(DriveError::BadRequest("not a file".into()));
@@ -172,19 +196,19 @@ async fn check_file_info_impl(
         .unwrap_or_else(|| "Meu Drive".to_string());
 
     Ok(Json(CheckFileInfo {
-        base_file_name:              file.name,
-        owner_id:                    file.owner_user_id.to_string(),
-        size:                        file.size_bytes,
-        user_id:                     claims.user_id.to_string(),
-        user_friendly_name:          display_name,
+        base_file_name: file.name,
+        owner_id: file.owner_user_id.to_string(),
+        size: file.size_bytes,
+        user_id: claims.user_id.to_string(),
+        user_friendly_name: display_name,
         version,
-        user_can_write:              true,
+        user_can_write: true,
         user_can_not_write_relative: true,
-        supports_update:             true,
-        supports_locks:              true,
-        last_modified_time:          last_modified,
-        breadcrumb_brand_name:       "Expresso Drive".to_string(),
-        breadcrumb_folder_name:      breadcrumb_folder,
+        supports_update: true,
+        supports_locks: true,
+        last_modified_time: last_modified,
+        breadcrumb_brand_name: "Expresso Drive".to_string(),
+        breadcrumb_folder_name: breadcrumb_folder,
     }))
 }
 
@@ -202,7 +226,7 @@ async fn lookup_parent_name(
     let parent_id = parent_id?;
     sqlx::query_scalar::<_, String>(
         "SELECT name FROM drive_files \
-           WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL"
+           WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL",
     )
     .bind(parent_id)
     .bind(tenant_id)
@@ -219,10 +243,10 @@ async fn lookup_parent_name(
 async fn lookup_display_name(
     pool: &expresso_core::DbPool,
     tenant_id: Uuid,
-    user_id:   Uuid,
+    user_id: Uuid,
 ) -> Option<String> {
     sqlx::query_scalar::<_, String>(
-        "SELECT display_name FROM users WHERE id = $1 AND tenant_id = $2"
+        "SELECT display_name FROM users WHERE id = $1 AND tenant_id = $2",
     )
     .bind(user_id)
     .bind(tenant_id)
@@ -236,27 +260,28 @@ async fn lookup_display_name(
 
 async fn get_file(
     State(state): State<AppState>,
-    Path(id):     Path<Uuid>,
-    Query(q):     Query<TokenQuery>,
+    Path(id): Path<Uuid>,
+    Query(q): Query<TokenQuery>,
 ) -> Result<Response> {
     let r = get_file_impl(state, id, q).await;
-    wopi_metrics::record("get_file", match &r {
-        Ok(_)  => "ok",
-        Err(e) => wopi_metrics::outcome_for_err(e),
-    });
+    wopi_metrics::record(
+        "get_file",
+        match &r {
+            Ok(_) => "ok",
+            Err(e) => wopi_metrics::outcome_for_err(e),
+        },
+    );
     r
 }
 
-async fn get_file_impl(
-    state: AppState,
-    id:    Uuid,
-    q:     TokenQuery,
-) -> Result<Response> {
+async fn get_file_impl(state: AppState, id: Uuid, q: TokenQuery) -> Result<Response> {
     let claims = authorize(id, &q)?;
-    let pool   = state.db_or_unavailable()?;
-    let file   = FileRepo::new(pool).get(claims.tenant_id, id).await?;
+    let pool = state.db_or_unavailable()?;
+    let file = FileRepo::new(pool).get(claims.tenant_id, id).await?;
 
-    let key = file.storage_key.as_deref()
+    let key = file
+        .storage_key
+        .as_deref()
         .ok_or_else(|| DriveError::BadRequest("file has no content".into()))?;
     let path: PathBuf = state.data_root().join(key);
     let bytes = fs::read(&path).await?;
@@ -264,9 +289,11 @@ async fn get_file_impl(
     let mut headers = HeaderMap::new();
     headers.insert(
         header::CONTENT_TYPE,
-        file.mime_type.as_deref()
+        file.mime_type
+            .as_deref()
             .unwrap_or("application/octet-stream")
-            .parse().unwrap(),
+            .parse()
+            .unwrap(),
     );
     Ok((StatusCode::OK, headers, bytes).into_response())
 }
@@ -277,26 +304,29 @@ async fn get_file_impl(
 /// `X-WOPI-Override: PUT`. Aceitamos sem discriminar (content-type varia).
 async fn put_file(
     State(state): State<AppState>,
-    Path(id):     Path<Uuid>,
-    Query(q):     Query<TokenQuery>,
-    headers:      HeaderMap,
-    body:         Bytes,
+    Path(id): Path<Uuid>,
+    Query(q): Query<TokenQuery>,
+    headers: HeaderMap,
+    body: Bytes,
 ) -> Result<Response> {
     let r = put_file_impl(state, id, q, headers, body).await;
-    wopi_metrics::record("put_file", match &r {
-        Ok(resp) if resp.status() == StatusCode::CONFLICT => "conflict",
-        Ok(_)  => "ok",
-        Err(e) => wopi_metrics::outcome_for_err(e),
-    });
+    wopi_metrics::record(
+        "put_file",
+        match &r {
+            Ok(resp) if resp.status() == StatusCode::CONFLICT => "conflict",
+            Ok(_) => "ok",
+            Err(e) => wopi_metrics::outcome_for_err(e),
+        },
+    );
     r
 }
 
 async fn put_file_impl(
-    state:   AppState,
-    id:      Uuid,
-    q:       TokenQuery,
+    state: AppState,
+    id: Uuid,
+    q: TokenQuery,
     headers: HeaderMap,
-    body:    Bytes,
+    body: Bytes,
 ) -> Result<Response> {
     let claims = authorize(id, &q)?;
 
@@ -306,7 +336,8 @@ async fn put_file_impl(
     if body.len() > MAX_PUTFILE_BYTES {
         return Err(DriveError::BadRequest(format!(
             "body too large: {} bytes (max {})",
-            body.len(), MAX_PUTFILE_BYTES
+            body.len(),
+            MAX_PUTFILE_BYTES
         )));
     }
 
@@ -317,7 +348,8 @@ async fn put_file_impl(
     // the current lock token. PUT on an unlocked file is allowed (e.g.
     // creating a new doc / saving without prior LOCK).
     let active_lock = WopiLockRepo::new(pool)
-        .get_active(claims.tenant_id, id).await?;
+        .get_active(claims.tenant_id, id)
+        .await?;
     if let Some(active) = active_lock.as_ref() {
         let supplied = header_str(&headers, "X-WOPI-Lock").unwrap_or_default();
         if supplied != active.lock_token {
@@ -336,7 +368,7 @@ async fn put_file_impl(
         return Err(DriveError::QuotaExceeded);
     }
 
-    let repo     = FileRepo::new(pool);
+    let repo = FileRepo::new(pool);
     let ver_repo = VersionRepo::new(pool);
     let existing = repo.get(claims.tenant_id, id).await?;
     if existing.kind != "file" {
@@ -355,28 +387,36 @@ async fn put_file_impl(
 
     if let Some(prev_key) = existing.storage_key.as_deref() {
         let next_no = ver_repo.next_no(claims.tenant_id, existing.id).await?;
-        ver_repo.insert(&NewVersion {
-            file_id:     existing.id,
-            tenant_id:   claims.tenant_id,
-            version_no:  next_no,
-            storage_key: prev_key,
-            size_bytes:  existing.size_bytes,
-            sha256:      existing.sha256.as_deref(),
-            mime_type:   existing.mime_type.as_deref(),
-            created_by:  existing.owner_user_id,
-        }).await?;
+        ver_repo
+            .insert(&NewVersion {
+                file_id: existing.id,
+                tenant_id: claims.tenant_id,
+                version_no: next_no,
+                storage_key: prev_key,
+                size_bytes: existing.size_bytes,
+                sha256: existing.sha256.as_deref(),
+                mime_type: existing.mime_type.as_deref(),
+                created_by: existing.owner_user_id,
+            })
+            .await?;
     }
 
-    let mime = headers.get(header::CONTENT_TYPE)
+    let mime = headers
+        .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
         .or(existing.mime_type.clone());
 
-    let updated = repo.update_content(
-        claims.tenant_id, existing.id,
-        &key, delta,
-        Some(&sha), mime.as_deref(),
-    ).await;
+    let updated = repo
+        .update_content(
+            claims.tenant_id,
+            existing.id,
+            &key,
+            delta,
+            Some(&sha),
+            mime.as_deref(),
+        )
+        .await;
     if updated.is_err() {
         let _ = fs::remove_file(&path).await;
     }
@@ -389,7 +429,12 @@ async fn put_file_impl(
     let mut out = HeaderMap::new();
     out.insert("X-WOPI-ItemVersion", sha.parse().unwrap());
     let last_modified = updated.updated_at.format(&Rfc3339).ok();
-    Ok((StatusCode::OK, out, Json(serde_json::json!({"LastModifiedTime": last_modified}))).into_response())
+    Ok((
+        StatusCode::OK,
+        out,
+        Json(serde_json::json!({"LastModifiedTime": last_modified})),
+    )
+        .into_response())
 }
 
 /// POST /wopi/files/:id — Lock/Unlock/RefreshLock/GetLock/UnlockAndRelock.
@@ -404,23 +449,26 @@ async fn put_file_impl(
 /// - GET_LOCK     : return current X-WOPI-Lock (empty when none).
 async fn wopi_post(
     State(state): State<AppState>,
-    Path(id):     Path<Uuid>,
-    Query(q):     Query<TokenQuery>,
-    headers:      HeaderMap,
+    Path(id): Path<Uuid>,
+    Query(q): Query<TokenQuery>,
+    headers: HeaderMap,
 ) -> Result<Response> {
     let (op, r) = wopi_post_impl(state, id, q, headers).await;
-    wopi_metrics::record(op, match &r {
-        Ok(resp) if resp.status() == StatusCode::CONFLICT => "conflict",
-        Ok(_)  => "ok",
-        Err(e) => wopi_metrics::outcome_for_err(e),
-    });
+    wopi_metrics::record(
+        op,
+        match &r {
+            Ok(resp) if resp.status() == StatusCode::CONFLICT => "conflict",
+            Ok(_) => "ok",
+            Err(e) => wopi_metrics::outcome_for_err(e),
+        },
+    );
     r
 }
 
 async fn wopi_post_impl(
-    state:   AppState,
-    id:      Uuid,
-    q:       TokenQuery,
+    state: AppState,
+    id: Uuid,
+    q: TokenQuery,
     headers: HeaderMap,
 ) -> (&'static str, Result<Response>) {
     let claims = match authorize(id, &q) {
@@ -433,9 +481,9 @@ async fn wopi_post_impl(
     };
     let locks = WopiLockRepo::new(pool);
 
-    let op   = header_str(&headers, "X-WOPI-Override").unwrap_or_default();
+    let op = header_str(&headers, "X-WOPI-Override").unwrap_or_default();
     let lock = header_str(&headers, "X-WOPI-Lock").unwrap_or_default();
-    let old  = header_str(&headers, "X-WOPI-OldLock");
+    let old = header_str(&headers, "X-WOPI-OldLock");
 
     match op.as_str() {
         "GET_LOCK" => {
@@ -443,31 +491,45 @@ async fn wopi_post_impl(
                 let cur = locks.get_active(claims.tenant_id, id).await?;
                 let token = cur.as_ref().map(|l| l.lock_token.as_str()).unwrap_or("");
                 Ok(lock_resp(StatusCode::OK, token, None))
-            }.await;
+            }
+            .await;
             ("get_lock", r)
         }
         "LOCK" => {
             let is_relock = old.as_deref().map(|s| !s.is_empty()).unwrap_or(false);
-            let label: &'static str = if is_relock { "unlock_and_relock" } else { "lock" };
+            let label: &'static str = if is_relock {
+                "unlock_and_relock"
+            } else {
+                "lock"
+            };
             let r: Result<Response> = async {
                 if lock.is_empty() {
                     return Err(DriveError::BadRequest("X-WOPI-Lock required".into()));
                 }
                 let outcome = match old.as_deref() {
-                    Some(o) if !o.is_empty() =>
-                        locks.unlock_and_relock(claims.tenant_id, id, o, &lock, claims.user_id).await?,
-                    _ =>
-                        locks.acquire_or_refresh(claims.tenant_id, id, &lock, claims.user_id).await?,
+                    Some(o) if !o.is_empty() => {
+                        locks
+                            .unlock_and_relock(claims.tenant_id, id, o, &lock, claims.user_id)
+                            .await?
+                    }
+                    _ => {
+                        locks
+                            .acquire_or_refresh(claims.tenant_id, id, &lock, claims.user_id)
+                            .await?
+                    }
                 };
                 match outcome {
-                    AcquireOutcome::Held(_) =>
-                        Ok(lock_resp(StatusCode::OK, &lock, None)),
+                    AcquireOutcome::Held(_) => Ok(lock_resp(StatusCode::OK, &lock, None)),
                     AcquireOutcome::Conflict(existing) => {
-                        let cur = existing.as_ref().map(|l| l.lock_token.as_str()).unwrap_or("");
+                        let cur = existing
+                            .as_ref()
+                            .map(|l| l.lock_token.as_str())
+                            .unwrap_or("");
                         Ok(lock_resp(StatusCode::CONFLICT, cur, Some("lock mismatch")))
                     }
                 }
-            }.await;
+            }
+            .await;
             (label, r)
         }
         "REFRESH_LOCK" => {
@@ -476,16 +538,24 @@ async fn wopi_post_impl(
                     return Err(DriveError::BadRequest("X-WOPI-Lock required".into()));
                 }
                 let outcome = locks
-                    .acquire_or_refresh(claims.tenant_id, id, &lock, claims.user_id).await?;
+                    .acquire_or_refresh(claims.tenant_id, id, &lock, claims.user_id)
+                    .await?;
                 match outcome {
-                    AcquireOutcome::Held(_) =>
-                        Ok(lock_resp(StatusCode::OK, &lock, None)),
+                    AcquireOutcome::Held(_) => Ok(lock_resp(StatusCode::OK, &lock, None)),
                     AcquireOutcome::Conflict(existing) => {
-                        let cur = existing.as_ref().map(|l| l.lock_token.as_str()).unwrap_or("");
-                        Ok(lock_resp(StatusCode::CONFLICT, cur, Some("refresh: lock mismatch")))
+                        let cur = existing
+                            .as_ref()
+                            .map(|l| l.lock_token.as_str())
+                            .unwrap_or("");
+                        Ok(lock_resp(
+                            StatusCode::CONFLICT,
+                            cur,
+                            Some("refresh: lock mismatch"),
+                        ))
                     }
                 }
-            }.await;
+            }
+            .await;
             ("refresh_lock", r)
         }
         "UNLOCK" => {
@@ -496,22 +566,37 @@ async fn wopi_post_impl(
                 if locks.release(claims.tenant_id, id, &lock).await? {
                     Ok(lock_resp(StatusCode::OK, "", None))
                 } else {
-                    let cur = locks.get_active(claims.tenant_id, id).await?
-                        .map(|l| l.lock_token).unwrap_or_default();
-                    Ok(lock_resp(StatusCode::CONFLICT, &cur, Some("unlock: lock mismatch")))
+                    let cur = locks
+                        .get_active(claims.tenant_id, id)
+                        .await?
+                        .map(|l| l.lock_token)
+                        .unwrap_or_default();
+                    Ok(lock_resp(
+                        StatusCode::CONFLICT,
+                        &cur,
+                        Some("unlock: lock mismatch"),
+                    ))
                 }
-            }.await;
+            }
+            .await;
             ("unlock", r)
         }
         other => {
             tracing::debug!(override_op = other, "WOPI op unsupported");
-            ("other", Err(DriveError::BadRequest(format!("unsupported X-WOPI-Override: {other}"))))
+            (
+                "other",
+                Err(DriveError::BadRequest(format!(
+                    "unsupported X-WOPI-Override: {other}"
+                ))),
+            )
         }
     }
 }
 
 fn header_str(h: &HeaderMap, name: &str) -> Option<String> {
-    h.get(name).and_then(|v| v.to_str().ok()).map(|s| s.to_string())
+    h.get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
 }
 
 fn lock_resp(status: StatusCode, lock_token: &str, reason: Option<&str>) -> Response {

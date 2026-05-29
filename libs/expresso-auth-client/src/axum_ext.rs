@@ -11,7 +11,11 @@ use std::sync::Arc;
 use axum::{
     async_trait,
     extract::FromRequestParts,
-    http::{header::{AUTHORIZATION, COOKIE}, request::Parts, StatusCode},
+    http::{
+        header::{AUTHORIZATION, COOKIE},
+        request::Parts,
+        StatusCode,
+    },
     response::{IntoResponse, Response},
     Json,
 };
@@ -45,28 +49,41 @@ impl<S: Send + Sync> FromRequestParts<S> for Authenticated {
         // em extensions, resolve realm via Host header e valida. Fase2 do
         // realm-per-tenant. Caso host nao mapeado ou extensions ausentes,
         // cai p/ single-realm.
-        let multi = parts.extensions.get::<Arc<crate::multi_validator::MultiRealmValidator>>().cloned();
-        let resolver = parts.extensions.get::<Arc<crate::tenant_resolver::TenantResolver>>().cloned();
+        let multi = parts
+            .extensions
+            .get::<Arc<crate::multi_validator::MultiRealmValidator>>()
+            .cloned();
+        let resolver = parts
+            .extensions
+            .get::<Arc<crate::tenant_resolver::TenantResolver>>()
+            .cloned();
         if let (Some(m), Some(r)) = (multi, resolver) {
-            if let Some(host) = parts.headers.get(axum::http::header::HOST).and_then(|v| v.to_str().ok()) {
+            if let Some(host) = parts
+                .headers
+                .get(axum::http::header::HOST)
+                .and_then(|v| v.to_str().ok())
+            {
                 if let Some(realm) = r.resolve(host) {
                     let v = match m.for_realm(realm).await {
-                        Ok(v)  => v,
+                        Ok(v) => v,
                         Err(e) => {
                             crate::metrics::VALIDATION_TOTAL
-                                .with_label_values(&[realm, crate::metrics::result_label(&e)]).inc();
+                                .with_label_values(&[realm, crate::metrics::result_label(&e)])
+                                .inc();
                             return Err(AuthRejection::from(e));
                         }
                     };
                     match v.validate(token).await {
                         Ok(ctx) => {
                             crate::metrics::VALIDATION_TOTAL
-                                .with_label_values(&[realm, "ok"]).inc();
+                                .with_label_values(&[realm, "ok"])
+                                .inc();
                             return Ok(Self(ctx));
                         }
                         Err(e) => {
                             crate::metrics::VALIDATION_TOTAL
-                                .with_label_values(&[realm, crate::metrics::result_label(&e)]).inc();
+                                .with_label_values(&[realm, crate::metrics::result_label(&e)])
+                                .inc();
                             return Err(AuthRejection::from(e));
                         }
                     }
@@ -74,27 +91,40 @@ impl<S: Send + Sync> FromRequestParts<S> for Authenticated {
             }
         }
 
-        let validator = parts.extensions
+        let validator = parts
+            .extensions
             .get::<Arc<OidcValidator>>()
             .cloned()
             .ok_or(AuthRejection::Misconfigured)?;
-        let ctx = validator.validate(token).await.map_err(AuthRejection::from)?;
+        let ctx = validator
+            .validate(token)
+            .await
+            .map_err(AuthRejection::from)?;
         Ok(Self(ctx))
     }
 }
 
 fn extract_bearer(parts: &Parts) -> Option<&str> {
     let raw = parts.headers.get(AUTHORIZATION)?.to_str().ok()?;
-    let rest = raw.strip_prefix("Bearer ").or_else(|| raw.strip_prefix("bearer "))?;
+    let rest = raw
+        .strip_prefix("Bearer ")
+        .or_else(|| raw.strip_prefix("bearer "))?;
     let t = rest.trim();
-    if t.is_empty() { None } else { Some(t) }
+    if t.is_empty() {
+        None
+    } else {
+        Some(t)
+    }
 }
 
 /// Parse `Cookie` header → first matching value for `name`.
 /// Tolerates multiple Cookie headers + spaces around `=`.
 fn extract_cookie(parts: &Parts, name: &str) -> Option<String> {
     for hv in parts.headers.get_all(COOKIE).iter() {
-        let s = match hv.to_str() { Ok(v) => v, Err(_) => continue };
+        let s = match hv.to_str() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
         for pair in s.split(';') {
             let pair = pair.trim();
             if let Some((k, v)) = pair.split_once('=') {
@@ -121,12 +151,12 @@ pub enum AuthRejection {
 impl From<AuthError> for AuthRejection {
     fn from(e: AuthError) -> Self {
         match e {
-            AuthError::Expired                 => Self::Expired,
-            AuthError::MissingBearer           => Self::Unauthorized("missing_bearer".into()),
-            AuthError::InvalidToken(m)         => Self::Unauthorized(format!("invalid_token: {m}")),
-            AuthError::KidNotFound(_)          => Self::Unauthorized("unknown_key".into()),
-            AuthError::MalformedClaim(n, m)    => Self::Unauthorized(format!("malformed_{n}: {m}")),
-            AuthError::MissingClaim(n)         => Self::Forbidden(format!("missing_{n}")),
+            AuthError::Expired => Self::Expired,
+            AuthError::MissingBearer => Self::Unauthorized("missing_bearer".into()),
+            AuthError::InvalidToken(m) => Self::Unauthorized(format!("invalid_token: {m}")),
+            AuthError::KidNotFound(_) => Self::Unauthorized("unknown_key".into()),
+            AuthError::MalformedClaim(n, m) => Self::Unauthorized(format!("malformed_{n}: {m}")),
+            AuthError::MissingClaim(n) => Self::Forbidden(format!("missing_{n}")),
             AuthError::Config(m) | AuthError::JwksFetch(m) => Self::Unauthorized(m),
         }
     }
@@ -135,10 +165,18 @@ impl From<AuthError> for AuthRejection {
 impl IntoResponse for AuthRejection {
     fn into_response(self) -> Response {
         let (status, code, msg) = match self {
-            Self::Misconfigured   => (StatusCode::INTERNAL_SERVER_ERROR, "misconfigured", "auth not wired".to_string()),
-            Self::Expired         => (StatusCode::UNAUTHORIZED,          "token_expired", "expired".to_string()),
-            Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED,          "unauthorized",  m),
-            Self::Forbidden(m)    => (StatusCode::FORBIDDEN,             "forbidden",     m),
+            Self::Misconfigured => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "misconfigured",
+                "auth not wired".to_string(),
+            ),
+            Self::Expired => (
+                StatusCode::UNAUTHORIZED,
+                "token_expired",
+                "expired".to_string(),
+            ),
+            Self::Unauthorized(m) => (StatusCode::UNAUTHORIZED, "unauthorized", m),
+            Self::Forbidden(m) => (StatusCode::FORBIDDEN, "forbidden", m),
         };
         (status, Json(json!({"error": code, "message": msg}))).into_response()
     }
@@ -209,7 +247,10 @@ mod tests {
 
     #[test]
     fn bearer_returns_none_on_missing_header() {
-        let (parts, _) = axum::http::Request::builder().body(()).unwrap().into_parts();
+        let (parts, _) = axum::http::Request::builder()
+            .body(())
+            .unwrap()
+            .into_parts();
         assert!(extract_bearer(&parts).is_none());
     }
 
@@ -229,18 +270,20 @@ mod tests {
     fn auth_rejection_status_codes() {
         use axum::response::IntoResponse;
         let cases: &[(AuthRejection, u16)] = &[
-            (AuthRejection::Expired,                         401),
-            (AuthRejection::Unauthorized("x".into()),        401),
-            (AuthRejection::Forbidden("x".into()),           403),
-            (AuthRejection::Misconfigured,                   500),
+            (AuthRejection::Expired, 401),
+            (AuthRejection::Unauthorized("x".into()), 401),
+            (AuthRejection::Forbidden("x".into()), 403),
+            (AuthRejection::Misconfigured, 500),
         ];
         for (rej, expected_status) in cases {
             // Reconstruct since AuthRejection doesn't impl Clone.
             let resp = match rej {
-                AuthRejection::Expired              => AuthRejection::Expired.into_response(),
-                AuthRejection::Unauthorized(m)      => AuthRejection::Unauthorized(m.clone()).into_response(),
-                AuthRejection::Forbidden(m)         => AuthRejection::Forbidden(m.clone()).into_response(),
-                AuthRejection::Misconfigured        => AuthRejection::Misconfigured.into_response(),
+                AuthRejection::Expired => AuthRejection::Expired.into_response(),
+                AuthRejection::Unauthorized(m) => {
+                    AuthRejection::Unauthorized(m.clone()).into_response()
+                }
+                AuthRejection::Forbidden(m) => AuthRejection::Forbidden(m.clone()).into_response(),
+                AuthRejection::Misconfigured => AuthRejection::Misconfigured.into_response(),
             };
             assert_eq!(resp.status().as_u16(), *expected_status);
         }
@@ -324,16 +367,25 @@ impl<S: Send + Sync> FromRequestParts<S> for TenantAuthenticated {
     type Rejection = AuthRejection;
 
     async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
-        let multi = parts.extensions.get::<Arc<MultiRealmValidator>>().cloned()
+        let multi = parts
+            .extensions
+            .get::<Arc<MultiRealmValidator>>()
+            .cloned()
             .ok_or(AuthRejection::Misconfigured)?;
-        let resolver = parts.extensions.get::<Arc<TenantResolver>>().cloned()
+        let resolver = parts
+            .extensions
+            .get::<Arc<TenantResolver>>()
+            .cloned()
             .ok_or(AuthRejection::Misconfigured)?;
 
-        let host = parts.headers.get(HOST)
+        let host = parts
+            .headers
+            .get(HOST)
             .and_then(|v| v.to_str().ok())
             .ok_or_else(|| AuthRejection::Unauthorized("missing_host".into()))?;
 
-        let realm = resolver.resolve(host)
+        let realm = resolver
+            .resolve(host)
             .ok_or_else(|| AuthRejection::Unauthorized(format!("unknown_tenant: {host}")))?
             .to_string();
 
@@ -349,7 +401,10 @@ impl<S: Send + Sync> FromRequestParts<S> for TenantAuthenticated {
             return Err(AuthRejection::from(AuthError::MissingBearer));
         };
 
-        let ctx = validator.validate(token).await.map_err(AuthRejection::from)?;
+        let ctx = validator
+            .validate(token)
+            .await
+            .map_err(AuthRejection::from)?;
         Ok(Self(ctx, realm))
     }
 }

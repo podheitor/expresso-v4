@@ -4,18 +4,18 @@ mod api;
 mod caldav;
 mod domain;
 mod error;
-mod state;
 mod events;
-mod imip_publish;
 #[cfg(feature = "fuzzing")]
 pub mod fuzz_entry;
+mod imip_publish;
+mod state;
 
 use std::{env, net::SocketAddr, sync::Arc};
 
 use tracing::{info, warn};
 
-use expresso_core::{create_db_pool, init_tracing};
 use expresso_core::config::{DatabaseConfig, TelemetryConfig};
+use expresso_core::{create_db_pool, init_tracing};
 use state::AppState;
 
 const DEFAULT_HOST: &str = "0.0.0.0";
@@ -100,24 +100,32 @@ fn resolve_database_config() -> Option<DatabaseConfig> {
     })
 }
 
-
 fn resolve_multi_realm() -> (
     Option<Arc<expresso_auth_client::MultiRealmValidator>>,
     Option<Arc<expresso_auth_client::TenantResolver>>,
 ) {
-    let tpl = match env_string("AUTH__OIDC_ISSUER_TEMPLATE") { Some(v) => v, None => return (None, None) };
-    let audience = match env_string("AUTH__OIDC_AUDIENCE")   { Some(v) => v, None => return (None, None) };
+    let tpl = match env_string("AUTH__OIDC_ISSUER_TEMPLATE") {
+        Some(v) => v,
+        None => return (None, None),
+    };
+    let audience = match env_string("AUTH__OIDC_AUDIENCE") {
+        Some(v) => v,
+        None => return (None, None),
+    };
     let resolver = expresso_auth_client::TenantResolver::from_env("AUTH__TENANT_HOSTS");
     if resolver.is_empty() {
         warn!("AUTH__TENANT_HOSTS empty — multi-realm disabled");
         return (None, None);
     }
     match expresso_auth_client::MultiRealmValidator::new(tpl.clone(), audience.clone()) {
-        Ok(m)  => {
+        Ok(m) => {
             info!(template = %tpl, hosts = resolver.len(), "multi-realm validator ready");
             (Some(Arc::new(m)), Some(Arc::new(resolver)))
         }
-        Err(e) => { tracing::error!(error = %e, "multi-realm init failed"); (None, None) }
+        Err(e) => {
+            tracing::error!(error = %e, "multi-realm init failed");
+            (None, None)
+        }
     }
 }
 
@@ -126,7 +134,10 @@ async fn main() -> anyhow::Result<()> {
     let telemetry = resolve_telemetry();
     init_tracing(&telemetry);
 
-    info!(version = env!("CARGO_PKG_VERSION"), "expresso-calendar starting");
+    info!(
+        version = env!("CARGO_PKG_VERSION"),
+        "expresso-calendar starting"
+    );
 
     let db = match resolve_database_config() {
         Some(database) => match create_db_pool(&database).await {
@@ -143,27 +154,55 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let http_addr = resolve_addr()?;
-    let kc_basic = expresso_auth_client::KcBasicConfig::from_env_prefix("CALDAV_KC").map(expresso_auth_client::KcBasicAuthenticator::new);
-    if kc_basic.is_some() { tracing::info!("CalDAV Keycloak Basic auth enabled"); }
+    let kc_basic = expresso_auth_client::KcBasicConfig::from_env_prefix("CALDAV_KC")
+        .map(expresso_auth_client::KcBasicAuthenticator::new);
+    if kc_basic.is_some() {
+        tracing::info!("CalDAV Keycloak Basic auth enabled");
+    }
     if let Some(pool) = db.clone() {
-        let retention = env_i32("DAV_TOMBSTONE_RETENTION_DAYS", domain::tombstone_gc::DEFAULT_RETENTION_DAYS);
-        let every = env_u64("DAV_TOMBSTONE_GC_INTERVAL_HOURS", domain::tombstone_gc::DEFAULT_INTERVAL_HOURS);
-        info!(retention_days = retention, interval_hours = every, "spawning tombstone GC");
+        let retention = env_i32(
+            "DAV_TOMBSTONE_RETENTION_DAYS",
+            domain::tombstone_gc::DEFAULT_RETENTION_DAYS,
+        );
+        let every = env_u64(
+            "DAV_TOMBSTONE_GC_INTERVAL_HOURS",
+            domain::tombstone_gc::DEFAULT_INTERVAL_HOURS,
+        );
+        info!(
+            retention_days = retention,
+            interval_hours = every,
+            "spawning tombstone GC"
+        );
         domain::tombstone_gc::spawn(pool.clone(), retention, every);
 
-        let alarm_interval = env_u64("ALARM_DELIVERY_INTERVAL_SECS", domain::alarm_delivery::DEFAULT_INTERVAL_SECS);
-        info!(interval_secs = alarm_interval, "spawning alarm delivery worker");
+        let alarm_interval = env_u64(
+            "ALARM_DELIVERY_INTERVAL_SECS",
+            domain::alarm_delivery::DEFAULT_INTERVAL_SECS,
+        );
+        info!(
+            interval_secs = alarm_interval,
+            "spawning alarm delivery worker"
+        );
         domain::alarm_delivery::spawn(pool, alarm_interval);
     }
     // Sprint #20: opt-in NATS JetStream publishing when NATS_URL is set.
-    let bus = match std::env::var("NATS_URL").ok().filter(|v| !v.trim().is_empty()) {
+    let bus = match std::env::var("NATS_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+    {
         Some(url) => match crate::events::EventBus::new_with_nats(&url).await {
-            Ok(b) => { info!(nats_url=%url, "calendar EventBus with NATS enabled"); b }
-            Err(e) => { tracing::warn!(error=%e, "NATS init failed; falling back to in-process"); crate::events::EventBus::new() }
+            Ok(b) => {
+                info!(nats_url=%url, "calendar EventBus with NATS enabled");
+                b
+            }
+            Err(e) => {
+                tracing::warn!(error=%e, "NATS init failed; falling back to in-process");
+                crate::events::EventBus::new()
+            }
         },
         None => crate::events::EventBus::new(),
     };
-    let search_url   = env_string("SEARCH__URL").unwrap_or_default();
+    let search_url = env_string("SEARCH__URL").unwrap_or_default();
     let search_token = env_string("SEARCH__TOKEN").unwrap_or_default();
     if !search_url.is_empty() {
         info!(url = %search_url, "search FTS integration enabled");
@@ -171,7 +210,11 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new(db, kc_basic, bus, search_url, search_token);
     // Per-tenant rate limiter (in-process token bucket; see expresso_core::ratelimit).
     let rate_cfg = expresso_core::ratelimit::RateLimitConfig::from_env();
-    info!(rps = rate_cfg.rps, burst = rate_cfg.burst, "rate limiter armed");
+    info!(
+        rps = rate_cfg.rps,
+        burst = rate_cfg.burst,
+        "rate limiter armed"
+    );
     let rate_limiter = expresso_core::ratelimit::RateLimiter::new(rate_cfg);
     {
         let rl = rate_limiter.clone();
@@ -186,8 +229,12 @@ async fn main() -> anyhow::Result<()> {
     let mut app = api::router(state)
         .layer(axum::middleware::from_fn(expresso_core::ratelimit::layer))
         .layer(axum::extract::Extension(rate_limiter));
-    if let Some(m) = multi    { app = app.layer(axum::extract::Extension(m)); }
-    if let Some(r) = resolver { app = app.layer(axum::extract::Extension(r)); }
+    if let Some(m) = multi {
+        app = app.layer(axum::extract::Extension(m));
+    }
+    if let Some(r) = resolver {
+        app = app.layer(axum::extract::Extension(r));
+    }
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 
     info!(addr = %http_addr, "HTTP API listening");

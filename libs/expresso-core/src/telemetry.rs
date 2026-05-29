@@ -1,16 +1,16 @@
 //! Tracing + OpenTelemetry initialisation
 //! Call `init_tracing(&cfg)` once at startup before any instrumentation.
 
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use crate::config::TelemetryConfig;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 /// Initialise the global tracing subscriber.
 /// - JSON output when cfg.log_json = true (production)
 /// - Human-readable (pretty) otherwise (dev)
 /// - Exports spans to OTLP collector when endpoint is reachable
 pub fn init_tracing(cfg: &TelemetryConfig) {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&cfg.log_filter));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&cfg.log_filter));
 
     if cfg.log_json {
         tracing_subscriber::registry()
@@ -24,8 +24,5 @@ pub fn init_tracing(cfg: &TelemetryConfig) {
             .init();
     }
 
-    tracing::info!(
-        version = env!("CARGO_PKG_VERSION"),
-        "tracing initialised"
-    );
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "tracing initialised");
 }
