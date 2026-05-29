@@ -1815,8 +1815,6 @@ struct FetchPlan {
     set_seen: bool,
     header_fields_reqs: Vec<(Vec<String>, bool)>,
     partial_reqs: Vec<(u8, u32, u32)>,
-    want_part_body: bool,
-    want_part_mime: bool,
     part_body_reqs: Vec<(u32, Vec<NonZeroU32>)>,
     part_mime_reqs: Vec<(u32, Vec<NonZeroU32>)>,
     part_header_reqs: Vec<(u32, Vec<NonZeroU32>)>,
@@ -1992,13 +1990,84 @@ fn fetch_plan(
         set_seen,
         header_fields_reqs,
         partial_reqs,
-        want_part_body,
-        want_part_mime,
         part_body_reqs,
         part_mime_reqs,
         part_header_reqs,
         part_text_reqs,
         need_body,
+    }
+}
+
+/// Append BODY[N] / BODY[N.MIME] / BODY[N.HEADER] / BODY[N.TEXT] items for the
+/// requested MIME parts, navigating multipart boundaries (flat messages map
+/// part 1 to the whole message). Pure assembly over the already-fetched `raw`
+/// body bytes — extracted from `cmd_fetch`'s per-row loop.
+fn push_part_section_items(
+    items: &mut Vec<MessageDataItem<'static>>,
+    raw: &[u8],
+    part_body_reqs: &[(u32, Vec<NonZeroU32>)],
+    part_mime_reqs: &[(u32, Vec<NonZeroU32>)],
+    part_header_reqs: &[(u32, Vec<NonZeroU32>)],
+    part_text_reqs: &[(u32, Vec<NonZeroU32>)],
+) {
+    use imap_codec::imap_types::fetch::Part;
+    let to_part = |nums: &[NonZeroU32]| {
+        Part(
+            Vec1::try_from(nums.to_vec())
+                .unwrap_or_else(|_| Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()),
+        )
+    };
+    let is_flat = mime_split_parts(raw).is_empty();
+
+    for (_, nums) in part_body_reqs {
+        let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
+        let bytes = mime_part_body_path(raw, &path);
+        items.push(MessageDataItem::BodyExt {
+            section: Some(Section::Part(to_part(nums))),
+            origin: None,
+            data: NString::from(Literal::unvalidated(bytes)),
+        });
+    }
+    for (_, nums) in part_mime_reqs {
+        let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
+        let bytes = mime_part_mime_headers_path(raw, &path);
+        items.push(MessageDataItem::BodyExt {
+            section: Some(Section::Mime(to_part(nums))),
+            origin: None,
+            data: NString::from(Literal::unvalidated(bytes)),
+        });
+    }
+    for (_, nums) in part_header_reqs {
+        let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
+        let hdr_bytes = if is_flat {
+            email_header_bytes(raw)
+        } else {
+            match mime_navigate(raw, &path) {
+                Some(part) => email_header_bytes(&part),
+                None => email_header_bytes(raw),
+            }
+        };
+        items.push(MessageDataItem::BodyExt {
+            section: Some(Section::Header(Some(to_part(nums)))),
+            origin: None,
+            data: NString::from(Literal::unvalidated(hdr_bytes)),
+        });
+    }
+    for (_, nums) in part_text_reqs {
+        let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
+        let txt_bytes = if is_flat {
+            email_text_bytes(raw)
+        } else {
+            match mime_navigate(raw, &path) {
+                Some(part) => email_text_bytes(&part),
+                None => email_text_bytes(raw),
+            }
+        };
+        items.push(MessageDataItem::BodyExt {
+            section: Some(Section::Text(Some(to_part(nums)))),
+            origin: None,
+            data: NString::from(Literal::unvalidated(txt_bytes)),
+        });
     }
 }
 
@@ -2073,8 +2142,6 @@ async fn cmd_fetch(
         set_seen,
         header_fields_reqs,
         partial_reqs,
-        want_part_body,
-        want_part_mime,
         part_body_reqs,
         part_mime_reqs,
         part_header_reqs,
@@ -2254,84 +2321,16 @@ async fn cmd_fetch(
                     // BODY[N] / BODY[N.M] — body of the part at the given path.
                     // RFC 3501 §6.4.5: for a non-multipart message BODY[1] = BODY[TEXT].
                     // For multipart messages, walk MIME boundaries recursively.
-                    if want_part_body {
-                        use imap_codec::imap_types::fetch::Part;
-                        for (_, nums) in &part_body_reqs {
-                            let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
-                            let bytes = mime_part_body_path(&raw, &path);
-                            let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| {
-                                Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()
-                            }));
-                            items.push(MessageDataItem::BodyExt {
-                                section: Some(Section::Part(part)),
-                                origin: None,
-                                data: NString::from(Literal::unvalidated(bytes)),
-                            });
-                        }
-                    }
-                    // BODY[N.MIME] / BODY[N.M.MIME] — MIME headers of the part at the path.
-                    // For non-multipart, extracted from the message header.
-                    if want_part_mime {
-                        use imap_codec::imap_types::fetch::Part;
-                        for (_, nums) in &part_mime_reqs {
-                            let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
-                            let bytes = mime_part_mime_headers_path(&raw, &path);
-                            let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| {
-                                Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()
-                            }));
-                            items.push(MessageDataItem::BodyExt {
-                                section: Some(Section::Mime(part)),
-                                origin: None,
-                                data: NString::from(Literal::unvalidated(bytes)),
-                            });
-                        }
-                    }
-                    // BODY[N.HEADER] — header block of part N.
-                    // For multipart: navigate to part N, return its header block.
-                    // For flat messages (no boundaries): BODY[1.HEADER] = BODY[HEADER].
-                    for (_, nums) in &part_header_reqs {
-                        use imap_codec::imap_types::fetch::Part;
-                        let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
-                        let hdr_bytes = if mime_split_parts(&raw).is_empty() {
-                            email_header_bytes(&raw)
-                        } else {
-                            match mime_navigate(&raw, &path) {
-                                Some(part) => email_header_bytes(&part),
-                                None => email_header_bytes(&raw),
-                            }
-                        };
-                        let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| {
-                            Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()
-                        }));
-                        items.push(MessageDataItem::BodyExt {
-                            section: Some(Section::Header(Some(part))),
-                            origin: None,
-                            data: NString::from(Literal::unvalidated(hdr_bytes)),
-                        });
-                    }
-                    // BODY[N.TEXT] — body text of part N.
-                    // For multipart: navigate to part N, return its body text.
-                    // For flat messages: BODY[1.TEXT] = BODY[TEXT].
-                    for (_, nums) in &part_text_reqs {
-                        use imap_codec::imap_types::fetch::Part;
-                        let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
-                        let txt_bytes = if mime_split_parts(&raw).is_empty() {
-                            email_text_bytes(&raw)
-                        } else {
-                            match mime_navigate(&raw, &path) {
-                                Some(part) => email_text_bytes(&part),
-                                None => email_text_bytes(&raw),
-                            }
-                        };
-                        let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| {
-                            Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()
-                        }));
-                        items.push(MessageDataItem::BodyExt {
-                            section: Some(Section::Text(Some(part))),
-                            origin: None,
-                            data: NString::from(Literal::unvalidated(txt_bytes)),
-                        });
-                    }
+                    // part_*_reqs are only populated when the matching want_part_*
+                    // flag was set during parsing, so iterating them is safe.
+                    push_part_section_items(
+                        &mut items,
+                        &raw,
+                        &part_body_reqs,
+                        &part_mime_reqs,
+                        &part_header_reqs,
+                        &part_text_reqs,
+                    );
                     // BODY[] or fallback for unrecognised section specs.
                     if want_full_body && !w_rfc822 {
                         items.push(MessageDataItem::BodyExt {

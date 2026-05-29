@@ -3,7 +3,14 @@
 The target is **CCN ≤ 25** (per `CLAUDE.md`). The debloat baseline restore left
 21 functions above that. Per the project policy for legacy code — *"start at the
 current max, tighten by 5 each refactor"* — the CI `lizard` gate is currently
-currently set to **`-C 48`** and should keep ratcheting down: 48 → 43 → … → 25.
+currently set to **`-C 45`** and should keep ratcheting down: 45 → 40 → … → 25.
+
+**cmd_fetch (2026-05-29):** 48 → **38** by extracting the BODY[N]/[N.MIME]/
+[N.HEADER]/[N.TEXT] part-section assembly into `push_part_section_items()`
+(573 mail tests pass). Gate now 45 (max is `handle_tls` 45). Remaining top
+offenders: `handle_tls` (45), `exdates_stats` (43), `exdates_preview_stats`
+(40) — apply the override-filter / section-builder extraction patterns.
+
 
 **Calendar analytics (2026-05-29):** `overrides_stats` 49 → **32** by extracting
 the window + presence `retain` filters into `retain_overrides_window()` /
