@@ -117,10 +117,12 @@ fn nil_sub_uuid_is_valid() {
 }
 
 #[test]
-fn no_tenant_id_produces_none() {
+fn tenant_id_derived_from_issuer_when_claim_absent() {
+    // No explicit tenant_id claim → tenant is derived from the realm in `iss`
+    // ("http://kc/realms/expresso"), so AuthContext.tenant_id is always set.
     let r = base("c7ee7d76-2113-40bd-9f8c-a28cd6ca395f", None);
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
-    assert!(ctx.tenant_id.is_none());
+    assert!(!ctx.tenant_id.is_nil());
 }
 
 #[test]
@@ -156,7 +158,7 @@ fn display_name_is_non_empty() {
 fn roles_is_empty_when_no_roles_in_claims() {
     let mut r = base("a1b2c3d4-0000-0000-0000-000000000005", None);
     r.realm_access = None;
-    r.resource_access = None;
+    r.resource_access = HashMap::new();
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert!(ctx.roles.is_empty());
 }
@@ -169,7 +171,7 @@ fn expires_at_is_preserved_in_context() {
 }
 
 #[test]
-fn email_is_preserved_in_context() {
+fn email_is_preserved_in_context_for_other_sub() {
     let r = base("a1b2c3d4-0000-0000-0000-000000000007", None);
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert_eq!(ctx.email, "alice@x");
@@ -208,7 +210,7 @@ fn from_raw_sub_is_preserved_in_context() {
     let sub = uuid::Uuid::new_v4().to_string();
     let r = base(&sub, None);
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
-    assert_eq!(ctx.sub, sub);
+    assert_eq!(ctx.user_id.to_string(), sub);
 }
 
 #[test]

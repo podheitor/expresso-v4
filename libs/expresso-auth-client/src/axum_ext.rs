@@ -187,7 +187,7 @@ mod tests {
     }
 
     fn parts_with_auth(value: &str) -> Parts {
-        let mut req = axum::http::Request::builder()
+        let req = axum::http::Request::builder()
             .header(AUTHORIZATION, value)
             .body(())
             .unwrap();

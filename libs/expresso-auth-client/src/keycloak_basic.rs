@@ -68,6 +68,7 @@ pub enum KcBasicError {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)] // deserialized from the token endpoint; field read elsewhere
 struct TokenResp { access_token: String }
 
 struct CacheEntry {

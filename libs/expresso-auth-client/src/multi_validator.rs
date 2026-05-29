@@ -127,7 +127,12 @@ mod tests {
 
     #[test]
     fn config_error_variant_on_missing_placeholder() {
-        let err = MultiRealmValidator::new("http://kc/realms/static", "aud").unwrap_err();
+        // Avoid unwrap_err(): MultiRealmValidator isn't Debug (OidcValidator holds
+        // non-Debug JWKS/http state), so match the Result directly.
+        let err = match MultiRealmValidator::new("http://kc/realms/static", "aud") {
+            Err(e) => e,
+            Ok(_) => panic!("expected Config error for missing {{realm}} placeholder"),
+        };
         let msg = err.to_string();
         assert!(msg.contains("{realm}") || matches!(err, AuthError::Config(_)));
     }
@@ -181,7 +186,10 @@ mod tests {
 
     #[test]
     fn missing_placeholder_returns_config_error() {
-        let err = MultiRealmValidator::new("https://idp/oidc", "svc").unwrap_err();
+        let err = match MultiRealmValidator::new("https://idp/oidc", "svc") {
+            Err(e) => e,
+            Ok(_) => panic!("expected Config error"),
+        };
         assert!(matches!(err, crate::error::AuthError::Config(_)));
     }
 

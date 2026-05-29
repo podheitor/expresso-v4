@@ -533,7 +533,7 @@ mod tests {
 
     #[test]
     fn generated_secret_length_is_64() {
-        let s = generate_secret();
+        let s = generated_secret();
         assert_eq!(s.len(), 64);
     }
 
