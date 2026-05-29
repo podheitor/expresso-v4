@@ -12,6 +12,7 @@ pub mod sieve;
 pub mod drafts;
 pub mod flag_presets;
 pub mod snooze;
+pub mod signatures;
 
 use axum::{
     Router,
@@ -67,4 +68,5 @@ fn api_routes(_state: AppState) -> Router<AppState> {
         .merge(drafts::routes())
         .merge(flag_presets::routes())
         .merge(snooze::routes())
+        .merge(signatures::routes())
 }
