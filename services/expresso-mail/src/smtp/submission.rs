@@ -9,7 +9,7 @@ use rustls::ServerConfig;
 use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
+    io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Lines},
     net::{TcpListener, TcpStream},
 };
 use tokio_rustls::TlsAcceptor;
@@ -261,45 +261,13 @@ where
         if upper.starts_with("EHLO") || upper.starts_with("HELO") {
             submission_ehlo(&mut writer, &mut env, &line, &upper, domain).await?;
         } else if upper.starts_with("AUTH PLAIN") {
-            let b64 = line[10..].trim();
-            let credential = if b64.is_empty() {
-                writer.write_all(b"334 \r\n").await?;
-                match lines.next_line().await? {
-                    Some(l) => l,
-                    None => break,
-                }
-            } else {
-                b64.to_string()
-            };
-            finish_smtp_auth(
-                state,
-                &mut writer,
-                &mut env,
-                "PLAIN",
-                decode_plain(&credential),
-            )
-            .await?;
+            if !auth_plain(state, &mut writer, &mut env, &mut lines, &line).await? {
+                break;
+            }
         } else if upper.starts_with("AUTH LOGIN") {
-            writer.write_all(b"334 VXNlcm5hbWU6\r\n").await?;
-            let user_b64 = match lines.next_line().await? {
-                Some(l) => l,
-                None => break,
-            };
-            writer.write_all(b"334 UGFzc3dvcmQ6\r\n").await?;
-            let pass_b64 = match lines.next_line().await? {
-                Some(l) => l,
-                None => break,
-            };
-            let user = B64
-                .decode(user_b64.trim())
-                .ok()
-                .and_then(|b| String::from_utf8(b).ok());
-            let pass = B64
-                .decode(pass_b64.trim())
-                .ok()
-                .and_then(|b| String::from_utf8(b).ok());
-            let creds = user.zip(pass);
-            finish_smtp_auth(state, &mut writer, &mut env, "LOGIN", creds).await?;
+            if !auth_login(state, &mut writer, &mut env, &mut lines).await? {
+                break;
+            }
         } else if upper.starts_with("MAIL FROM:") {
             handle_mail_from(&mut writer, &mut env, &line).await?;
         } else if upper.starts_with("RCPT TO:") {
@@ -536,6 +504,66 @@ where
 
 /// Handle `RCPT TO:` on the submission channel: require AUTH + prior MAIL FROM,
 /// cap recipient count, then append the recipient. Writes the SMTP reply.
+/// Handle `AUTH PLAIN` (initial-response or 334-prompted). Returns `Ok(false)`
+/// when the client disconnects mid-handshake (caller breaks the session loop),
+/// `Ok(true)` otherwise (the SMTP reply was written by `finish_smtp_auth`).
+async fn auth_plain<R, W>(
+    state: &AppState,
+    writer: &mut W,
+    env: &mut Envelope,
+    lines: &mut Lines<R>,
+    line: &str,
+) -> anyhow::Result<bool>
+where
+    R: AsyncBufRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let b64 = line[10..].trim();
+    let credential = if b64.is_empty() {
+        writer.write_all(b"334 \r\n").await?;
+        match lines.next_line().await? {
+            Some(l) => l,
+            None => return Ok(false),
+        }
+    } else {
+        b64.to_string()
+    };
+    finish_smtp_auth(state, writer, env, "PLAIN", decode_plain(&credential)).await?;
+    Ok(true)
+}
+
+/// Handle `AUTH LOGIN` (334 Username / 334 Password challenge-response). Returns
+/// `Ok(false)` when the client disconnects mid-handshake (caller breaks).
+async fn auth_login<R, W>(
+    state: &AppState,
+    writer: &mut W,
+    env: &mut Envelope,
+    lines: &mut Lines<R>,
+) -> anyhow::Result<bool>
+where
+    R: AsyncBufRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    writer.write_all(b"334 VXNlcm5hbWU6\r\n").await?;
+    let Some(user_b64) = lines.next_line().await? else {
+        return Ok(false);
+    };
+    writer.write_all(b"334 UGFzc3dvcmQ6\r\n").await?;
+    let Some(pass_b64) = lines.next_line().await? else {
+        return Ok(false);
+    };
+    let user = B64
+        .decode(user_b64.trim())
+        .ok()
+        .and_then(|b| String::from_utf8(b).ok());
+    let pass = B64
+        .decode(pass_b64.trim())
+        .ok()
+        .and_then(|b| String::from_utf8(b).ok());
+    finish_smtp_auth(state, writer, env, "LOGIN", user.zip(pass)).await?;
+    Ok(true)
+}
+
 /// Handle `EHLO`/`HELO` on the post-STARTTLS submission channel: record the
 /// greeting name and reply with the capability list (advertising AUTH PLAIN
 /// LOGIN). Extracted from `handle_tls`.

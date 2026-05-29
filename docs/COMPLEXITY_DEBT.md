@@ -30,13 +30,17 @@ four SMTP command loops — `handle_tls` 45→40 (`handle_data_command`),
 session_loop 28→27) + submission-local `submission_ehlo()` (handle_tls 40→39).
 Gate 40 → **39**.
 
-**Binding ceiling = `handle_tls` (39).** Its residual complexity is the AUTH
-PLAIN/LOGIN branches (challenge/response with `break`-on-disconnect) plus the
-RSET/NOOP/QUIT verb chain. The AUTH branches are genuinely loop-coupled (the
-`break` exits the session on a dropped connection); dropping below 39 needs
-either lifting AUTH into a helper that signals "connection closed" via a return
-value, or restructuring the whole verb chain into a parsed-verb `match`. This is
-the higher-risk structural step. Everything else is now ≤38.
+**AUTH extraction (2026-05-29):** the "loop-coupled" AUTH PLAIN/LOGIN branches
+turned out cleanly liftable — `auth_plain()` / `auth_login()` take `&mut lines`
+and return `Ok(false)` on mid-handshake disconnect (caller `break`s), preserving
+the exact control flow. `handle_tls` 39 → **31**. Gate 39 → **38**.
+
+**Binding ceiling now = three functions at 38:** `handle`@smtp/session.rs,
+`handle`@lmtp.rs, `cmd_fetch`@imap/session.rs. The two SMTP `handle`s still have
+the STARTTLS-upgrade + verb chain inline; `cmd_fetch` has the per-row response
+loop. Further reduction means extracting STARTTLS handling and/or the cmd_fetch
+row builder (async, DB-coupled for the \Seen update) — doable but more involved
+than the branch lifts. Everything else ≤35.
 
 
 **Calendar analytics (2026-05-29):** `overrides_stats` 49 → **32** by extracting
