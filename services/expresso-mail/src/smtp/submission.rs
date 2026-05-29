@@ -346,37 +346,7 @@ where
             } else {
                 b64.to_string()
             };
-            match decode_plain(&credential) {
-                Some((user, pass)) => match authenticate(state, &user, &pass).await {
-                    Ok(()) => {
-                        env.authed_user = Some(user.clone());
-                        info!(user = %user, "submission AUTH PLAIN success");
-                        writer
-                            .write_all(b"235 2.7.0 Authentication successful\r\n")
-                            .await?;
-                        SMTP_COMMANDS_TOTAL
-                            .with_label_values(&["AUTH", "smtp587", "ok"])
-                            .inc();
-                    }
-                    Err(e) => {
-                        warn!(user = %user, error = %e, "submission AUTH PLAIN fail");
-                        writer
-                            .write_all(b"535 5.7.8 Authentication credentials invalid\r\n")
-                            .await?;
-                        SMTP_COMMANDS_TOTAL
-                            .with_label_values(&["AUTH", "smtp587", "reject"])
-                            .inc();
-                    }
-                },
-                None => {
-                    writer
-                        .write_all(b"501 5.5.2 Cannot decode AUTH PLAIN\r\n")
-                        .await?;
-                    SMTP_COMMANDS_TOTAL
-                        .with_label_values(&["AUTH", "smtp587", "reject"])
-                        .inc();
-                }
-            }
+            finish_smtp_auth(state, &mut writer, &mut env, "PLAIN", decode_plain(&credential)).await?;
         } else if upper.starts_with("AUTH LOGIN") {
             writer.write_all(b"334 VXNlcm5hbWU6\r\n").await?;
             let user_b64 = match lines.next_line().await? {
@@ -396,37 +366,8 @@ where
                 .decode(pass_b64.trim())
                 .ok()
                 .and_then(|b| String::from_utf8(b).ok());
-            match (user, pass) {
-                (Some(u), Some(p)) => match authenticate(state, &u, &p).await {
-                    Ok(()) => {
-                        env.authed_user = Some(u.clone());
-                        info!(user = %u, "submission AUTH LOGIN success");
-                        writer
-                            .write_all(b"235 2.7.0 Authentication successful\r\n")
-                            .await?;
-                        SMTP_COMMANDS_TOTAL
-                            .with_label_values(&["AUTH", "smtp587", "ok"])
-                            .inc();
-                    }
-                    Err(e) => {
-                        warn!(user = %u, error = %e, "submission AUTH LOGIN fail");
-                        writer
-                            .write_all(b"535 5.7.8 Authentication credentials invalid\r\n")
-                            .await?;
-                        SMTP_COMMANDS_TOTAL
-                            .with_label_values(&["AUTH", "smtp587", "reject"])
-                            .inc();
-                    }
-                },
-                _ => {
-                    writer
-                        .write_all(b"501 5.5.2 Cannot decode AUTH LOGIN\r\n")
-                        .await?;
-                    SMTP_COMMANDS_TOTAL
-                        .with_label_values(&["AUTH", "smtp587", "reject"])
-                        .inc();
-                }
-            }
+            let creds = user.zip(pass);
+            finish_smtp_auth(state, &mut writer, &mut env, "LOGIN", creds).await?;
         } else if upper.starts_with("MAIL FROM:") {
             let Some(authed) = env.authed_user.as_deref() else {
                 writer
@@ -587,6 +528,53 @@ fn from_matches_authed(from: &str, authed: &str) -> bool {
         return false;
     }
     f.eq_ignore_ascii_case(a)
+}
+
+/// Shared tail for AUTH PLAIN/LOGIN: given the decoded `(user, pass)` (or None
+/// when decode failed), authenticate, write the SMTP reply, set `authed_user`
+/// on success, and emit the metric. `mech` is "PLAIN"/"LOGIN" for log context.
+/// Extracted from `handle_tls` so each AUTH branch is just credential decoding.
+async fn finish_smtp_auth<W>(
+    state: &AppState,
+    writer: &mut W,
+    env: &mut Envelope,
+    mech: &str,
+    creds: Option<(String, String)>,
+) -> anyhow::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    let Some((user, pass)) = creds else {
+        writer
+            .write_all(format!("501 5.5.2 Cannot decode AUTH {mech}\r\n").as_bytes())
+            .await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["AUTH", "smtp587", "reject"])
+            .inc();
+        return Ok(());
+    };
+    match authenticate(state, &user, &pass).await {
+        Ok(()) => {
+            env.authed_user = Some(user.clone());
+            info!(user = %user, mech, "submission AUTH success");
+            writer
+                .write_all(b"235 2.7.0 Authentication successful\r\n")
+                .await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["AUTH", "smtp587", "ok"])
+                .inc();
+        }
+        Err(e) => {
+            warn!(user = %user, mech, error = %e, "submission AUTH fail");
+            writer
+                .write_all(b"535 5.7.8 Authentication credentials invalid\r\n")
+                .await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["AUTH", "smtp587", "reject"])
+                .inc();
+        }
+    }
+    Ok(())
 }
 
 /// Decode AUTH PLAIN credential: base64("\0user\0pass")
