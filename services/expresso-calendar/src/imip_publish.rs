@@ -164,6 +164,8 @@ mod tests {
             dtend:   Some(datetime!(2026-05-10 14:00 UTC)),
             rrule: None,
             status: None,
+            class: None,
+            transp: None,
             sequence: 2,
             organizer_email: Some("alice@ex.local".into()),
             created_at: datetime!(2026-01-01 0:00 UTC),

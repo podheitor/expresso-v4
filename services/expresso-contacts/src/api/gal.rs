@@ -34,7 +34,7 @@ pub struct SearchQuery {
     pub limit: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "source")]
 pub enum GalEntry {
     #[serde(rename = "directory")]
