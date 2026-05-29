@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn not_found_display_is_nonempty() {
-        let e = CoreError::NotFound("drive_file".into());
+        let e = CoreError::NotFound { resource: "drive_file" };
         assert!(!e.to_string().is_empty());
     }
 
