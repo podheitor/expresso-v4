@@ -1796,60 +1796,41 @@ async fn cmd_append(
     out
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn cmd_fetch(
-    state: &AppState,
-    tag: Tag<'static>,
-    sequence_set: &imap_codec::imap_types::sequence::SequenceSet,
+/// Parsed FETCH data-item request: which fields/body sections the client asked
+/// for. Extracted from `cmd_fetch` to keep that function's branching tractable.
+struct FetchPlan {
+    w_flags: bool,
+    w_envelope: bool,
+    w_size: bool,
+    w_uid: bool,
+    w_internaldate: bool,
+    w_modseq: bool,
+    w_bodystructure: bool,
+    w_rfc822: bool,
+    w_rfc822_header: bool,
+    w_rfc822_text: bool,
+    want_full_body: bool,
+    want_header: bool,
+    want_text: bool,
+    set_seen: bool,
+    header_fields_reqs: Vec<(Vec<String>, bool)>,
+    partial_reqs: Vec<(u8, u32, u32)>,
+    want_part_body: bool,
+    want_part_mime: bool,
+    part_body_reqs: Vec<(u32, Vec<NonZeroU32>)>,
+    part_mime_reqs: Vec<(u32, Vec<NonZeroU32>)>,
+    part_header_reqs: Vec<(u32, Vec<NonZeroU32>)>,
+    part_text_reqs: Vec<(u32, Vec<NonZeroU32>)>,
+    need_body: bool,
+}
+
+/// Translate the requested FETCH items into a `FetchPlan`. Pure parsing — reads
+/// only the request, no DB access.
+fn fetch_plan(
     macro_or: &MacroOrMessageDataItemNames<'_>,
     uid: bool,
-    sel: &SelectedMailbox,
-    tenant_id: Uuid,
     changedsince: Option<u64>,
-) -> Vec<Response<'static>> {
-    // CHANGEDSINCE filter clause (RFC 7162 §3.1): only messages with
-    // mod_sequence > N are returned.
-    let cs_clause = match changedsince {
-        Some(v) => format!(" AND mod_sequence > {v}"),
-        None => String::new(),
-    };
-
-    // UID FETCH: sequence_set holds UID values; * resolves to u32::MAX (all).
-    // Seq FETCH: sequence_set holds ordinal positions (1-based); * = exists.
-    let rows = if uid {
-        let uid_w = uid_clause(&sequence_ranges(sequence_set, u32::MAX));
-        sqlx::query(&format!(
-            "SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
-             uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path, \
-             to_addrs, cc_addrs, message_id, in_reply_to, reply_to, mod_sequence \
-             FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND ({uid_w}){cs_clause} \
-             ORDER BY received_at ASC",
-        ))
-        .bind(sel.mailbox_id)
-        .bind(tenant_id)
-        .fetch_all(state.db())
-        .await
-        .unwrap_or_default()
-    } else {
-        let seq_w = seq_clause(&sequence_ranges(sequence_set, sel.exists));
-        sqlx::query(&format!(
-            "SELECT id, seq, uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path, \
-             to_addrs, cc_addrs, message_id, in_reply_to, reply_to, mod_sequence \
-             FROM ( \
-               SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
-                      uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path, \
-                      to_addrs, cc_addrs, message_id, in_reply_to, reply_to, mod_sequence \
-               FROM messages WHERE mailbox_id = $1 AND tenant_id = $2{cs_clause} \
-             ) sub WHERE ({seq_w}) \
-             ORDER BY seq ASC",
-        ))
-        .bind(sel.mailbox_id)
-        .bind(tenant_id)
-        .fetch_all(state.db())
-        .await
-        .unwrap_or_default()
-    };
-
+) -> FetchPlan {
     let w_flags = wants(macro_or, "FLAGS");
     let w_envelope = wants(macro_or, "ENVELOPE");
     let w_size = wants(macro_or, "RFC822.SIZE");
@@ -1891,19 +1872,12 @@ async fn cmd_fetch(
     // Partial reqs: (section_tag, offset, count)
     // section_tag: 0=full, 1=header, 2=text
     let mut partial_reqs: Vec<(u8, u32, u32)> = Vec::new();
-    // Section::Part(Part([n,...])) — BODY[N]: body of part N (multipart-aware).
-    // Section::Mime(Part([n,...]))  — BODY[N.MIME]: MIME headers of part N.
-    // Section::Header(Some(part))  — BODY[N.HEADER]: header section (= message header for flat msgs).
-    // Section::Text(Some(part))    — BODY[N.TEXT]: text section (= body for flat msgs).
-    // Each entry stores (part_nums_vec, _) so we know which part number to fetch.
     let mut want_part_body: bool = false;
     let mut want_part_mime: bool = false;
     // (part number as u32, original Part clone for echo-back in response)
     let mut part_body_reqs: Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
     let mut part_mime_reqs: Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
-    // BODY[N.HEADER] — header block of part N.
     let mut part_header_reqs: Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
-    // BODY[N.TEXT]   — body text of part N.
     let mut part_text_reqs: Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
     if let MacroOrMessageDataItemNames::MessageDataItemNames(names) = macro_or {
         for name in names.iter() {
@@ -2000,6 +1974,113 @@ async fn cmd_fetch(
         || !partial_reqs.is_empty()
         || !part_header_reqs.is_empty()
         || !part_text_reqs.is_empty();
+
+    FetchPlan {
+        w_flags,
+        w_envelope,
+        w_size,
+        w_uid,
+        w_internaldate,
+        w_modseq,
+        w_bodystructure,
+        w_rfc822,
+        w_rfc822_header,
+        w_rfc822_text,
+        want_full_body,
+        want_header,
+        want_text,
+        set_seen,
+        header_fields_reqs,
+        partial_reqs,
+        want_part_body,
+        want_part_mime,
+        part_body_reqs,
+        part_mime_reqs,
+        part_header_reqs,
+        part_text_reqs,
+        need_body,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_fetch(
+    state: &AppState,
+    tag: Tag<'static>,
+    sequence_set: &imap_codec::imap_types::sequence::SequenceSet,
+    macro_or: &MacroOrMessageDataItemNames<'_>,
+    uid: bool,
+    sel: &SelectedMailbox,
+    tenant_id: Uuid,
+    changedsince: Option<u64>,
+) -> Vec<Response<'static>> {
+    // CHANGEDSINCE filter clause (RFC 7162 §3.1): only messages with
+    // mod_sequence > N are returned.
+    let cs_clause = match changedsince {
+        Some(v) => format!(" AND mod_sequence > {v}"),
+        None => String::new(),
+    };
+
+    // UID FETCH: sequence_set holds UID values; * resolves to u32::MAX (all).
+    // Seq FETCH: sequence_set holds ordinal positions (1-based); * = exists.
+    let rows = if uid {
+        let uid_w = uid_clause(&sequence_ranges(sequence_set, u32::MAX));
+        sqlx::query(&format!(
+            "SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
+             uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path, \
+             to_addrs, cc_addrs, message_id, in_reply_to, reply_to, mod_sequence \
+             FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND ({uid_w}){cs_clause} \
+             ORDER BY received_at ASC",
+        ))
+        .bind(sel.mailbox_id)
+        .bind(tenant_id)
+        .fetch_all(state.db())
+        .await
+        .unwrap_or_default()
+    } else {
+        let seq_w = seq_clause(&sequence_ranges(sequence_set, sel.exists));
+        sqlx::query(&format!(
+            "SELECT id, seq, uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path, \
+             to_addrs, cc_addrs, message_id, in_reply_to, reply_to, mod_sequence \
+             FROM ( \
+               SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
+                      uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path, \
+                      to_addrs, cc_addrs, message_id, in_reply_to, reply_to, mod_sequence \
+               FROM messages WHERE mailbox_id = $1 AND tenant_id = $2{cs_clause} \
+             ) sub WHERE ({seq_w}) \
+             ORDER BY seq ASC",
+        ))
+        .bind(sel.mailbox_id)
+        .bind(tenant_id)
+        .fetch_all(state.db())
+        .await
+        .unwrap_or_default()
+    };
+
+    let FetchPlan {
+        w_flags,
+        w_envelope,
+        w_size,
+        w_uid,
+        w_internaldate,
+        w_modseq,
+        w_bodystructure,
+        w_rfc822,
+        w_rfc822_header,
+        w_rfc822_text,
+        want_full_body,
+        want_header,
+        want_text,
+        set_seen,
+        header_fields_reqs,
+        partial_reqs,
+        want_part_body,
+        want_part_mime,
+        part_body_reqs,
+        part_mime_reqs,
+        part_header_reqs,
+        part_text_reqs,
+        need_body,
+    } = fetch_plan(macro_or, uid, changedsince);
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for row in &rows {
