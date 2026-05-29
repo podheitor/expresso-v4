@@ -324,73 +324,9 @@ where
             let creds = user.zip(pass);
             finish_smtp_auth(state, &mut writer, &mut env, "LOGIN", creds).await?;
         } else if upper.starts_with("MAIL FROM:") {
-            let Some(authed) = env.authed_user.as_deref() else {
-                writer
-                    .write_all(b"530 5.7.0 Authentication required\r\n")
-                    .await?;
-                SMTP_COMMANDS_TOTAL
-                    .with_label_values(&["MAIL", "smtp587", "reject"])
-                    .inc();
-                continue;
-            };
-            let rest = &line[10..];
-            if let Some(sz) = extract_size_param(rest) {
-                if sz > MAX_MSG_BYTES {
-                    writer
-                        .write_all(b"552 5.3.4 Message size exceeds fixed maximum\r\n")
-                        .await?;
-                    SMTP_COMMANDS_TOTAL
-                        .with_label_values(&["MAIL", "smtp587", "reject"])
-                        .inc();
-                    continue;
-                }
-            }
-            let from = extract_angle(rest);
-            if !from_matches_authed(&from, authed) {
-                warn!(user = %authed, from = %from, "submission MAIL FROM spoof rejected");
-                writer
-                    .write_all(b"550 5.7.1 MAIL FROM does not match authenticated user\r\n")
-                    .await?;
-                SMTP_COMMANDS_TOTAL
-                    .with_label_values(&["MAIL", "smtp587", "reject"])
-                    .inc();
-                continue;
-            }
-            env.from = Some(from);
-            env.rcpts.clear();
-            writer.write_all(b"250 OK\r\n").await?;
-            SMTP_COMMANDS_TOTAL
-                .with_label_values(&["MAIL", "smtp587", "ok"])
-                .inc();
+            handle_mail_from(&mut writer, &mut env, &line).await?;
         } else if upper.starts_with("RCPT TO:") {
-            if env.authed_user.is_none() {
-                writer
-                    .write_all(b"530 5.7.0 Authentication required\r\n")
-                    .await?;
-                SMTP_COMMANDS_TOTAL
-                    .with_label_values(&["RCPT", "smtp587", "reject"])
-                    .inc();
-                continue;
-            }
-            if env.from.is_none() {
-                writer
-                    .write_all(b"503 Bad sequence: MAIL first\r\n")
-                    .await?;
-                SMTP_COMMANDS_TOTAL
-                    .with_label_values(&["RCPT", "smtp587", "reject"])
-                    .inc();
-            } else if env.rcpts.len() >= MAX_RCPTS {
-                writer.write_all(b"452 Too many recipients\r\n").await?;
-                SMTP_COMMANDS_TOTAL
-                    .with_label_values(&["RCPT", "smtp587", "reject"])
-                    .inc();
-            } else {
-                env.rcpts.push(extract_angle(&line[8..]));
-                writer.write_all(b"250 OK\r\n").await?;
-                SMTP_COMMANDS_TOTAL
-                    .with_label_values(&["RCPT", "smtp587", "ok"])
-                    .inc();
-            }
+            handle_rcpt_to(&mut writer, &mut env, &line).await?;
         } else if upper == "DATA" {
             if env.authed_user.is_none() {
                 writer
@@ -589,6 +525,89 @@ where
         authed_user: env.authed_user.take(),
         ..Default::default()
     };
+    Ok(())
+}
+
+/// Handle `MAIL FROM:` on the authenticated submission channel: require AUTH,
+/// enforce SIZE, reject from-spoofing, then set the envelope sender. Writes the
+/// SMTP reply itself. Extracted from `handle_tls`.
+async fn handle_mail_from<W>(writer: &mut W, env: &mut Envelope, line: &str) -> anyhow::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    let Some(authed) = env.authed_user.as_deref() else {
+        writer
+            .write_all(b"530 5.7.0 Authentication required\r\n")
+            .await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["MAIL", "smtp587", "reject"])
+            .inc();
+        return Ok(());
+    };
+    let rest = &line[10..];
+    if extract_size_param(rest).is_some_and(|sz| sz > MAX_MSG_BYTES) {
+        writer
+            .write_all(b"552 5.3.4 Message size exceeds fixed maximum\r\n")
+            .await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["MAIL", "smtp587", "reject"])
+            .inc();
+        return Ok(());
+    }
+    let from = extract_angle(rest);
+    if !from_matches_authed(&from, authed) {
+        warn!(user = %authed, from = %from, "submission MAIL FROM spoof rejected");
+        writer
+            .write_all(b"550 5.7.1 MAIL FROM does not match authenticated user\r\n")
+            .await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["MAIL", "smtp587", "reject"])
+            .inc();
+        return Ok(());
+    }
+    env.from = Some(from);
+    env.rcpts.clear();
+    writer.write_all(b"250 OK\r\n").await?;
+    SMTP_COMMANDS_TOTAL
+        .with_label_values(&["MAIL", "smtp587", "ok"])
+        .inc();
+    Ok(())
+}
+
+/// Handle `RCPT TO:` on the submission channel: require AUTH + prior MAIL FROM,
+/// cap recipient count, then append the recipient. Writes the SMTP reply.
+async fn handle_rcpt_to<W>(writer: &mut W, env: &mut Envelope, line: &str) -> anyhow::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    if env.authed_user.is_none() {
+        writer
+            .write_all(b"530 5.7.0 Authentication required\r\n")
+            .await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["RCPT", "smtp587", "reject"])
+            .inc();
+        return Ok(());
+    }
+    if env.from.is_none() {
+        writer
+            .write_all(b"503 Bad sequence: MAIL first\r\n")
+            .await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["RCPT", "smtp587", "reject"])
+            .inc();
+    } else if env.rcpts.len() >= MAX_RCPTS {
+        writer.write_all(b"452 Too many recipients\r\n").await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["RCPT", "smtp587", "reject"])
+            .inc();
+    } else {
+        env.rcpts.push(extract_angle(&line[8..]));
+        writer.write_all(b"250 OK\r\n").await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["RCPT", "smtp587", "ok"])
+            .inc();
+    }
     Ok(())
 }
 

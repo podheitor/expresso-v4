@@ -3,28 +3,30 @@
 The target is **CCN ≤ 25** (per `CLAUDE.md`). The debloat baseline restore left
 21 functions above that. Per the project policy for legacy code — *"start at the
 current max, tighten by 5 each refactor"* — the CI `lizard` gate is currently
-currently set to **`-C 57`** and should keep ratcheting down: 57 → 52 → … → 25.
+currently set to **`-C 50`** and should keep ratcheting down: 50 → 45 → … → 25.
 
-**Progress (2026-05-29):** gate lowered 72 → 64 → 59 → 57.
+**Progress (2026-05-29):** gate lowered 72 → 64 → 59 → 57 → 50.
 - `cmd_fetch` 72 → **48**: extracted the FETCH data-item parser (`fetch_plan()`).
-- `handle_tls` 72 → 64 → **57**: extracted `finish_smtp_auth()` +
-  `finalize_data_message()`.
-- `handle` (smtp/session.rs) 59 → **50** and `session_loop` 46 → **38**: both
-  now share `finalize_inbound_message()` (the SPF/DKIM/DMARC + ingest tail).
+- `handle_tls` 72 → 64 → 57 → **45**: extracted `finish_smtp_auth()`,
+  `finalize_data_message()`, `handle_mail_from()`, `handle_rcpt_to()`.
+- `handle` (smtp/session.rs) 59 → **50** and `session_loop` 46 → **38**: share
+  `finalize_inbound_message()` (the SPF/DKIM/DMARC + ingest tail).
 All verified behaviour-preserving (573 mail tests pass at each step).
 
-Next gate-blocker is `handle_tls` again at 57 (submission.rs verb-dispatch
-loop) — extract the MAIL FROM / RCPT TO branches next to reach 52.
+Next gate-blocker is `handle` at smtp/session.rs:65 (CCN 50) — apply the same
+MAIL FROM / RCPT TO branch extraction (it's the inbound :25 verb loop) to reach
+~45. After that the calendar `*_stats`/`overrides_stats` analytics endpoints
+(CCN 36-49) are the next cluster.
 
 Run `find services libs -name '*.rs' -not -path '*/target/*' | xargs lizard -l rust -C 25 -w`
 to see the current offenders. Highest remaining:
 
 | CCN | Function | File |
 |----:|----------|------|
-| 57 | `handle_tls` | services/expresso-mail/src/smtp/submission.rs:220 (next gate-blocker; was 72) |
-| 50 | `handle` | services/expresso-mail/src/smtp/session.rs (was 59) |
+| 50 | `handle` | services/expresso-mail/src/smtp/session.rs:65 (next gate-blocker; was 59) |
 | 49 | `overrides_stats` | services/expresso-calendar/src/api/events.rs:6674 |
 | 48 | `cmd_fetch` | services/expresso-mail/src/imap/session.rs (was 72) |
+| 45 | `handle_tls` | services/expresso-mail/src/smtp/submission.rs:220 (was 72) |
 | 38 | `session_loop` | services/expresso-mail/src/smtp/session.rs (was 46) |
 | 43 | `exdates_stats` | services/expresso-calendar/src/api/events.rs:5532 |
 | 41 | `handle` | services/expresso-mail/src/lmtp.rs:59 |
