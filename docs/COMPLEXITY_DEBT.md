@@ -24,8 +24,6 @@ to see the current offenders. Highest remaining:
 | 59 | `handle` | services/expresso-mail/src/smtp/session.rs:65 |
 | 49 | `overrides_stats` | services/expresso-calendar/src/api/events.rs:6674 |
 | 48 | `cmd_fetch` | services/expresso-mail/src/imap/session.rs (was 72) |
-| 59 | `handle` | services/expresso-mail/src/smtp/session.rs:65 |
-| 49 | `overrides_stats` | services/expresso-calendar/src/api/events.rs:6674 |
 | 46 | `session_loop` | services/expresso-mail/src/smtp/session.rs:309 |
 | 43 | `exdates_stats` | services/expresso-calendar/src/api/events.rs:5532 |
 | 41 | `handle` | services/expresso-mail/src/lmtp.rs:59 |
@@ -45,6 +43,9 @@ to see the current offenders. Highest remaining:
 
 (`local_to_ical_utc` in expresso-web reports a huge NLOC but CCN 1 — it is a
 giant flat data table, not control-flow complexity; not a refactor target.)
+
+Verify the gate locally with the CI toolchain (rustc 1.96):
+`find services libs -name '*.rs' -not -path '*/target/*' | xargs lizard -l rust -C 64 -L 3000 -w`
 
 ## Refactor approach
 
