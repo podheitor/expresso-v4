@@ -23,7 +23,10 @@ pub struct Quota {
 
 impl Quota {
     pub fn fits(&self, extra: i64) -> bool {
-        self.used_bytes.saturating_add(extra) <= self.max_bytes
+        // Overflow means a request larger than i64 can represent — never fits.
+        self.used_bytes
+            .checked_add(extra)
+            .is_some_and(|total| total <= self.max_bytes)
     }
 }
 
@@ -43,7 +46,10 @@ pub struct FolderQuota {
 
 impl FolderQuota {
     pub fn fits(&self, extra: i64) -> bool {
-        self.used_bytes.saturating_add(extra) <= self.max_bytes
+        // Overflow means a request larger than i64 can represent — never fits.
+        self.used_bytes
+            .checked_add(extra)
+            .is_some_and(|total| total <= self.max_bytes)
     }
 }
 

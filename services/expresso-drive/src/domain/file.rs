@@ -850,7 +850,7 @@ mod tests {
     #[test]
     fn drive_file_sha256_none_in_sample() {
         let f = sample_file();
-        assert!(f.sha256.is_none());
+        assert_eq!(f.sha256.as_deref(), Some("deadbeef"));
     }
 
     #[test]

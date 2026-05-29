@@ -1223,37 +1223,36 @@ mod tests {
 
     #[test]
     fn bucket_day_known_date() {
-        // 2026-01-15 = 20469 days since epoch  (2026*365 + leap-years - ...)
-        // Use a well-known timestamp: 2026-05-22T00:00:00Z = 1748304000
-        let ts: u64 = 1748304000;
+        // 2026-05-22T00:00:00Z = 1779408000
+        let ts: u64 = 1779408000;
         assert_eq!(unix_secs_to_bucket(ts, "day"), "2026-05-22");
     }
 
     #[test]
     fn bucket_month_known_date() {
-        let ts: u64 = 1748304000; // 2026-05-22
+        let ts: u64 = 1779408000; // 2026-05-22
         assert_eq!(unix_secs_to_bucket(ts, "month"), "2026-05");
     }
 
     #[test]
     fn bucket_week_known_date() {
         // 2026-05-22 is a Friday in ISO week 21 of 2026
-        let ts: u64 = 1748304000;
+        let ts: u64 = 1779408000;
         assert_eq!(unix_secs_to_bucket(ts, "week"), "2026-W21");
     }
 
     #[test]
     fn bucket_unknown_granularity_falls_back_to_day() {
-        let ts: u64 = 1748304000;
+        let ts: u64 = 1779408000;
         assert_eq!(unix_secs_to_bucket(ts, "quarter"), unix_secs_to_bucket(ts, "day"));
     }
 
     #[test]
     fn bucket_day_end_of_year() {
-        // 2025-12-31T00:00:00Z = 1735603200
+        // 2024-12-31T00:00:00Z = 1735603200
         let ts: u64 = 1735603200;
-        assert_eq!(unix_secs_to_bucket(ts, "day"), "2025-12-31");
-        assert_eq!(unix_secs_to_bucket(ts, "month"), "2025-12");
+        assert_eq!(unix_secs_to_bucket(ts, "day"), "2024-12-31");
+        assert_eq!(unix_secs_to_bucket(ts, "month"), "2024-12");
     }
 
     // ─── days_to_ymd / ymd_to_days round-trip ────────────────────────────────
@@ -1539,7 +1538,7 @@ mod tests {
 
     #[test]
     fn bucket_week_and_bucket_day_differ_for_known_ts() {
-        let ts: u64 = 1748304000;
+        let ts: u64 = 1779408000;
         assert_ne!(unix_secs_to_bucket(ts, "week"), unix_secs_to_bucket(ts, "day"));
     }
 

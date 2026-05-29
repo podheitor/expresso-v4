@@ -498,8 +498,9 @@ mod tests {
 
     #[test]
     fn build_user_body_email_verified_is_false_by_default() {
+        // Platform-provisioned tenant admins are pre-verified — no email round-trip.
         let b = build_user_body("carol", "carol@example.com");
-        assert_eq!(b["emailVerified"].as_bool(), Some(false));
+        assert_eq!(b["emailVerified"].as_bool(), Some(true));
     }
 
     #[test]

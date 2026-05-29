@@ -492,8 +492,8 @@ mod tests {
 
     #[test]
     fn extract_tenant_id_value_not_trimmed_when_no_whitespace() {
-        let attrs = serde_json::json!([{"name": "tenantId", "value": ["acme"]}]);
-        let result = extract_tenant_id(&attrs);
+        let u = serde_json::json!({"attributes": {"tenant_id": ["acme"]}});
+        let result = extract_tenant_id(&u);
         assert_eq!(result, Some("acme".to_string()));
     }
 

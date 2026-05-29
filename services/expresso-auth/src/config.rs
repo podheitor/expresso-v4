@@ -128,7 +128,7 @@ mod tests {
 
     #[test]
     fn redirect_uri_template_stored_when_provided() {
-        let c = cfg("i", "cl", "r", Some("https://{host}/cb".into()), None, None);
+        let c = cfg("i", "cl", "r", None, Some("https://{host}/cb"), None);
         assert_eq!(c.redirect_uri_template.as_deref(), Some("https://{host}/cb"));
     }
 

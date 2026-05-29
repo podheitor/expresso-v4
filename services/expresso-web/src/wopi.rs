@@ -135,14 +135,16 @@ mod extra_tests {
 
     #[test]
     fn build_iframe_url_contains_file_id() {
+        // file_id is embedded in WOPISrc then percent-encoded (NON_ALPHANUMERIC).
         let url = build_iframe_url("https://collabora", "https://drive", "my-file-id", "tok");
-        assert!(url.contains("my-file-id"));
+        assert!(url.contains("my%2Dfile%2Did"));
     }
 
     #[test]
     fn build_iframe_url_contains_token() {
+        // access_token is percent-encoded (NON_ALPHANUMERIC), so '-' becomes %2D.
         let url = build_iframe_url("https://collabora", "https://drive", "f1", "secret-token");
-        assert!(url.contains("secret-token"));
+        assert!(url.contains("secret%2Dtoken"));
     }
 
     #[test]
@@ -154,7 +156,7 @@ mod extra_tests {
     #[test]
     fn build_iframe_url_contains_specific_file_id() {
         let url = build_iframe_url("https://collabora.example.com", "https://drive", "file-xyz", "tok");
-        assert!(url.contains("file-xyz"));
+        assert!(url.contains("file%2Dxyz"));
     }
 
     #[test]

@@ -188,8 +188,9 @@ mod tests {
 
     #[test]
     fn cookie_with_equals_in_value() {
+        // RFC 6265: split on the first '=', so the value may itself contain '='.
         let h = headers_with_cookie("token=abc=def");
-        assert_eq!(extract_cookie(&h, "token"), Some("abc".into()));
+        assert_eq!(extract_cookie(&h, "token"), Some("abc=def".into()));
     }
 
     #[test]
