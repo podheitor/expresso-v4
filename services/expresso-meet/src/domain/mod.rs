@@ -1,2 +1,2 @@
 pub mod meeting;
-pub use meeting::{Meeting, MeetingParticipant, MeetingRepo, NewMeeting, ParticipantRole};
+pub use meeting::{Meeting, MeetingRepo, NewMeeting, ParticipantRole};

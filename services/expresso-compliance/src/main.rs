@@ -34,7 +34,7 @@ use axum::{
     http::{header, request::Parts, HeaderMap, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{delete, get, patch, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use expresso_auth_client::{AuthContext, Authenticated, AuthRejection, OidcConfig, OidcValidator};
@@ -53,6 +53,7 @@ const DEFAULT_RETENTION_INTERVAL:   u64 = 3600; // seconds
 #[derive(Clone)]
 struct AppState {
     db:        expresso_core::DbPool,
+    #[allow(dead_code)] // configured for bulk-delete calls to expresso-mail; not yet invoked
     mail_url:  String,   // expresso-mail base URL for bulk delete
     validator: Option<Arc<OidcValidator>>,
 }

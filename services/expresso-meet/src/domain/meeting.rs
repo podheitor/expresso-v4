@@ -262,6 +262,7 @@ impl<'a> MeetingRepo<'a> {
         Ok(row)
     }
 
+    #[allow(dead_code)] // participant listing API; not yet called by a handler
     pub async fn list_participants(&self, tenant: Uuid, meeting: Uuid) -> Result<Vec<MeetingParticipant>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows: Vec<MeetingParticipant> = sqlx::query_as(

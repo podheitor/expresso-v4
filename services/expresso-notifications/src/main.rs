@@ -45,12 +45,12 @@ use axum::{
     http::{request::Parts, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response, Sse, sse::Event},
-    routing::{delete, get, patch, post},
+    routing::{get, patch, post},
     Json, Router,
 };
 use time::OffsetDateTime;
 use expresso_auth_client::{AuthContext, Authenticated, OidcConfig, OidcValidator};
-use futures::stream::{self, Stream};
+use futures::stream;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::broadcast;

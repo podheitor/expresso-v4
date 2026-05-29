@@ -36,6 +36,7 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
+    #[allow(dead_code)] // constructor retained for the rate-limit API; not yet wired
     pub fn new(window: Duration, max: usize) -> Self {
         Self::with_trust_proxy(window, max, false)
     }

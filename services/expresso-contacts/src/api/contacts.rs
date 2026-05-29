@@ -13,7 +13,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
-use crate::domain::{Contact, ContactRepo};
+use crate::domain::ContactRepo;
 use crate::events::ContactsEvent;
 use crate::error::{ContactsError, Result};
 use crate::state::AppState;

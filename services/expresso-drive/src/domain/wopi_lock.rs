@@ -22,9 +22,11 @@ use uuid::Uuid;
 use crate::error::Result;
 
 /// WOPI spec: lock lifetime is 30 minutes from acquire/refresh.
+#[allow(dead_code)] // referenced by the WOPI spec impl; not yet enforced in code
 pub const LOCK_TTL: Duration = Duration::minutes(30);
 
 #[derive(Debug, Clone, FromRow)]
+#[allow(dead_code)] // row type for the locks table; repo currently returns tokens only
 pub struct WopiLock {
     pub file_id:     Uuid,
     pub tenant_id:   Uuid,
@@ -35,6 +37,7 @@ pub struct WopiLock {
 }
 
 impl WopiLock {
+    #[allow(dead_code)] // expiry helper for the row type above
     pub fn is_expired(&self) -> bool {
         self.expires_at <= OffsetDateTime::now_utc()
     }
@@ -182,6 +185,7 @@ async fn fetch_active(
 
 /// Result of an acquire/refresh attempt.
 #[derive(Debug)]
+#[allow(dead_code)] // payload carried for callers that inspect the conflicting lock
 pub enum AcquireOutcome {
     /// Caller now holds the lock with the supplied token.
     Held(WopiLock),

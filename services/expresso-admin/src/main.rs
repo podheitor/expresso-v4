@@ -5,7 +5,7 @@ use std::{net::SocketAddr, sync::Arc};
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use serde_json::{json, Value};

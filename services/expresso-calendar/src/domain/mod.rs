@@ -14,4 +14,3 @@ pub mod counter;
 pub use calendar::{Calendar, CalendarRepo, NewCalendar, UpdateCalendar};
 pub use event::{Event, EventRepo, EventQuery};
 pub use dead_props::{DeadProp, DeadPropRepo};
-pub use counter::{CounterProposal, CounterRepo};

@@ -19,7 +19,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{delete, get, patch, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -29,7 +29,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
-use crate::domain::{Meeting, MeetingParticipant, MeetingRepo, NewMeeting, ParticipantRole};
+use crate::domain::{Meeting, MeetingRepo, NewMeeting, ParticipantRole};
 use crate::error::{MeetError, Result};
 use crate::jitsi::IssueRequest;
 use crate::state::AppState;
@@ -1509,6 +1509,7 @@ struct BreakoutRoom {
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
+#[allow(dead_code)] // breakout-room participant DTO; feature not yet wired
 struct BreakoutParticipant {
     room_id:    Uuid,
     user_id:    Uuid,

@@ -25,6 +25,7 @@ static IMIP_PUBLISH_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
     expresso_observability::register(c)
 });
 
+#[allow(dead_code)] // metrics pre-registration; Lazy statics self-init on first use
 pub fn init_metrics() {
     Lazy::force(&IMIP_PUBLISH_TOTAL);
     for m in ["REQUEST", "CANCEL"] {

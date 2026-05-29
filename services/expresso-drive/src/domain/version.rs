@@ -91,6 +91,7 @@ impl<'a> VersionRepo<'a> {
         Ok(row)
     }
 
+    #[allow(dead_code)] // version-list API; handlers currently page differently
     pub async fn list(&self, tenant_id: Uuid, file_id: Uuid) -> Result<Vec<FileVersion>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(

@@ -19,7 +19,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
-use crate::domain::{Channel, ChannelKind, ChannelMember, ChannelRepo, MemberRole, NewChannel};
+use crate::domain::{Channel, ChannelKind, ChannelRepo, MemberRole, NewChannel};
 use crate::error::{ChatError, Result};
 use crate::matrix::{CreateRoomRequest, RoomPreset};
 use crate::state::AppState;

@@ -1,2 +1,2 @@
 pub mod channel;
-pub use channel::{Channel, ChannelKind, ChannelRepo, NewChannel, ChannelMember, MemberRole};
+pub use channel::{Channel, ChannelKind, ChannelRepo, NewChannel, MemberRole};
