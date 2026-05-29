@@ -207,6 +207,19 @@ where
     Ok(())
 }
 
+/// Append one inbound DATA-phase line with dot-unstuffing (RFC 5321 §4.5.2),
+/// accounting for the CRLF that will be added. Returns `true` if the line would
+/// exceed `MAX_MSG_BYTES` (caller rejects with 552 + leaves DATA mode).
+fn append_inbound_data_line(data_buf: &mut String, line: &str) -> bool {
+    let line = line.strip_prefix('.').unwrap_or(line);
+    if data_buf.len() + line.len() + 2 > MAX_MSG_BYTES {
+        return true;
+    }
+    data_buf.push_str(line);
+    data_buf.push_str("\r\n");
+    false
+}
+
 /// Handle inbound `EHLO`/`HELO`: record the greeting name and reply with the
 /// capability list (advertising STARTTLS only when `advertise_starttls`).
 /// Shared by the plaintext and post-TLS inbound loops.
@@ -346,17 +359,11 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
                         &domain,
                     )
                     .await?;
-                } else {
-                    let line = line.strip_prefix('.').unwrap_or(&line);
-                    if data_buf.len() + line.len() + 2 > MAX_MSG_BYTES {
-                        writer.write_all(b"552 Message too large\r\n").await?;
-                        data_mode = false;
-                        data_buf.clear();
-                        env = Envelope::default();
-                    } else {
-                        data_buf.push_str(line);
-                        data_buf.push_str("\r\n");
-                    }
+                } else if append_inbound_data_line(&mut data_buf, &line) {
+                    writer.write_all(b"552 Message too large\r\n").await?;
+                    data_mode = false;
+                    data_buf.clear();
+                    env = Envelope::default();
                 }
                 continue;
             }
@@ -492,17 +499,11 @@ where
                 data_mode = false;
                 finalize_inbound_message(state, &mut writer, &mut data_buf, &mut env, peer, domain)
                     .await?;
-            } else {
-                let l = line.strip_prefix('.').unwrap_or(&line);
-                if data_buf.len() + l.len() + 2 > MAX_MSG_BYTES {
-                    writer.write_all(b"552 Message too large\r\n").await?;
-                    data_mode = false;
-                    data_buf.clear();
-                    env = Envelope::default();
-                } else {
-                    data_buf.push_str(l);
-                    data_buf.push_str("\r\n");
-                }
+            } else if append_inbound_data_line(&mut data_buf, &line) {
+                writer.write_all(b"552 Message too large\r\n").await?;
+                data_mode = false;
+                data_buf.clear();
+                env = Envelope::default();
             }
             continue;
         }
