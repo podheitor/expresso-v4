@@ -20,7 +20,7 @@ anyhow             = { workspace = true }
 time               = { workspace = true }
 reqwest            = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 askama             = { version = "0.12", default-features = false, features = ["with-axum"] }
-askama_axum        = "0.4" 
+askama_axum        = "0.5" 
 thiserror         = { workspace = true }
 percent-encoding   = "2"
 html-escape        = "0.2"
