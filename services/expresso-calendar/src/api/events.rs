@@ -5552,9 +5552,11 @@ async fn exdates_stats(
     let sort_mode: Option<&str> = match q.sort_tzid.as_deref() {
         None | Some("") => None,
         Some(s @ ("count_desc" | "count_asc" | "name_asc" | "name_desc")) => Some(s),
-        Some(other) => return Err(CalendarError::BadRequest(format!(
+        Some(other) => {
+            return Err(CalendarError::BadRequest(format!(
             "sort_tzid must be 'count_desc', 'count_asc', 'name_asc' or 'name_desc', got '{other}'"
-        ))),
+        )))
+        }
     };
     let kind_filter: Option<&str> = match q.kind.as_deref() {
         None | Some("") => None,
@@ -9217,9 +9219,11 @@ async fn exdates_preview_stats(
     let sort_mode: Option<&str> = match q.sort_tzid.as_deref() {
         None | Some("") => None,
         Some(s @ ("count_desc" | "count_asc" | "name_asc" | "name_desc")) => Some(s),
-        Some(other) => return Err(CalendarError::BadRequest(format!(
+        Some(other) => {
+            return Err(CalendarError::BadRequest(format!(
             "sort_tzid must be 'count_desc', 'count_asc', 'name_asc' or 'name_desc', got '{other}'"
-        ))),
+        )))
+        }
     };
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
