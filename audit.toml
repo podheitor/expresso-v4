@@ -1,0 +1,23 @@
+# cargo-audit config (RustSec). Mirrors the deny.toml advisory ignores —
+# cargo-audit does NOT read deny.toml, so the same exceptions live here too.
+#
+# Every entry is a transitive advisory with no upgrade reachable from our
+# direct deps (parent-pinned via async-nats / aws-sdk / hickory / sqlx /
+# opentelemetry), or an unmaintained leaf crate. None sit on this suite's
+# primary attack surface. Re-evaluate when parents ship patched releases.
+# See docs/LICENSING_NOTES.md for the broader dependency-risk note.
+
+[advisories]
+ignore = [
+  "RUSTSEC-2023-0071", # rsa Marvin timing attack — transitive via sqlx-mysql; no fix released
+  "RUSTSEC-2024-0384", # instant unmaintained
+  "RUSTSEC-2024-0437", # protobuf recursion — parent-pinned (opentelemetry-otlp)
+  "RUSTSEC-2025-0134", # rustls-pemfile unmaintained
+  "RUSTSEC-2026-0002", # transitive, no reachable upgrade
+  "RUSTSEC-2026-0049", # rustls-webpki CRL authority — limited impact (signed CRL required)
+  "RUSTSEC-2026-0098", # rustls-webpki name-constraint — old copies pinned by async-nats
+  "RUSTSEC-2026-0099", # rustls-webpki wildcard name-constraint — same
+  "RUSTSEC-2026-0104", # rustls-webpki CRL panic — same
+  "RUSTSEC-2026-0118", # hickory-proto NSEC3 loop — no safe upgrade; resolver internal
+  "RUSTSEC-2026-0119", # hickory-proto O(n^2) name compression — parent-pinned
+]

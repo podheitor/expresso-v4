@@ -22,7 +22,13 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked --quiet
       - name: Audit advisories
-        run: cargo audit
+        # cargo-audit reads ignores from ~/.cargo/audit.toml, not the repo root;
+        # stage the versioned audit.toml there. Rationale is documented inline
+        # in that file + docs/LICENSING_NOTES.md.
+        run: |
+          mkdir -p ~/.cargo
+          cp audit.toml ~/.cargo/audit.toml
+          cargo audit
 
   gitleaks:
     name: gitleaks (secret scan)
