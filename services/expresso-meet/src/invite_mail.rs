@@ -96,14 +96,19 @@ impl InviteMailer {
 mod tests {
     use super::*;
 
+    use std::sync::Mutex;
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn from_env_returns_none_when_smtp_host_unset() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("MEET__SMTP_HOST");
         assert!(InviteMailer::from_env().is_none());
     }
 
     #[test]
     fn from_env_returns_none_for_empty_smtp_host() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__SMTP_HOST", "");
         assert!(InviteMailer::from_env().is_none());
         std::env::remove_var("MEET__SMTP_HOST");
@@ -111,6 +116,7 @@ mod tests {
 
     #[test]
     fn from_env_returns_none_for_whitespace_smtp_host() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__SMTP_HOST", "   ");
         assert!(InviteMailer::from_env().is_none());
         std::env::remove_var("MEET__SMTP_HOST");
@@ -118,6 +124,7 @@ mod tests {
 
     #[test]
     fn from_env_some_when_smtp_host_set() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__SMTP_HOST", "smtp.example.com");
         std::env::remove_var("MEET__SMTP_PORT");
         std::env::remove_var("MEET__MAIL_FROM");
@@ -130,6 +137,7 @@ mod tests {
 
     #[test]
     fn from_env_default_port_is_587() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__SMTP_HOST", "smtp.example.com");
         std::env::remove_var("MEET__SMTP_PORT");
         let m = InviteMailer::from_env().unwrap();
@@ -139,6 +147,7 @@ mod tests {
 
     #[test]
     fn from_env_parses_custom_port() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__SMTP_HOST", "smtp.example.com");
         std::env::set_var("MEET__SMTP_PORT", "2525");
         let m = InviteMailer::from_env().unwrap();
@@ -149,6 +158,7 @@ mod tests {
 
     #[test]
     fn from_env_default_mail_from() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__SMTP_HOST", "smtp.example.com");
         std::env::remove_var("MEET__MAIL_FROM");
         let m = InviteMailer::from_env().unwrap();
@@ -158,6 +168,7 @@ mod tests {
 
     #[test]
     fn from_env_custom_mail_from() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__SMTP_HOST", "smtp.example.com");
         std::env::set_var("MEET__MAIL_FROM", "meet@expresso.io");
         let m = InviteMailer::from_env().unwrap();
@@ -168,6 +179,7 @@ mod tests {
 
     #[test]
     fn from_env_empty_mail_from_uses_default() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__SMTP_HOST", "smtp.example.com");
         std::env::set_var("MEET__MAIL_FROM", "");
         let m = InviteMailer::from_env().unwrap();
@@ -178,6 +190,7 @@ mod tests {
 
     #[test]
     fn from_env_invalid_port_uses_default() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__SMTP_HOST", "smtp.example.com");
         std::env::set_var("MEET__SMTP_PORT", "notanumber");
         let m = InviteMailer::from_env().unwrap();
@@ -188,6 +201,7 @@ mod tests {
 
     #[test]
     fn smtp_host_stored_correctly() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__SMTP_HOST", "mail.internal");
         let m = InviteMailer::from_env().unwrap();
         assert_eq!(m.smtp_host, "mail.internal");
@@ -196,6 +210,7 @@ mod tests {
 
     #[test]
     fn default_port_not_zero() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__SMTP_HOST", "smtp.test");
         std::env::remove_var("MEET__SMTP_PORT");
         let m = InviteMailer::from_env().unwrap();
