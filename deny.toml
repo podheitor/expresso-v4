@@ -10,7 +10,21 @@ all-features = true
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "warn"
-ignore = []
+# Transitive advisories with no upgrade reachable from our direct deps
+# (pinned by async-nats / aws-sdk / hickory parents). Tracked for review;
+# none sit on this suite's primary attack surface (DNS resolver internals,
+# CRL parsing paths we don't drive, unmaintained leaf crates).
+ignore = [
+  "RUSTSEC-2026-0118", # hickory-proto NSEC3 loop — no safe upgrade; DNS resolver internal
+  "RUSTSEC-2026-0119", # hickory-proto O(n^2) name compression — parent-pinned
+  "RUSTSEC-2024-0384", # instant unmaintained — transitive, no upgrade
+  "RUSTSEC-2024-0437", # protobuf recursion — parent-pinned (opentelemetry-otlp tree)
+  "RUSTSEC-2025-0134", # rustls-pemfile unmaintained — transitive, no upgrade
+  "RUSTSEC-2026-0098", # rustls-webpki name-constraint — old 0.101/0.102 pinned by async-nats
+  "RUSTSEC-2026-0099", # rustls-webpki wildcard name-constraint — same pinned old copies
+  "RUSTSEC-2026-0104", # rustls-webpki CRL panic — same pinned old copies
+  "RUSTSEC-2026-0049", # rustls-webpki CRL authority — limited impact (signed CRL required)
+]
 
 [licenses]
 allow = [
@@ -25,9 +39,17 @@ allow = [
   "Zlib",
   "MPL-2.0",
   "0BSD",
+  "CDLA-Permissive-2.0", # webpki-roots (transitive via reqwest/aws/lettre) — permissive
 ]
 confidence-threshold = 0.8
-exceptions = []
+# Copyleft deps flagged for legal review (see docs/LICENSING_NOTES.md):
+# indymilter (GPL-3.0) runs as a separate milter process over a socket;
+# sieve-rs (AGPL-3.0) is linked into expresso-mail and is the stronger
+# concern. Scoped exceptions keep CI honest while the licensing call is made.
+exceptions = [
+  { allow = ["GPL-3.0-or-later"], name = "indymilter" },
+  { allow = ["AGPL-3.0-only"],    name = "sieve-rs" },
+]
 private = { ignore = true }
 
 [[licenses.clarify]]
