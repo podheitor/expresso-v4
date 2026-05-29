@@ -7,9 +7,19 @@ currently set to **`-C 45`** and should keep ratcheting down: 45 → 40 → … 
 
 **cmd_fetch (2026-05-29):** 48 → **38** by extracting the BODY[N]/[N.MIME]/
 [N.HEADER]/[N.TEXT] part-section assembly into `push_part_section_items()`
-(573 mail tests pass). Gate now 45 (max is `handle_tls` 45). Remaining top
-offenders: `handle_tls` (45), `exdates_stats` (43), `exdates_preview_stats`
-(40) — apply the override-filter / section-builder extraction patterns.
+(573 mail tests pass). Gate now 45 (max is `handle_tls` 45).
+
+**exdates_stats (2026-05-29):** 43 → **30** via `retain_exdates_window()` +
+`retain_exdates_presence()` (typed analogues of the override filters; 567
+calendar tests pass). Gate STILL 45 — `handle_tls` (45) is the binding ceiling,
+so cluster reductions below 45 don't move the gate yet; they shrink the cluster
+so a future `handle_tls` fix drops the gate in a bigger step.
+
+**Binding ceiling = `handle_tls` (45).** To drop the gate below 45, restructure
+its SMTP verb-dispatch (parse verb → match) — riskier (live AUTH/MAIL/RCPT/DATA
+loop with break-on-disconnect), deferred. Other ≥40 offenders:
+`exdates_preview_stats` (40, inlined dedup+tally loop — needs a tally helper,
+not the filter pattern).
 
 
 **Calendar analytics (2026-05-29):** `overrides_stats` 49 → **32** by extracting

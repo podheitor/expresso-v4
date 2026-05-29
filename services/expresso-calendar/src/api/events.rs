@@ -5529,6 +5529,52 @@ struct ExdatesStatsQuery {
 /// após kind+range. Ortogonalidade `kind=tzid` ⊂ `with_tzid=true` documentada
 /// no #523. Combinações impossíveis (e.g. `kind=utc&with_tzid=true`) são
 /// aceitas e retornam `total=0` consistente com #522 (`kind=tzid` + range).
+/// Retain only EXDATE entries whose UTC-resolved value falls in `[after, before)`.
+/// Entries that don't resolve to UTC are dropped when any bound is set. No-op
+/// when both bounds are None.
+fn retain_exdates_window(
+    items: &mut Vec<ExdateInfo>,
+    after: Option<OffsetDateTime>,
+    before: Option<OffsetDateTime>,
+) {
+    if after.is_none() && before.is_none() {
+        return;
+    }
+    items.retain(|info| {
+        let Some(parsed) = info.parsed_utc else {
+            return false;
+        };
+        if after.is_some_and(|a| parsed < a) {
+            return false;
+        }
+        if before.is_some_and(|b| parsed >= b) {
+            return false;
+        }
+        true
+    });
+}
+
+/// Retain only EXDATE entries matching the requested tzid/params presence flags.
+/// No-op when both flags are None.
+fn retain_exdates_presence(
+    items: &mut Vec<ExdateInfo>,
+    with_tzid: Option<bool>,
+    with_params: Option<bool>,
+) {
+    if with_tzid.is_none() && with_params.is_none() {
+        return;
+    }
+    items.retain(|info| {
+        if with_tzid.is_some_and(|want| info.tzid.is_some() != want) {
+            return false;
+        }
+        if with_params.is_some_and(|want| info.params.is_some() != want) {
+            return false;
+        }
+        true
+    });
+}
+
 async fn exdates_stats(
     State(state): State<AppState>,
     ctx: RequestCtx,
@@ -5574,40 +5620,8 @@ async fn exdates_stats(
     if let Some(k) = kind_filter {
         items.retain(|info| info.kind == k);
     }
-    if q.after.is_some() || q.before.is_some() {
-        items.retain(|info| {
-            let parsed = match info.parsed_utc {
-                Some(t) => t,
-                None => return false,
-            };
-            if let Some(a) = q.after {
-                if parsed < a {
-                    return false;
-                }
-            }
-            if let Some(b) = q.before {
-                if parsed >= b {
-                    return false;
-                }
-            }
-            true
-        });
-    }
-    if q.with_tzid.is_some() || q.with_params.is_some() {
-        items.retain(|info| {
-            if let Some(want) = q.with_tzid {
-                if info.tzid.is_some() != want {
-                    return false;
-                }
-            }
-            if let Some(want) = q.with_params {
-                if info.params.is_some() != want {
-                    return false;
-                }
-            }
-            true
-        });
-    }
+    retain_exdates_window(&mut items, q.after, q.before);
+    retain_exdates_presence(&mut items, q.with_tzid, q.with_params);
     let total = items.len();
     let mut k_utc = 0usize;
     let mut k_tzid = 0usize;
