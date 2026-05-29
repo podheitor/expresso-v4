@@ -468,7 +468,7 @@ mod tests {
 
 #[cfg(test)]
 mod slug_tests {
-    use super::valid_slug;
+    use super::{valid_slug, PLANS, STATUSES};
 
     #[test]
     fn valid_slug_accepts_lowercase_alphanumeric() {

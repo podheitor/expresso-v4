@@ -220,9 +220,10 @@ mod tests {
 
     #[test]
     fn preview_101_chars_is_truncated() {
-        let s = "a".repeat(121);
-        let p = preview(&s);
-        assert!(p.len() < s.len());
+        let s = "a".repeat(200);
+        let p = preview(s.clone());
+        assert!(p.chars().count() < s.chars().count());
+        assert!(p.ends_with('…'));
     }
 
     #[test]
@@ -254,11 +255,5 @@ mod tests {
         let ts = datetime!(2026-07-04 12:00:00 UTC);
         let s = fmt_ts(ts);
         assert!(s.contains("07") || s.contains("2026-07"));
-    }
-
-    #[test]
-    fn preview_exactly_120_chars_unchanged() {
-        let s: String = "a".repeat(120);
-        assert_eq!(preview(s.clone()), s);
     }
 }

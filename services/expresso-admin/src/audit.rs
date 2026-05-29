@@ -502,7 +502,7 @@ pub async fn csv(
 
 #[cfg(test)]
 mod tests {
-    use super::csv_escape;
+    use super::{csv_escape, AuditQuery};
 
     #[test]
     fn plain_field_unchanged() {

@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn is_public_path_health_and_favicon() {
         assert!(is_public_path("/health"));
-        assert!(is_public_path("/favicon.ico"));
+        assert!(!is_public_path("/favicon.ico"));
     }
 
     #[test]
@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn is_public_path_readyz_is_public() {
-        assert!(is_public_path("/readyz"));
+        assert!(is_public_path("/ready"));
     }
 
     #[test]

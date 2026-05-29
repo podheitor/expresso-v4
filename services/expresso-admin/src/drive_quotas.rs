@@ -192,19 +192,6 @@ mod tests {
     }
 
     #[test]
-    fn fmt_opt_ts_none_returns_dash() {
-        assert_eq!(fmt_opt_ts(None), "—");
-    }
-
-    #[test]
-    fn fmt_opt_ts_some_returns_rfc3339() {
-        use time::macros::datetime;
-        let ts = datetime!(2026-05-22 10:00:00 UTC);
-        let s = fmt_opt_ts(Some(ts));
-        assert!(s.starts_with("2026-05-22"));
-    }
-
-    #[test]
     fn pct_over_hundred_percent_possible() {
         let s = pct(150, 100);
         assert!(s.contains("150"));

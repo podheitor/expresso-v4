@@ -410,7 +410,7 @@ mod tests {
 
     #[test]
     fn to_dav_row_calendar_name_preserved() {
-        let row = to_dav_row(Uuid::nil(), Uuid::nil(), "My Calendar".into(), "u@x".into(), "u".into(), None, None, false, 0);
+        let row = to_dav_row(Uuid::nil(), Uuid::nil(), "Tenant".into(), "u@x".into(), "My Calendar".into(), None, None, false, 0);
         assert_eq!(row.name, "My Calendar");
     }
 

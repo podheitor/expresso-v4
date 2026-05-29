@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn fmt_opt_ts_dash_on_none() {
-        assert_eq!(fmt_opt_ts(None), "-");
+        assert_eq!(fmt_opt_ts(None), "—");
     }
 
     #[test]
@@ -341,7 +341,7 @@ mod tests {
     #[test]
     fn counter_row_created_at_fmt_preserved() {
         let r = CounterRow {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            id: "00000000-0000-0000-0000-000000000000".into(), tenant_id: "00000000-0000-0000-0000-000000000000".into(), event_id: "00000000-0000-0000-0000-000000000000".into(),
             event_summary: "Sync".into(), attendee_email: "a@b.com".into(),
             proposed_dtstart: "2026-09-01T09:00:00Z".into(),
             proposed_dtend: "2026-09-01T10:00:00Z".into(),
@@ -354,7 +354,7 @@ mod tests {
     #[test]
     fn counter_row_event_summary_preserved() {
         let r = CounterRow {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            id: "00000000-0000-0000-0000-000000000000".into(), tenant_id: "00000000-0000-0000-0000-000000000000".into(), event_id: "00000000-0000-0000-0000-000000000000".into(),
             event_summary: "Team Standup".into(), attendee_email: "b@c.com".into(),
             proposed_dtstart: "2026-09-02T09:00:00Z".into(),
             proposed_dtend: "2026-09-02T09:30:00Z".into(),
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn counter_row_attendee_email_preserved() {
         let r = CounterRow {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            id: "00000000-0000-0000-0000-000000000000".into(), tenant_id: "00000000-0000-0000-0000-000000000000".into(), event_id: "00000000-0000-0000-0000-000000000000".into(),
             event_summary: "Q3 Review".into(), attendee_email: "carol@corp.com".into(),
             proposed_dtstart: "2026-10-01T10:00:00Z".into(),
             proposed_dtend: "2026-10-01T11:00:00Z".into(),
@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn counter_row_comment_none_by_default_construction() {
         let r = CounterRow {
-            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            id: "00000000-0000-0000-0000-000000000000".into(), tenant_id: "00000000-0000-0000-0000-000000000000".into(), event_id: "00000000-0000-0000-0000-000000000000".into(),
             event_summary: "Meeting".into(), attendee_email: "a@b.com".into(),
             proposed_dtstart: "2026-01-01T09:00:00Z".into(),
             proposed_dtend: "2026-01-01T10:00:00Z".into(),

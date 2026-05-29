@@ -303,6 +303,9 @@ mod tests {
             cpf_hash: "abc123".into(),
             user_id: uuid::Uuid::nil(),
             assurance: None,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            last_login_at: None,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
         };
         assert_eq!(m.cpf_hash, "abc123");
     }
@@ -314,6 +317,9 @@ mod tests {
             tenant_id: uuid::Uuid::nil(),
             user_id: uuid::Uuid::nil(),
             assurance: None,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            last_login_at: None,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
         };
         assert!(m.assurance.is_none());
     }
@@ -325,6 +331,9 @@ mod tests {
             tenant_id: uuid::Uuid::nil(),
             user_id: uuid::Uuid::nil(),
             assurance: None,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            last_login_at: None,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
         };
         assert!(!m.cpf_hash.is_empty());
     }
@@ -336,6 +345,9 @@ mod tests {
             tenant_id: uuid::Uuid::nil(),
             user_id: uuid::Uuid::nil(),
             assurance: None,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            last_login_at: None,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
         };
         assert_eq!(m.user_id, uuid::Uuid::nil());
     }
@@ -347,6 +359,9 @@ mod tests {
             tenant_id: uuid::Uuid::nil(),
             user_id: uuid::Uuid::nil(),
             assurance: None,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            last_login_at: None,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
         };
         assert_eq!(m.cpf_hash, "abc123");
     }

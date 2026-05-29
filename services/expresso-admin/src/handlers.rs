@@ -333,6 +333,7 @@ mod tests {
             last_name: "Y".into(),
             enabled: None,
             password: None,
+            temporary: None,
         };
         assert!(f.password.is_none());
     }
@@ -362,23 +363,24 @@ mod tests {
     #[test]
     fn user_update_form_first_last_name() {
         let f = UserUpdateForm {
-            email: None,
-            first_name: Some("Jane".into()),
-            last_name: Some("Doe".into()),
+            email: "jane@ex.com".into(),
+            first_name: "Jane".into(),
+            last_name: "Doe".into(),
             enabled: None,
             password: None,
+            temporary: None,
         };
-        assert_eq!(f.first_name.as_deref(), Some("Jane"));
-        assert_eq!(f.last_name.as_deref(), Some("Doe"));
+        assert_eq!(f.first_name, "Jane");
+        assert_eq!(f.last_name, "Doe");
     }
 
     #[test]
     fn user_update_form_all_none_by_default() {
         let f = UserUpdateForm {
-            email: None, first_name: None, last_name: None,
-            enabled: None, password: None,
+            email: String::new(), first_name: String::new(), last_name: String::new(),
+            enabled: None, password: None, temporary: None,
         };
-        assert!(f.email.is_none());
+        assert!(f.email.is_empty());
         assert!(f.password.is_none());
         assert!(f.enabled.is_none());
     }
