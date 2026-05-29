@@ -3,31 +3,35 @@
 The target is **CCN ≤ 25** (per `CLAUDE.md`). The debloat baseline restore left
 21 functions above that. Per the project policy for legacy code — *"start at the
 current max, tighten by 5 each refactor"* — the CI `lizard` gate is currently
-currently set to **`-C 50`** and should keep ratcheting down: 50 → 45 → … → 25.
+currently set to **`-C 49`** and should keep ratcheting down: 49 → 44 → … → 25.
 
-**Progress (2026-05-29):** gate lowered 72 → 64 → 59 → 57 → 50.
-- `cmd_fetch` 72 → **48**: extracted the FETCH data-item parser (`fetch_plan()`).
-- `handle_tls` 72 → 64 → 57 → **45**: extracted `finish_smtp_auth()`,
-  `finalize_data_message()`, `handle_mail_from()`, `handle_rcpt_to()`.
-- `handle` (smtp/session.rs) 59 → **50** and `session_loop` 46 → **38**: share
-  `finalize_inbound_message()` (the SPF/DKIM/DMARC + ingest tail).
+**Progress (2026-05-29):** gate lowered 72 → 64 → 59 → 57 → 50 → 49. The entire
+mail SMTP/IMAP cluster is now decomposed:
+- `cmd_fetch` 72 → **48** (`fetch_plan()`).
+- `handle_tls` 72 → **45** (`finish_smtp_auth()`, `finalize_data_message()`,
+  `handle_mail_from()`, `handle_rcpt_to()`).
+- `handle` (smtp/session.rs) 59 → **43** and `session_loop` 46 → **31**: share
+  `finalize_inbound_message()`, `handle_inbound_mail_from()`,
+  `handle_inbound_rcpt_to()`.
 All verified behaviour-preserving (573 mail tests pass at each step).
 
-Next gate-blocker is `handle` at smtp/session.rs:65 (CCN 50) — apply the same
-MAIL FROM / RCPT TO branch extraction (it's the inbound :25 verb loop) to reach
-~45. After that the calendar `*_stats`/`overrides_stats` analytics endpoints
-(CCN 36-49) are the next cluster.
+Next gate-blocker is the **calendar analytics cluster** in
+`services/expresso-calendar/src/api/events.rs`: `overrides_stats` (49),
+`exdates_stats` (43), `exdates_preview_stats` (40), `patch_*_override*` (36-37).
+These share a stats-aggregation shape; extract the per-row tally + sort/clamp
+into helpers to reach 44 then below.
 
 Run `find services libs -name '*.rs' -not -path '*/target/*' | xargs lizard -l rust -C 25 -w`
 to see the current offenders. Highest remaining:
 
 | CCN | Function | File |
 |----:|----------|------|
-| 50 | `handle` | services/expresso-mail/src/smtp/session.rs:65 (next gate-blocker; was 59) |
-| 49 | `overrides_stats` | services/expresso-calendar/src/api/events.rs:6674 |
+| 49 | `overrides_stats` | services/expresso-calendar/src/api/events.rs:6674 (next gate-blocker) |
 | 48 | `cmd_fetch` | services/expresso-mail/src/imap/session.rs (was 72) |
 | 45 | `handle_tls` | services/expresso-mail/src/smtp/submission.rs:220 (was 72) |
-| 38 | `session_loop` | services/expresso-mail/src/smtp/session.rs (was 46) |
+| 43 | `handle` | services/expresso-mail/src/smtp/session.rs:65 (was 59) |
+| 43 | `exdates_stats` | services/expresso-calendar/src/api/events.rs:5532 |
+| 31 | `session_loop` | services/expresso-mail/src/smtp/session.rs (was 46) |
 | 43 | `exdates_stats` | services/expresso-calendar/src/api/events.rs:5532 |
 | 41 | `handle` | services/expresso-mail/src/lmtp.rs:59 |
 | 40 | `exdates_preview_stats` | services/expresso-calendar/src/api/events.rs:9195 |

@@ -143,6 +143,70 @@ where
     Ok(())
 }
 
+/// Handle inbound `MAIL FROM:` (port 25, no AUTH): enforce SIZE, then set the
+/// envelope sender + declared size and reset recipients. Writes the SMTP reply.
+/// Shared by the plaintext and post-TLS inbound loops.
+async fn handle_inbound_mail_from<W>(
+    writer: &mut W,
+    env: &mut Envelope,
+    line: &str,
+) -> anyhow::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    let rest = &line[10..];
+    let declared = extract_size_param(rest);
+    if declared.is_some_and(|sz| sz > MAX_MSG_BYTES) {
+        writer
+            .write_all(b"552 5.3.4 Message size exceeds fixed maximum message size\r\n")
+            .await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["MAIL", "smtp25", "reject"])
+            .inc();
+        return Ok(());
+    }
+    env.from = Some(extract_angle(rest));
+    env.declared_size = declared;
+    env.rcpts.clear();
+    writer.write_all(b"250 OK\r\n").await?;
+    SMTP_COMMANDS_TOTAL
+        .with_label_values(&["MAIL", "smtp25", "ok"])
+        .inc();
+    Ok(())
+}
+
+/// Handle inbound `RCPT TO:` (port 25): require prior MAIL FROM, cap recipient
+/// count, then append the recipient. Writes the SMTP reply.
+async fn handle_inbound_rcpt_to<W>(
+    writer: &mut W,
+    env: &mut Envelope,
+    line: &str,
+) -> anyhow::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    if env.from.is_none() {
+        writer
+            .write_all(b"503 Bad sequence: MAIL first\r\n")
+            .await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["RCPT", "smtp25", "reject"])
+            .inc();
+    } else if env.rcpts.len() >= MAX_RCPTS {
+        writer.write_all(b"452 Too many recipients\r\n").await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["RCPT", "smtp25", "reject"])
+            .inc();
+    } else {
+        env.rcpts.push(extract_angle(&line[8..]));
+        writer.write_all(b"250 OK\r\n").await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["RCPT", "smtp25", "ok"])
+            .inc();
+    }
+    Ok(())
+}
+
 /// Handle a single SMTP connection.
 /// Implements the full SMTP session including optional STARTTLS upgrade.
 /// STARTTLS: when tls_cert/tls_key are configured, announces STARTTLS in EHLO
@@ -253,32 +317,9 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
                 SMTP_COMMANDS_TOTAL.with_label_values(&["STARTTLS", "smtp25", "reject"]).inc();
             }
         } else if upper.starts_with("MAIL FROM:") {
-            let rest = &line[10..];
-            let declared = extract_size_param(rest);
-            if let Some(sz) = declared {
-                if sz > MAX_MSG_BYTES {
-                    writer.write_all(b"552 5.3.4 Message size exceeds fixed maximum message size\r\n").await?;
-                    SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp25", "reject"]).inc();
-                    continue;
-                }
-            }
-            env.from = Some(extract_angle(rest));
-            env.declared_size = declared;
-            env.rcpts.clear();
-            writer.write_all(b"250 OK\r\n").await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp25", "ok"]).inc();
+            handle_inbound_mail_from(&mut writer, &mut env, &line).await?;
         } else if upper.starts_with("RCPT TO:") {
-            if env.from.is_none() {
-                writer.write_all(b"503 Bad sequence: MAIL first\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp25", "reject"]).inc();
-            } else if env.rcpts.len() >= MAX_RCPTS {
-                writer.write_all(b"452 Too many recipients\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp25", "reject"]).inc();
-            } else {
-                env.rcpts.push(extract_angle(&line[8..]));
-                writer.write_all(b"250 OK\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp25", "ok"]).inc();
-            }
+            handle_inbound_rcpt_to(&mut writer, &mut env, &line).await?;
         } else if upper == "DATA" {
             if env.from.is_none() || env.rcpts.is_empty() {
                 writer.write_all(b"503 Bad sequence\r\n").await?;
@@ -406,44 +447,9 @@ where
                 .with_label_values(&[verb, "smtp25", "ok"])
                 .inc();
         } else if upper.starts_with("MAIL FROM:") {
-            let rest = &line[10..];
-            let declared = extract_size_param(rest);
-            if let Some(sz) = declared {
-                if sz > MAX_MSG_BYTES {
-                    writer
-                        .write_all(b"552 5.3.4 Message size exceeds maximum\r\n")
-                        .await?;
-                    SMTP_COMMANDS_TOTAL
-                        .with_label_values(&["MAIL", "smtp25", "reject"])
-                        .inc();
-                    continue;
-                }
-            }
-            env.from = Some(extract_angle(rest));
-            env.declared_size = declared;
-            env.rcpts.clear();
-            writer.write_all(b"250 OK\r\n").await?;
-            SMTP_COMMANDS_TOTAL
-                .with_label_values(&["MAIL", "smtp25", "ok"])
-                .inc();
+            handle_inbound_mail_from(&mut writer, &mut env, &line).await?;
         } else if upper.starts_with("RCPT TO:") {
-            if env.from.is_none() {
-                writer.write_all(b"503 MAIL first\r\n").await?;
-                SMTP_COMMANDS_TOTAL
-                    .with_label_values(&["RCPT", "smtp25", "reject"])
-                    .inc();
-            } else if env.rcpts.len() >= MAX_RCPTS {
-                writer.write_all(b"452 Too many recipients\r\n").await?;
-                SMTP_COMMANDS_TOTAL
-                    .with_label_values(&["RCPT", "smtp25", "reject"])
-                    .inc();
-            } else {
-                env.rcpts.push(extract_angle(&line[8..]));
-                writer.write_all(b"250 OK\r\n").await?;
-                SMTP_COMMANDS_TOTAL
-                    .with_label_values(&["RCPT", "smtp25", "ok"])
-                    .inc();
-            }
+            handle_inbound_rcpt_to(&mut writer, &mut env, &line).await?;
         } else if upper == "DATA" {
             if env.from.is_none() || env.rcpts.is_empty() {
                 writer.write_all(b"503 Bad sequence\r\n").await?;
