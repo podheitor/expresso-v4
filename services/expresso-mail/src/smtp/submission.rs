@@ -243,22 +243,15 @@ where
             if line == "." {
                 data_mode = false;
                 finalize_data_message(state, &mut writer, &mut data_buf, &mut env).await?;
-            } else {
-                // Dot-stuffing (RFC 5321 §4.5.2)
-                let line = line.strip_prefix('.').unwrap_or(&line);
-                if data_buf.len() + line.len() > MAX_MSG_BYTES {
-                    writer.write_all(b"552 Message too large\r\n").await?;
-                    data_mode = false;
-                    data_buf.clear();
-                    env = Envelope {
-                        helo: env.helo,
-                        authed_user: env.authed_user,
-                        ..Default::default()
-                    };
-                } else {
-                    data_buf.push_str(line);
-                    data_buf.push_str("\r\n");
-                }
+            } else if append_data_line(&mut data_buf, &line) {
+                writer.write_all(b"552 Message too large\r\n").await?;
+                data_mode = false;
+                data_buf.clear();
+                env = Envelope {
+                    helo: env.helo.take(),
+                    authed_user: env.authed_user.take(),
+                    ..Default::default()
+                };
             }
             continue;
         }
@@ -609,6 +602,20 @@ where
             .inc();
     }
     Ok(())
+}
+
+/// Append one DATA-phase line to the message buffer with dot-unstuffing
+/// (RFC 5321 §4.5.2). Returns `true` if the line would exceed `MAX_MSG_BYTES`
+/// (the caller then rejects with 552 and leaves DATA mode); otherwise the line
+/// is appended (CRLF-terminated) and `false` is returned.
+fn append_data_line(data_buf: &mut String, line: &str) -> bool {
+    let line = line.strip_prefix('.').unwrap_or(line);
+    if data_buf.len() + line.len() > MAX_MSG_BYTES {
+        return true;
+    }
+    data_buf.push_str(line);
+    data_buf.push_str("\r\n");
+    false
 }
 
 /// Decode AUTH PLAIN credential: base64("\0user\0pass")
