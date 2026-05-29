@@ -68,6 +68,7 @@ ci_gate() {
     fi
 
     run "web templates"               ./scripts/lint-web-templates.sh
+    run "rust bloat"                  ./scripts/lint-rust-bloat.sh
 }
 
 # ── Full (informational) ──────────────────────────────────────────────────────
