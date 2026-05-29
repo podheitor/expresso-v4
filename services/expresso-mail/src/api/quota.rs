@@ -8,7 +8,7 @@
 
 use axum::{extract::State, http::{header, HeaderMap, HeaderValue, StatusCode}, response::{IntoResponse, Response}, routing::get, Json, Router};
 use time::OffsetDateTime;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{api::context::RequestCtx, error::Result, state::AppState};
 
@@ -16,7 +16,7 @@ pub fn routes() -> Router<AppState> {
     Router::new().route("/mail/quota", get(get_quota))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct QuotaDto {
     pub used_bytes:  i64,
     pub quota_bytes: Option<i64>,

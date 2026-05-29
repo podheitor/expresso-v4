@@ -40,7 +40,7 @@ pub struct FlagPreset {
     pub updated_at: OffsetDateTime,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PresetBody {
     pub name:  String,
     pub flags: Vec<String>,

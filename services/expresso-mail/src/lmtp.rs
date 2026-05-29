@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn max_msg_bytes_exceeds_max_rcpts() {
-        assert!(super::MAX_MSG_BYTES > super::MAX_RCPTS as u64);
+        assert!(super::MAX_MSG_BYTES > super::MAX_RCPTS as usize);
     }
 
     #[test]

@@ -306,7 +306,8 @@ mod tests {
     #[test]
     fn build_raw_from_addr_appears_in_output() {
         let r = req("sender@test.com", None, None, None);
-        let s = String::from_utf8_lossy(&build_raw(&r).unwrap());
+        let raw = build_raw(&r).unwrap();
+        let s = String::from_utf8_lossy(&raw);
         assert!(s.contains("sender@test.com"));
     }
 
@@ -319,7 +320,8 @@ mod tests {
     #[test]
     fn build_raw_subject_in_output() {
         let r = req("s@example.com", None, Some("Meeting notes"), None);
-        let s = String::from_utf8_lossy(&build_raw(&r).unwrap());
+        let raw = build_raw(&r).unwrap();
+        let s = String::from_utf8_lossy(&raw);
         assert!(s.contains("Meeting notes"));
     }
 
@@ -338,14 +340,16 @@ mod tests {
     #[test]
     fn build_raw_body_appears_in_output() {
         let r = req("from@example.com", None, None, Some("Draft body text"));
-        let s = String::from_utf8_lossy(&build_raw(&r).unwrap());
+        let raw = build_raw(&r).unwrap();
+        let s = String::from_utf8_lossy(&raw);
         assert!(s.contains("Draft body text"));
     }
 
     #[test]
     fn build_raw_contains_mime_version_header() {
         let r = req("from@example.com", None, None, None);
-        let s = String::from_utf8_lossy(&build_raw(&r).unwrap());
+        let raw = build_raw(&r).unwrap();
+        let s = String::from_utf8_lossy(&raw);
         assert!(s.to_ascii_lowercase().contains("mime-version"));
     }
 

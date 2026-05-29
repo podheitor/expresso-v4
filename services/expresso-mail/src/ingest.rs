@@ -1026,7 +1026,7 @@ mod extra_tests {
 
     #[test]
     fn normalize_message_id_non_empty_result() {
-        let id = normalize_message_id("<msg001@example.com>");
+        let id = normalize_message_id(Some("<msg001@example.com>".to_string()));
         assert!(id.is_some());
         assert!(!id.unwrap().is_empty());
     }
@@ -1047,7 +1047,7 @@ mod extra_tests {
 
     #[test]
     fn normalize_message_id_with_angle_brackets_strips_them() {
-        let result = normalize_message_id("<abc@example.com>");
+        let result = normalize_message_id(Some("<abc@example.com>".to_string())).expect("should parse");
         assert!(!result.starts_with('<'));
         assert!(!result.ends_with('>'));
     }

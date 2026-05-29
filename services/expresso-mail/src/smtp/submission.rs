@@ -694,7 +694,7 @@ mod tests {
     #[test]
     fn decode_plain_empty_base64_returns_err() {
         let result = decode_plain("");
-        assert!(result.is_err());
+        assert!(result.is_none());
     }
 
     #[test]

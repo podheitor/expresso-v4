@@ -42,7 +42,7 @@ pub struct SnoozeRecord {
     pub woken_at:     Option<OffsetDateTime>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct SnoozeBody {
     #[serde(with = "time::serde::rfc3339")]
     snooze_until: OffsetDateTime,

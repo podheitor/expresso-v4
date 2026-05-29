@@ -3761,7 +3761,8 @@ fn build_envelope(
 #[cfg(test)]
 mod tests {
     use super::{mime_split_parts, mime_part_body, mime_part_mime_headers,
-                mime_boundary, mime_navigate, mime_part_body_path, mime_part_mime_headers_path};
+                mime_boundary, mime_navigate, mime_part_body_path, mime_part_mime_headers_path,
+                list_matches};
 
     const MULTIPART_MSG: &[u8] = b"\
 From: sender@example.com\r\n\
