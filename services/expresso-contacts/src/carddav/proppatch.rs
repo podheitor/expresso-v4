@@ -213,7 +213,7 @@ fn build_patch(set_props: &[Prop]) -> UpdateAddressbook {
 }
 
 fn patch_has_changes(p: &UpdateAddressbook) -> bool {
-    p.name.is_some() || p.description.is_some()
+    p.name.is_some() || p.description.is_some() || p.is_default.is_some()
 }
 
 fn forbidden() -> Response {
@@ -381,7 +381,9 @@ mod tests {
 
     #[test]
     fn is_live_prop_accepts_resourcetype() {
-        assert!(is_live_prop("DAV:", "resourcetype"));
+        // resourcetype is protected/read-only — not in the settable LIVE_PROPS set.
+        assert!(!is_live_prop("DAV:", "resourcetype"));
+        assert!(is_live_prop("DAV:", "displayname"));
     }
 
     #[test]

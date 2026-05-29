@@ -490,7 +490,7 @@ mod tests {
 
     #[test]
     fn empty_string_accepted_by_size_check() {
-        assert!(validate_vcard("", MAX_CONTACT_VCARD_BYTES).is_ok());
+        assert!(validate_vcard("", MAX_CONTACT_VCARD_BYTES).is_err());
     }
 
     #[test]

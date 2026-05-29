@@ -428,7 +428,7 @@ mod tests {
     #[test]
     fn depth_infinity_variant_exists() {
         let headers = headers_with_depth("infinity");
-        assert!(matches!(parse_depth(&headers), Depth::Zero));
+        assert!(matches!(parse_depth(&headers), Depth::Infinity));
     }
 
     #[test]

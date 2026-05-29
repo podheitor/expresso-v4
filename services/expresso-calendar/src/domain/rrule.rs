@@ -140,6 +140,10 @@ pub fn single_instance(
     win_to:   OffsetDateTime,
 ) -> Option<(OffsetDateTime, OffsetDateTime)> {
     let end = dtend.unwrap_or(dtstart);
+    // Zero-duration instant (no DTEND): present iff [win_from, win_to) contains it.
+    if end == dtstart {
+        return (dtstart >= win_from && dtstart < win_to).then_some((dtstart, dtstart));
+    }
     if end <= win_from || dtstart >= win_to { return None; }
     let s = if dtstart < win_from { win_from } else { dtstart };
     let e = if end    > win_to   { win_to   } else { end };

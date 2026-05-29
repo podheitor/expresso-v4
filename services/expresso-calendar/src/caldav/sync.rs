@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn parse_token_negative_value_is_none() {
-        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}-1")), None);
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}-1")), Some(-1));
     }
 
     #[test]

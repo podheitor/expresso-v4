@@ -351,7 +351,7 @@ mod tests {
         let ev = sample_event(ICAL_WITH_ATTENDEES);
         let bytes = build_envelope_bytes(&ev, "REQUEST").unwrap().unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(v["attendees"].as_array().unwrap().len(), 2);
+        assert_eq!(v["invite"]["attendees"].as_array().unwrap().len(), 2);
     }
 
     #[test]

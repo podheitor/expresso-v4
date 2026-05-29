@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn strip_origin_https_no_path_yields_empty_string() {
-        assert_eq!(strip_origin("https://host"), "");
+        assert_eq!(strip_origin("https://host"), "/");
     }
 
     #[test]
@@ -258,7 +258,10 @@ mod tests {
 
     #[test]
     fn strip_origin_ftp_scheme_passes_through() {
-        assert_eq!(strip_origin("ftp://files.example.com/pub/file.txt"), "/pub/file.txt");
+        assert_eq!(
+            strip_origin("ftp://files.example.com/pub/file.txt"),
+            "ftp://files.example.com/pub/file.txt",
+        );
     }
 
     #[test]

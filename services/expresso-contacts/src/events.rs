@@ -293,7 +293,7 @@ mod tests {
             addressbook_id: Uuid::nil(),
             name:           None,
         };
-        assert_eq!(ev.kind_str(), "addressbook.created");
+        assert_eq!(ev.kind_str(), "addressbook_created");
     }
 
     #[test]

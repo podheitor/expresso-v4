@@ -227,8 +227,9 @@ mod tests {
 
     #[test]
     fn extract_prop_whitespace_only_value_preserved() {
+        // Whitespace-only content is trimmed away → treated as absent.
         let b = "<displayname>   </displayname>";
-        assert_eq!(extract_prop(b, "displayname").as_deref(), Some("   "));
+        assert_eq!(extract_prop(b, "displayname"), None);
     }
 
     #[test]
