@@ -207,6 +207,26 @@ where
     Ok(())
 }
 
+/// Handle the inbound `DATA` command (port 25): require a prior MAIL FROM + ≥1
+/// RCPT, then write `354` to begin message input. Returns `true` if the session
+/// should enter DATA mode. Shared by the plaintext and post-TLS inbound loops.
+async fn inbound_data_command<W>(writer: &mut W, env: &Envelope) -> anyhow::Result<bool>
+where
+    W: AsyncWrite + Unpin,
+{
+    if env.from.is_none() || env.rcpts.is_empty() {
+        writer.write_all(b"503 Bad sequence\r\n").await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["DATA", "smtp25", "reject"])
+            .inc();
+        return Ok(false);
+    }
+    writer
+        .write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n")
+        .await?;
+    Ok(true)
+}
+
 /// Handle a single SMTP connection.
 /// Implements the full SMTP session including optional STARTTLS upgrade.
 /// STARTTLS: when tls_cert/tls_key are configured, announces STARTTLS in EHLO
@@ -321,13 +341,7 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
         } else if upper.starts_with("RCPT TO:") {
             handle_inbound_rcpt_to(&mut writer, &mut env, &line).await?;
         } else if upper == "DATA" {
-            if env.from.is_none() || env.rcpts.is_empty() {
-                writer.write_all(b"503 Bad sequence\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp25", "reject"]).inc();
-            } else {
-                writer.write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n").await?;
-                data_mode = true;
-            }
+            data_mode = inbound_data_command(&mut writer, &env).await?;
         } else if upper == "RSET" {
             env = Envelope::default();
             writer.write_all(b"250 OK\r\n").await?;
@@ -451,17 +465,7 @@ where
         } else if upper.starts_with("RCPT TO:") {
             handle_inbound_rcpt_to(&mut writer, &mut env, &line).await?;
         } else if upper == "DATA" {
-            if env.from.is_none() || env.rcpts.is_empty() {
-                writer.write_all(b"503 Bad sequence\r\n").await?;
-                SMTP_COMMANDS_TOTAL
-                    .with_label_values(&["DATA", "smtp25", "reject"])
-                    .inc();
-            } else {
-                writer
-                    .write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n")
-                    .await?;
-                data_mode = true;
-            }
+            data_mode = inbound_data_command(&mut writer, &env).await?;
         } else if upper == "RSET" {
             env = Envelope::default();
             writer.write_all(b"250 OK\r\n").await?;

@@ -21,15 +21,17 @@ extracted into one `bump_tzid_breakdown()` helper. Knock-on CCN: `overrides_stat
 32→**27**, `exdates_stats` 30→**25** (at target), `exdates_preview_stats` 40→**35**.
 567 calendar tests pass.
 
-**handle_tls (2026-05-29):** 45 → **40** by extracting the DATA command
-(auth + sequence checks + 354) into `handle_data_command()`. Gate now 43.
+**DATA-command extraction (2026-05-29):** the same pattern applied across all
+four SMTP command loops — `handle_tls` 45→40 (`handle_data_command`),
+`handle`@session 43→40 + `session_loop` 31→28 (shared `inbound_data_command`),
+`handle`@lmtp 41→38 (`handle_lmtp_data_command`). Gate 45 → 43 → **40**.
 
-**Binding ceiling = `handle` @ smtp/session.rs (43).** The remaining ≥40 tier is
-all inbound mail SMTP command loops (`handle`@session 43, `handle`@lmtp 41) —
-same shape; their DATA branch extracts the same way (no AUTH check, just the
-from+rcpts sequence). The AUTH PLAIN/LOGIN branches in handle_tls (with
-break-on-disconnect) are the genuinely loop-coupled remainder; leave those or
-restructure the whole dispatch into a parsed-verb match. Calendar analytics ≤35.
+**Binding ceiling = `handle`@session + `handle_tls` (both 40).** What remains in
+these loops is the EHLO/STARTTLS/RSET/NOOP/QUIT verb chain + (submission only)
+the AUTH PLAIN/LOGIN branches with break-on-disconnect — genuinely loop-coupled.
+Dropping below 40 needs restructuring the verb chain into a parsed-verb `match`
+(parse the verb token, dispatch). Higher-risk than the branch extractions done
+so far; this is the documented next step. Calendar analytics + all else ≤38.
 
 
 **Calendar analytics (2026-05-29):** `overrides_stats` 49 → **32** by extracting

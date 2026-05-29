@@ -13,7 +13,7 @@
 
 use std::net::SocketAddr;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
 };
 use tracing::{debug, error, info, instrument, warn};
@@ -30,6 +30,26 @@ struct Envelope {
     rcpts: Vec<String>,
     lhlo: Option<String>,
     declared_size: Option<usize>,
+}
+
+/// Handle the LMTP `DATA` command: require a prior MAIL FROM + ≥1 RCPT, then
+/// write `354` to begin message input. Returns `true` if the session should
+/// enter DATA mode. Extracted from `handle`.
+async fn handle_lmtp_data_command<W>(writer: &mut W, env: &Envelope) -> anyhow::Result<bool>
+where
+    W: AsyncWrite + Unpin,
+{
+    if env.from.is_none() || env.rcpts.is_empty() {
+        writer.write_all(b"503 5.5.1 Bad sequence\r\n").await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["DATA", "lmtp", "reject"])
+            .inc();
+        return Ok(false);
+    }
+    writer
+        .write_all(b"354 End data with <CRLF>.<CRLF>\r\n")
+        .await?;
+    Ok(true)
 }
 
 /// Start LMTP listener; spawn task per connection.
@@ -163,13 +183,7 @@ async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow:
                 SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "lmtp", "ok"]).inc();
             }
         } else if upper == "DATA" {
-            if env.from.is_none() || env.rcpts.is_empty() {
-                writer.write_all(b"503 5.5.1 Bad sequence\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "lmtp", "reject"]).inc();
-            } else {
-                writer.write_all(b"354 End data with <CRLF>.<CRLF>\r\n").await?;
-                data_mode = true;
-            }
+            data_mode = handle_lmtp_data_command(&mut writer, &env).await?;
         } else if upper == "RSET" {
             env = Envelope::default();
             writer.write_all(b"250 2.0.0 Reset\r\n").await?;
