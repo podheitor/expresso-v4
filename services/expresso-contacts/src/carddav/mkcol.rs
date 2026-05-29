@@ -82,10 +82,7 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
             continue;
         }
         let rest = &body[name_pos + local_name.len()..];
-        let gt = match rest.find('>') {
-            Some(g) => g,
-            None => return None,
-        };
+        let gt = rest.find('>')?;
         if rest.as_bytes().get(gt.saturating_sub(1)) == Some(&b'/') {
             return None;
         }
@@ -107,17 +104,14 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
                     && &seg[seg.len() - local_name.len() - 1..seg.len() - local_name.len()] == ":");
             if is_match {
                 let found = i + lt;
-                if close_pos.map_or(true, |p| found < p) {
+                if close_pos.is_none_or(|p| found < p) {
                     close_pos = Some(found);
                 }
                 break;
             }
             i = abs + seg_end + 1;
         }
-        let c = match close_pos {
-            Some(c) => c,
-            None => return None,
-        };
+        let c = close_pos?;
         let s = tail[..c]
             .trim()
             .replace("&amp;", "&")

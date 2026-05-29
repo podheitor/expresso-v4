@@ -167,7 +167,7 @@ pub fn build_vcard(
     organization: Option<&str>,
 ) -> String {
     fn escape(v: &str) -> String {
-        v.replace('\r', " ").replace('\n', " ").replace(';', ",")
+        v.replace(['\r', '\n'], " ").replace(';', ",")
     }
     let fn_v = escape(full_name);
     let uid_v = escape(uid);

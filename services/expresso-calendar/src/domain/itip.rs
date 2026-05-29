@@ -354,7 +354,7 @@ pub fn apply_proposed_times(
     }
     let end_pos = lines
         .iter()
-        .position(|l| l.to_ascii_uppercase() == "END:VEVENT")
+        .position(|l| l.eq_ignore_ascii_case("END:VEVENT"))
         .ok_or_else(|| CalendarError::InvalidICal("END:VEVENT not found".into()))?;
     if !found_start {
         if let Some(ref v) = new_start {
@@ -363,7 +363,7 @@ pub fn apply_proposed_times(
     }
     let end_pos2 = lines
         .iter()
-        .position(|l| l.to_ascii_uppercase() == "END:VEVENT")
+        .position(|l| l.eq_ignore_ascii_case("END:VEVENT"))
         .unwrap_or(end_pos);
     if !found_end {
         if let Some(ref v) = new_end {

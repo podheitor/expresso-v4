@@ -190,7 +190,7 @@ mod tests {
 
     #[test]
     fn io_error_is_500() {
-        let e = DriveError::Io(std::io::Error::new(std::io::ErrorKind::Other, "oops"));
+        let e = DriveError::Io(std::io::Error::other("oops"));
         assert_eq!(status(e), StatusCode::INTERNAL_SERVER_ERROR);
     }
 

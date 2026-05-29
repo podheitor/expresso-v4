@@ -521,7 +521,6 @@ async fn render_config_err(
             .bind(id)
             .fetch_one(pool)
             .await
-            .map(|(s, n)| (s, n))
             .unwrap_or_default();
     Ok(TenantConfigTpl {
         current: "tenants",
@@ -724,7 +723,7 @@ mod tests {
     #[test]
     fn wizard_uses_strict_slug_rule() {
         // Via valid_slug: rejeita slug com 64+ chars e com hífen no início/fim.
-        let long: String = std::iter::repeat('a').take(64).collect();
+        let long: String = std::iter::repeat_n('a', 64).collect();
         assert!(validate_wizard(&wizard(&long, "standard")).is_some());
         assert!(validate_wizard(&wizard("-acme", "standard")).is_some());
         assert!(validate_wizard(&wizard("acme-", "standard")).is_some());
@@ -771,13 +770,13 @@ mod slug_tests {
 
     #[test]
     fn valid_slug_rejects_64_chars() {
-        let s: String = std::iter::repeat('a').take(64).collect();
+        let s: String = std::iter::repeat_n('a', 64).collect();
         assert!(!valid_slug(&s));
     }
 
     #[test]
     fn valid_slug_accepts_63_chars() {
-        let s: String = std::iter::repeat('a').take(63).collect();
+        let s: String = std::iter::repeat_n('a', 63).collect();
         assert!(valid_slug(&s));
     }
 

@@ -206,7 +206,7 @@ async fn delete_upload_h(
 async fn create_upload(st: AppState, ctx: RequestCtx, headers: HeaderMap) -> Result<Response> {
     let total = header_i64(&headers, "upload-length")
         .ok_or_else(|| DriveError::BadRequest("Upload-Length required".into()))?;
-    if total < 0 || total > MAX_UPLOAD_BYTES {
+    if !(0..=MAX_UPLOAD_BYTES).contains(&total) {
         return Err(DriveError::BadRequest(format!(
             "Upload-Length out of bounds (max {MAX_UPLOAD_BYTES})"
         )));

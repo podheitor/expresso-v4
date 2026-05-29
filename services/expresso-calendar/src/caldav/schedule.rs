@@ -173,7 +173,7 @@ fn render_schedule_response(items: &[RecipientStatus]) -> String {
         out.push_str("</D:href></C:recipient>");
         out.push_str("<C:request-status>");
         out.push_str(code);
-        out.push_str(";");
+        out.push(';');
         out.push_str(desc);
         out.push_str("</C:request-status>");
         out.push_str("</C:response>");

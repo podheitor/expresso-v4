@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     fn envelope_no_times_returns_none() {
-        use time::macros::datetime;
+        
         let mut ev = sample_event(ICAL_WITH_ATTENDEES);
         ev.dtstart = None;
         ev.dtend = None;

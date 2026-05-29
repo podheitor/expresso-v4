@@ -74,7 +74,7 @@ async fn multiget(
         .iter()
         .filter_map(|h| h.strip_prefix(&prefix))
         .filter_map(|s| s.strip_suffix(".ics"))
-        .map(|s| uri::percent_decode(s))
+        .map(uri::percent_decode)
         .collect();
     uids.sort();
     uids.dedup();

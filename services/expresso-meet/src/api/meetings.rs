@@ -754,7 +754,7 @@ async fn invite_participant(
     }
 
     let role = body.role.unwrap_or(ParticipantRole::Participant);
-    repo.add_participant(ctx.tenant_id, id, body.user_id, role.clone())
+    repo.add_participant(ctx.tenant_id, id, body.user_id, role)
         .await?;
 
     let display_name = body.display_name.as_deref().unwrap_or("Guest");
@@ -842,7 +842,7 @@ async fn invite_participant_mail(
         .map_err(|_| MeetError::MeetingNotFound(id))?;
 
     let role = body.role.unwrap_or(ParticipantRole::Participant);
-    repo.add_participant(ctx.tenant_id, id, body.user_id, role.clone())
+    repo.add_participant(ctx.tenant_id, id, body.user_id, role)
         .await?;
 
     let display_name = body.display_name.as_deref().unwrap_or("Guest");

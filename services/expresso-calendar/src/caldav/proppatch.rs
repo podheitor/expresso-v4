@@ -162,8 +162,8 @@ fn parse_set_remove(body: &str) -> (Vec<Prop>, Vec<Prop>) {
                     _ => {}
                 }
             }
-            Ok((nsr, Event::Empty(e))) => {
-                if in_prop {
+            Ok((nsr, Event::Empty(e)))
+                if in_prop => {
                     let local = local_name_str(&e);
                     let ns = ns_to_string(&nsr);
                     push_entry(
@@ -175,7 +175,6 @@ fn parse_set_remove(body: &str) -> (Vec<Prop>, Vec<Prop>) {
                         String::new(),
                     );
                 }
-            }
             Ok((_, Event::Text(t))) => {
                 if let Some((_, _, buf)) = current.as_mut() {
                     if let Ok(s) = t.decode() {

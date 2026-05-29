@@ -5678,7 +5678,7 @@ async fn exdates_stats(
     };
     match sort_mode {
         Some("count_desc") => kept.sort_by(|a, b| b.1.cmp(&a.1)),
-        Some("count_asc") => kept.sort_by(|a, b| a.1.cmp(&b.1)),
+        Some("count_asc") => kept.sort_by_key(|a| a.1),
         Some("name_asc") => kept.sort_by(|a, b| a.0.cmp(&b.0)),
         Some("name_desc") => kept.sort_by(|a, b| b.0.cmp(&a.0)),
         _ => {}
@@ -6636,18 +6636,18 @@ struct OverridesStatsQuery {
 /// no histograma como `min_count=2&top_tzid=10` = "top-10 entre TZIDs
 /// com pelo menos 2 ocorrências cada"). `min_count=0` -> 400 ("must be
 /// >= 1 (omit flag for full breakdown)"); `min_count=1` aceito mesmo
-/// sendo no-op (toda TZID no breakdown apareceu pelo menos 1x —
-/// primeira fronteira "real", UI pode emitir `tzid_filtered_count=0`
-/// como confirmação). Composição em 3 fases ordem FIXA preservando
-/// semantics intuitiva: (1) `min_count` filtra long-tail removendo
-/// TZIDs raros do `Vec<(String, usize)>` original ANTES do truncate;
-/// (2) `top_tzid` seleciona top-N por count desc do UNIVERSO FILTRADO
-/// (compostável: `top_tzid=5&min_count=10` = "top-5 entre TZIDs com
-/// count>=10"); (3) `sort_tzid` ordena set retido (presentation, do
-/// #540) — chain `min_count -> top_tzid -> sort_tzid` é "filter
-/// universe -> select head -> present". `tzid_filtered_count` SOMENTE
-/// quando `min_count.is_some()`; ausência preserva shape #540.
-/// Invariant pós-filter: `sum(tzid_breakdown.values()) +
+/// > sendo no-op (toda TZID no breakdown apareceu pelo menos 1x —
+/// > primeira fronteira "real", UI pode emitir `tzid_filtered_count=0`
+/// > como confirmação). Composição em 3 fases ordem FIXA preservando
+/// > semantics intuitiva: (1) `min_count` filtra long-tail removendo
+/// > TZIDs raros do `Vec<(String, usize)>` original ANTES do truncate;
+/// > (2) `top_tzid` seleciona top-N por count desc do UNIVERSO FILTRADO
+/// > (compostável: `top_tzid=5&min_count=10` = "top-5 entre TZIDs com
+/// > count>=10"); (3) `sort_tzid` ordena set retido (presentation, do
+/// > #540) — chain `min_count -> top_tzid -> sort_tzid` é "filter
+/// > universe -> select head -> present". `tzid_filtered_count` SOMENTE
+/// > quando `min_count.is_some()`; ausência preserva shape #540.
+/// > Invariant pós-filter: `sum(tzid_breakdown.values()) +
 /// tzid_other_count + tzid_filtered_count == tzid_token_count`.
 ///
 /// `?include_kind_breakdown=true` (sprint #542, paralelo do #536 mas no
@@ -6866,7 +6866,7 @@ async fn overrides_stats(
     if let Some(mode) = sort_mode {
         match mode {
             "count_desc" => kept.sort_by(|a, b| b.1.cmp(&a.1)),
-            "count_asc" => kept.sort_by(|a, b| a.1.cmp(&b.1)),
+            "count_asc" => kept.sort_by_key(|a| a.1),
             "name_asc" => kept.sort_by(|a, b| a.0.cmp(&b.0)),
             "name_desc" => kept.sort_by(|a, b| b.0.cmp(&a.0)),
             _ => unreachable!(),
@@ -9345,7 +9345,7 @@ async fn exdates_preview_stats(
         };
         match sort_mode {
             Some("count_desc") => kept.sort_by(|a, b| b.1.cmp(&a.1)),
-            Some("count_asc") => kept.sort_by(|a, b| a.1.cmp(&b.1)),
+            Some("count_asc") => kept.sort_by_key(|a| a.1),
             Some("name_asc") => kept.sort_by(|a, b| a.0.cmp(&b.0)),
             Some("name_desc") => kept.sort_by(|a, b| b.0.cmp(&a.0)),
             _ => {}

@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn bad_request_error_is_400() {
         assert_eq!(
-            status(RpError::BadRequest("missing param".into())),
+            status(RpError::BadRequest("missing param")),
             StatusCode::BAD_REQUEST
         );
     }

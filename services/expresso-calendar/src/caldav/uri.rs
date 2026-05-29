@@ -79,7 +79,7 @@ pub fn classify(path: &str) -> Target {
             let u = parse_uuid(segments[0]);
             let c = parse_uuid(segments[1]);
             let last = segments[2];
-            let uid = last.strip_suffix(".ics").map(|s| percent_decode(s));
+            let uid = last.strip_suffix(".ics").map(percent_decode);
             match (u, c, uid) {
                 (Some(u), Some(c), Some(uid)) => Target::Event {
                     user_id: u,

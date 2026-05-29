@@ -312,7 +312,7 @@ async fn handle_counter(
 
     // Persist proposal so admin can accept/reject (RFC 5546 §3.2.7).
     let mut proposal_id: Option<uuid::Uuid> = None;
-    if let (Some(ev), Some(ref a)) = (event_opt.as_ref(), att.as_ref()) {
+    if let (Some(ev), Some(a)) = (event_opt.as_ref(), att.as_ref()) {
         let crepo = CounterRepo::new(repo.pool());
         match crepo
             .insert(

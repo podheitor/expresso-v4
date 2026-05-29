@@ -37,7 +37,7 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
             Some(b':') if name_pos >= 2 => {
                 // Rastreia até o '<' — só válido se só houver caracteres de prefixo XML entre '<' e ':'.
                 let slice = &bytes[..name_pos];
-                matches!(slice.iter().rposition(|&c| c == b'<'), Some(_))
+                slice.iter().rposition(|&c| c == b'<').is_some()
             }
             _ => false,
         };
@@ -47,10 +47,7 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
         }
         // Avança até '>' que fecha a tag de abertura.
         let rest = &body[name_pos + local_name.len()..];
-        let gt = match rest.find('>') {
-            Some(g) => g,
-            None => return None,
-        };
+        let gt = rest.find('>')?;
         // Se a tag é self-closing "/>" → sem conteúdo.
         if rest.as_bytes().get(gt.saturating_sub(1)) == Some(&b'/') {
             return None;
@@ -83,17 +80,14 @@ fn extract_prop(body: &str, local_name: &str) -> Option<String> {
                         == ":");
             if matches_close {
                 let found = i + lt;
-                if close_pos.map_or(true, |p| found < p) {
+                if close_pos.is_none_or(|p| found < p) {
                     close_pos = Some(found);
                 }
                 break;
             }
             i = abs + seg_end + 1;
         }
-        let c = match close_pos {
-            Some(c) => c,
-            None => return None,
-        };
+        let c = close_pos?;
         let raw = &tail[..c].trim();
         let s = unescape_xml(raw);
         return if s.is_empty() { None } else { Some(s) };

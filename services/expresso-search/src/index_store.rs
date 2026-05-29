@@ -1395,7 +1395,7 @@ mod tests {
             let (y, m, d) = days_to_ymd(days);
             assert_eq!(
                 (y, m, d),
-                (ey as i32, em, ed),
+                (ey, em, ed),
                 "roundtrip failed for {ey}-{em:02}-{ed:02}"
             );
         }

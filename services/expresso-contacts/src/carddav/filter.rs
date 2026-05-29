@@ -16,30 +16,24 @@ use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum Op {
     AllOf,
+    #[default]
     AnyOf,
 }
 
-impl Default for Op {
-    fn default() -> Self {
-        Op::AnyOf
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum MatchType {
+    #[default]
     Contains,
     StartsWith,
     EndsWith,
     Equals,
 }
 
-impl Default for MatchType {
-    fn default() -> Self {
-        Self::Contains
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct TextMatch {
@@ -125,13 +119,12 @@ pub fn parse(body: &str) -> Option<Filter> {
                     _ => {}
                 }
             }
-            Ok(Event::Text(t)) => {
-                if cur_tm.is_some() {
+            Ok(Event::Text(t))
+                if cur_tm.is_some() => {
                     if let Ok(s) = t.decode() {
                         tm_text.push_str(&s);
                     }
                 }
-            }
             Ok(Event::End(e)) => match local(e.name().as_ref()).as_str() {
                 "text-match" => {
                     if let (Some(mut tm), Some(pf)) = (cur_tm.take(), cur_pf.as_mut()) {

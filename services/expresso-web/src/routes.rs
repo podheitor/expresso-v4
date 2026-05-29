@@ -303,7 +303,7 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
                                 .as_ref()
                                 .map(|s| {
                                     if s.len() >= 16 {
-                                        format!("{}", &s[11..16])
+                                        s[11..16].to_string()
                                     } else {
                                         s.clone()
                                     }
@@ -1104,7 +1104,7 @@ struct SendPayload {
 }
 
 fn split_addrs(s: &str) -> Vec<String> {
-    s.split(|c: char| c == ',' || c == ';')
+    s.split([',', ';'])
         .map(|p| p.trim().to_string())
         .filter(|p| !p.is_empty())
         .collect()
@@ -4040,7 +4040,7 @@ fn secs_to_ymdhm(mut s: u64) -> (u32, u32, u32, u32, u32) {
     // Simplified date from epoch (good until 2100)
     let mut y = 1970u32;
     loop {
-        let days_in_year = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+        let days_in_year = if y.is_multiple_of(4) && (!y.is_multiple_of(100) || y.is_multiple_of(400)) {
             366
         } else {
             365
@@ -4051,7 +4051,7 @@ fn secs_to_ymdhm(mut s: u64) -> (u32, u32, u32, u32, u32) {
         s -= days_in_year;
         y += 1;
     }
-    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let leap = y.is_multiple_of(4) && (!y.is_multiple_of(100) || y.is_multiple_of(400));
     let months = [
         31u64,
         if leap { 29 } else { 28 },
@@ -4238,7 +4238,7 @@ async fn meet_join_page(
     Ok(askama_axum::IntoResponse::into_response(MeetRoomTpl {
         me,
         room_id: room_name.clone(),
-        room_name: room_name,
+        room_name,
         meeting: None,
         participants: Vec::new(),
         jitsi_domain: st.jitsi.domain.clone(),

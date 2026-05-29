@@ -749,8 +749,8 @@ fn eval_condition(field: &str, op: &str, val: &str, req: &ProcessRequest) -> boo
         "from" => req
             .from_addr
             .as_deref()
-            .map_or(false, |h| str_op(h, op, val)),
-        "subject" => req.subject.as_deref().map_or(false, |h| str_op(h, op, val)),
+            .is_some_and(|h| str_op(h, op, val)),
+        "subject" => req.subject.as_deref().is_some_and(|h| str_op(h, op, val)),
         "folder" => str_op(&req.folder, op, val),
         "to" => {
             let addrs = req.to_addrs.as_deref().unwrap_or(&[]);
@@ -888,8 +888,8 @@ mod tests {
             from_addr: from.map(Into::into),
             to_addrs: to.map(|v| v.into_iter().map(Into::into).collect()),
             subject: subject.map(Into::into),
-            has_attachments: has_attachments,
-            size_bytes: size_bytes,
+            has_attachments,
+            size_bytes,
         }
     }
 

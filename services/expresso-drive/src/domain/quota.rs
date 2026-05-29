@@ -343,6 +343,27 @@ impl<'a> QuotaRepo<'a> {
     }
 }
 
+impl<'a> QuotaRepo<'a> {
+    pub async fn get(&self, tenant_id: Uuid) -> Result<Quota> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let (max,): (Option<i64>,) =
+            sqlx::query_as("SELECT max_bytes FROM drive_quotas WHERE tenant_id = $1")
+                .bind(tenant_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .unwrap_or((None,));
+        let (used,): (Option<i64>,) = sqlx::query_as("SELECT drive_quota_used($1)")
+            .bind(tenant_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(Quota {
+            max_bytes: max.unwrap_or(DEFAULT_QUOTA_BYTES),
+            used_bytes: used.unwrap_or(0),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -574,26 +595,5 @@ mod tests {
     #[test]
     fn default_quota_bytes_constant_is_ten_gib() {
         assert_eq!(DEFAULT_QUOTA_BYTES, 10 * 1024 * 1024 * 1024);
-    }
-}
-
-impl<'a> QuotaRepo<'a> {
-    pub async fn get(&self, tenant_id: Uuid) -> Result<Quota> {
-        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
-        let (max,): (Option<i64>,) =
-            sqlx::query_as("SELECT max_bytes FROM drive_quotas WHERE tenant_id = $1")
-                .bind(tenant_id)
-                .fetch_optional(&mut *tx)
-                .await?
-                .unwrap_or((None,));
-        let (used,): (Option<i64>,) = sqlx::query_as("SELECT drive_quota_used($1)")
-            .bind(tenant_id)
-            .fetch_one(&mut *tx)
-            .await?;
-        tx.commit().await?;
-        Ok(Quota {
-            max_bytes: max.unwrap_or(DEFAULT_QUOTA_BYTES),
-            used_bytes: used.unwrap_or(0),
-        })
     }
 }

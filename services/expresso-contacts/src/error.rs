@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn not_supported_status_is_501() {
-        let e = ContactsError::NotSupported("LOCK".into());
+        let e = ContactsError::NotSupported("LOCK");
         assert_eq!(status(e), 501);
     }
 
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn not_supported_display_is_nonempty() {
-        let e = ContactsError::NotSupported("LOCK".into());
+        let e = ContactsError::NotSupported("LOCK");
         assert!(!e.to_string().is_empty());
     }
 

@@ -935,14 +935,11 @@ fn list_match_recursive(name: &[u8], pat: &[u8]) -> bool {
             }
             false
         }
-        (Some(pc), Some(nc)) => {
+        (Some(pc), Some(nc))
             // Case-insensitive compare for regular chars.
-            if pc.to_ascii_lowercase() == nc.to_ascii_lowercase() {
+            if pc.eq_ignore_ascii_case(nc) => {
                 list_match_recursive(&name[1..], &pat[1..])
-            } else {
-                false
             }
-        }
         _ => false,
     }
 }
@@ -974,7 +971,7 @@ async fn cmd_list(
         if !list_matches(name, &pattern) {
             continue;
         }
-        let mailbox = ImapMailbox::try_from(name.to_owned()).unwrap_or_else(|_| ImapMailbox::Inbox);
+        let mailbox = ImapMailbox::try_from(name.to_owned()).unwrap_or(ImapMailbox::Inbox);
 
         let mut items: Vec<FlagNameAttribute<'static>> = Vec::new();
 
@@ -1071,7 +1068,7 @@ async fn cmd_lsub(
         if !list_matches(name, &pattern) {
             continue;
         }
-        let mailbox = ImapMailbox::try_from(name.to_owned()).unwrap_or_else(|_| ImapMailbox::Inbox);
+        let mailbox = ImapMailbox::try_from(name.to_owned()).unwrap_or(ImapMailbox::Inbox);
         let items: Vec<FlagNameAttribute<'static>> = special_use
             .as_deref()
             .and_then(|s| {
@@ -1468,7 +1465,7 @@ fn search_key_needs_body(key: &SearchKey<'_>) -> bool {
 
 fn json_addr_contains(v: Option<&serde_json::Value>, needle: &str) -> bool {
     let needle_lc = needle.to_ascii_lowercase();
-    v.and_then(|j| j.as_array()).map_or(true, |arr| {
+    v.and_then(|j| j.as_array()).is_none_or(|arr| {
         arr.iter().any(|item| {
             let addr = item.get("addr").and_then(|a| a.as_str()).unwrap_or("");
             let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
@@ -1496,7 +1493,7 @@ fn search_key_matches(
     let has = |f: &str| flags.iter().any(|x| x == f);
     // Case-insensitive substring check — mirrors RFC 3501 §6.4.4 ILIKE semantics.
     let icontains = |haystack: Option<&str>, needle: &str| -> bool {
-        haystack.map_or(true, |h| {
+        haystack.is_none_or(|h| {
             h.to_ascii_lowercase()
                 .contains(&needle.to_ascii_lowercase())
         })
@@ -1520,18 +1517,18 @@ fn search_key_matches(
         SearchKey::Draft => has("\\Draft"),
         SearchKey::Undraft => !has("\\Draft"),
         // Internal-date criteria: compare against received_at (UTC midnight boundary).
-        SearchKey::Since(date) => recv.map_or(true, |r| r.date_naive() >= *date.as_ref()),
-        SearchKey::Before(date) => recv.map_or(true, |r| r.date_naive() < *date.as_ref()),
-        SearchKey::On(date) => recv.map_or(true, |r| r.date_naive() == *date.as_ref()),
+        SearchKey::Since(date) => recv.is_none_or(|r| r.date_naive() >= *date.as_ref()),
+        SearchKey::Before(date) => recv.is_none_or(|r| r.date_naive() < *date.as_ref()),
+        SearchKey::On(date) => recv.is_none_or(|r| r.date_naive() == *date.as_ref()),
         // SentSince/SentBefore/SentOn compare against the envelope Date header stored in DB.
         // Conservative true when Date header is absent (NULL) — no false negatives.
-        SearchKey::SentSince(date) => sent.map_or(true, |s| s.date_naive() >= *date.as_ref()),
-        SearchKey::SentBefore(date) => sent.map_or(true, |s| s.date_naive() < *date.as_ref()),
-        SearchKey::SentOn(date) => sent.map_or(true, |s| s.date_naive() == *date.as_ref()),
+        SearchKey::SentSince(date) => sent.is_none_or(|s| s.date_naive() >= *date.as_ref()),
+        SearchKey::SentBefore(date) => sent.is_none_or(|s| s.date_naive() < *date.as_ref()),
+        SearchKey::SentOn(date) => sent.is_none_or(|s| s.date_naive() == *date.as_ref()),
         // Size criteria: size_bytes comes from DB (set by APPEND/ingest).
         // Conservative true when size_bytes is NULL (e.g. old messages before APPEND sprint).
-        SearchKey::Larger(n) => size.map_or(true, |s| (s as u64) > (*n as u64)),
-        SearchKey::Smaller(n) => size.map_or(true, |s| (s as u64) < (*n as u64)),
+        SearchKey::Larger(n) => size.is_none_or(|s| (s as u64) > (*n as u64)),
+        SearchKey::Smaller(n) => size.is_none_or(|s| (s as u64) < (*n as u64)),
         // Envelope criteria — matched against DB columns (ILIKE).
         // Subject uses subject column; From matches from_addr.
         // CC/BCC/To/ReplyTo are not stored — conservative true.
@@ -3280,8 +3277,7 @@ async fn cmd_noop(
         for (seq, flags_now) in &current {
             let changed = sel
                 .flags_snapshot
-                .get(seq)
-                .map_or(true, |prev| prev != flags_now);
+                .get(seq) != Some(flags_now);
             if changed {
                 let flag_items: Vec<FlagFetch<'static>> = flags_now
                     .iter()
@@ -3435,7 +3431,7 @@ where
                     .collect();
                     let mut new_snapshot: HashMap<u32, Vec<String>> = HashMap::with_capacity(current.len());
                     for (seq, flags_now) in &current {
-                        let changed = sel.flags_snapshot.get(seq).map_or(true, |prev| prev != flags_now);
+                        let changed = sel.flags_snapshot.get(seq) != Some(flags_now);
                         if changed {
                             let flag_items: Vec<FlagFetch<'static>> = flags_now.iter()
                                 .filter_map(|f| parse_flag(f).map(FlagFetch::Flag))
@@ -4273,7 +4269,7 @@ fn build_envelope(
 mod tests {
     use super::{
         email_text_bytes, list_matches, mime_boundary, mime_navigate, mime_part_body,
-        mime_part_body_path, mime_part_mime_headers, mime_part_mime_headers_path, mime_split_parts,
+        mime_part_body_path, mime_part_mime_headers, mime_split_parts,
     };
 
     const MULTIPART_MSG: &[u8] = b"\

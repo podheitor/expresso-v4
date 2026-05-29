@@ -188,7 +188,7 @@ pub async fn list(
             id: r.try_get("id").unwrap_or_default(),
             created_at: r
                 .try_get("created_at")
-                .unwrap_or_else(|_| OffsetDateTime::UNIX_EPOCH),
+                .unwrap_or(OffsetDateTime::UNIX_EPOCH),
             tenant_id: r.try_get("tenant_id").unwrap_or_else(|_| uuid::Uuid::nil()),
             user_id: r.try_get("user_id").ok().flatten(),
             action: r.try_get("action").unwrap_or_default(),

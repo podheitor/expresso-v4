@@ -567,7 +567,7 @@ mod tests {
     fn new_calendar_is_default_false_preserved_in_serde() {
         let json = r#"{"name":"x","is_default":false}"#;
         let n: NewCalendar = serde_json::from_str(json).unwrap();
-        assert_eq!(n.is_default, false);
+        assert!(!n.is_default);
     }
 
     #[test]

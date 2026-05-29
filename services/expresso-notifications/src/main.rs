@@ -1723,7 +1723,7 @@ async fn dlq_stats_by_kind_and_tenant(
         )
     })?;
 
-    let raw_limit = q.limit.unwrap_or(50).clamp(1, 500) as i64;
+    let raw_limit = q.limit.unwrap_or(50).clamp(1, 500);
 
     let rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT kind, tenant_id::TEXT, COUNT(*)::BIGINT AS count \
@@ -1890,7 +1890,7 @@ async fn dlq_stats_by_error_prefix(
         )
     })?;
 
-    let limit = q.limit.unwrap_or(20).clamp(1, 200) as i64;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
 
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT LEFT(last_error, 60) AS error_prefix, COUNT(*)::BIGINT AS count \
@@ -2731,7 +2731,7 @@ async fn list_dlq(
         )
     })?;
     let limit = q.limit.unwrap_or(50).clamp(1, 500) as i64;
-    let offset = q.offset.unwrap_or(0).max(0) as i64;
+    let offset = q.offset.unwrap_or(0) as i64;
 
     // Parse temporal bounds (RFC3339 → OffsetDateTime).
     let since_dt = q

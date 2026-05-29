@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn from_auth_error_missing_claim_maps_to_forbidden() {
         assert!(matches!(
-            CtxError::from(AuthError::MissingClaim("role".into())),
+            CtxError::from(AuthError::MissingClaim("role")),
             CtxError::Forbidden(_)
         ));
     }
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn from_auth_error_malformed_claim_maps_to_invalid_token() {
         assert!(matches!(
-            CtxError::from(AuthError::MalformedClaim("sub".into(), "not-uuid".into())),
+            CtxError::from(AuthError::MalformedClaim("sub", "not-uuid".into())),
             CtxError::InvalidToken(_)
         ));
     }

@@ -613,7 +613,7 @@ pub async fn smallest_segment(State(store): State<IndexStore>) -> Json<serde_jso
         .list_segments()
         .ok()
         .and_then(|mut segs| {
-            segs.sort_unstable_by(|a, b| a.2.cmp(&b.2));
+            segs.sort_unstable_by_key(|a| a.2);
             segs.into_iter().next()
         })
         .map(|(id, num_docs, disk_bytes)| {
@@ -763,7 +763,7 @@ pub async fn segments_bottom_n(
     let limit = q.limit.unwrap_or(5).clamp(1, 50) as usize;
 
     let mut segs = store.list_segments().unwrap_or_default();
-    segs.sort_unstable_by(|a, b| a.2.cmp(&b.2));
+    segs.sort_unstable_by_key(|a| a.2);
     segs.truncate(limit);
 
     let segments: Vec<serde_json::Value> = segs
@@ -1401,7 +1401,7 @@ pub async fn segment_harmonic_mean(State(store): State<IndexStore>) -> Json<serd
     }
 
     fn harmonic(vals: &[f64]) -> Option<f64> {
-        if vals.iter().any(|&x| x == 0.0) {
+        if vals.contains(&0.0) {
             return None;
         }
         let sum_inv: f64 = vals.iter().map(|x| 1.0 / x).sum();
