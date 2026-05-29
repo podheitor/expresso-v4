@@ -481,8 +481,9 @@ mod tests {
 
     #[test]
     fn dev_bootstrap_enabled_returns_bool() {
+        std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "1");
+        assert!(dev_bootstrap_enabled());
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
-        let result = dev_bootstrap_enabled();
-        assert!(!result || result);
+        assert!(!dev_bootstrap_enabled());
     }
 }

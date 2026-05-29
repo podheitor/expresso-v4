@@ -225,6 +225,7 @@ async fn propfind_contact(
 }
 
 /// Append a `<D:response>` for a collection (home or addressbook).
+#[allow(clippy::too_many_arguments)]
 fn append_collection_response(
     out: &mut String,
     href: &str,

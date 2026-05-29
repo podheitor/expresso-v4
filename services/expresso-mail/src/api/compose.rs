@@ -169,14 +169,12 @@ pub async fn send_message(
             tx.commit().await?;
             r
         };
-        if let Some((orig_msg_id, orig_refs)) = row {
-            if let Some(ref mid) = orig_msg_id {
-                builder = builder.in_reply_to(mid.clone());
-                // References = original References + original Message-Id (RFC 5322 §3.6.4)
-                let mut refs_list = orig_refs;
-                refs_list.push(mid.clone());
-                builder = builder.references(refs_list.join(" "));
-            }
+        if let Some((Some(mid), orig_refs)) = row {
+            builder = builder.in_reply_to(mid.clone());
+            // References = original References + original Message-Id (RFC 5322 §3.6.4)
+            let mut refs_list = orig_refs;
+            refs_list.push(mid);
+            builder = builder.references(refs_list.join(" "));
         }
     }
 
@@ -788,6 +786,7 @@ struct ScheduledItem {
 
 /// GET /api/v1/mail/messages/scheduled — lista mensagens agendadas (deliver_at no
 /// futuro) do usuário autenticado, ordenadas por horário de entrega (sprint #419).
+#[allow(clippy::type_complexity)]
 async fn list_scheduled(
     State(state): State<AppState>,
     ctx: RequestCtx,

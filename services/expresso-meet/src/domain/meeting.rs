@@ -383,6 +383,7 @@ impl<'a> MeetingRepo<'a> {
         Ok(row)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn update(
         &self,
         tenant: Uuid,

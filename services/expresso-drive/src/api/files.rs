@@ -1954,13 +1954,11 @@ fn side_by_side_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::
     // Mark which rows are "near" a change (within context distance).
     let total_rows = raw.len();
     let mut visible = vec![false; total_rows];
-    for r in 0..total_rows {
-        if raw[r].kind != "equal" {
+    for (r, row) in raw.iter().enumerate() {
+        if row.kind != "equal" {
             let lo = r.saturating_sub(context);
             let hi = (r + context + 1).min(total_rows);
-            for v in lo..hi {
-                visible[v] = true;
-            }
+            visible[lo..hi].fill(true);
         }
     }
 
@@ -2764,6 +2762,7 @@ struct StatsSizeBucketQuery {
     folder_id: Option<Uuid>,
 }
 
+#[allow(clippy::type_complexity)]
 async fn file_stats_by_size_bucket(
     State(state): State<AppState>,
     ctx: RequestCtx,

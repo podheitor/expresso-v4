@@ -10,6 +10,7 @@ use crate::{auth, AppState};
 
 /// Build + fire-and-forget insert an audit row for an admin mutation.
 /// No-op when DB pool is missing (admin can run in KC-only mode).
+#[allow(clippy::too_many_arguments)]
 pub async fn record(
     st: &Arc<AppState>,
     headers: &HeaderMap,

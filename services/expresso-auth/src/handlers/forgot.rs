@@ -100,6 +100,7 @@ mod tests {
         assert!(r.is_err());
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn action_lifespan_secs_is_u32() {
         let _: u32 = ACTION_LIFESPAN_SECS;
@@ -187,6 +188,7 @@ mod tests {
         assert_eq!(r.email, "check@domain.io");
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn action_lifespan_is_positive() {
         assert!(ACTION_LIFESPAN_SECS > 0);

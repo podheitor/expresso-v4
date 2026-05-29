@@ -70,9 +70,9 @@
         {% for msg in messages %}
         <div class="thread-msg thread-msg-item{% if msg.is_unread() %} thread-msg-unread{% endif %}" id="tmsg-{{ msg.id }}">
           <div class="thread-msg-header" onclick="toggleThreadMsg('{{ msg.id }}')">
-            <div class="thread-msg-avatar">{{ msg.from_display().chars().next().unwrap_or('?').to_uppercase() }}</div>
+            <div class="thread-msg-avatar">{{ msg.sender_display().chars().next().unwrap_or('?').to_uppercase() }}</div>
             <div class="thread-msg-meta">
-              <span class="thread-msg-from">{{ msg.from_display() }}</span>
+              <span class="thread-msg-from">{{ msg.sender_display() }}</span>
               <span class="muted small">{{ msg.date_display() }}</span>
             </div>
             {% if msg.is_unread() %}<span class="chat-unread-badge" style="margin-left:auto">Não lida</span>{% endif %}

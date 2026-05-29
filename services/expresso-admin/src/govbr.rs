@@ -45,6 +45,9 @@ pub struct UpsertBody {
     pub assurance: Option<String>,
 }
 
+// Err is an axum Response by design (early-return into the handler); boxing
+// it would only add an allocation on the unavailable path.
+#[allow(clippy::result_large_err)]
 fn db_or_503(st: &Arc<AppState>) -> Result<&expresso_core::DbPool, Response> {
     st.db
         .as_ref()

@@ -111,14 +111,14 @@
         <li class="msg-row-wrap" data-mid="{{ msg.id }}"
             data-unread="{% if msg.is_unread() %}1{% else %}0{% endif %}"
             data-attach="{% if msg.has_attachments %}1{% else %}0{% endif %}"
-            data-sender="{{ msg.from_display() }}">
+            data-sender="{{ msg.sender_display() }}">
           <input type="checkbox" class="mail-row-check" data-mid="{{ msg.id }}"
                  onchange="updateMailSelection(event)" style="position:absolute;left:.4rem;top:50%;transform:translateY(-50%);z-index:2;display:none">
           <a class="msg-row{% if msg.is_unread() %} unread{% endif %}{% match selected_id %}{% when Some with (sid) %}{% if sid.as_str() == msg.id.as_str() %} selected{% endif %}{% when None %}{% endmatch %}"
              href="/mail/{{ msg.id }}?folder={{ selected }}"
              onclick="mailRowClick(event, '{{ msg.id }}')">
             <div class="msg-meta">
-              <span class="msg-from" onclick="filterBySender('{{ msg.from_display() }}'); event.preventDefault();" style="cursor:pointer" title="Filtrar por este remetente">{{ msg.from_display() }}</span>
+              <span class="msg-from" onclick="filterBySender('{{ msg.sender_display() }}'); event.preventDefault();" style="cursor:pointer" title="Filtrar por este remetente">{{ msg.sender_display() }}</span>
               <span class="msg-date">{{ msg.date_display() }}</span>
             </div>
             <div class="msg-subject">

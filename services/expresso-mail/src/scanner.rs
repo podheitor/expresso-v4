@@ -216,12 +216,12 @@ mod tests {
     #[test]
     fn headers_include_both() {
         let r = ScanResult {
-            spam_score: Some(3.14),
+            spam_score: Some(3.25),
             spam_action: Some("add header".into()),
             virus: None,
         };
         let h = r.to_headers();
-        assert!(h.contains("X-Spam-Score: 3.14"));
+        assert!(h.contains("X-Spam-Score: 3.25"));
         assert!(h.contains("X-Spam-Status: No"));
         assert!(h.contains("X-Spam-Action: add header"));
         assert!(h.contains("X-Virus-Status: Clean"));

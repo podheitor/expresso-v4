@@ -36,6 +36,9 @@ const BUS_CAPACITY: usize = 1024;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+// Variant names carry the `Event` prefix deliberately: they map 1:1 to the
+// serialized `kind` discriminator consumed by downstream services.
+#[allow(clippy::enum_variant_names)]
 pub enum Event {
     EventCreated {
         tenant_id: Uuid,

@@ -151,6 +151,7 @@ mod tests {
         assert!(validate_message_body(&s).is_ok());
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn list_limit_constants_sane() {
         assert!(DEFAULT_LIST_LIMIT < MAX_LIST_LIMIT);
@@ -168,16 +169,19 @@ mod tests {
         assert_eq!(q.limit, DEFAULT_LIST_LIMIT);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_list_limit_not_exceeded_by_default() {
         assert!(DEFAULT_LIST_LIMIT <= MAX_LIST_LIMIT);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn default_list_limit_is_positive() {
         assert!(DEFAULT_LIST_LIMIT > 0);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_list_limit_is_at_most_200() {
         assert!(MAX_LIST_LIMIT <= 200);
@@ -188,6 +192,7 @@ mod tests {
         assert_eq!(MAX_LIST_LIMIT, 200);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_list_limit_is_positive() {
         assert!(MAX_LIST_LIMIT > 0);
@@ -205,11 +210,13 @@ mod tests {
         assert!(b.body.contains("Olá"));
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn default_limit_is_less_than_max_limit() {
         assert!(DEFAULT_LIST_LIMIT < MAX_LIST_LIMIT);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_message_body_bytes_constant_is_positive() {
         assert!(MAX_MESSAGE_BODY_BYTES > 0);
@@ -225,6 +232,7 @@ mod tests {
         assert_eq!(MAX_MESSAGE_BODY_BYTES, 32 * 1024);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_list_limit_exceeds_default_limit() {
         assert!(MAX_LIST_LIMIT > DEFAULT_LIST_LIMIT);
@@ -236,11 +244,13 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn default_list_limit_is_less_than_or_equal_to_max() {
         assert!(DEFAULT_LIST_LIMIT <= MAX_LIST_LIMIT);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_message_body_bytes_is_nonzero() {
         assert!(MAX_MESSAGE_BODY_BYTES > 0);
@@ -251,6 +261,7 @@ mod tests {
         assert_eq!(DEFAULT_LIST_LIMIT, 50);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_message_body_bytes_is_less_than_one_mib() {
         assert!(MAX_MESSAGE_BODY_BYTES < 1024 * 1024);

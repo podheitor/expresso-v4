@@ -297,7 +297,7 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
                 Ok(r) if r.status().is_success() => {
                     let raw: Vec<Event> = r.json().await.unwrap_or_default();
                     raw.into_iter()
-                        .filter_map(|e| {
+                        .map(|e| {
                             let starts = e
                                 .dtstart
                                 .as_ref()
@@ -327,14 +327,14 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
                             } else {
                                 None
                             };
-                            Some(HomeEvent {
+                            HomeEvent {
                                 id: e.id,
                                 calendar_id: e.calendar_id,
                                 summary: e.summary.unwrap_or_else(|| "(sem título)".into()),
                                 starts,
                                 is_meet,
                                 meet_room_id,
-                            })
+                            }
                         })
                         .take(5)
                         .collect()

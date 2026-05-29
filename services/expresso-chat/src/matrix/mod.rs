@@ -35,6 +35,9 @@ pub struct MatrixClient {
 
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
+// Variant names mirror the Matrix `preset` protocol values; the shared
+// `Chat` suffix is part of that external vocabulary, not redundant naming.
+#[allow(clippy::enum_variant_names)]
 pub enum RoomPreset {
     PrivateChat,
     TrustedPrivateChat,

@@ -245,6 +245,7 @@ impl<'a> EventRepo<'a> {
     /// `ical_raw` is left STALE (structural authority remains with PUT).
     /// `etag` and `updated_at` are refreshed; `sequence` increments only when
     /// any of summary/location/dtstart/dtend/status changes.
+    #[allow(clippy::too_many_arguments)]
     pub async fn patch_fields(
         &self,
         tenant_id: Uuid,

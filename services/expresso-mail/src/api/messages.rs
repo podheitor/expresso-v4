@@ -1850,6 +1850,7 @@ async fn bulk_delete(
 /// Returns 204 on success, 404 if the message is not found, 422 if the
 /// message has no Return-Receipt-To / Reply-To / From to send to, or 502 if
 /// the SMTP relay is unreachable.
+#[allow(clippy::type_complexity)]
 async fn send_read_receipt(
     State(state): State<AppState>,
     ctx: RequestCtx,

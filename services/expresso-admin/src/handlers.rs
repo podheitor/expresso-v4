@@ -373,11 +373,7 @@ pub async fn users_totp_status(
         ));
     }
     let total = users.len() as u32;
-    let pct = if total > 0 {
-        (with_totp * 100) / total
-    } else {
-        0
-    };
+    let pct = (with_totp * 100).checked_div(total).unwrap_or(0);
     let html = format!(
         "<!doctype html><meta charset=utf-8><title>Cobertura TOTP</title>        <style>body{{font-family:system-ui;padding:2rem;max-width:60rem;margin:auto}}        table{{width:100%;border-collapse:collapse}}th,td{{padding:.4rem .6rem;border-bottom:1px solid #eee;text-align:left}}        .sum{{background:#f6f8fa;padding:1rem;border-radius:.5rem;margin:1rem 0}}</style>        <h1>Cobertura TOTP</h1>        <div class=sum><strong>{with_totp}</strong> de <strong>{total}</strong> usuários têm TOTP cadastrado ({pct}%).</div>        <p><a href=\"/users\">← Voltar para usuários</a></p>        <table><thead><tr><th>Username</th><th>Email</th><th>Nome</th><th>Status</th><th>TOTP</th></tr></thead>        <tbody>{rows}</tbody></table>"
     );

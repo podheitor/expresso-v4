@@ -89,7 +89,7 @@ impl MessageListItem {
     pub fn is_unread(&self) -> bool {
         !self.flags.iter().any(|f| f == "\\Seen")
     }
-    pub fn from_display(&self) -> &str {
+    pub fn sender_display(&self) -> &str {
         self.from_name
             .as_deref()
             .or(self.from_addr.as_deref())

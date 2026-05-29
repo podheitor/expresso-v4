@@ -305,6 +305,7 @@ async fn propfind_event(
 }
 
 /// Append a `<D:response>` for a collection (home or calendar).
+#[allow(clippy::too_many_arguments)]
 fn append_collection_response(
     out: &mut String,
     href: &str,

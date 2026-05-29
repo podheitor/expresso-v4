@@ -588,7 +588,7 @@ pub async fn largest_segment(State(store): State<IndexStore>) -> Json<serde_json
         .list_segments()
         .ok()
         .and_then(|mut segs| {
-            segs.sort_unstable_by(|a, b| b.2.cmp(&a.2));
+            segs.sort_unstable_by_key(|e| std::cmp::Reverse(e.2));
             segs.into_iter().next()
         })
         .map(|(id, num_docs, disk_bytes)| {
@@ -729,7 +729,7 @@ pub async fn segments_top_n(
     let limit = q.limit.unwrap_or(5).clamp(1, 50) as usize;
 
     let mut segs = store.list_segments().unwrap_or_default();
-    segs.sort_unstable_by(|a, b| b.2.cmp(&a.2));
+    segs.sort_unstable_by_key(|e| std::cmp::Reverse(e.2));
     segs.truncate(limit);
 
     let segments: Vec<serde_json::Value> = segs
@@ -1266,7 +1266,7 @@ pub async fn segment_mad(State(store): State<IndexStore>) -> Json<serde_json::Va
         }));
     }
 
-    fn median_sorted(sorted: &mut Vec<f64>) -> f64 {
+    fn median_sorted(sorted: &mut [f64]) -> f64 {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let m = sorted.len();
         if m % 2 == 1 {
@@ -1364,7 +1364,7 @@ pub async fn segment_trimmed_mean(
         }));
     }
 
-    fn trimmed_mean(vals: &mut Vec<f64>, pct: usize) -> f64 {
+    fn trimmed_mean(vals: &mut [f64], pct: usize) -> f64 {
         vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let trim = (vals.len() * pct / 100).min(vals.len() / 2);
         let slice = &vals[trim..vals.len() - trim];
@@ -1550,7 +1550,7 @@ pub async fn segment_winsorized_mean(
         }));
     }
 
-    fn winsorized(vals: &mut Vec<f64>, pct: usize) -> f64 {
+    fn winsorized(vals: &mut [f64], pct: usize) -> f64 {
         vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let n = vals.len();
         let trim = (n * pct / 100).min(n / 2);
@@ -1629,7 +1629,7 @@ pub async fn segment_normalized_entropy(
 /// Útil pra visualizar quais segmentos dominam o storage. Sprint #788.
 pub async fn segment_relative_sizes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let mut segs = store.list_segments().unwrap_or_default();
-    segs.sort_by(|a, b| b.2.cmp(&a.2));
+    segs.sort_by_key(|e| std::cmp::Reverse(e.2));
 
     let total_bytes: u64 = segs.iter().map(|(_, _, b)| b).sum();
     let out: Vec<serde_json::Value> = segs

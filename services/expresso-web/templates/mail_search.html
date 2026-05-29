@@ -96,7 +96,7 @@
           <li>
             <a class="msg-row{% if msg.is_unread() %} unread{% endif %}" href="/mail/{{ msg.id }}">
               <div class="msg-meta">
-                <span class="msg-from">{{ msg.from_display() }}</span>
+                <span class="msg-from">{{ msg.sender_display() }}</span>
                 <span class="msg-date">{{ msg.date_display() }}</span>
               </div>
               <div class="msg-subject">{{ msg.subject_display() }}</div>

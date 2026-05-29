@@ -30,6 +30,7 @@ async fn caller_tenant_scope(st: &AppState, headers: &axum::http::HeaderMap) -> 
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn to_dav_row(
     id: uuid::Uuid,
     tenant_id: uuid::Uuid,

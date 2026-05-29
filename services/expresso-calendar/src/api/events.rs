@@ -5670,7 +5670,7 @@ async fn exdates_stats(
     let (mut kept, other_count): (Vec<(String, usize)>, usize) = match q.top_tzid {
         Some(n) if filtered.len() > n => {
             let mut sorted = filtered.clone();
-            sorted.sort_by(|a, b| b.1.cmp(&a.1));
+            sorted.sort_by_key(|e| std::cmp::Reverse(e.1));
             let other: usize = sorted.iter().skip(n).map(|(_, c)| *c).sum();
             sorted.truncate(n);
             (sorted, other)
@@ -5678,7 +5678,7 @@ async fn exdates_stats(
         _ => (filtered, 0),
     };
     match sort_mode {
-        Some("count_desc") => kept.sort_by(|a, b| b.1.cmp(&a.1)),
+        Some("count_desc") => kept.sort_by_key(|e| std::cmp::Reverse(e.1)),
         Some("count_asc") => kept.sort_by_key(|a| a.1),
         Some("name_asc") => kept.sort_by(|a, b| a.0.cmp(&b.0)),
         Some("name_desc") => kept.sort_by(|a, b| b.0.cmp(&a.0)),
@@ -6857,7 +6857,7 @@ async fn overrides_stats(
     };
     let (mut kept, tzid_other_count) = if let Some(n) = q.top_tzid {
         let mut sorted = filtered_universe.clone();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.sort_by_key(|e| std::cmp::Reverse(e.1));
         let other: usize = sorted.iter().skip(n).map(|(_, c)| *c).sum();
         sorted.truncate(n);
         (sorted, Some(other))
@@ -6866,7 +6866,7 @@ async fn overrides_stats(
     };
     if let Some(mode) = sort_mode {
         match mode {
-            "count_desc" => kept.sort_by(|a, b| b.1.cmp(&a.1)),
+            "count_desc" => kept.sort_by_key(|e| std::cmp::Reverse(e.1)),
             "count_asc" => kept.sort_by_key(|a| a.1),
             "name_asc" => kept.sort_by(|a, b| a.0.cmp(&b.0)),
             "name_desc" => kept.sort_by(|a, b| b.0.cmp(&a.0)),
@@ -9340,7 +9340,7 @@ async fn exdates_preview_stats(
         let (mut kept, other_count): (Vec<(String, usize)>, usize) = match q.top_tzid {
             Some(n) if filtered.len() > n => {
                 let mut sorted = filtered.clone();
-                sorted.sort_by(|a, b| b.1.cmp(&a.1));
+                sorted.sort_by_key(|e| std::cmp::Reverse(e.1));
                 let other: usize = sorted.iter().skip(n).map(|(_, c)| *c).sum();
                 sorted.truncate(n);
                 (sorted, other)
@@ -9348,7 +9348,7 @@ async fn exdates_preview_stats(
             _ => (filtered, 0),
         };
         match sort_mode {
-            Some("count_desc") => kept.sort_by(|a, b| b.1.cmp(&a.1)),
+            Some("count_desc") => kept.sort_by_key(|e| std::cmp::Reverse(e.1)),
             Some("count_asc") => kept.sort_by_key(|a| a.1),
             Some("name_asc") => kept.sort_by(|a, b| a.0.cmp(&b.0)),
             Some("name_desc") => kept.sort_by(|a, b| b.0.cmp(&a.0)),
@@ -9400,6 +9400,7 @@ async fn exdates_preview_stats(
 /// adiciona antes de END:VEVENT; se `None` preserva. DTSTAMP sempre
 /// refrescado pra `dtstamp_now`. Outras linhas (UID, RECURRENCE-ID,
 /// RRULE residual etc.) preservadas. Outros blocos VEVENT inalterados.
+#[allow(clippy::too_many_arguments)]
 fn patch_recurrence_id_override_block(
     raw: &str,
     uid_master: &str,

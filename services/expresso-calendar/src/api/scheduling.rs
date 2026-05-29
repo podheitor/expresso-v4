@@ -606,6 +606,7 @@ mod tests {
         assert!(p.include_transparent);
     }
 
+    #[allow(clippy::unnecessary_literal_unwrap)]
     #[test]
     fn counter_list_limit_default_50() {
         let raw: Option<i64> = None;
@@ -619,42 +620,49 @@ mod tests {
         assert!(p.attendees.contains(','));
     }
 
+    #[allow(clippy::unnecessary_literal_unwrap)]
     #[test]
     fn counter_limit_clamped_to_max_200() {
         let raw: Option<i64> = Some(500);
         assert_eq!(raw.unwrap_or(50).clamp(1, 200), 200);
     }
 
+    #[allow(clippy::unnecessary_literal_unwrap)]
     #[test]
     fn counter_limit_min_clamped_to_one() {
         let raw: Option<i64> = Some(0);
         assert_eq!(raw.unwrap_or(50).clamp(1, 200), 1);
     }
 
+    #[allow(clippy::unnecessary_literal_unwrap)]
     #[test]
     fn counter_limit_above_200_capped_at_200() {
         let raw: Option<i64> = Some(500);
         assert_eq!(raw.unwrap_or(50).clamp(1, 200), 200);
     }
 
+    #[allow(clippy::unnecessary_literal_unwrap)]
     #[test]
     fn counter_limit_zero_clamped_to_one() {
         let raw: Option<i64> = Some(0);
         assert_eq!(raw.unwrap_or(50).clamp(1, 200), 1);
     }
 
+    #[allow(clippy::unnecessary_literal_unwrap)]
     #[test]
     fn counter_limit_large_value_clamped_to_200() {
         let raw: Option<i64> = Some(999);
         assert_eq!(raw.unwrap_or(50).clamp(1, 200), 200);
     }
 
+    #[allow(clippy::unnecessary_literal_unwrap)]
     #[test]
     fn counter_limit_negative_clamped_to_one() {
         let raw: Option<i64> = Some(-5);
         assert_eq!(raw.unwrap_or(50).clamp(1, 200), 1);
     }
 
+    #[allow(clippy::unnecessary_literal_unwrap)]
     #[test]
     fn counter_limit_none_defaults_to_50() {
         let raw: Option<i64> = None;
@@ -668,6 +676,7 @@ mod tests {
         assert_eq!(parts.len(), 3);
     }
 
+    #[allow(clippy::unnecessary_literal_unwrap)]
     #[test]
     fn counter_limit_none_unwrap_or_50() {
         let raw: Option<i64> = None;

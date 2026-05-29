@@ -602,10 +602,8 @@ async fn dispatch(
             }
             let mut resp = cmd_noop(state, tag.clone(), selected, *tenant_id).await;
             // Replace the trailing "NOOP completed" OK with "CHECK completed".
-            if let Some(last) = resp.last_mut() {
-                if let Response::Status(Status::Tagged(t)) = last {
-                    t.body.text = Text::try_from("CHECK completed").unwrap();
-                }
+            if let Some(Response::Status(Status::Tagged(t))) = resp.last_mut() {
+                t.body.text = Text::try_from("CHECK completed").unwrap();
             }
             resp
         }
@@ -1092,6 +1090,7 @@ async fn cmd_lsub(
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn cmd_select(
     state: &AppState,
     tag: Tag<'static>,
@@ -1475,6 +1474,7 @@ fn json_addr_contains(v: Option<&serde_json::Value>, needle: &str) -> bool {
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn search_key_matches(
     key: &SearchKey<'_>,
     flags: &[String],
@@ -1670,6 +1670,7 @@ fn search_key_matches(
 /// `FOR UPDATE` lock on the mailbox row to avoid uid collision under
 /// concurrent APPENDs. The trigger `trg_messages_sync_mailbox_stats`
 /// updates message_count/unseen_count/next_uid after the INSERT.
+#[allow(clippy::too_many_arguments)]
 async fn cmd_append(
     state: &AppState,
     tag: Tag<'static>,
@@ -1795,6 +1796,7 @@ async fn cmd_append(
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn cmd_fetch(
     state: &AppState,
     tag: Tag<'static>,
@@ -2306,6 +2308,7 @@ async fn cmd_fetch(
 /// STORE / UID STORE — RFC 3501 §6.4.6.
 /// Updates flags on matching messages. Returns untagged `* N FETCH (FLAGS ...)`
 /// per message unless the command used the `.SILENT` suffix (StoreResponse::Silent).
+#[allow(clippy::too_many_arguments)]
 async fn cmd_store(
     state: &AppState,
     tag: Tag<'static>,
@@ -2433,6 +2436,7 @@ async fn cmd_store(
 /// Duplicates messages from the selected mailbox into a destination folder,
 /// sharing the original body_path (S3 objects are immutable; no S3 copy needed).
 /// Returns COPYUID so UID-PUSH clients know the destination UIDs immediately.
+#[allow(clippy::too_many_arguments)]
 async fn cmd_copy(
     state: &AppState,
     tag: Tag<'static>,
@@ -2583,6 +2587,7 @@ async fn cmd_copy(
 /// Equivalent to COPY + expunge of the moved set (regardless of \Deleted flag).
 /// Returns untagged EXPUNGE responses followed by a tagged OK [COPYUID …].
 /// The selected mailbox exists count is updated after the move.
+#[allow(clippy::too_many_arguments)]
 async fn cmd_move(
     state: &AppState,
     tag: Tag<'static>,
@@ -2744,6 +2749,7 @@ async fn cmd_move(
 /// SORT — RFC 5256: evaluate optional SEARCH filter, then sort by the
 /// given criteria. Sort keys map to DB columns; unknown keys use received_at.
 /// Returns * SORT <nums> where nums are seq (or UID when uid=true).
+#[allow(clippy::type_complexity)]
 async fn cmd_sort(
     state: &AppState,
     tag: Tag<'static>,
@@ -4212,6 +4218,7 @@ fn json_to_addr_list(
         .unwrap_or_default()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_envelope(
     date: Option<&str>,
     subject: Option<&str>,

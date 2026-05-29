@@ -2208,7 +2208,7 @@ async fn dlq_stats_by_user_and_kind(
             Json(json!({"error": "unavailable"})),
         )
     })?;
-    let limit = q.limit.unwrap_or(50).min(500).max(1);
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
 
     let rows: Vec<(Option<Uuid>, String, i64)> = sqlx::query_as(
         "SELECT user_id, kind, COUNT(*)::BIGINT AS count \
@@ -2501,7 +2501,7 @@ async fn dlq_stats_top_tenants_by_kind(
             Json(json!({"error": "unavailable"})),
         )
     })?;
-    let limit = q.limit.unwrap_or(5).min(50).max(1);
+    let limit = q.limit.unwrap_or(5).clamp(1, 50);
 
     let rows: Vec<(String, Option<Uuid>, i64)> = sqlx::query_as(
         "SELECT kind, tenant_id, COUNT(*)::BIGINT AS count \
