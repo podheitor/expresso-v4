@@ -3155,7 +3155,7 @@ async fn file_stats_mime_top_n(
     ctx: RequestCtx,
     Query(q): Query<StatsTopFilesQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let limit = q.limit.unwrap_or(20).min(100).max(1);
+    let limit = q.limit.unwrap_or(20).clamp(1, 100);
     let pool = state.db_or_unavailable()?;
 
     let rows: Vec<(String, i64)> = sqlx::query_as(
@@ -3334,7 +3334,7 @@ async fn file_stats_ext_top_n(
     ctx: RequestCtx,
     Query(q): Query<StatsTopFilesQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let limit = q.limit.unwrap_or(20).min(100).max(1);
+    let limit = q.limit.unwrap_or(20).clamp(1, 100);
     let pool = state.db_or_unavailable()?;
 
     let rows: Vec<(String, i64)> = sqlx::query_as(
@@ -3371,7 +3371,7 @@ async fn file_stats_storage_by_user(
     ctx: RequestCtx,
     Query(q): Query<StatsTopFilesQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let limit = q.limit.unwrap_or(20).min(200).max(1);
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
     let pool = state.db_or_unavailable()?;
 
     let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
@@ -3437,7 +3437,7 @@ async fn file_stats_folder_file_count(
     ctx: RequestCtx,
     Query(q): Query<StatsTopFilesQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let limit = q.limit.unwrap_or(20).min(200).max(1);
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
     let pool = state.db_or_unavailable()?;
 
     let rows: Vec<(Option<Uuid>, i64, i64)> = sqlx::query_as(
@@ -3731,7 +3731,7 @@ async fn file_stats_locked_by_user(
     ctx: RequestCtx,
     Query(q): Query<StatsTopFilesQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let limit = q.limit.unwrap_or(20).min(200).max(1);
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
     let pool = state.db_or_unavailable()?;
 
     let (total_locked,): (i64,) = sqlx::query_as(

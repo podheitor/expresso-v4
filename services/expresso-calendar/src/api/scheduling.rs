@@ -476,7 +476,7 @@ async fn list_counters(
     Query(q): Query<CounterListQuery>,
 ) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
-    let limit = q.limit.unwrap_or(50).min(200).max(1);
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
     let rows = CounterRepo::new(pool)
         .list_pending(ctx.tenant_id, limit)
         .await?;
@@ -576,19 +576,19 @@ mod tests {
     #[test]
     fn counter_list_limit_clamp_min() {
         let raw: i64 = 0;
-        assert_eq!(raw.min(200).max(1), 1);
+        assert_eq!(raw.clamp(1, 200), 1);
     }
 
     #[test]
     fn counter_list_limit_clamp_max() {
         let raw: i64 = 999;
-        assert_eq!(raw.min(200).max(1), 200);
+        assert_eq!(raw.clamp(1, 200), 200);
     }
 
     #[test]
     fn counter_list_limit_in_range() {
         let raw: i64 = 50;
-        assert_eq!(raw.min(200).max(1), 50);
+        assert_eq!(raw.clamp(1, 200), 50);
     }
 
     #[test]
@@ -609,7 +609,7 @@ mod tests {
     #[test]
     fn counter_list_limit_default_50() {
         let raw: Option<i64> = None;
-        assert_eq!(raw.unwrap_or(50).min(200).max(1), 50);
+        assert_eq!(raw.unwrap_or(50).clamp(1, 200), 50);
     }
 
     #[test]
@@ -622,43 +622,43 @@ mod tests {
     #[test]
     fn counter_limit_clamped_to_max_200() {
         let raw: Option<i64> = Some(500);
-        assert_eq!(raw.unwrap_or(50).min(200).max(1), 200);
+        assert_eq!(raw.unwrap_or(50).clamp(1, 200), 200);
     }
 
     #[test]
     fn counter_limit_min_clamped_to_one() {
         let raw: Option<i64> = Some(0);
-        assert_eq!(raw.unwrap_or(50).min(200).max(1), 1);
+        assert_eq!(raw.unwrap_or(50).clamp(1, 200), 1);
     }
 
     #[test]
     fn counter_limit_above_200_capped_at_200() {
         let raw: Option<i64> = Some(500);
-        assert_eq!(raw.unwrap_or(50).min(200).max(1), 200);
+        assert_eq!(raw.unwrap_or(50).clamp(1, 200), 200);
     }
 
     #[test]
     fn counter_limit_zero_clamped_to_one() {
         let raw: Option<i64> = Some(0);
-        assert_eq!(raw.unwrap_or(50).min(200).max(1), 1);
+        assert_eq!(raw.unwrap_or(50).clamp(1, 200), 1);
     }
 
     #[test]
     fn counter_limit_large_value_clamped_to_200() {
         let raw: Option<i64> = Some(999);
-        assert_eq!(raw.unwrap_or(50).min(200).max(1), 200);
+        assert_eq!(raw.unwrap_or(50).clamp(1, 200), 200);
     }
 
     #[test]
     fn counter_limit_negative_clamped_to_one() {
         let raw: Option<i64> = Some(-5);
-        assert_eq!(raw.unwrap_or(50).min(200).max(1), 1);
+        assert_eq!(raw.unwrap_or(50).clamp(1, 200), 1);
     }
 
     #[test]
     fn counter_limit_none_defaults_to_50() {
         let raw: Option<i64> = None;
-        assert_eq!(raw.unwrap_or(50).min(200).max(1), 50);
+        assert_eq!(raw.unwrap_or(50).clamp(1, 200), 50);
     }
 
     #[test]
@@ -677,7 +677,7 @@ mod tests {
     #[test]
     fn counter_limit_exactly_200_not_clamped() {
         let raw: i64 = 200;
-        assert_eq!(raw.min(200).max(1), 200);
+        assert_eq!(raw.clamp(1, 200), 200);
     }
 
     #[test]
@@ -691,7 +691,7 @@ mod tests {
     #[test]
     fn counter_limit_one_not_clamped() {
         let raw: i64 = 1;
-        assert_eq!(raw.min(200).max(1), 1);
+        assert_eq!(raw.clamp(1, 200), 1);
     }
 
     #[test]

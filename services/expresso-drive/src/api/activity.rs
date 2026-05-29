@@ -80,7 +80,7 @@ async fn list_activity(
         return Err(DriveError::NotFound(id));
     }
 
-    let limit = qs.limit.unwrap_or(PAGE_SIZE).min(200).max(1);
+    let limit = qs.limit.unwrap_or(PAGE_SIZE).clamp(1, 200);
 
     let events: Vec<ActivityEvent> = if let Some(before_str) = qs.before.as_deref() {
         let before =
@@ -312,6 +312,7 @@ mod tests {
         assert_eq!(q.before.as_deref(), Some("2026-01-01T00:00:00Z"));
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn page_size_constant_is_positive() {
         assert!(PAGE_SIZE > 0);
@@ -334,6 +335,7 @@ mod tests {
         assert_eq!(back.action, "rename");
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn page_size_constant_exceeds_zero() {
         assert!(PAGE_SIZE > 0);
@@ -371,6 +373,7 @@ mod tests {
         assert_eq!(q.limit, Some(1));
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn page_size_constant_fits_in_usize() {
         assert!(PAGE_SIZE > 0);

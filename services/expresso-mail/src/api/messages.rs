@@ -2130,7 +2130,7 @@ async fn sender_stats(
     ctx: RequestCtx,
     Query(params): Query<SenderStatsParams>,
 ) -> Result<Json<serde_json::Value>> {
-    let limit = params.limit.unwrap_or(20).min(200).max(1);
+    let limit = params.limit.unwrap_or(20).clamp(1, 200);
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     let folder_filter = if params.folder.is_some() {

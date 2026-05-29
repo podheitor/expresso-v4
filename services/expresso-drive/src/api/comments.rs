@@ -383,6 +383,7 @@ mod tests {
         assert_eq!(b.body, "");
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_comment_bytes_exceeds_zero() {
         assert!(MAX_COMMENT_BYTES > 0);
@@ -420,6 +421,7 @@ mod tests {
         assert_eq!(MAX_COMMENT_BYTES, 4 * 1024);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_comment_bytes_less_than_one_mib() {
         assert!(MAX_COMMENT_BYTES < 1024 * 1024);
@@ -431,6 +433,7 @@ mod tests {
         assert_eq!(b.body, "   ");
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_comment_bytes_is_positive() {
         assert!(MAX_COMMENT_BYTES > 0);

@@ -261,6 +261,7 @@ mod tests {
         assert!(b.expires_in_seconds.is_none());
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn default_ttl_is_positive() {
         assert!(DEFAULT_TTL_SECONDS > 0);
@@ -284,6 +285,7 @@ mod tests {
         assert_eq!(b.expires_in_seconds, Some(3600));
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn default_ttl_is_at_least_one_hour() {
         assert!(DEFAULT_TTL_SECONDS >= 3600);
@@ -294,16 +296,19 @@ mod tests {
         assert_eq!(MAX_TTL_SECONDS, 30 * 24 * 3600);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn default_ttl_is_less_than_max_ttl() {
         assert!(DEFAULT_TTL_SECONDS < MAX_TTL_SECONDS);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_ttl_exceeds_one_day() {
         assert!(MAX_TTL_SECONDS > 86400);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn default_ttl_seconds_exceeds_one_hour() {
         assert!(DEFAULT_TTL_SECONDS >= 3600);
@@ -319,11 +324,13 @@ mod tests {
         assert_eq!(DEFAULT_TTL_SECONDS, 7 * 24 * 3600);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_ttl_is_greater_than_default_ttl() {
         assert!(MAX_TTL_SECONDS > DEFAULT_TTL_SECONDS);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn default_ttl_is_positive_i64() {
         assert!(DEFAULT_TTL_SECONDS > 0_i64);

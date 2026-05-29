@@ -649,6 +649,7 @@ mod tests {
         assert!(verify_token(b"s", &tok, fid).is_none());
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn putfile_cap_sane_bounds() {
         // Cap suficiente p/ docs reais e bem abaixo do quota hard cap (50 GB).

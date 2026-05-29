@@ -4950,7 +4950,7 @@ async fn events_instances_bulk(
     if params.from >= params.to {
         return Err(CalendarError::BadRequest("from must be < to".into()));
     }
-    let per_cap = params.per_event_cap.unwrap_or(500).min(5000).max(1);
+    let per_cap = params.per_event_cap.unwrap_or(500).clamp(1, 5000);
 
     let pool = state.db_or_unavailable()?;
     let q = crate::domain::EventQuery {

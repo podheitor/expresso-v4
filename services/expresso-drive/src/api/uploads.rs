@@ -568,6 +568,7 @@ mod tests {
         assert!(sanitize_name(&s).is_ok());
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn caps_are_sane() {
         assert!(MAX_CHUNK_BYTES <= MAX_UPLOAD_BYTES as usize);
@@ -615,6 +616,7 @@ mod tests {
         assert!(sanitize_name("bad\0name.txt").is_err());
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_chunk_bytes_exceeds_one_mib() {
         assert!(MAX_CHUNK_BYTES > 1024 * 1024);
