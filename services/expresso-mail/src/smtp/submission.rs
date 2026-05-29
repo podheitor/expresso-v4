@@ -346,7 +346,14 @@ where
             } else {
                 b64.to_string()
             };
-            finish_smtp_auth(state, &mut writer, &mut env, "PLAIN", decode_plain(&credential)).await?;
+            finish_smtp_auth(
+                state,
+                &mut writer,
+                &mut env,
+                "PLAIN",
+                decode_plain(&credential),
+            )
+            .await?;
         } else if upper.starts_with("AUTH LOGIN") {
             writer.write_all(b"334 VXNlcm5hbWU6\r\n").await?;
             let user_b64 = match lines.next_line().await? {
