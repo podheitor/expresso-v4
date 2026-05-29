@@ -5,13 +5,17 @@ The target is **CCN ≤ 25** (per `CLAUDE.md`). The debloat baseline restore lef
 current max, tighten by 5 each refactor"* — the CI `lizard` gate is currently
 set to `-C 72` (the current max) and should ratchet down: 72 → 67 → … → 25.
 
+**Progress:** `cmd_fetch` reduced 72 → **48** (commit 2a0d9181) by extracting the
+FETCH data-item parser into `fetch_plan()`. The gate threshold stays at 72 until
+`handle_tls` (the other CCN-72) is also reduced — the gate tracks the max.
+
 Run `find services libs -name '*.rs' -not -path '*/target/*' | xargs lizard -l rust -C 25 -w`
 to see the current offenders. As of the last audit (2026-05-29):
 
 | CCN | Function | File |
 |----:|----------|------|
-| 72 | `cmd_fetch` | services/expresso-mail/src/imap/session.rs:1800 |
-| 72 | `handle_tls` | services/expresso-mail/src/smtp/submission.rs:220 |
+| 72 | `handle_tls` | services/expresso-mail/src/smtp/submission.rs:220 (next gate-blocker; extract the AUTH PLAIN/LOGIN handling — note it's I/O-coupled to the command loop) |
+| 48 | `cmd_fetch` | services/expresso-mail/src/imap/session.rs (was 72; parser extracted) |
 | 59 | `handle` | services/expresso-mail/src/smtp/session.rs:65 |
 | 49 | `overrides_stats` | services/expresso-calendar/src/api/events.rs:6674 |
 | 46 | `session_loop` | services/expresso-mail/src/smtp/session.rs:309 |
