@@ -137,9 +137,15 @@ async fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // resolve_addr reads process-wide HOST/PORT env vars; serialize the tests
+    // that mutate them so they don't race when run in parallel.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn resolve_addr_default_port_when_env_unset() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("PORT");
         std::env::remove_var("HOST");
         let addr = resolve_addr().unwrap();
@@ -148,6 +154,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_custom_port() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("PORT", "9999");
         std::env::remove_var("HOST");
         let addr = resolve_addr().unwrap();
@@ -157,6 +164,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_default_host_is_all_interfaces() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("HOST");
         std::env::remove_var("PORT");
         let addr = resolve_addr().unwrap();
@@ -165,6 +173,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_invalid_port_uses_default() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("PORT", "notaport");
         std::env::remove_var("HOST");
         let addr = resolve_addr().unwrap();
@@ -184,6 +193,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_loopback_host() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("HOST", "127.0.0.1");
         std::env::remove_var("PORT");
         let addr = resolve_addr().unwrap();
@@ -193,6 +203,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_port_zero_uses_default() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("PORT", "0");
         std::env::remove_var("HOST");
         let addr = resolve_addr().unwrap();
@@ -202,6 +213,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_returns_ok() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("PORT");
         std::env::remove_var("HOST");
         assert!(resolve_addr().is_ok());
@@ -209,6 +221,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_port_boundary_65535() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("PORT", "65535");
         std::env::remove_var("HOST");
         let addr = resolve_addr().unwrap();
@@ -226,6 +239,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_custom_port_1024() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("PORT", "1024");
         std::env::remove_var("HOST");
         let addr = resolve_addr().unwrap();
@@ -235,6 +249,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_host_env_overrides_default() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("HOST", "10.0.0.1");
         std::env::remove_var("PORT");
         let addr = resolve_addr().unwrap();
@@ -244,6 +259,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_port_1_is_valid() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("PORT", "1");
         std::env::remove_var("HOST");
         let addr = resolve_addr().unwrap();
