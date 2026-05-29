@@ -155,14 +155,6 @@ function markNotifRead(idx) {
 function clearNotifs() { saveNotifs([]); renderNotifList(); }
 
 // Push a notification from anywhere
-window.pushNotification = function(icon, body, href) {
-  var notifs = loadNotifs();
-  notifs.unshift({ icon: icon, body: body, href: href || null, ts: new Date().toISOString(), read: false });
-  saveNotifs(notifs.slice(0, 50));
-  var badge = document.getElementById('notif-badge');
-  var unread = notifs.filter(function(n){ return !n.read; }).length;
-  if (badge) { badge.textContent = unread > 0 ? unread : ''; badge.style.display = unread > 0 ? '' : 'none'; }
-};
 
 // Init badge on page load
 (function() {

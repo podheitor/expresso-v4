@@ -66,6 +66,8 @@ ci_gate() {
             --reporters console --silent \
             services/ libs/
     fi
+
+    run "web templates"               ./scripts/lint-web-templates.sh
 }
 
 # ── Full (informational) ──────────────────────────────────────────────────────
