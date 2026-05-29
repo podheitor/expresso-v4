@@ -72,6 +72,7 @@ async fn assert_from_is_authenticated_user(
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/mail/send",              post(send_message))
+        .route("/mail/send-with-undo",    post(send_with_undo))
         .route("/mail/send-itip",         post(send_itip))
         .route("/mail/messages/schedule",          post(schedule_message))
         .route("/mail/messages/scheduled",         get(list_scheduled))
@@ -228,6 +229,112 @@ pub async fn send_message(
 /// still allowing fine-grained control.
 const MIN_SCHEDULE_SECONDS: i64 = 60;
 
+/// Undo-send window bounds. The client holds the message this long before it is
+/// relayed; the user may `cancel-send` within the window. Capped at 30 s
+/// (Gmail's max) so a forgotten send still goes out promptly.
+const UNDO_MIN_SECONDS:     i64 = 5;
+const UNDO_MAX_SECONDS:     i64 = 30;
+const UNDO_DEFAULT_SECONDS: i64 = 10;
+
+/// Build the MIME message from a SendRequest and persist it as a Draft-flagged
+/// row with `deliver_at` set, returning the new message id. Shared by
+/// `schedule_message` and `send_with_undo` — the only difference between them
+/// is how `deliver_at` is chosen and validated by the caller.
+async fn persist_for_delivery(
+    state:      &AppState,
+    ctx:        &RequestCtx,
+    req:        &SendRequest,
+    deliver_at: OffsetDateTime,
+) -> Result<Uuid> {
+    let from_addr: Address = req.from.parse()
+        .map_err(|_| MailError::InvalidMessage(format!("invalid from: {}", req.from)))?;
+
+    let mut builder = Message::builder()
+        .from(Mailbox::new(None, from_addr))
+        .subject(&req.subject);
+
+    for addr_str in &req.to {
+        let a: Address = addr_str.parse()
+            .map_err(|_| MailError::InvalidMessage(format!("invalid to: {addr_str}")))?;
+        builder = builder.to(Mailbox::new(None, a));
+    }
+    for addr_str in req.cc.iter().flatten() {
+        let a: Address = addr_str.parse()
+            .map_err(|_| MailError::InvalidMessage(format!("invalid cc: {addr_str}")))?;
+        builder = builder.cc(Mailbox::new(None, a));
+    }
+    for addr_str in req.bcc.iter().flatten() {
+        let a: Address = addr_str.parse()
+            .map_err(|_| MailError::InvalidMessage(format!("invalid bcc: {addr_str}")))?;
+        builder = builder.bcc(Mailbox::new(None, a));
+    }
+
+    let email = match (req.body_html.as_deref(), req.body_text.as_deref()) {
+        (Some(html), Some(plain)) => builder.multipart(
+            MultiPart::alternative()
+                .singlepart(SinglePart::builder().header(ContentType::TEXT_PLAIN).body(plain.to_string()))
+                .singlepart(SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string())),
+        ),
+        (Some(html), None) => builder.singlepart(
+            SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string()),
+        ),
+        (None, plain_opt) => builder.singlepart(
+            SinglePart::builder()
+                .header(ContentType::TEXT_PLAIN)
+                .body(plain_opt.unwrap_or("").to_string()),
+        ),
+    }
+    .map_err(|e| MailError::InvalidMessage(e.to_string()))?;
+
+    let raw = email.formatted();
+    let body_path = ingest::write_raw_message(state, &raw).await
+        .map_err(|e| MailError::SendFailed(e.to_string()))?;
+    let size_bytes = raw.len().min(i32::MAX as usize) as i32;
+    let msg_id = Uuid::now_v7();
+
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let row: Option<(Uuid, i64)> = sqlx::query_as(
+        "SELECT id, next_uid FROM mailboxes \
+         WHERE user_id = $1 AND tenant_id = $2 AND special_use = $3 FOR UPDATE",
+    )
+    .bind(ctx.user_id).bind(ctx.tenant_id).bind(r"\Drafts")
+    .fetch_optional(&mut *tx).await?;
+
+    let (mbox_id, uid) = if let Some(r) = row {
+        r
+    } else {
+        let mid: Uuid = sqlx::query_scalar(
+            "INSERT INTO mailboxes \
+               (user_id, tenant_id, folder_name, special_use, uid_validity, next_uid, subscribed) \
+             VALUES ($1, $2, 'Drafts', $3, EXTRACT(EPOCH FROM now())::BIGINT, 1, true) \
+             RETURNING id",
+        )
+        .bind(ctx.user_id).bind(ctx.tenant_id).bind(r"\Drafts")
+        .fetch_one(&mut *tx).await?;
+        (mid, 1i64)
+    };
+
+    sqlx::query("UPDATE mailboxes SET next_uid = next_uid + 1 WHERE id = $1")
+        .bind(mbox_id)
+        .execute(&mut *tx).await?;
+
+    let to_json = serde_json::to_value(&req.to).unwrap_or(serde_json::Value::Array(vec![]));
+    sqlx::query(
+        "INSERT INTO messages \
+           (id, mailbox_id, tenant_id, uid, flags, size_bytes, body_path, \
+            received_at, deliver_at, from_addr, to_addrs) \
+         VALUES ($1, $2, $3, $4, ARRAY[$5::text], $6, $7, now(), $8, $9, $10)",
+    )
+    .bind(msg_id).bind(mbox_id).bind(ctx.tenant_id).bind(uid)
+    .bind(r"\Draft").bind(size_bytes).bind(&body_path).bind(deliver_at)
+    .bind(&req.from).bind(to_json)
+    .execute(&mut *tx).await?;
+
+    tx.commit().await?;
+    Ok(msg_id)
+}
+
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 pub struct ScheduleRequest {
@@ -280,92 +387,7 @@ pub async fn schedule_message(
         )));
     }
 
-    let from_addr: Address = req.from.parse()
-        .map_err(|_| MailError::InvalidMessage(format!("invalid from: {}", req.from)))?;
-
-    let mut builder = Message::builder()
-        .from(Mailbox::new(None, from_addr))
-        .subject(&req.subject);
-
-    for addr_str in &req.to {
-        let a: Address = addr_str.parse()
-            .map_err(|_| MailError::InvalidMessage(format!("invalid to: {addr_str}")))?;
-        builder = builder.to(Mailbox::new(None, a));
-    }
-    for addr_str in req.cc.iter().flatten() {
-        let a: Address = addr_str.parse()
-            .map_err(|_| MailError::InvalidMessage(format!("invalid cc: {addr_str}")))?;
-        builder = builder.cc(Mailbox::new(None, a));
-    }
-    for addr_str in req.bcc.iter().flatten() {
-        let a: Address = addr_str.parse()
-            .map_err(|_| MailError::InvalidMessage(format!("invalid bcc: {addr_str}")))?;
-        builder = builder.bcc(Mailbox::new(None, a));
-    }
-
-    let email = match (req.body_html.as_deref(), req.body_text.as_deref()) {
-        (Some(html), Some(plain)) => builder.multipart(
-            MultiPart::alternative()
-                .singlepart(SinglePart::builder().header(ContentType::TEXT_PLAIN).body(plain.to_string()))
-                .singlepart(SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string())),
-        ),
-        (Some(html), None) => builder.singlepart(
-            SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string()),
-        ),
-        (None, plain_opt) => builder.singlepart(
-            SinglePart::builder()
-                .header(ContentType::TEXT_PLAIN)
-                .body(plain_opt.unwrap_or("").to_string()),
-        ),
-    }
-    .map_err(|e| MailError::InvalidMessage(e.to_string()))?;
-
-    let raw = email.formatted();
-    let body_path = ingest::write_raw_message(&state, &raw).await
-        .map_err(|e| MailError::SendFailed(e.to_string()))?;
-    let size_bytes = raw.len().min(i32::MAX as usize) as i32;
-    let msg_id = Uuid::now_v7();
-
-    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
-
-    let row: Option<(Uuid, i64)> = sqlx::query_as(
-        "SELECT id, next_uid FROM mailboxes \
-         WHERE user_id = $1 AND tenant_id = $2 AND special_use = $3 FOR UPDATE",
-    )
-    .bind(ctx.user_id).bind(ctx.tenant_id).bind(r"\Drafts")
-    .fetch_optional(&mut *tx).await?;
-
-    let (mbox_id, uid) = if let Some(r) = row {
-        r
-    } else {
-        let mid: Uuid = sqlx::query_scalar(
-            "INSERT INTO mailboxes \
-               (user_id, tenant_id, folder_name, special_use, uid_validity, next_uid, subscribed) \
-             VALUES ($1, $2, 'Drafts', $3, EXTRACT(EPOCH FROM now())::BIGINT, 1, true) \
-             RETURNING id",
-        )
-        .bind(ctx.user_id).bind(ctx.tenant_id).bind(r"\Drafts")
-        .fetch_one(&mut *tx).await?;
-        (mid, 1i64)
-    };
-
-    sqlx::query("UPDATE mailboxes SET next_uid = next_uid + 1 WHERE id = $1")
-        .bind(mbox_id)
-        .execute(&mut *tx).await?;
-
-    let to_json = serde_json::to_value(&req.to).unwrap_or(serde_json::Value::Array(vec![]));
-    sqlx::query(
-        "INSERT INTO messages \
-           (id, mailbox_id, tenant_id, uid, flags, size_bytes, body_path, \
-            received_at, deliver_at, from_addr, to_addrs) \
-         VALUES ($1, $2, $3, $4, ARRAY[$5::text], $6, $7, now(), $8, $9, $10)",
-    )
-    .bind(msg_id).bind(mbox_id).bind(ctx.tenant_id).bind(uid)
-    .bind(r"\Draft").bind(size_bytes).bind(&body_path).bind(req.deliver_at)
-    .bind(&req.from).bind(to_json)
-    .execute(&mut *tx).await?;
-
-    tx.commit().await?;
+    let msg_id = persist_for_delivery(&state, &ctx, &send_req, req.deliver_at).await?;
 
     tracing::info!(target: "audit",
         event = "mail.schedule",
@@ -373,6 +395,60 @@ pub async fn schedule_message(
         msg_id = %msg_id, deliver_at = %req.deliver_at);
 
     Ok((StatusCode::CREATED, Json(ScheduleResp { id: msg_id, deliver_at: req.deliver_at })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UndoSendRequest {
+    pub from:        String,
+    pub to:          Vec<String>,
+    pub cc:          Option<Vec<String>>,
+    pub bcc:         Option<Vec<String>>,
+    pub subject:     String,
+    pub body_text:   Option<String>,
+    pub body_html:   Option<String>,
+    pub reply_to_id: Option<Uuid>,
+    /// Seconds to hold before relaying (clamped to [UNDO_MIN, UNDO_MAX]).
+    /// Omitted → UNDO_DEFAULT_SECONDS.
+    pub undo_seconds: Option<i64>,
+}
+
+/// POST /api/v1/mail/send-with-undo
+///
+/// Holds the message `undo_seconds` before the background worker relays it; the
+/// caller may `POST /mail/messages/:id/cancel-send` within that window to abort.
+/// Returns the message id and the cancellation deadline so the client can show
+/// an "Undo" toast counting down to it.
+pub async fn send_with_undo(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Json(req):    Json<UndoSendRequest>,
+) -> Result<(StatusCode, Json<ScheduleResp>)> {
+    let send_req = SendRequest {
+        from:        req.from.clone(),
+        to:          req.to.clone(),
+        cc:          req.cc.clone(),
+        bcc:         req.bcc.clone(),
+        subject:     req.subject.clone(),
+        body_text:   req.body_text.clone(),
+        body_html:   req.body_html.clone(),
+        reply_to_id: req.reply_to_id,
+    };
+    validate_send_request(&send_req)?;
+    assert_from_is_authenticated_user(&state, &ctx, &req.from).await?;
+
+    let window = req.undo_seconds
+        .unwrap_or(UNDO_DEFAULT_SECONDS)
+        .clamp(UNDO_MIN_SECONDS, UNDO_MAX_SECONDS);
+    let deliver_at = OffsetDateTime::now_utc() + time::Duration::seconds(window);
+
+    let msg_id = persist_for_delivery(&state, &ctx, &send_req, deliver_at).await?;
+
+    tracing::info!(target: "audit",
+        event = "mail.send_with_undo",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
+        msg_id = %msg_id, undo_seconds = window);
+
+    Ok((StatusCode::CREATED, Json(ScheduleResp { id: msg_id, deliver_at })))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -988,6 +1064,40 @@ mod tests {
         r.body_html = Some(half);
         let err = format!("{:?}", validate_send_request(&r).unwrap_err());
         assert!(err.contains("body too large"), "got: {err}");
+    }
+
+    /// Mirror of the clamp used in `send_with_undo` so the window bounds are
+    /// unit-tested without standing up the DB/SMTP path.
+    fn undo_window(requested: Option<i64>) -> i64 {
+        requested.unwrap_or(UNDO_DEFAULT_SECONDS).clamp(UNDO_MIN_SECONDS, UNDO_MAX_SECONDS)
+    }
+
+    #[test]
+    fn undo_window_default_when_absent() {
+        assert_eq!(undo_window(None), UNDO_DEFAULT_SECONDS);
+    }
+
+    #[test]
+    fn undo_window_clamps_below_min() {
+        assert_eq!(undo_window(Some(0)), UNDO_MIN_SECONDS);
+        assert_eq!(undo_window(Some(-100)), UNDO_MIN_SECONDS);
+    }
+
+    #[test]
+    fn undo_window_clamps_above_max() {
+        assert_eq!(undo_window(Some(120)), UNDO_MAX_SECONDS);
+    }
+
+    #[test]
+    fn undo_window_passes_through_in_range() {
+        assert_eq!(undo_window(Some(15)), 15);
+    }
+
+    #[test]
+    fn undo_bounds_are_sane() {
+        assert!(UNDO_MIN_SECONDS < UNDO_DEFAULT_SECONDS);
+        assert!(UNDO_DEFAULT_SECONDS <= UNDO_MAX_SECONDS);
+        assert!(UNDO_MAX_SECONDS <= 30); // Gmail's ceiling
     }
 
     fn itip_req() -> SendItipRequest {

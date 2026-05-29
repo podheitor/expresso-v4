@@ -208,10 +208,13 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Background worker: every 30 s, find messages with deliver_at <= now() and relay them.
+/// Background worker: every 5 s, find messages with deliver_at <= now() and relay them.
 /// On SMTP failure the row is left untouched and retried on the next tick.
 async fn scheduled_send_worker(state: AppState) -> anyhow::Result<()> {
-    let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+    // 5 s tick keeps undo-send (POST /mail/send-with-undo, 5–30 s window)
+    // delivering promptly once the window elapses. Cheap: the due query hits
+    // messages_deliver_at_idx and is LIMIT 50.
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
     loop {
         interval.tick().await;
         if let Err(e) = dispatch_due_messages(&state).await {
