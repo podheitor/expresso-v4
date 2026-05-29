@@ -3281,9 +3281,7 @@ async fn cmd_noop(
 
         let mut new_snapshot: HashMap<u32, Vec<String>> = HashMap::with_capacity(current.len());
         for (seq, flags_now) in &current {
-            let changed = sel
-                .flags_snapshot
-                .get(seq) != Some(flags_now);
+            let changed = sel.flags_snapshot.get(seq) != Some(flags_now);
             if changed {
                 let flag_items: Vec<FlagFetch<'static>> = flags_now
                     .iter()

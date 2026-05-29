@@ -746,10 +746,7 @@ fn rule_matches(
 
 fn eval_condition(field: &str, op: &str, val: &str, req: &ProcessRequest) -> bool {
     match field {
-        "from" => req
-            .from_addr
-            .as_deref()
-            .is_some_and(|h| str_op(h, op, val)),
+        "from" => req.from_addr.as_deref().is_some_and(|h| str_op(h, op, val)),
         "subject" => req.subject.as_deref().is_some_and(|h| str_op(h, op, val)),
         "folder" => str_op(&req.folder, op, val),
         "to" => {

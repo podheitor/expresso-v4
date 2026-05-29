@@ -247,7 +247,6 @@ impl<S: Send + Sync> FromRequestParts<S> for TenantAuthenticated {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

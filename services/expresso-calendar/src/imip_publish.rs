@@ -391,7 +391,6 @@ mod tests {
 
     #[test]
     fn envelope_no_times_returns_none() {
-        
         let mut ev = sample_event(ICAL_WITH_ATTENDEES);
         ev.dtstart = None;
         ev.dtend = None;

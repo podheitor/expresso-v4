@@ -145,7 +145,6 @@ pub async fn run_migrations(pool: &DbPool) -> Result<()> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

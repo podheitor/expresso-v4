@@ -106,10 +106,9 @@ pub fn parse_propfind(body: &str) -> PropRequest {
                 // Empty events don't open scope, so close prop manually:
                 // (Actually prop is always Start+End; allprop is always Empty. No tracking needed.)
             }
-            Ok(Event::End(e))
-                if local_name(e.name().as_ref()) == "prop" => {
-                    in_prop = false;
-                }
+            Ok(Event::End(e)) if local_name(e.name().as_ref()) == "prop" => {
+                in_prop = false;
+            }
             Ok(Event::Eof) => break,
             Err(_) => break,
             _ => {}
@@ -132,23 +131,21 @@ pub fn parse_multiget_hrefs(body: &str) -> Vec<String> {
 
     loop {
         match reader.read_event() {
-            Ok(Event::Start(e))
-                if local_name(e.name().as_ref()) == "href" => {
-                    in_href = true;
-                    buf.clear();
-                }
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "href" => {
+                in_href = true;
+                buf.clear();
+            }
             Ok(Event::Text(t)) if in_href => {
                 if let Ok(s) = t.decode() {
                     buf.push_str(&s);
                 }
             }
-            Ok(Event::End(e))
-                if local_name(e.name().as_ref()) == "href" => {
-                    in_href = false;
-                    if !buf.is_empty() {
-                        hrefs.push(buf.trim().to_owned());
-                    }
+            Ok(Event::End(e)) if local_name(e.name().as_ref()) == "href" => {
+                in_href = false;
+                if !buf.is_empty() {
+                    hrefs.push(buf.trim().to_owned());
                 }
+            }
             Ok(Event::Eof) => break,
             Err(_) => break,
             _ => {}
@@ -166,23 +163,24 @@ pub fn parse_time_range(body: &str) -> Option<(String, String)> {
     loop {
         match reader.read_event() {
             Ok(Event::Start(e)) | Ok(Event::Empty(e))
-                if local_name(e.name().as_ref()) == "time-range" => {
-                    let mut start = None;
-                    let mut end = None;
-                    for attr in e.attributes().flatten() {
-                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
-                        let val = attr.unescape_value().ok().map(|c| c.into_owned());
-                        match key {
-                            "start" => start = val,
-                            "end" => end = val,
-                            _ => {}
-                        }
+                if local_name(e.name().as_ref()) == "time-range" =>
+            {
+                let mut start = None;
+                let mut end = None;
+                for attr in e.attributes().flatten() {
+                    let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                    let val = attr.unescape_value().ok().map(|c| c.into_owned());
+                    match key {
+                        "start" => start = val,
+                        "end" => end = val,
+                        _ => {}
                     }
-                    if let (Some(s), Some(e)) = (start, end) {
-                        return Some((s, e));
-                    }
-                    return None;
                 }
+                if let (Some(s), Some(e)) = (start, end) {
+                    return Some((s, e));
+                }
+                return None;
+            }
             Ok(Event::Eof) => break,
             Err(_) => break,
             _ => {}
@@ -204,21 +202,19 @@ pub fn parse_sync_token(body: &str) -> Option<String> {
 
     loop {
         match reader.read_event() {
-            Ok(Event::Start(e))
-                if local_name(e.name().as_ref()) == "sync-token" => {
-                    in_tok = true;
-                    buf.clear();
-                }
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "sync-token" => {
+                in_tok = true;
+                buf.clear();
+            }
             Ok(Event::Text(t)) if in_tok => {
                 if let Ok(txt) = t.decode() {
                     buf.push_str(txt.as_ref());
                 }
             }
-            Ok(Event::End(e))
-                if local_name(e.name().as_ref()) == "sync-token" => {
-                    let v = buf.trim().to_owned();
-                    return if v.is_empty() { None } else { Some(v) };
-                }
+            Ok(Event::End(e)) if local_name(e.name().as_ref()) == "sync-token" => {
+                let v = buf.trim().to_owned();
+                return if v.is_empty() { None } else { Some(v) };
+            }
             Ok(Event::Eof) => break,
             Err(_) => break,
             _ => {}

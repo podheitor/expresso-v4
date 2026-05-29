@@ -4040,11 +4040,12 @@ fn secs_to_ymdhm(mut s: u64) -> (u32, u32, u32, u32, u32) {
     // Simplified date from epoch (good until 2100)
     let mut y = 1970u32;
     loop {
-        let days_in_year = if y.is_multiple_of(4) && (!y.is_multiple_of(100) || y.is_multiple_of(400)) {
-            366
-        } else {
-            365
-        };
+        let days_in_year =
+            if y.is_multiple_of(4) && (!y.is_multiple_of(100) || y.is_multiple_of(400)) {
+                366
+            } else {
+                365
+            };
         if s < days_in_year {
             break;
         }
