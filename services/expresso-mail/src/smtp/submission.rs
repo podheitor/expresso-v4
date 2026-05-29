@@ -321,24 +321,7 @@ where
         } else if upper.starts_with("RCPT TO:") {
             handle_rcpt_to(&mut writer, &mut env, &line).await?;
         } else if upper == "DATA" {
-            if env.authed_user.is_none() {
-                writer
-                    .write_all(b"530 5.7.0 Authentication required\r\n")
-                    .await?;
-                SMTP_COMMANDS_TOTAL
-                    .with_label_values(&["DATA", "smtp587", "reject"])
-                    .inc();
-            } else if env.from.is_none() || env.rcpts.is_empty() {
-                writer.write_all(b"503 Bad sequence\r\n").await?;
-                SMTP_COMMANDS_TOTAL
-                    .with_label_values(&["DATA", "smtp587", "reject"])
-                    .inc();
-            } else {
-                writer
-                    .write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n")
-                    .await?;
-                data_mode = true;
-            }
+            data_mode = handle_data_command(&mut writer, &env).await?;
         } else if upper == "RSET" {
             env = Envelope {
                 helo: env.helo,
@@ -569,6 +552,35 @@ where
 
 /// Handle `RCPT TO:` on the submission channel: require AUTH + prior MAIL FROM,
 /// cap recipient count, then append the recipient. Writes the SMTP reply.
+/// Handle the `DATA` command on the submission channel: require AUTH and a
+/// prior MAIL FROM + ≥1 RCPT, then write `354` to begin message input. Returns
+/// `true` if the session should enter DATA mode. Extracted from `handle_tls`.
+async fn handle_data_command<W>(writer: &mut W, env: &Envelope) -> anyhow::Result<bool>
+where
+    W: AsyncWrite + Unpin,
+{
+    if env.authed_user.is_none() {
+        writer
+            .write_all(b"530 5.7.0 Authentication required\r\n")
+            .await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["DATA", "smtp587", "reject"])
+            .inc();
+        return Ok(false);
+    }
+    if env.from.is_none() || env.rcpts.is_empty() {
+        writer.write_all(b"503 Bad sequence\r\n").await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["DATA", "smtp587", "reject"])
+            .inc();
+        return Ok(false);
+    }
+    writer
+        .write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n")
+        .await?;
+    Ok(true)
+}
+
 async fn handle_rcpt_to<W>(writer: &mut W, env: &mut Envelope, line: &str) -> anyhow::Result<()>
 where
     W: AsyncWrite + Unpin,

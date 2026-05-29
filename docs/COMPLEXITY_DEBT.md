@@ -21,11 +21,15 @@ extracted into one `bump_tzid_breakdown()` helper. Knock-on CCN: `overrides_stat
 32→**27**, `exdates_stats` 30→**25** (at target), `exdates_preview_stats` 40→**35**.
 567 calendar tests pass.
 
-**Binding ceiling = `handle_tls` (45).** To drop the gate below 45, restructure
-its SMTP verb-dispatch (parse verb → match) — riskier (live AUTH/MAIL/RCPT/DATA
-loop with break-on-disconnect), deferred. The next tier under 45 is all mail
-SMTP handlers: `handle`@smtp/session.rs (43), `handle`@lmtp.rs (41) — same
-verb-dispatch shape, same restructure. Calendar analytics are now all ≤35.
+**handle_tls (2026-05-29):** 45 → **40** by extracting the DATA command
+(auth + sequence checks + 354) into `handle_data_command()`. Gate now 43.
+
+**Binding ceiling = `handle` @ smtp/session.rs (43).** The remaining ≥40 tier is
+all inbound mail SMTP command loops (`handle`@session 43, `handle`@lmtp 41) —
+same shape; their DATA branch extracts the same way (no AUTH check, just the
+from+rcpts sequence). The AUTH PLAIN/LOGIN branches in handle_tls (with
+break-on-disconnect) are the genuinely loop-coupled remainder; leave those or
+restructure the whole dispatch into a parsed-verb match. Calendar analytics ≤35.
 
 
 **Calendar analytics (2026-05-29):** `overrides_stats` 49 → **32** by extracting
