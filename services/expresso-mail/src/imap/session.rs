@@ -680,9 +680,9 @@ fn list_mailbox_pattern(wc: &ListMailbox<'_>) -> String {
 }
 
 /// Returns true if `name` matches the IMAP LIST wildcard `pattern`.
-/// Hierarchy delimiter is `/`.
-/// `*` — matches everything including `/`.
-/// `%` — matches everything except `/` (one level only).
+/// Hierarchy delimiter is `.` (as advertised in the Namespace/LIST responses).
+/// `*` — matches everything including `.`.
+/// `%` — matches everything except `.` (one level only).
 /// `""` (empty) — matches only an empty string (used for LIST "" "" to get root).
 fn list_matches(name: &str, pattern: &str) -> bool {
     if pattern.is_empty() {
@@ -696,7 +696,7 @@ fn list_match_recursive(name: &[u8], pat: &[u8]) -> bool {
         (None, None) => true,
         (None, _)    => false,
         (Some(b'*'), _) => {
-            // * matches any sequence (including empty and including /).
+            // * matches any sequence (including empty and including the delimiter).
             for i in 0..=name.len() {
                 if list_match_recursive(&name[i..], &pat[1..]) {
                     return true;
@@ -705,9 +705,11 @@ fn list_match_recursive(name: &[u8], pat: &[u8]) -> bool {
             false
         }
         (Some(b'%'), _) => {
-            // % matches any sequence except / (i.e. one level).
+            // % matches one hierarchy level — any sequence except the delimiter.
+            // The server's hierarchy delimiter is '.' (see the Namespace/LIST
+            // responses), so % must not cross a '.'.
             for i in 0..=name.len() {
-                if name[..i].contains(&b'/') { break; }
+                if name[..i].contains(&b'.') { break; }
                 if list_match_recursive(&name[i..], &pat[1..]) {
                     return true;
                 }
@@ -3762,7 +3764,7 @@ fn build_envelope(
 mod tests {
     use super::{mime_split_parts, mime_part_body, mime_part_mime_headers,
                 mime_boundary, mime_navigate, mime_part_body_path, mime_part_mime_headers_path,
-                list_matches};
+                list_matches, email_text_bytes};
 
     const MULTIPART_MSG: &[u8] = b"\
 From: sender@example.com\r\n\
@@ -3873,9 +3875,12 @@ Attachment\r\n\
 
     #[test]
     fn navigate_part1_matches_body() {
-        let nav = mime_navigate(MULTIPART_MSG, &[1]);
+        // mime_navigate returns the full part (MIME headers + body) — that is its
+        // contract; callers then apply email_text_bytes/email_header_bytes. So the
+        // navigated part's *text* must equal mime_part_body, not the part itself.
+        let nav = mime_navigate(MULTIPART_MSG, &[1]).expect("part 1 exists");
         let body = mime_part_body(MULTIPART_MSG, 1);
-        assert_eq!(nav, Some(body));
+        assert_eq!(email_text_bytes(&nav), body);
     }
 
     #[test]
@@ -3925,8 +3930,9 @@ Attachment\r\n\
 
     #[test]
     fn list_matches_percent_no_separator() {
+        // Hierarchy delimiter is '.', so % matches one level and stops at '.'.
         assert!(list_matches("INBOX", "%"));
-        assert!(!list_matches("INBOX/Sub", "%"));
+        assert!(!list_matches("INBOX.Sub", "%"));
     }
 
     #[test]

@@ -182,8 +182,10 @@ mod tests {
     }
 
     #[test]
-    fn noop_command_maps_to_other() {
-        assert_eq!(command_label("NOOP"), "OTHER");
+    fn noop_command_maps_to_noop() {
+        // NOOP is a tracked SMTP verb with its own metric label (consistent with
+        // command_label_case_insensitive, which also expects "NOOP").
+        assert_eq!(command_label("NOOP"), "NOOP");
     }
 
     #[test]
@@ -193,8 +195,9 @@ mod tests {
     }
 
     #[test]
-    fn vrfy_command_maps_to_other() {
-        assert_eq!(command_label("VRFY"), "OTHER");
+    fn vrfy_command_maps_to_vrfy() {
+        // VRFY is a tracked SMTP verb with its own metric label.
+        assert_eq!(command_label("VRFY"), "VRFY");
     }
 
     #[test]

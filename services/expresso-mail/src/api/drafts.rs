@@ -12,6 +12,7 @@ use axum::{
 };
 use expresso_core::begin_tenant_tx;
 use lettre::{
+    address::Envelope,
     message::{header::ContentType, Mailbox, Message, MultiPart, SinglePart},
     Address,
 };
@@ -111,9 +112,24 @@ fn build_raw(req: &DraftRequest) -> Result<Vec<u8>> {
     let from_addr: Address = req.from.parse()
         .map_err(|_| MailError::InvalidMessage(format!("invalid from: {}", req.from)))?;
 
+    let has_recipients = req.to.iter().flatten().next().is_some()
+        || req.cc.iter().flatten().next().is_some()
+        || req.bcc.iter().flatten().next().is_some();
+
     let mut builder = Message::builder()
-        .from(Mailbox::new(None, from_addr))
+        .from(Mailbox::new(None, from_addr.clone()))
         .subject(req.subject.as_deref().unwrap_or("(no subject)"));
+
+    // A draft may legitimately have no recipient yet. lettre's Message builder
+    // computes an SMTP envelope and rejects an empty recipient list (MissingTo),
+    // so for recipient-less drafts we set an explicit placeholder envelope. It is
+    // routing metadata only (never emitted in the formatted headers) and drafts
+    // are stored, not sent, through this path — so it never reaches the wire.
+    if !has_recipients {
+        let env = Envelope::new(Some(from_addr.clone()), vec![from_addr.clone()])
+            .map_err(|e| MailError::InvalidMessage(e.to_string()))?;
+        builder = builder.envelope(env);
+    }
 
     for addr_str in req.to.iter().flatten() {
         let a: Address = addr_str.parse()

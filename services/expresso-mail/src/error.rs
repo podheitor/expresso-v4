@@ -51,7 +51,10 @@ impl IntoResponse for MailError {
                 (StatusCode::NOT_FOUND, "not_found", self.to_string())
             }
             MailError::QuotaExceeded => {
-                (StatusCode::PAYLOAD_TOO_LARGE, "quota_exceeded", self.to_string())
+                // 507 Insufficient Storage (RFC 4918) — a mailbox quota is a
+                // storage condition, not a request-size limit (413).
+                let s = StatusCode::from_u16(507).expect("507 is a valid status code");
+                (s, "quota_exceeded", self.to_string())
             }
             MailError::Forbidden => {
                 (StatusCode::FORBIDDEN, "forbidden", self.to_string())
@@ -100,8 +103,9 @@ mod tests {
     }
 
     #[test]
-    fn quota_exceeded_is_413() {
-        assert_eq!(status(MailError::QuotaExceeded), 413);
+    fn quota_exceeded_is_507() {
+        // Mailbox quota → 507 Insufficient Storage (RFC 4918), not 413.
+        assert_eq!(status(MailError::QuotaExceeded), 507);
     }
 
     #[test]

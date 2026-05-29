@@ -197,18 +197,18 @@ async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow:
 }
 
 fn extract_angle(s: &str) -> String {
-    let addr_part = s.trim();
-    let addr_part = if let Some(gt) = addr_part.find('>') {
-        &addr_part[..=gt]
-    } else {
-        addr_part.split_whitespace().next().unwrap_or(addr_part)
-    };
-    let addr_part = addr_part.trim();
-    if addr_part.starts_with('<') && addr_part.ends_with('>') {
-        addr_part[1..addr_part.len() - 1].to_string()
-    } else {
-        addr_part.to_string()
+    let s = s.trim();
+    // Isolate the address token: everything up to the first whitespace, so any
+    // ESMTP params after the closing '>' (e.g. "<a@b> SIZE=1234") are dropped.
+    let token = s.split_whitespace().next().unwrap_or(s);
+    if token.starts_with('<') {
+        // Strip exactly one outer <...> pair, matching the LAST '>' in the token
+        // so a nested address like "<<a@b>>" yields "<a@b>" rather than "<a@b".
+        if let Some(close) = token.rfind('>') {
+            return token[1..close].to_string();
+        }
     }
+    token.to_string()
 }
 
 fn extract_size_param(s: &str) -> Option<usize> {
