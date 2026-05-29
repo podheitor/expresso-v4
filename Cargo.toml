@@ -78,7 +78,7 @@ hex          = "0.4"
 
 # Email
 lettre       = { version = "0.11", features = ["tokio1-native-tls", "smtp-transport", "pool", "builder"] }
-mail-parser  = "0.9"
+mail-parser  = "0.11"
 mail-builder  = "0.3"
 mail-auth     = "0.8"
 sieve-rs      = "0.7"
