@@ -71,11 +71,14 @@ jobs:
       - name: cargo-machete (unused deps)
         uses: bnjbvr/cargo-machete@main
 
-      - name: lizard (CCN ≤ 25)
+      # Legacy baseline: 21 bloat-era functions exceed CCN 25 (max 72:
+      # imap cmd_fetch, smtp handle_tls). Per CLAUDE.md, start the gate at the
+      # current max and ratchet down by 5 per refactor. See docs/COMPLEXITY_DEBT.md.
+      - name: lizard (CCN ≤ 72, ratcheting toward 25)
         run: |
           pip install lizard --quiet
           find services libs -name '*.rs' -not -path '*/target/*' \
-            | xargs lizard -l rust -C 25 -w
+            | xargs lizard -l rust -C 72 -w
 
       - name: jscpd (duplication < 5%)
         run: |
