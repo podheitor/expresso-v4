@@ -96,22 +96,13 @@ jobs:
           jscpd --min-lines 50 --min-tokens 100 --threshold 5 \
                 --reporters console --silent services/ libs/
 
-  frontend:
-    name: Frontend — TypeCheck + Lint + Build
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-      - run: pnpm install
-      - run: pnpm -r typecheck
-      - run: pnpm -r lint
-      - run: pnpm -r build
+  # NOTE: the "Frontend — TypeCheck + Lint + Build" job was removed — there is
+  # no frontend source committed to the repo (only a stub root package.json;
+  # no pnpm-lock.yaml, no packages), so `pnpm install`/`pnpm -r` had nothing to
+  # run and failed on the missing lockfile. The SvelteKit app under
+  # frontend/expresso-web/ exists only as gitignored build artifacts locally.
+  # Restore this job once real frontend source (with a committed pnpm-lock.yaml)
+  # lands in the repository.
 
   shellcheck:
     name: Shell — shellcheck scripts/
