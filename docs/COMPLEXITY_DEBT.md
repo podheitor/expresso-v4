@@ -15,11 +15,17 @@ calendar tests pass). Gate STILL 45 — `handle_tls` (45) is the binding ceiling
 so cluster reductions below 45 don't move the gate yet; they shrink the cluster
 so a future `handle_tls` fix drops the gate in a bigger step.
 
+**tzid breakdown dedup (2026-05-29):** the per-tzid breakdown upsert (incl. the
+canonical/malformed `tzid_by_kind` split) was copy-pasted in 3 stats endpoints;
+extracted into one `bump_tzid_breakdown()` helper. Knock-on CCN: `overrides_stats`
+32→**27**, `exdates_stats` 30→**25** (at target), `exdates_preview_stats` 40→**35**.
+567 calendar tests pass.
+
 **Binding ceiling = `handle_tls` (45).** To drop the gate below 45, restructure
 its SMTP verb-dispatch (parse verb → match) — riskier (live AUTH/MAIL/RCPT/DATA
-loop with break-on-disconnect), deferred. Other ≥40 offenders:
-`exdates_preview_stats` (40, inlined dedup+tally loop — needs a tally helper,
-not the filter pattern).
+loop with break-on-disconnect), deferred. The next tier under 45 is all mail
+SMTP handlers: `handle`@smtp/session.rs (43), `handle`@lmtp.rs (41) — same
+verb-dispatch shape, same restructure. Calendar analytics are now all ≤35.
 
 
 **Calendar analytics (2026-05-29):** `overrides_stats` 49 → **32** by extracting

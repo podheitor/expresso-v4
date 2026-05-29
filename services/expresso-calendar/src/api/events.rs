@@ -5529,6 +5529,40 @@ struct ExdatesStatsQuery {
 /// após kind+range. Ortogonalidade `kind=tzid` ⊂ `with_tzid=true` documentada
 /// no #523. Combinações impossíveis (e.g. `kind=utc&with_tzid=true`) são
 /// aceitas e retornam `total=0` consistente com #522 (`kind=tzid` + range).
+/// Upsert a tzid into the breakdown tallies. `tzid_breakdown` counts entries
+/// per tzid; when `include_kind_breakdown` is set, `tzid_by_kind` additionally
+/// splits each tzid into (canonical, malformed) counts. Shared by the override
+/// and exdate stats endpoints (identical upsert, only `canonical` derivation
+/// differs at the call site).
+fn bump_tzid_breakdown(
+    tzid_breakdown: &mut Vec<(String, usize)>,
+    tzid_by_kind: &mut Vec<(String, usize, usize)>,
+    tz: &str,
+    canonical: bool,
+    include_kind_breakdown: bool,
+) {
+    match tzid_breakdown.iter().position(|(k, _)| k == tz) {
+        Some(i) => tzid_breakdown[i].1 += 1,
+        None => tzid_breakdown.push((tz.to_string(), 1)),
+    }
+    if !include_kind_breakdown {
+        return;
+    }
+    match tzid_by_kind.iter().position(|(k, _, _)| k == tz) {
+        Some(i) => {
+            if canonical {
+                tzid_by_kind[i].1 += 1;
+            } else {
+                tzid_by_kind[i].2 += 1;
+            }
+        }
+        None => {
+            let (c, u) = if canonical { (1, 0) } else { (0, 1) };
+            tzid_by_kind.push((tz.to_string(), c, u));
+        }
+    }
+}
+
 /// Retain only EXDATE entries whose UTC-resolved value falls in `[after, before)`.
 /// Entries that don't resolve to UTC are dropped when any bound is set. No-op
 /// when both bounds are None.
@@ -5640,26 +5674,14 @@ async fn exdates_stats(
             "tzid" => {
                 k_tzid += 1;
                 if let Some(tz) = info.tzid.as_deref() {
-                    match tzid_breakdown.iter().position(|(k, _)| k == tz) {
-                        Some(i) => tzid_breakdown[i].1 += 1,
-                        None => tzid_breakdown.push((tz.to_string(), 1)),
-                    }
-                    if include_kind_breakdown {
-                        let canonical = is_canonical_local_datetime(&info.raw_value);
-                        match tzid_by_kind.iter().position(|(k, _, _)| k == tz) {
-                            Some(i) => {
-                                if canonical {
-                                    tzid_by_kind[i].1 += 1;
-                                } else {
-                                    tzid_by_kind[i].2 += 1;
-                                }
-                            }
-                            None => {
-                                let (c, u) = if canonical { (1, 0) } else { (0, 1) };
-                                tzid_by_kind.push((tz.to_string(), c, u));
-                            }
-                        }
-                    }
+                    let canonical = is_canonical_local_datetime(&info.raw_value);
+                    bump_tzid_breakdown(
+                        &mut tzid_breakdown,
+                        &mut tzid_by_kind,
+                        tz,
+                        canonical,
+                        include_kind_breakdown,
+                    );
                 }
             }
             "date-only" => k_date_only += 1,
@@ -6834,30 +6856,18 @@ async fn overrides_stats(
         ] {
             if let Some(tz) = item.get(tzid_key).and_then(|v| v.as_str()) {
                 if !tz.is_empty() {
-                    match tzid_breakdown.iter().position(|(k, _)| k == tz) {
-                        Some(i) => tzid_breakdown[i].1 += 1,
-                        None => tzid_breakdown.push((tz.to_string(), 1)),
-                    }
-                    if include_kind_breakdown {
-                        let canonical = item
-                            .get(value_key)
-                            .and_then(|v| v.as_str())
-                            .map(is_canonical_local_datetime)
-                            .unwrap_or(false);
-                        match tzid_by_kind.iter().position(|(k, _, _)| k == tz) {
-                            Some(i) => {
-                                if canonical {
-                                    tzid_by_kind[i].1 += 1;
-                                } else {
-                                    tzid_by_kind[i].2 += 1;
-                                }
-                            }
-                            None => {
-                                let (c, u) = if canonical { (1, 0) } else { (0, 1) };
-                                tzid_by_kind.push((tz.to_string(), c, u));
-                            }
-                        }
-                    }
+                    let canonical = item
+                        .get(value_key)
+                        .and_then(|v| v.as_str())
+                        .map(is_canonical_local_datetime)
+                        .unwrap_or(false);
+                    bump_tzid_breakdown(
+                        &mut tzid_breakdown,
+                        &mut tzid_by_kind,
+                        tz,
+                        canonical,
+                        include_kind_breakdown,
+                    );
                 }
             }
         }
@@ -9285,26 +9295,14 @@ async fn exdates_preview_stats(
                     "tzid" => {
                         k_tzid += 1;
                         if let Some(tz) = info.tzid.as_deref() {
-                            match tzid_breakdown.iter().position(|(k, _)| k == tz) {
-                                Some(i) => tzid_breakdown[i].1 += 1,
-                                None => tzid_breakdown.push((tz.to_string(), 1)),
-                            }
-                            if include_kind_breakdown {
-                                let canonical = is_canonical_local_datetime(&info.raw_value);
-                                match tzid_by_kind.iter().position(|(k, _, _)| k == tz) {
-                                    Some(i) => {
-                                        if canonical {
-                                            tzid_by_kind[i].1 += 1;
-                                        } else {
-                                            tzid_by_kind[i].2 += 1;
-                                        }
-                                    }
-                                    None => {
-                                        let (c, u) = if canonical { (1, 0) } else { (0, 1) };
-                                        tzid_by_kind.push((tz.to_string(), c, u));
-                                    }
-                                }
-                            }
+                            let canonical = is_canonical_local_datetime(&info.raw_value);
+                            bump_tzid_breakdown(
+                                &mut tzid_breakdown,
+                                &mut tzid_by_kind,
+                                tz,
+                                canonical,
+                                include_kind_breakdown,
+                            );
                         }
                     }
                     "date-only" => k_date_only += 1,
