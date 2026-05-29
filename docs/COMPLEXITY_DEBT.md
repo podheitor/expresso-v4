@@ -26,12 +26,17 @@ four SMTP command loops — `handle_tls` 45→40 (`handle_data_command`),
 `handle`@session 43→40 + `session_loop` 31→28 (shared `inbound_data_command`),
 `handle`@lmtp 41→38 (`handle_lmtp_data_command`). Gate 45 → 43 → **40**.
 
-**Binding ceiling = `handle`@session + `handle_tls` (both 40).** What remains in
-these loops is the EHLO/STARTTLS/RSET/NOOP/QUIT verb chain + (submission only)
-the AUTH PLAIN/LOGIN branches with break-on-disconnect — genuinely loop-coupled.
-Dropping below 40 needs restructuring the verb chain into a parsed-verb `match`
-(parse the verb token, dispatch). Higher-risk than the branch extractions done
-so far; this is the documented next step. Calendar analytics + all else ≤38.
+**EHLO extraction (2026-05-29):** shared `inbound_ehlo()` (handle@session 40→38,
+session_loop 28→27) + submission-local `submission_ehlo()` (handle_tls 40→39).
+Gate 40 → **39**.
+
+**Binding ceiling = `handle_tls` (39).** Its residual complexity is the AUTH
+PLAIN/LOGIN branches (challenge/response with `break`-on-disconnect) plus the
+RSET/NOOP/QUIT verb chain. The AUTH branches are genuinely loop-coupled (the
+`break` exits the session on a dropped connection); dropping below 39 needs
+either lifting AUTH into a helper that signals "connection closed" via a return
+value, or restructuring the whole verb chain into a parsed-verb `match`. This is
+the higher-risk structural step. Everything else is now ≤38.
 
 
 **Calendar analytics (2026-05-29):** `overrides_stats` 49 → **32** by extracting

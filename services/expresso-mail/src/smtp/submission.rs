@@ -259,23 +259,7 @@ where
         let upper = line.to_ascii_uppercase();
 
         if upper.starts_with("EHLO") || upper.starts_with("HELO") {
-            let verb = if upper.starts_with("EHLO") {
-                "EHLO"
-            } else {
-                "HELO"
-            };
-            env.helo = Some(line[4..].trim().to_string());
-            writer
-                .write_all(
-                    format!(
-                        "250-{domain} Hello\r\n250-SIZE {MAX_MSG_BYTES}\r\n250-8BITMIME\r\n250-PIPELINING\r\n250-AUTH PLAIN LOGIN\r\n250 OK\r\n"
-                    )
-                    .as_bytes(),
-                )
-                .await?;
-            SMTP_COMMANDS_TOTAL
-                .with_label_values(&[verb, "smtp587", "ok"])
-                .inc();
+            submission_ehlo(&mut writer, &mut env, &line, &upper, domain).await?;
         } else if upper.starts_with("AUTH PLAIN") {
             let b64 = line[10..].trim();
             let credential = if b64.is_empty() {
@@ -552,6 +536,39 @@ where
 
 /// Handle `RCPT TO:` on the submission channel: require AUTH + prior MAIL FROM,
 /// cap recipient count, then append the recipient. Writes the SMTP reply.
+/// Handle `EHLO`/`HELO` on the post-STARTTLS submission channel: record the
+/// greeting name and reply with the capability list (advertising AUTH PLAIN
+/// LOGIN). Extracted from `handle_tls`.
+async fn submission_ehlo<W>(
+    writer: &mut W,
+    env: &mut Envelope,
+    line: &str,
+    upper: &str,
+    domain: &str,
+) -> anyhow::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    let verb = if upper.starts_with("EHLO") {
+        "EHLO"
+    } else {
+        "HELO"
+    };
+    env.helo = Some(line[4..].trim().to_string());
+    writer
+        .write_all(
+            format!(
+                "250-{domain} Hello\r\n250-SIZE {MAX_MSG_BYTES}\r\n250-8BITMIME\r\n250-PIPELINING\r\n250-AUTH PLAIN LOGIN\r\n250 OK\r\n"
+            )
+            .as_bytes(),
+        )
+        .await?;
+    SMTP_COMMANDS_TOTAL
+        .with_label_values(&[verb, "smtp587", "ok"])
+        .inc();
+    Ok(())
+}
+
 /// Handle the `DATA` command on the submission channel: require AUTH and a
 /// prior MAIL FROM + ≥1 RCPT, then write `354` to begin message input. Returns
 /// `true` if the session should enter DATA mode. Extracted from `handle_tls`.

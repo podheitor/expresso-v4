@@ -80,15 +80,15 @@ jobs:
       # Legacy baseline: 21 bloat-era functions exceed CCN 25 (max 72:
       # imap cmd_fetch, smtp handle_tls). Per CLAUDE.md, start the gate at the
       # current max and ratchet down by 5 per refactor. See docs/COMPLEXITY_DEBT.md.
-      # -C 40: legacy CCN max, ratcheting toward 25 (72→…→43→40; current max is
-      # the SMTP command loops `handle`@session + `handle_tls`, both 40). -L 3000:
-      # lizard's Rust tokenizer miscounts one flat table fn (local_to_ical_utc,
-      # really 6 LOC) as 932 NLOC; raise the length gate above that false positive.
-      - name: lizard (CCN ≤ 40, ratcheting toward 25)
+      # -C 39: legacy CCN max, ratcheting toward 25 (72→…→40→39; current max is
+      # `handle_tls` (39), whose remaining bulk is the AUTH PLAIN/LOGIN branches).
+      # -L 3000: lizard's Rust tokenizer miscounts one flat table fn
+      # (local_to_ical_utc, really 6 LOC) as 932 NLOC; raise the length gate.
+      - name: lizard (CCN ≤ 39, ratcheting toward 25)
         run: |
           pip install lizard --quiet
           find services libs -name '*.rs' -not -path '*/target/*' \
-            | xargs lizard -l rust -C 40 -L 3000 -w
+            | xargs lizard -l rust -C 39 -L 3000 -w
 
       - name: jscpd (duplication < 5%)
         run: |

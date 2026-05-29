@@ -207,6 +207,45 @@ where
     Ok(())
 }
 
+/// Handle inbound `EHLO`/`HELO`: record the greeting name and reply with the
+/// capability list (advertising STARTTLS only when `advertise_starttls`).
+/// Shared by the plaintext and post-TLS inbound loops.
+async fn inbound_ehlo<W>(
+    writer: &mut W,
+    env: &mut Envelope,
+    line: &str,
+    upper: &str,
+    domain: &str,
+    advertise_starttls: bool,
+) -> anyhow::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    let verb = if upper.starts_with("EHLO") {
+        "EHLO"
+    } else {
+        "HELO"
+    };
+    env.helo = Some(line[4..].trim().to_string());
+    let tls_cap = if advertise_starttls {
+        "250-STARTTLS\r\n"
+    } else {
+        ""
+    };
+    writer
+        .write_all(
+            format!(
+                "250-{domain} Hello\r\n250-SIZE {MAX_MSG_BYTES}\r\n250-8BITMIME\r\n250-PIPELINING\r\n{tls_cap}250 OK\r\n"
+            )
+            .as_bytes(),
+        )
+        .await?;
+    SMTP_COMMANDS_TOTAL
+        .with_label_values(&[verb, "smtp25", "ok"])
+        .inc();
+    Ok(())
+}
+
 /// Handle the inbound `DATA` command (port 25): require a prior MAIL FROM + ≥1
 /// RCPT, then write `354` to begin message input. Returns `true` if the session
 /// should enter DATA mode. Shared by the plaintext and post-TLS inbound loops.
@@ -272,99 +311,119 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
     let mut pending_tls: Option<TlsAcceptor> = None;
 
     let result = async {
-    loop {
-        // If a TLS upgrade is pending, it means we already responded "220 Ready"
-        // and need to complete the upgrade now before reading the next line.
-        if let Some(acc) = pending_tls.take() {
-            // BufReader::into_inner() gives back OwnedReadHalf (any buffered bytes lost
-            // — safe: STARTTLS must be the last command in a plain pipeline, RFC 3207 §4).
-            let reader = lines.into_inner().into_inner();
-            let tcp = reader.reunite(writer)
-                .map_err(|_| anyhow::anyhow!("TCP reunite failed"))?;
-            let tls_stream = acc.accept(tcp).await?;
-            info!(peer = %peer, "SMTP inbound TLS established");
-            let (r, w) = tokio::io::split(tls_stream);
-            // Re-enter the session loop over TLS.
-            return session_loop(r, w, &domain, &state, peer, env, false).await;
-        }
+        loop {
+            // If a TLS upgrade is pending, it means we already responded "220 Ready"
+            // and need to complete the upgrade now before reading the next line.
+            if let Some(acc) = pending_tls.take() {
+                // BufReader::into_inner() gives back OwnedReadHalf (any buffered bytes lost
+                // — safe: STARTTLS must be the last command in a plain pipeline, RFC 3207 §4).
+                let reader = lines.into_inner().into_inner();
+                let tcp = reader
+                    .reunite(writer)
+                    .map_err(|_| anyhow::anyhow!("TCP reunite failed"))?;
+                let tls_stream = acc.accept(tcp).await?;
+                info!(peer = %peer, "SMTP inbound TLS established");
+                let (r, w) = tokio::io::split(tls_stream);
+                // Re-enter the session loop over TLS.
+                return session_loop(r, w, &domain, &state, peer, env, false).await;
+            }
 
-        let line = match lines.next_line().await? {
-            Some(l) => l,
-            None => break,
-        };
-        debug!(line = %line, "smtp ←");
+            let line = match lines.next_line().await? {
+                Some(l) => l,
+                None => break,
+            };
+            debug!(line = %line, "smtp ←");
 
-        if data_mode {
-            if line == "." {
-                data_mode = false;
-                finalize_inbound_message(&state, &mut writer, &mut data_buf, &mut env, peer, &domain)
-                    .await?;
-            } else {
-                let line = line.strip_prefix('.').unwrap_or(&line);
-                if data_buf.len() + line.len() + 2 > MAX_MSG_BYTES {
-                    writer.write_all(b"552 Message too large\r\n").await?;
+            if data_mode {
+                if line == "." {
                     data_mode = false;
-                    data_buf.clear();
-                    env = Envelope::default();
+                    finalize_inbound_message(
+                        &state,
+                        &mut writer,
+                        &mut data_buf,
+                        &mut env,
+                        peer,
+                        &domain,
+                    )
+                    .await?;
                 } else {
-                    data_buf.push_str(line);
-                    data_buf.push_str("\r\n");
+                    let line = line.strip_prefix('.').unwrap_or(&line);
+                    if data_buf.len() + line.len() + 2 > MAX_MSG_BYTES {
+                        writer.write_all(b"552 Message too large\r\n").await?;
+                        data_mode = false;
+                        data_buf.clear();
+                        env = Envelope::default();
+                    } else {
+                        data_buf.push_str(line);
+                        data_buf.push_str("\r\n");
+                    }
                 }
+                continue;
             }
-            continue;
-        }
 
-        let upper = line.to_ascii_uppercase();
+            let upper = line.to_ascii_uppercase();
 
-        if upper.starts_with("EHLO") || upper.starts_with("HELO") {
-            let verb = if upper.starts_with("EHLO") { "EHLO" } else { "HELO" };
-            env.helo = Some(line[4..].trim().to_string());
-            let tls_cap = if has_tls { "250-STARTTLS\r\n" } else { "" };
-            writer.write_all(
-                format!("250-{domain} Hello\r\n250-SIZE {MAX_MSG_BYTES}\r\n250-8BITMIME\r\n250-PIPELINING\r\n{tls_cap}250 OK\r\n")
-                    .as_bytes()
-            ).await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&[verb, "smtp25", "ok"]).inc();
-        } else if upper == "STARTTLS" {
-            if let Some(acc) = acceptor.clone() {
-                writer.write_all(b"220 Ready to start TLS\r\n").await?;
-                writer.flush().await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["STARTTLS", "smtp25", "ok"]).inc();
-                // Signal the TLS upgrade on the next loop iteration.
-                pending_tls = Some(acc);
+            if upper.starts_with("EHLO") || upper.starts_with("HELO") {
+                inbound_ehlo(&mut writer, &mut env, &line, &upper, &domain, has_tls).await?;
+            } else if upper == "STARTTLS" {
+                if let Some(acc) = acceptor.clone() {
+                    writer.write_all(b"220 Ready to start TLS\r\n").await?;
+                    writer.flush().await?;
+                    SMTP_COMMANDS_TOTAL
+                        .with_label_values(&["STARTTLS", "smtp25", "ok"])
+                        .inc();
+                    // Signal the TLS upgrade on the next loop iteration.
+                    pending_tls = Some(acc);
+                } else {
+                    writer.write_all(b"454 5.7.4 TLS not available\r\n").await?;
+                    SMTP_COMMANDS_TOTAL
+                        .with_label_values(&["STARTTLS", "smtp25", "reject"])
+                        .inc();
+                }
+            } else if upper.starts_with("MAIL FROM:") {
+                handle_inbound_mail_from(&mut writer, &mut env, &line).await?;
+            } else if upper.starts_with("RCPT TO:") {
+                handle_inbound_rcpt_to(&mut writer, &mut env, &line).await?;
+            } else if upper == "DATA" {
+                data_mode = inbound_data_command(&mut writer, &env).await?;
+            } else if upper == "RSET" {
+                env = Envelope::default();
+                writer.write_all(b"250 OK\r\n").await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["RSET", "smtp25", "ok"])
+                    .inc();
+            } else if upper == "NOOP" {
+                writer.write_all(b"250 OK\r\n").await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["NOOP", "smtp25", "ok"])
+                    .inc();
+            } else if upper == "VRFY" {
+                writer
+                    .write_all(b"252 2.5.2 Cannot VRFY user; try RCPT\r\n")
+                    .await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["VRFY", "smtp25", "ok"])
+                    .inc();
+            } else if upper == "QUIT" {
+                writer
+                    .write_all(format!("221 {domain} Bye\r\n").as_bytes())
+                    .await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&["QUIT", "smtp25", "ok"])
+                    .inc();
+                break;
             } else {
-                writer.write_all(b"454 5.7.4 TLS not available\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["STARTTLS", "smtp25", "reject"]).inc();
+                let verb = command_label(upper.split_whitespace().next().unwrap_or("OTHER"));
+                warn!(cmd = %line, "unknown SMTP command");
+                writer.write_all(b"500 Command not recognized\r\n").await?;
+                SMTP_COMMANDS_TOTAL
+                    .with_label_values(&[verb, "smtp25", "reject"])
+                    .inc();
             }
-        } else if upper.starts_with("MAIL FROM:") {
-            handle_inbound_mail_from(&mut writer, &mut env, &line).await?;
-        } else if upper.starts_with("RCPT TO:") {
-            handle_inbound_rcpt_to(&mut writer, &mut env, &line).await?;
-        } else if upper == "DATA" {
-            data_mode = inbound_data_command(&mut writer, &env).await?;
-        } else if upper == "RSET" {
-            env = Envelope::default();
-            writer.write_all(b"250 OK\r\n").await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&["RSET", "smtp25", "ok"]).inc();
-        } else if upper == "NOOP" {
-            writer.write_all(b"250 OK\r\n").await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&["NOOP", "smtp25", "ok"]).inc();
-        } else if upper == "VRFY" {
-            writer.write_all(b"252 2.5.2 Cannot VRFY user; try RCPT\r\n").await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&["VRFY", "smtp25", "ok"]).inc();
-        } else if upper == "QUIT" {
-            writer.write_all(format!("221 {domain} Bye\r\n").as_bytes()).await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&["QUIT", "smtp25", "ok"]).inc();
-            break;
-        } else {
-            let verb = command_label(upper.split_whitespace().next().unwrap_or("OTHER"));
-            warn!(cmd = %line, "unknown SMTP command");
-            writer.write_all(b"500 Command not recognized\r\n").await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&[verb, "smtp25", "reject"]).inc();
         }
+        anyhow::Ok(())
     }
-    anyhow::Ok(())
-    }.await;
+    .await;
 
     match &result {
         Ok(()) => SMTP_SESSIONS_TOTAL
@@ -450,16 +509,7 @@ where
 
         let upper = line.to_ascii_uppercase();
         if upper.starts_with("EHLO") || upper.starts_with("HELO") {
-            let verb = if upper.starts_with("EHLO") {
-                "EHLO"
-            } else {
-                "HELO"
-            };
-            env.helo = Some(line[4..].trim().to_string());
-            writer.write_all(format!("250-{domain} Hello\r\n250-SIZE {MAX_MSG_BYTES}\r\n250-8BITMIME\r\n250-PIPELINING\r\n250 OK\r\n").as_bytes()).await?;
-            SMTP_COMMANDS_TOTAL
-                .with_label_values(&[verb, "smtp25", "ok"])
-                .inc();
+            inbound_ehlo(&mut writer, &mut env, &line, &upper, domain, false).await?;
         } else if upper.starts_with("MAIL FROM:") {
             handle_inbound_mail_from(&mut writer, &mut env, &line).await?;
         } else if upper.starts_with("RCPT TO:") {
