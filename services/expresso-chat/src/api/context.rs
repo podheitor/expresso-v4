@@ -166,12 +166,13 @@ impl IntoResponse for CtxError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::{HeaderMap, HeaderValue};
+    use axum::http::{HeaderMap, HeaderName, HeaderValue};
 
     fn hmap(pairs: &[(&str, &str)]) -> HeaderMap {
         let mut m = HeaderMap::new();
         for (k, v) in pairs {
-            m.insert(*k, HeaderValue::from_str(v).unwrap());
+            let name = HeaderName::from_bytes(k.as_bytes()).unwrap();
+            m.insert(name, HeaderValue::from_str(v).unwrap());
         }
         m
     }
@@ -303,7 +304,7 @@ mod tests {
 
     #[test]
     fn from_auth_error_kid_not_found_maps_to_invalid_token() {
-        assert!(matches!(CtxError::from(AuthError::KidNotFound("kid".into())), CtxError::InvalidToken(_)));
+        assert!(matches!(CtxError::from(AuthError::KidNotFound(Some("kid".into()))), CtxError::InvalidToken(_)));
     }
 
     #[test]

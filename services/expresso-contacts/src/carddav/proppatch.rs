@@ -225,7 +225,7 @@ fn not_found() -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_patch, parse_set_remove, patch_has_changes, is_live_prop};
+    use super::{build_patch, parse_set_remove, patch_has_changes, is_live_prop, LIVE_PROPS};
 
     #[test]
     fn parses_set_with_values() {

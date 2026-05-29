@@ -147,7 +147,8 @@ mod tests {
 
     #[test]
     fn internal_status_is_500() {
-        assert_eq!(status(ChatError::Internal("x".into())), 500);
+        // No `Internal` variant; Core(_) is the internal-error path (→ 500).
+        assert_eq!(status(ChatError::Core(expresso_core::CoreError::NotFound { resource: "x" })), 500);
     }
 
     #[test]
@@ -167,8 +168,9 @@ mod tests {
     }
 
     #[test]
-    fn internal_display_contains_message() {
-        let e = ChatError::Internal("disk full".into());
+    fn message_carrying_error_display_contains_message() {
+        // `Internal` was removed; Matrix(String) carries a backend message.
+        let e = ChatError::Matrix("disk full".into());
         assert!(format!("{e}").contains("disk full"));
     }
 

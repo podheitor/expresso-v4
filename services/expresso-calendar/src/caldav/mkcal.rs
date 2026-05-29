@@ -174,7 +174,7 @@ fn error(status: StatusCode, msg: &'static str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_prop;
+    use super::{extract_prop, unescape_xml, extract_tzid};
 
     #[test]
     fn parse_plain_displayname() {

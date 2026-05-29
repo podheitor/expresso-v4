@@ -3026,6 +3026,20 @@ mod tests {
     use super::*;
     use crate::templates::Me;
 
+    /// Build a minimal `Me` for ctx_of/tenant tests — only tenant_id/user_id
+    /// matter to those; the rest are filled with empty defaults.
+    fn mk_me(tenant_id: &str, user_id: &str) -> Me {
+        Me {
+            user_id: user_id.into(),
+            tenant_id: tenant_id.into(),
+            email: String::new(),
+            display_name: None,
+            roles: Vec::new(),
+            expires_at: 0,
+            mfa: None,
+        }
+    }
+
     #[test]
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
@@ -3063,7 +3077,7 @@ mod tests {
 
     #[test]
     fn ctx_of_returns_tenant_and_user() {
-        let me = Me { tenant_id: "t1".into(), user_id: "u1".into() };
+        let me = mk_me("t1", "u1");
         let (t, u) = ctx_of(&me);
         assert_eq!(t, "t1");
         assert_eq!(u, "u1");
@@ -3071,21 +3085,21 @@ mod tests {
 
     #[test]
     fn ctx_of_tenant_id_matches_me() {
-        let me = Me { tenant_id: "acme".into(), user_id: "uuid-abc".into() };
+        let me = mk_me("acme", "uuid-abc");
         let (t, _) = ctx_of(&me);
         assert_eq!(t, "acme");
     }
 
     #[test]
     fn ctx_of_user_id_matches_me() {
-        let me = Me { tenant_id: "t2".into(), user_id: "user-xyz".into() };
+        let me = mk_me("t2", "user-xyz");
         let (_, u) = ctx_of(&me);
         assert_eq!(u, "user-xyz");
     }
 
     #[test]
     fn ctx_of_returns_two_elements() {
-        let me = Me { tenant_id: "t3".into(), user_id: "u3".into() };
+        let me = mk_me("t3", "u3");
         let (t, u) = ctx_of(&me);
         assert!(!t.is_empty());
         assert!(!u.is_empty());
@@ -3093,7 +3107,7 @@ mod tests {
 
     #[test]
     fn ctx_of_values_match_me_fields() {
-        let me = Me { tenant_id: "tenant-xyz".into(), user_id: "user-abc".into() };
+        let me = mk_me("tenant-xyz", "user-abc");
         let (t, u) = ctx_of(&me);
         assert_eq!(t, "tenant-xyz");
         assert_eq!(u, "user-abc");
@@ -3101,14 +3115,14 @@ mod tests {
 
     #[test]
     fn ctx_of_empty_ids_returns_empty_strings() {
-        let me = Me { tenant_id: "".into(), user_id: "".into() };
+        let me = mk_me("", "");
         let (t, u) = ctx_of(&me);
         assert!(t.is_empty() && u.is_empty());
     }
 
     #[test]
     fn ctx_of_special_chars_preserved() {
-        let me = Me { tenant_id: "tenant-with-dashes".into(), user_id: "user_with_underscores".into() };
+        let me = mk_me("tenant-with-dashes", "user_with_underscores");
         let (t, u) = ctx_of(&me);
         assert!(t.contains('-'));
         assert!(u.contains('_'));
@@ -3116,7 +3130,7 @@ mod tests {
 
     #[test]
     fn ctx_of_non_empty_tenant_and_user() {
-        let me = Me { tenant_id: "acme-corp".into(), user_id: "user-42".into() };
+        let me = mk_me("acme-corp", "user-42");
         let (t, u) = ctx_of(&me);
         assert!(!t.is_empty());
         assert!(!u.is_empty());
@@ -3124,7 +3138,7 @@ mod tests {
 
     #[test]
     fn ctx_of_uuid_format_preserved() {
-        let me = Me { tenant_id: "00000000-0000-0000-0000-000000000001".into(), user_id: "00000000-0000-0000-0000-000000000002".into() };
+        let me = mk_me("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002");
         let (t, u) = ctx_of(&me);
         assert_eq!(t, "00000000-0000-0000-0000-000000000001");
         assert_eq!(u, "00000000-0000-0000-0000-000000000002");
@@ -3134,7 +3148,7 @@ mod tests {
     fn split_addrs_multiple_addresses() {
         let v = split_addrs("a@x.com, b@y.com, c@z.com");
         assert_eq!(v.len(), 3);
-        assert!(v.contains(&"a@x.com"));
+        assert!(v.iter().any(|s| s == "a@x.com"));
     }
 
     #[test]
@@ -3146,7 +3160,7 @@ mod tests {
 
     #[test]
     fn ctx_of_tenant_and_user_are_independent() {
-        let me = Me { tenant_id: "t1".into(), user_id: "u1".into() };
+        let me = mk_me("t1", "u1");
         let (t, u) = ctx_of(&me);
         assert_ne!(t, u);
     }

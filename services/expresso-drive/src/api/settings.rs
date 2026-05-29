@@ -16,7 +16,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/settings/trash-purge", get(get_trash_purge).put(put_trash_purge))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TrashPurgeSettings {
     /// Days after which trashed files are auto-purged. null = disabled.
     pub auto_purge_days: Option<i64>,

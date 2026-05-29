@@ -112,7 +112,10 @@ mod tests {
 
     #[test]
     fn auth_error_is_unauthorized() {
-        assert_eq!(status(RpError::Auth("invalid token".into())), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            status(RpError::Auth(expresso_auth_client::AuthError::InvalidToken("invalid token".into()))),
+            StatusCode::UNAUTHORIZED,
+        );
     }
 
     #[test]

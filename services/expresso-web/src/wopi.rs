@@ -199,8 +199,8 @@ mod extra_tests {
 
     #[test]
     fn sign_token_output_length_is_consistent() {
-        let t1 = sign_token("file1", "secret");
-        let t2 = sign_token("file1", "secret");
+        let t1 = sign_token(b"secret", "file1", "t", "u", 3600);
+        let t2 = sign_token(b"secret", "file1", "t", "u", 3600);
         assert_eq!(t1.len(), t2.len());
     }
 

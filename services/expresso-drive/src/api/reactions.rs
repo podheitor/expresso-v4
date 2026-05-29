@@ -32,7 +32,7 @@ pub struct CommentReaction {
     pub created_at: OffsetDateTime,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ReactionBody {
     emoji: String,
 }

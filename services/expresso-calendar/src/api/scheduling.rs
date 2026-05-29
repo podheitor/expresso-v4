@@ -477,6 +477,8 @@ async fn reject_counter(
 
 #[cfg(test)]
 mod tests {
+    use super::CounterListQuery;
+
     #[test]
     fn counter_list_limit_clamp_min() {
         let raw: i64 = 0;

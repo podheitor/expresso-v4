@@ -55,7 +55,7 @@ pub enum GalEntry {
     },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SearchResponse {
     pub entries: Vec<GalEntry>,
 }
