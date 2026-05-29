@@ -201,6 +201,9 @@ async fn main() -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
+    use std::sync::Mutex;
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn env_string_none_when_unset() {
         let key = "MEET_TEST_UNSET_ZZZ_19975";
@@ -313,12 +316,14 @@ mod tests {
 
     #[test]
     fn resolve_database_config_none_when_url_missing() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("DATABASE__URL");
         assert!(resolve_database_config().is_none());
     }
 
     #[test]
     fn resolve_database_config_some_when_url_present() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("DATABASE__URL", "postgres://localhost/meettest");
         let cfg = resolve_database_config();
         assert!(cfg.is_some());
@@ -328,6 +333,7 @@ mod tests {
 
     #[test]
     fn resolve_jitsi_config_none_when_app_id_missing() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("JITSI__APP_ID");
         std::env::remove_var("JITSI__APP_SECRET");
         std::env::remove_var("JITSI__DOMAIN");
@@ -336,6 +342,7 @@ mod tests {
 
     #[test]
     fn resolve_jitsi_config_none_when_partial_config() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("JITSI__APP_ID", "myapp");
         std::env::remove_var("JITSI__APP_SECRET");
         std::env::remove_var("JITSI__DOMAIN");
@@ -345,6 +352,7 @@ mod tests {
 
     #[test]
     fn resolve_jitsi_config_some_when_full_config() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("JITSI__APP_ID", "expresso");
         std::env::set_var("JITSI__APP_SECRET", "secret123");
         std::env::set_var("JITSI__DOMAIN", "meet.example.com");
@@ -364,6 +372,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_uses_default_port_when_env_unset() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("SERVER__HOST");
         std::env::remove_var("SERVER__PORT");
         let addr = resolve_addr().unwrap();
@@ -372,6 +381,7 @@ mod tests {
 
     #[test]
     fn resolve_telemetry_uses_default_otlp_when_unset() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("TELEMETRY__OTLP_ENDPOINT");
         let t = resolve_telemetry();
         assert_eq!(t.otlp_endpoint, DEFAULT_OTLP_ENDPOINT);

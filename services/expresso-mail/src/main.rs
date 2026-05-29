@@ -364,6 +364,9 @@ async fn shutdown_signal() {
 mod tests {
     use super::*;
 
+    use std::sync::Mutex;
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn env_string_none_when_unset() {
         let key = "MAIL_TEST_UNSET_19981";
@@ -389,12 +392,14 @@ mod tests {
 
     #[test]
     fn dev_bootstrap_enabled_false_when_unset() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
         assert!(!dev_bootstrap_enabled());
     }
 
     #[test]
     fn dev_bootstrap_enabled_true_for_1() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "1");
         assert!(dev_bootstrap_enabled());
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
@@ -402,6 +407,7 @@ mod tests {
 
     #[test]
     fn dev_bootstrap_enabled_true_for_true_lowercase() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "true");
         assert!(dev_bootstrap_enabled());
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
@@ -409,6 +415,7 @@ mod tests {
 
     #[test]
     fn dev_bootstrap_enabled_true_for_true_uppercase() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "TRUE");
         assert!(dev_bootstrap_enabled());
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
@@ -416,6 +423,7 @@ mod tests {
 
     #[test]
     fn dev_bootstrap_enabled_true_for_yes() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "yes");
         assert!(dev_bootstrap_enabled());
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
@@ -423,6 +431,7 @@ mod tests {
 
     #[test]
     fn dev_bootstrap_enabled_true_for_yes_uppercase() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "YES");
         assert!(dev_bootstrap_enabled());
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
@@ -430,6 +439,7 @@ mod tests {
 
     #[test]
     fn dev_bootstrap_enabled_false_for_zero() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "0");
         assert!(!dev_bootstrap_enabled());
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
@@ -437,6 +447,7 @@ mod tests {
 
     #[test]
     fn dev_bootstrap_enabled_false_for_false() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "false");
         assert!(!dev_bootstrap_enabled());
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
@@ -444,6 +455,7 @@ mod tests {
 
     #[test]
     fn dev_bootstrap_enabled_false_for_no() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "no");
         assert!(!dev_bootstrap_enabled());
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
@@ -451,6 +463,7 @@ mod tests {
 
     #[test]
     fn dev_bootstrap_enabled_false_for_empty_string() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "");
         assert!(!dev_bootstrap_enabled());
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
@@ -458,6 +471,7 @@ mod tests {
 
     #[test]
     fn dev_bootstrap_enabled_false_for_random_string() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "enabled");
         assert!(!dev_bootstrap_enabled());
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
@@ -481,6 +495,7 @@ mod tests {
 
     #[test]
     fn dev_bootstrap_enabled_returns_bool() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "1");
         assert!(dev_bootstrap_enabled());
         std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");

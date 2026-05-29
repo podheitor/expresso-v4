@@ -86,14 +86,19 @@ pub fn dispatch(cfg: Option<&WebhookConfig>, event: &'static str, tenant_id: Uui
 mod tests {
     use super::*;
 
+    use std::sync::Mutex;
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn webhook_config_from_env_none_when_unset() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("MEET__WEBHOOK_URL");
         assert!(WebhookConfig::from_env().is_none());
     }
 
     #[test]
     fn webhook_config_from_env_none_for_empty_string() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__WEBHOOK_URL", "");
         assert!(WebhookConfig::from_env().is_none());
         std::env::remove_var("MEET__WEBHOOK_URL");
@@ -101,6 +106,7 @@ mod tests {
 
     #[test]
     fn webhook_config_from_env_some_when_url_set() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__WEBHOOK_URL", "http://hook.example.com");
         let cfg = WebhookConfig::from_env();
         assert!(cfg.is_some());
@@ -126,6 +132,7 @@ mod tests {
 
     #[test]
     fn webhook_config_url_stored_correctly() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__WEBHOOK_URL", "https://hooks.internal/meet");
         let cfg = WebhookConfig::from_env().unwrap();
         assert_eq!(cfg.url.as_ref(), "https://hooks.internal/meet");
@@ -134,6 +141,7 @@ mod tests {
 
     #[test]
     fn webhook_config_url_is_arc_str() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__WEBHOOK_URL", "http://example.com");
         let cfg = WebhookConfig::from_env().unwrap();
         let cloned = cfg.url.clone();
@@ -155,6 +163,7 @@ mod tests {
 
     #[test]
     fn webhook_config_clone_preserves_url() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__WEBHOOK_URL", "http://clone-test.example.com");
         let cfg = WebhookConfig::from_env().unwrap();
         let cloned = cfg.clone();
@@ -164,6 +173,7 @@ mod tests {
 
     #[test]
     fn webhook_config_from_env_none_when_whitespace_only_url() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("MEET__WEBHOOK_URL", "   ");
         // env::var returns non-empty whitespace, but filter(|v| !v.is_empty()) passes it through.
         // The actual implementation only checks is_empty(), so whitespace URL yields Some.

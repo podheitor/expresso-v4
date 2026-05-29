@@ -869,6 +869,9 @@ async fn main() -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
+    use std::sync::Mutex;
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
     fn req(
         folder: &str,
         from: Option<&str>,
@@ -1137,6 +1140,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_default_port_when_env_unset() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("PORT");
         std::env::remove_var("HOST");
         let addr = resolve_addr().unwrap();

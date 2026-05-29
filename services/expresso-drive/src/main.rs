@@ -262,6 +262,9 @@ async fn main() -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
+    use std::sync::Mutex;
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn env_string_none_when_unset() {
         let key = "DRIVE_TEST_UNSET_19982";
@@ -341,6 +344,7 @@ mod tests {
 
     #[test]
     fn resolve_addr_default_port_when_env_unset() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("SERVER__HOST");
         std::env::remove_var("SERVER__PORT");
         let addr = resolve_addr().unwrap();
@@ -349,12 +353,14 @@ mod tests {
 
     #[test]
     fn resolve_db_none_when_url_missing() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("DATABASE__URL");
         assert!(resolve_db().is_none());
     }
 
     #[test]
     fn resolve_db_some_when_url_present() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("DATABASE__URL", "postgres://localhost/drivetest");
         let cfg = resolve_db();
         assert!(cfg.is_some());
@@ -364,6 +370,7 @@ mod tests {
 
     #[test]
     fn resolve_telemetry_default_otlp_when_unset() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("TELEMETRY__OTLP_ENDPOINT");
         let t = resolve_telemetry();
         assert_eq!(t.otlp_endpoint, DEFAULT_OTLP_ENDPOINT);
@@ -371,6 +378,7 @@ mod tests {
 
     #[test]
     fn resolve_telemetry_log_json_false_by_default() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("TELEMETRY__LOG_JSON");
         let t = resolve_telemetry();
         assert!(!t.log_json);
