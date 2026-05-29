@@ -1290,10 +1290,22 @@ async fn unread_summary(
     ctx:          RequestCtx,
 ) -> Result<Json<Vec<serde_json::Value>>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    // Muted conversations are excluded from the badge: a noisy thread the user
+    // muted should not keep the folder marked unread. Mute is per (tenant, user,
+    // thread); the NOT EXISTS drops only messages whose thread the caller muted.
     let rows: Vec<(String, i64)> = sqlx::query_as(
         r#"
         SELECT mb.folder_name,
-               COUNT(m.id) FILTER (WHERE NOT ('\Seen' = ANY(m.flags))) AS unread
+               COUNT(m.id) FILTER (
+                   WHERE NOT ('\Seen' = ANY(m.flags))
+                     AND NOT EXISTS (
+                         SELECT 1 FROM mail_thread_state ts
+                         WHERE ts.tenant_id = m.tenant_id
+                           AND ts.user_id   = mb.user_id
+                           AND ts.thread_id = m.thread_id
+                           AND ts.muted
+                     )
+               ) AS unread
         FROM mailboxes mb
         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1
         WHERE mb.tenant_id = $1
