@@ -360,10 +360,12 @@ async fn run(c: Client, cli: Cli, tok: String) -> Result<Summary> {
     }
 
     for (tenant, tenant_users) in by_tenant.iter() {
-        let mut ts = TenantStats::default();
-        ts.realm_exists = realm_exists(&c, &tok, &cli.kc_url, tenant)
-            .await
-            .unwrap_or(false);
+        let mut ts = TenantStats {
+            realm_exists: realm_exists(&c, &tok, &cli.kc_url, tenant)
+                .await
+                .unwrap_or(false),
+            ..TenantStats::default()
+        };
         if !ts.realm_exists {
             warn!(%tenant, "destination realm missing — run expresso-tenant-provision first");
             sum.per_tenant.insert(tenant.clone(), ts);

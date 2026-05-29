@@ -14,7 +14,7 @@
 
 use std::{
     env,
-    ffi::{CStr, CString},
+    ffi::CString,
     net::{IpAddr, SocketAddr},
     sync::Arc,
 };
@@ -158,7 +158,7 @@ async fn main() -> anyhow::Result<()> {
                     // Check AUTH — {auth_authen} macro present & non-empty ⇒ outbound
                     let auth_authen: Option<String> = cx
                         .macros
-                        .get(CStr::from_bytes_with_nul(b"{auth_authen}\0").unwrap())
+                        .get(c"{auth_authen}")
                         .map(|v| v.to_string_lossy().into_owned())
                         .filter(|v| !v.is_empty());
 

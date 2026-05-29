@@ -135,6 +135,17 @@ pub async fn report_rls_posture(pool: &DbPool, tables: &[&str]) -> RlsPosture {
     posture
 }
 
+/// Run pending sqlx migrations from the `./migrations` directory.
+pub async fn run_migrations(pool: &DbPool) -> Result<()> {
+    sqlx::migrate!("../../migrations")
+        .run(pool)
+        .await
+        .map_err(|e| CoreError::Database(e.into()))?;
+
+    Ok(())
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,14 +348,4 @@ mod tests {
         assert_eq!(p.tables_missing.len(), 2);
         assert!(!p.is_strict());
     }
-}
-
-/// Run pending sqlx migrations from the `./migrations` directory.
-pub async fn run_migrations(pool: &DbPool) -> Result<()> {
-    sqlx::migrate!("../../migrations")
-        .run(pool)
-        .await
-        .map_err(|e| CoreError::Database(e.into()))?;
-
-    Ok(())
 }

@@ -304,11 +304,10 @@ async fn process_message(payload: &[u8], smtp: &SmtpConfig) -> Result<(Method, u
         &recipients,
     )
     .await
-    .map_err(|e| {
+    .inspect_err(|_| {
         DISPATCH_TOTAL
             .with_label_values(&[method_label(method), "send_err"])
             .inc();
-        e
     })?;
     info!(uid=%invite.uid, method=method_label(method), attendees=recipients.len(), "sent");
     Ok((method, recipients.len()))
