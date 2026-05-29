@@ -480,6 +480,7 @@ mod tests {
         assert!(!sig.is_default);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_signatures_per_user_greater_than_zero() {
         assert!(MAX_SIGNATURES_PER_USER > 0);
@@ -555,6 +556,7 @@ mod tests {
         assert_eq!(b.name, "My Sig");
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_signature_name_bytes_positive() {
         assert!(MAX_SIGNATURE_NAME_BYTES > 0);

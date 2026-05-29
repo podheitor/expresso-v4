@@ -49,6 +49,7 @@ pub const MAX_SUBJECT_BYTES: usize = 998;
 /// vira amplificador via mailing-list de calendário.
 pub const MAX_ICS_BYTES: usize = 256 * 1024;
 
+#[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 /// Rejeita com 403 se `claimed_from` não bater com o email do usuário
 /// autenticado (case-insensitive, trim). A consulta usa `begin_tenant_tx`
 /// + `WHERE tenant_id = $1 AND id = $2` — defense-in-depth contra RLS
@@ -1184,6 +1185,7 @@ mod tests {
         assert_eq!(undo_window(Some(15)), 15);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn undo_bounds_are_sane() {
         assert!(UNDO_MIN_SECONDS < UNDO_DEFAULT_SECONDS);
@@ -1282,11 +1284,13 @@ mod tests {
         assert!(combined > 0);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_recipients_is_positive() {
         assert!(MAX_RECIPIENTS_PER_MESSAGE > 0);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_subject_bytes_is_less_than_one_kib() {
         assert!(MAX_SUBJECT_BYTES < 1024);
@@ -1302,6 +1306,7 @@ mod tests {
         assert_eq!(MAX_RECIPIENTS_PER_MESSAGE, 100);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn min_schedule_seconds_is_less_than_one_hour() {
         assert!(MIN_SCHEDULE_SECONDS < 3600);

@@ -23,6 +23,8 @@
 //! Ports:
 //!   :8006  HTTP (configurable via HOST/PORT)
 
+#![allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
+
 use std::{env, net::SocketAddr, sync::Arc, time::Duration};
 
 use expresso_core::{create_db_pool, DbPool};

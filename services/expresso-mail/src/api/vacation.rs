@@ -495,6 +495,7 @@ mod tests {
         assert!(v.subject.is_empty() || v.subject.len() <= MAX_VACATION_SUBJECT_BYTES);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_vacation_body_bytes_is_larger_than_max_vacation_subject_bytes() {
         assert!(MAX_VACATION_BODY_BYTES > MAX_VACATION_SUBJECT_BYTES);

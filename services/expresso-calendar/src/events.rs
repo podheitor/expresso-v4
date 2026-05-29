@@ -424,6 +424,7 @@ mod tests {
         assert!(s.contains("7"));
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn bus_capacity_is_positive() {
         assert!(BUS_CAPACITY > 0);

@@ -181,6 +181,7 @@ impl InboxResp {
     }
 }
 
+#[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 /// POST /api/v1/scheduling/inbox — ingest an iMIP message (RFC 5546).
 ///
 /// Dispatches on the VCALENDAR METHOD:

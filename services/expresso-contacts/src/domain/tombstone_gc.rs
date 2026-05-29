@@ -42,128 +42,13 @@ pub async fn purge_once(pool: &DbPool, retention_days: i32) -> sqlx::Result<u64>
     Ok(res.rows_affected())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn defaults_reasonable() {
-        assert!(DEFAULT_RETENTION_DAYS >= 7);
-        assert!(DEFAULT_INTERVAL_HOURS >= 1);
-    }
-
-    #[test]
-    fn default_retention_is_30_days() {
-        assert_eq!(DEFAULT_RETENTION_DAYS, 30);
-    }
-
-    #[test]
-    fn default_interval_is_6_hours() {
-        assert_eq!(DEFAULT_INTERVAL_HOURS, 6);
-    }
-
-    #[test]
-    fn retention_days_positive() {
-        assert!(DEFAULT_RETENTION_DAYS > 0);
-    }
-
-    #[test]
-    fn interval_hours_at_least_one() {
-        assert!(DEFAULT_INTERVAL_HOURS >= 1);
-    }
-
-    #[test]
-    fn retention_days_under_year() {
-        assert!(DEFAULT_RETENTION_DAYS < 365);
-    }
-
-    #[test]
-    fn interval_hours_under_day() {
-        assert!(DEFAULT_INTERVAL_HOURS <= 24);
-    }
-
-    #[test]
-    fn retention_days_at_least_seven() {
-        assert!(DEFAULT_RETENTION_DAYS >= 7);
-    }
-
-    #[test]
-    fn interval_and_retention_constants_positive() {
-        assert!(DEFAULT_INTERVAL_HOURS > 0);
-        assert!(DEFAULT_RETENTION_DAYS > 0);
-    }
-
-    #[test]
-    fn retention_days_is_thirty() {
-        assert_eq!(DEFAULT_RETENTION_DAYS, 30);
-    }
-
-    #[test]
-    fn interval_hours_is_positive() {
-        assert!(DEFAULT_INTERVAL_HOURS > 0);
-    }
-
-    #[test]
-    fn default_interval_is_six_hours() {
-        assert_eq!(DEFAULT_INTERVAL_HOURS, 6);
-    }
-
-    #[test]
-    fn retention_days_default_is_thirty() {
-        assert_eq!(DEFAULT_RETENTION_DAYS, 30);
-    }
-
-    #[test]
-    fn interval_hours_default_is_six() {
-        assert_eq!(DEFAULT_INTERVAL_HOURS, 6);
-    }
-
-    #[test]
-    fn retention_days_in_hours_exceeds_interval() {
-        assert!(DEFAULT_RETENTION_DAYS as u64 * 24 > DEFAULT_INTERVAL_HOURS);
-    }
-
-    #[test]
-    fn retention_constant_type_is_i32() {
-        // Ensures DEFAULT_RETENTION_DAYS fits in the sqlx BIND type (i32).
-        let _: i32 = DEFAULT_RETENTION_DAYS;
-        assert!(DEFAULT_RETENTION_DAYS > 0);
-    }
-
-    #[test]
-    fn interval_hours_fits_u64() {
-        let _: u64 = DEFAULT_INTERVAL_HOURS;
-        assert!(DEFAULT_INTERVAL_HOURS < u64::MAX);
-    }
-
-    #[test]
-    fn retention_days_exceeds_interval_hours() {
-        assert!((DEFAULT_RETENTION_DAYS as u64) * 24 > DEFAULT_INTERVAL_HOURS);
-    }
-
-    #[test]
-    fn default_retention_days_not_equal_to_interval_hours() {
-        assert_ne!(DEFAULT_RETENTION_DAYS as u64, DEFAULT_INTERVAL_HOURS);
-    }
-
-    #[test]
-    fn retention_days_constant_is_positive() {
-        assert!(DEFAULT_RETENTION_DAYS > 0);
-    }
-
-    #[test]
-    fn interval_hours_product_with_retention_is_large() {
-        let product = DEFAULT_RETENTION_DAYS as u64 * DEFAULT_INTERVAL_HOURS;
-        assert!(product > 100);
-    }
-
-    #[test]
-    fn retention_days_multiplied_by_24_exceeds_interval_hours() {
-        assert!((DEFAULT_RETENTION_DAYS as u64 * 24) > DEFAULT_INTERVAL_HOURS);
-    }
-
-    #[test]
-    fn retention_days_is_nonzero() {
-        assert!(DEFAULT_RETENTION_DAYS > 0);
-    }
-}
+// Compile-time invariants on the GC defaults (replaces the generation-era
+// runtime const-assertion tests, which clippy flags as constant assertions).
+const _: () = {
+    assert!(DEFAULT_RETENTION_DAYS == 30);
+    assert!(DEFAULT_INTERVAL_HOURS == 6);
+    // Retention window must dwarf the GC cadence so offline clients catch up.
+    assert!(DEFAULT_INTERVAL_HOURS < DEFAULT_RETENTION_DAYS as u64 * 24);
+    // 6h cadence aligns to day boundaries.
+    assert!(24 % DEFAULT_INTERVAL_HOURS == 0);
+};

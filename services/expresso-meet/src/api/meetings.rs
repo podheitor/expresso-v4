@@ -1648,6 +1648,7 @@ mod tests {
         assert!(valid_room_name(&s));
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn caps_are_sane() {
         assert!(MAX_TITLE_BYTES >= 50);
@@ -1680,6 +1681,7 @@ mod tests {
         assert!(valid_room_name("team-weekly-sync"));
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_title_bytes_is_at_least_100() {
         assert!(MAX_TITLE_BYTES >= 100);
@@ -1690,6 +1692,7 @@ mod tests {
         assert!(!valid_room_name("user@domain"));
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_room_name_bytes_is_positive() {
         assert!(MAX_ROOM_NAME_BYTES > 0);
@@ -1705,6 +1708,7 @@ mod tests {
         assert!(valid_room_name("my_room_2026"));
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_password_bytes_is_positive() {
         assert!(MAX_PASSWORD_BYTES > 0);
@@ -1715,16 +1719,19 @@ mod tests {
         assert!(!valid_room_name("room\0name"));
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_password_bytes_is_at_least_8() {
         assert!(MAX_PASSWORD_BYTES >= 8);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_display_name_bytes_is_positive() {
         assert!(MAX_DISPLAY_NAME_BYTES > 0);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_display_name_bytes_is_at_least_32() {
         assert!(MAX_DISPLAY_NAME_BYTES >= 32);
@@ -1735,16 +1742,19 @@ mod tests {
         assert_eq!(MAX_EMAIL_BYTES, 254);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_email_bytes_exceeds_max_room_name_bytes() {
         assert!(MAX_EMAIL_BYTES > MAX_ROOM_NAME_BYTES);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_room_name_bytes_less_than_max_title_bytes() {
         assert!(MAX_ROOM_NAME_BYTES < MAX_TITLE_BYTES);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_invite_len_is_at_least_10() {
         assert!(MAX_INVITE_LEN >= 10);

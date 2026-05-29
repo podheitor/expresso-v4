@@ -3299,6 +3299,7 @@ struct EventsByRangeMoveQuery {
     dst: Uuid,
 }
 
+#[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 /// PATCH /api/v1/calendars/:cal_id/events-by-range/move?after=&before=&dst=
 /// — bulk-move dos eventos cujo `dtstart` ∈ `[after, before)` no calendar
 /// `cal_id` (origem) para o calendar `dst` (destino, mesmo tenant) (sprint
@@ -7911,6 +7912,7 @@ async fn touch_master(
     })))
 }
 
+#[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 /// Reescreve apenas o DTSTAMP do bloco VEVENT MASTER (UID==`uid_master` E
 /// SEM linha RECURRENCE-ID). Outros blocos VEVENT (overrides com mesmo UID
 /// + RECURRENCE-ID) preservados intactos. Se DTSTAMP não existe no master,
@@ -8159,6 +8161,7 @@ struct TouchAllQuery {
     dry: Option<bool>,
 }
 
+#[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 /// POST /api/v1/calendars/:cal_id/events/:id/touch-all — refresca o
 /// DTSTAMP do MASTER + de TODOS os overrides (RECURRENCE-ID) num único
 /// write (sprint #508, combinação do #506 + #507). Descobre overrides
@@ -8919,6 +8922,7 @@ struct ExdatesPreviewQuery {
     /// rica mesmo sem `parsed_utc` (kind/tzid/params). Default
     /// `summary` (mesmo que ausente) preserva 100% shape do #525.
     detail: Option<String>,
+    #[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
     /// `?top_tzid=N` (sprint #532, follow-on do #530) trunca o
     /// `tzid_breakdown` em `/exdates-preview/stats` pra apenas as N TZIDs
     /// mais frequentes (sort by count desc, ties broken por insertion

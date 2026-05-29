@@ -322,6 +322,7 @@ mod tests {
         assert_eq!(extract_size_param("<a@b> SIZE=10.5"), None);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_msg_bytes_exceeds_one_mib() {
         assert!(super::MAX_MSG_BYTES > 1024 * 1024);
@@ -340,11 +341,13 @@ mod tests {
         );
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_rcpts_is_positive() {
         assert!(super::MAX_RCPTS > 0);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_msg_bytes_exceeds_max_rcpts() {
         assert!(super::MAX_MSG_BYTES > super::MAX_RCPTS);

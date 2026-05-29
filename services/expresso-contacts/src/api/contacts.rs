@@ -275,6 +275,7 @@ async fn import_vcf(
         .unwrap())
 }
 
+#[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 /// POST /api/v1/contacts/import — bulk import via multipart CSV.
 ///
 /// Multipart fields:
@@ -582,21 +583,25 @@ mod tests {
         assert_eq!(MAX_IMPORT_VCF_BYTES, 4 * 1024 * 1024);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn contact_cap_smaller_than_import_cap() {
         assert!(MAX_CONTACT_VCARD_BYTES < MAX_IMPORT_VCF_BYTES);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_contact_vcard_bytes_is_nonzero() {
         assert!(MAX_CONTACT_VCARD_BYTES > 0);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn import_cap_is_larger_than_single_contact_cap() {
         assert!(MAX_IMPORT_VCF_BYTES > MAX_CONTACT_VCARD_BYTES);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_contact_vcard_bytes_less_than_import_cap() {
         assert!(MAX_CONTACT_VCARD_BYTES < MAX_IMPORT_VCF_BYTES);
@@ -632,6 +637,7 @@ mod tests {
         assert!(validate_vcard("\t\n\r  ", MAX_CONTACT_VCARD_BYTES).is_err());
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_import_vcf_bytes_is_nonzero() {
         assert!(MAX_IMPORT_VCF_BYTES > 0);

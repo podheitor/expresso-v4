@@ -424,6 +424,7 @@ if header :contains "Subject" "[spam]" {
         assert!(r.enabled);
     }
 
+    #[allow(clippy::assertions_on_constants)]
     #[test]
     fn max_sieve_script_bytes_is_less_than_max_test_message_bytes() {
         assert!(MAX_SIEVE_SCRIPT_BYTES < MAX_TEST_MESSAGE_BYTES);

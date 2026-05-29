@@ -437,6 +437,7 @@ async fn put_file_impl(
         .into_response())
 }
 
+#[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 /// POST /wopi/files/:id — Lock/Unlock/RefreshLock/GetLock/UnlockAndRelock.
 ///
 /// Dispatches on `X-WOPI-Override`. Lock semantics follow MS-WOPI:

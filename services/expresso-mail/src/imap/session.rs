@@ -3345,6 +3345,7 @@ fn cmd_unselect(
     vec![ok_tagged(tag, None, "UNSELECT completed")]
 }
 
+#[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 /// IDLE RFC 2177: envia "+ idling", espera DONE do cliente.
 /// Enquanto aguarda, a cada 28s verifica se message_count mudou e envia
 /// * N EXISTS se houver novos emails — elimina o polling NOOP do cliente.
@@ -3452,6 +3453,7 @@ where
     }
 }
 
+#[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 /// Busca os bytes do corpo da mensagem a partir do body_path armazenado no DB.
 /// - `s3://bucket/key` → lê via ObjectStore (MinIO/S3)
 /// - `/path/to/file`   → lê via sistema de arquivos (dev/fallback)

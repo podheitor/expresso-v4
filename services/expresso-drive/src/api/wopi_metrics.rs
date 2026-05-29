@@ -9,6 +9,8 @@
 //! Cardinality is capped: handlers always pass one of the canonical labels
 //! above. Unknown `X-WOPI-Override` values collapse to `op="other"`.
 
+#![allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
+
 use once_cell::sync::Lazy;
 use prometheus::IntCounterVec;
 

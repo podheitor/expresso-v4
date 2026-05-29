@@ -1924,6 +1924,7 @@ struct MergeArchiveTagBody {
     dst: String,
 }
 
+#[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 /// POST /api/v1/compliance/archive/tags/merge — funde duas archive tags do user
 /// (sprint #483, paralelo de drive merge #433/#477). Body `{src, dst}`. Para
 /// archives que têm AMBAS as tags, apaga `src` (preserva `dst`); para archives
