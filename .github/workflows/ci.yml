@@ -48,6 +48,12 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # .cargo/config.toml pins `-fuse-ld=mold` for fast local builds; the
+      # runner image has no mold, so install it or every cargo step fails at
+      # the first link with "cc: unrecognized -fuse-ld=mold".
+      - name: Install mold linker
+        uses: rui314/setup-mold@v1
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
@@ -123,5 +129,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # See note in the `rust` job: .cargo/config.toml requires mold.
+      - uses: rui314/setup-mold@v1
       - uses: Swatinem/rust-cache@v2
       - run: cargo doc --workspace --no-deps --all-features

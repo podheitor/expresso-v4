@@ -16,6 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # .cargo/config.toml pins -fuse-ld=mold; install it so cargo install links.
+      - uses: rui314/setup-mold@v1
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked --quiet
@@ -41,6 +43,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri, rust-src
+      - uses: rui314/setup-mold@v1
       - uses: Swatinem/rust-cache@v2
         with:
           key: miri
@@ -60,6 +63,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+      - uses: rui314/setup-mold@v1
       - uses: Swatinem/rust-cache@v2
         with:
           key: fuzz
