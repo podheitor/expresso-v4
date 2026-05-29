@@ -25,6 +25,7 @@ pub struct ScanResult {
 }
 
 impl ScanResult {
+    #[allow(dead_code)] // public API convenience; not yet called internally
     pub fn is_clean(&self) -> bool {
         self.virus.is_none()
             && self

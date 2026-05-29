@@ -8,7 +8,6 @@ mod lockout;
 mod metrics;
 mod session;
 
-pub use metrics::init as init_metrics;
 
 use std::{net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;

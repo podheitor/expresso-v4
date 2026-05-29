@@ -26,12 +26,11 @@ use imap_codec::{
         flag::{Flag, FlagFetch, FlagNameAttribute, FlagPerm, StoreResponse},
         mailbox::{Mailbox as ImapMailbox, ListMailbox},
         response::{
-            Bye, Capability, CapabilityOther, Code, Data, Greeting, Response, Status, StatusBody,
+            Bye, Capability, Code, Data, Greeting, Response, Status, StatusBody,
             StatusKind, Tagged,
         },
         status::{StatusDataItem, StatusDataItemName},
         extensions::binary::LiteralOrLiteral8,
-        extensions::condstore_qresync::*,
         extensions::namespace::Namespace,
         extensions::uidplus::{UidElement, UidSet},
         search::SearchKey,
@@ -138,7 +137,7 @@ where
                     // pois pode precisar de um round-trip extra para leitura de dados
                     // quando o cliente não usa SASL-IR (initial_response == None).
                     if let CommandBody::Authenticate { mechanism, initial_response } = &cmd.body {
-                        if *sess != SessionState::NotAuthenticated {
+                        if sess != SessionState::NotAuthenticated {
                             let resp = no_tagged(cmd.tag.clone(), "already authenticated");
                             writer.write_all(&resp_codec.encode(&resp).dump()).await?;
                             IMAP_COMMANDS_TOTAL.with_label_values(&["AUTHENTICATE", "no"]).inc();
@@ -334,7 +333,7 @@ async fn dispatch(
                         tag,
                         body: StatusBody {
                             kind: StatusKind::No,
-                            code: Some(Code::BadCharset(None)),
+                            code: Some(Code::BadCharset { allowed: vec![] }),
                             text: Text::try_from("unsupported charset — use UTF-8 or US-ASCII").unwrap(),
                         },
                     }))];
@@ -430,7 +429,7 @@ async fn dispatch(
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            let enabled: Vec<CapabilityEnable<'static>> = capabilities.iter().filter_map(|c| {
+            let enabled: Vec<CapabilityEnable<'static>> = capabilities.as_ref().iter().filter_map(|c| {
                 match c {
                     CapabilityEnable::CondStore => Some(CapabilityEnable::CondStore),
                     _ => None,
@@ -505,13 +504,15 @@ fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
         Capability::Auth(AuthMechanism::Plain),
         Capability::Idle,
         Capability::UidPlus,
-        Capability::Other(CapabilityOther(Atom::try_from("UNSELECT").unwrap())),
-        Capability::Other(CapabilityOther(Atom::try_from("MOVE").unwrap())),
-        Capability::Other(CapabilityOther(Atom::try_from("LITERAL+").unwrap())),
-        Capability::Other(CapabilityOther(Atom::try_from("ENABLE").unwrap())),
-        Capability::Other(CapabilityOther(Atom::try_from("SORT").unwrap())),
-        Capability::Other(CapabilityOther(Atom::try_from("THREAD=ORDEREDSUBJECT").unwrap())),
-        Capability::Other(CapabilityOther(Atom::try_from("STATUS=SIZE").unwrap())),
+        // `CapabilityOther`'s field is private in imap-types 2.0; build via the
+        // `From<Atom>` impl, which classifies the atom into the right variant.
+        Capability::from(Atom::try_from("UNSELECT").unwrap()),
+        Capability::from(Atom::try_from("MOVE").unwrap()),
+        Capability::from(Atom::try_from("LITERAL+").unwrap()),
+        Capability::from(Atom::try_from("ENABLE").unwrap()),
+        Capability::from(Atom::try_from("SORT").unwrap()),
+        Capability::from(Atom::try_from("THREAD=ORDEREDSUBJECT").unwrap()),
+        // STATUS=SIZE dropped: imap-types 2.0.0-alpha.7 has no StatusDataItem::Size.
         Capability::Namespace,
         Capability::CondStore,
         Capability::QResync,
@@ -671,7 +672,8 @@ fn list_mailbox_pattern(wc: &ListMailbox<'_>) -> String {
     match wc {
         ListMailbox::Token(lcs) => String::from_utf8_lossy(lcs.as_ref()).into_owned(),
         ListMailbox::String(is) => match is {
-            IString::Quoted(q)   => String::from_utf8_lossy(q.as_ref()).into_owned(),
+            // Quoted::as_ref() yields &str in imap-types 2.0; Literal yields &[u8].
+            IString::Quoted(q)   => q.as_ref().to_string(),
             IString::Literal(l)  => String::from_utf8_lossy(l.as_ref()).into_owned(),
         },
     }
@@ -957,7 +959,9 @@ async fn cmd_select(
                     Flag::Flagged,
                     Flag::Deleted,
                     Flag::Draft,
-                    Flag::Recent, // RFC 3501 §2.3.2: server-managed system flag
+                    // \Recent is server-managed and not constructible in
+                    // imap-types 2.0; it is reported via the separate RECENT
+                    // response, not in the FLAGS list.
                 ])),
                 Response::Data(Data::Exists(exists)),
                 Response::Data(Data::Recent(0)),
@@ -1038,26 +1042,10 @@ async fn cmd_status(
     let uid_validity = NonZeroU32::new(uid_validity_raw as u32).unwrap_or(NonZeroU32::MIN);
     let uid_next     = NonZeroU32::new(next_uid_raw    as u32).unwrap_or(NonZeroU32::MIN);
 
-    // Fetch SIZE only when client asked for it — avoids the aggregate on every STATUS.
-    let needs_size     = item_names.iter().any(|n| matches!(n, StatusDataItemName::Size));
+    // STATUS SIZE (RFC 8438) is unsupported: imap-types 2.0.0-alpha.7 exposes no
+    // StatusDataItemName::Size / StatusDataItem::Size, so it is neither requested
+    // nor answered. Re-add when the crate gains the variant.
     let needs_modseq   = item_names.iter().any(|n| matches!(n, StatusDataItemName::HighestModSeq));
-
-    let mailbox_size: u64 = if needs_size {
-        sqlx::query_scalar(
-            "SELECT COALESCE(SUM(m.size_bytes), 0) \
-             FROM messages m \
-             JOIN mailboxes mb ON mb.id = m.mailbox_id \
-             WHERE mb.user_id = $1 AND mb.folder_name = $2 AND m.tenant_id = $3",
-        )
-        .bind(uid)
-        .bind(&mbox_name)
-        .bind(tenant_id)
-        .fetch_one(state.db())
-        .await
-        .unwrap_or(0i64) as u64
-    } else {
-        0
-    };
 
     let highest_modseq: u64 = if needs_modseq {
         sqlx::query_scalar(
@@ -1084,7 +1072,6 @@ async fn cmd_status(
             StatusDataItemName::UidNext       => StatusDataItem::UidNext(uid_next),
             StatusDataItemName::UidValidity   => StatusDataItem::UidValidity(uid_validity),
             StatusDataItemName::Unseen        => StatusDataItem::Unseen(unseen_count as u32),
-            StatusDataItemName::Size          => StatusDataItem::Size(mailbox_size),
             StatusDataItemName::HighestModSeq => StatusDataItem::HighestModSeq(highest_modseq),
             // Deleted/DeletedStorage not tracked — skip silently.
             _ => continue,
@@ -1184,7 +1171,7 @@ async fn cmd_search(
     }
 
     vec![
-        Response::Data(Data::Search(matches)),
+        Response::Data(Data::Search(matches, None)),
         ok_tagged(tag, None, "SEARCH completed"),
     ]
 }
@@ -1199,7 +1186,7 @@ fn search_key_needs_body(key: &SearchKey<'_>) -> bool {
         SearchKey::Text(_) | SearchKey::Body(_) => true,
         SearchKey::Not(inner) => search_key_needs_body(inner.as_ref()),
         SearchKey::Or(a, b) => search_key_needs_body(a.as_ref()) || search_key_needs_body(b.as_ref()),
-        SearchKey::And(inner) => inner.iter().any(search_key_needs_body),
+        SearchKey::And(inner) => inner.as_ref().iter().any(search_key_needs_body),
         _ => false,
     }
 }
@@ -1328,9 +1315,10 @@ fn search_key_matches(
                 }
             }
         }
-        // Keyword / Unkeyword — match against the flags array using flag_to_str.
-        SearchKey::Keyword(kw) => has(flag_to_str(kw)),
-        SearchKey::Unkeyword(kw) => !has(flag_to_str(kw)),
+        // Keyword / Unkeyword carry an Atom (the bare keyword) in imap-types 2.0;
+        // match it verbatim against the message's stored flags.
+        SearchKey::Keyword(kw) => has(kw.as_ref()),
+        SearchKey::Unkeyword(kw) => !has(kw.as_ref()),
         // SequenceSet — RFC 3501 §6.4.4: match by seq number (* resolves to exists).
         SearchKey::SequenceSet(seq_set) => {
             let ranges = sequence_ranges(seq_set, exists);
@@ -1347,7 +1335,7 @@ fn search_key_matches(
             search_key_matches(a.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists, body_bytes)
                 || search_key_matches(b.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists, body_bytes)
         }
-        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists, body_bytes)),
+        SearchKey::And(inner) => inner.as_ref().iter().all(|k| search_key_matches(k, flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists, body_bytes)),
         // Remaining criteria (Bcc) — conservative true (not stored in DB).
         _ => true,
     }
@@ -1374,7 +1362,7 @@ async fn cmd_append(
     // Extract raw bytes from either Literal or Literal8 (BINARY extension).
     let raw_bytes: &[u8] = match message {
         LiteralOrLiteral8::Literal(l)  => l.as_ref(),
-        LiteralOrLiteral8::Literal8(l) => l.as_ref(),
+        LiteralOrLiteral8::Literal8(l) => l.data.as_ref(),
     };
 
     let flag_strs: Vec<String> = flags.iter().map(|f| flag_to_str(f).to_owned()).collect();
@@ -1597,7 +1585,7 @@ async fn cmd_fetch(
                         Some(Section::Text(_))   => 2u8,
                         _                        => 0u8,
                     };
-                    partial_reqs.push((tag, *offset, *count));
+                    partial_reqs.push((tag, *offset, count.get()));
                     continue;
                 }
                 match section {
@@ -1617,13 +1605,13 @@ async fn cmd_fetch(
                         part_text_reqs.push((part_num, nums_ref.to_vec()));
                     }
                     Some(Section::HeaderFields(_, fields)) => {
-                        let names_lc: Vec<String> = fields.iter()
+                        let names_lc: Vec<String> = fields.as_ref().iter()
                             .map(|f| astring_to_string(f).to_ascii_lowercase())
                             .collect();
                         header_fields_reqs.push((names_lc, false));
                     }
                     Some(Section::HeaderFieldsNot(_, fields)) => {
-                        let names_lc: Vec<String> = fields.iter()
+                        let names_lc: Vec<String> = fields.as_ref().iter()
                             .map(|f| astring_to_string(f).to_ascii_lowercase())
                             .collect();
                         header_fields_reqs.push((names_lc, true));
@@ -1646,7 +1634,8 @@ async fn cmd_fetch(
                         let nums_vec: Vec<NonZeroU32> = nums_ref.to_vec();
                         part_mime_reqs.push((part_num, nums_vec));
                     }
-                    _ => want_full_body = true,
+                    // All section kinds (incl. None/Header(None)/Text(None)) are
+                    // matched above; no catch-all is needed.
                 }
             }
         }
@@ -2460,7 +2449,7 @@ async fn cmd_sort(
     }).collect();
 
     vec![
-        Response::Data(Data::Sort(nums)),
+        Response::Data(Data::Sort(nums, None)),
         ok_tagged(tag, None, "SORT completed"),
     ]
 }
@@ -2536,11 +2525,13 @@ async fn cmd_thread(
         }
         // Thread::Members { prefix: Vec<NonZeroU32>, answers: Option<VecN<Thread,2>> }
         // For ORDEREDSUBJECT: root as prefix=[root_n], siblings as nested answers.
+        use imap_codec::imap_types::core::VecN;
         let sibling_threads: Vec<Thread> = siblings.into_iter().map(|n| {
-            Thread::Members { prefix: vec![n], answers: None }
+            // prefix is a VecN<_, 1> (min length 1) in imap-types 2.0.
+            Thread::Members { prefix: VecN::from([n]), answers: None }
         }).collect();
-        let answers = imap_codec::imap_types::core::VecN::try_from(sibling_threads).ok();
-        threads.push(Thread::Members { prefix: vec![root_n], answers });
+        let answers = VecN::try_from(sibling_threads).ok();
+        threads.push(Thread::Members { prefix: VecN::from([root_n]), answers });
     }
 
     vec![
@@ -2990,7 +2981,7 @@ where
                 }
                 if ticks >= TIMEOUT_TICKS {
                     // 30-minute hard limit — BYE and close.
-                    writer.write_all(b"* BYE IDLE timeout — reconnect\r\n").await?;
+                    writer.write_all(b"* BYE IDLE timeout - reconnect\r\n").await?;
                     return Ok(());
                 }
                 if let (Some(sel), Some(tid)) = (selected.as_mut(), tenant_id) {
@@ -3107,7 +3098,7 @@ fn mime_split_parts(raw: &[u8]) -> Vec<Vec<u8>> {
 
     // Delimiters: "--boundary" (open) and "--boundary--" (close).
     let delim      = format!("--{boundary}");
-    let delim_end  = format!("--{boundary}--");
+    let _delim_end = format!("--{boundary}--");
 
     let mut parts: Vec<Vec<u8>> = Vec::new();
     let mut remaining = body;
@@ -3182,6 +3173,9 @@ fn mime_navigate(raw: &[u8], path: &[u32]) -> Option<Vec<u8>> {
 
 /// Return body bytes of the MIME part identified by `path` (1-based numbers).
 /// For non-multipart messages, path [1] = body text (RFC 3501 §6.4.5).
+// Superseded by the `_path` variant for nested addressing; retained (and tested)
+// for the flat single-part-number case.
+#[allow(dead_code)]
 fn mime_part_body(raw: &[u8], part_num: u32) -> Vec<u8> {
     mime_part_body_path(raw, &[part_num])
 }
@@ -3205,6 +3199,7 @@ fn mime_part_body_path(raw: &[u8], path: &[u32]) -> Vec<u8> {
 /// Return MIME header bytes (Content-Type, Content-Transfer-Encoding, etc.)
 /// of the part identified by `part_num` (1-based). For non-multipart, extracts
 /// from the message header (Content-Type etc.).
+#[allow(dead_code)] // superseded by the `_path` variant; retained for the flat case
 fn mime_part_mime_headers(raw: &[u8], part_num: u32) -> Vec<u8> {
     mime_part_mime_headers_path(raw, &[part_num])
 }

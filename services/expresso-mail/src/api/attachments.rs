@@ -15,7 +15,7 @@ use axum::{
 };
 use expresso_core::begin_tenant_tx;
 use mail_parser::{MessageParser, MimeHeaders, PartType};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{api::context::RequestCtx, error::{MailError, Result}, state::AppState};

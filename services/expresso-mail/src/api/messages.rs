@@ -9,7 +9,7 @@
 
 use axum::{
     Router,
-    routing::{get, delete, head, patch, post},
+    routing::{get, delete, patch, post},
     extract::{State, Path, Query},
     response::{IntoResponse, Response},
     Json, http::{StatusCode, header, HeaderMap, HeaderValue},
@@ -1480,7 +1480,7 @@ async fn bulk_action(
             .bind(folder)
             .fetch_optional(&mut *tx)
             .await?;
-            let dst_id = mbox.ok_or_else(|| MailError::NotFound("folder not found".into()))?;
+            let dst_id = mbox.ok_or_else(|| MailError::FolderNotFound { folder: folder.to_string() })?;
             let res = sqlx::query(
                 "UPDATE messages SET mailbox_id = $1 \
                  WHERE id = ANY($2) AND tenant_id = $3 \
@@ -1609,6 +1609,8 @@ async fn bulk_delete(
     // Fire-and-forget: remove deleted messages from search index.
     let search_url   = state.cfg().search_url.clone();
     let search_token = state.cfg().search_token.clone();
+    // Capture the count before the fire-and-forget task moves `deleted`.
+    let affected = deleted.len() as u64;
     if !search_url.is_empty() && !deleted.is_empty() {
         tokio::spawn(async move {
             let client = reqwest::Client::new();
@@ -1623,7 +1625,7 @@ async fn bulk_delete(
         });
     }
 
-    Ok(Json(BulkResult { affected: deleted.len() as u64 }))
+    Ok(Json(BulkResult { affected }))
 }
 
 /// POST /api/v1/mail/messages/:id/read-receipt

@@ -784,7 +784,9 @@ async fn delete_folder(
 ) -> Result<StatusCode> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
-    let special: Option<String> = sqlx::query_scalar(
+    // Outer Option = row presence (None → folder doesn't exist); inner Option =
+    // the nullable special_use column (Some → system folder, None → plain folder).
+    let special: Option<Option<String>> = sqlx::query_scalar(
         "SELECT special_use FROM mailboxes WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3",
     )
     .bind(ctx.user_id)
