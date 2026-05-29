@@ -50,7 +50,7 @@ async fn list_presets(
     State(state): State<AppState>,
     ctx:          RequestCtx,
 ) -> Result<Json<Vec<FlagPreset>>> {
-    let pool = state.db_or_unavailable()?;
+    let pool = state.db();
     let rows: Vec<FlagPreset> = sqlx::query_as(
         "SELECT id, tenant_id, user_id, name, flags, created_at, updated_at \
          FROM mail_flag_presets \
@@ -70,7 +70,7 @@ async fn create_preset(
     Json(body):   Json<PresetBody>,
 ) -> Result<(StatusCode, Json<FlagPreset>)> {
     validate_preset(&body)?;
-    let pool = state.db_or_unavailable()?;
+    let pool = state.db();
     let row: FlagPreset = sqlx::query_as(
         "INSERT INTO mail_flag_presets (tenant_id, user_id, name, flags) \
          VALUES ($1, $2, $3, $4) \
@@ -90,7 +90,7 @@ async fn get_preset(
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
 ) -> Result<Json<FlagPreset>> {
-    let pool = state.db_or_unavailable()?;
+    let pool = state.db();
     let row: Option<FlagPreset> = sqlx::query_as(
         "SELECT id, tenant_id, user_id, name, flags, created_at, updated_at \
          FROM mail_flag_presets \
@@ -111,7 +111,7 @@ async fn update_preset(
     Json(body):   Json<PresetBody>,
 ) -> Result<Json<FlagPreset>> {
     validate_preset(&body)?;
-    let pool = state.db_or_unavailable()?;
+    let pool = state.db();
     let row: Option<FlagPreset> = sqlx::query_as(
         "UPDATE mail_flag_presets \
             SET name = $4, flags = $5, updated_at = now() \
@@ -133,7 +133,7 @@ async fn delete_preset(
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
 ) -> Result<StatusCode> {
-    let pool = state.db_or_unavailable()?;
+    let pool = state.db();
     let r = sqlx::query(
         "DELETE FROM mail_flag_presets \
          WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
