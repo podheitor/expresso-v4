@@ -8,11 +8,14 @@
 //! emitidos pelo realm carregam tenant via `iss` claim — mapper custom
 //! `tenant_id` removido (era redundante).
 //!
+//! `--realm` MUST be the tenant UUID (realm name = tenant_id; tokens carry it
+//! via `iss`). A human-readable realm name would 401 every request.
+//!
 //! Uso típico:
 //! ```bash
 //! expresso-tenant-provision \
 //!   --kc-url http://kc:8080 --kc-admin-user admin --kc-admin-pass $KC_PASS \
-//!   --realm tenant-acme --display "ACME Ltda" \
+//!   --realm 40894092-7ec5-4693-94f0-afb1c7fb51c4 --display "ACME Ltda" \
 //!   --admin-email admin@acme.example --admin-password $INIT_PASS \
 //!   --base-redirect https://acme.expresso.local/*
 //! ```
@@ -548,12 +551,34 @@ async fn provision(c: &Client, cli: &Cli, tok: &str) -> Result<Summary> {
     Ok(summary)
 }
 
+/// The realm name IS the tenant id (realm-per-tenant model), and tenant ids
+/// are UUIDs throughout the platform (`tenant_id: Uuid` in core/auth). A realm
+/// named with anything else makes `iss=.../realms/<name>` un-parseable as a
+/// tenant, so every request 401s with `MissingClaim("tenant_id")`. Reject
+/// non-UUID realm names up front instead of provisioning a broken tenant.
+fn validate_realm_is_uuid(realm: &str) -> Result<()> {
+    let ok = realm.len() == 36
+        && realm.as_bytes().iter().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => *b == b'-',
+            _ => b.is_ascii_hexdigit(),
+        });
+    if ok {
+        Ok(())
+    } else {
+        bail!(
+            "--realm must be the tenant UUID (8-4-4-4-12 hex), got {realm:?}; \
+             realm name = tenant_id in the realm-per-tenant model"
+        )
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let cli = Cli::parse();
+    validate_realm_is_uuid(&cli.realm)?;
     let c = Client::new();
     // dry-run ainda precisa do token p/ GETs de existência (reads-only)
     let tok = admin_token(&c, &cli).await.context("admin token")?;
@@ -567,6 +592,28 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_realm_accepts_uuid() {
+        assert!(validate_realm_is_uuid("40894092-7ec5-4693-94f0-afb1c7fb51c4").is_ok());
+        assert!(validate_realm_is_uuid("00000000-0000-0000-0000-000000000000").is_ok());
+    }
+
+    #[test]
+    fn validate_realm_rejects_human_name() {
+        assert!(validate_realm_is_uuid("tenant-acme").is_err());
+        assert!(validate_realm_is_uuid("acme").is_err());
+        assert!(validate_realm_is_uuid("").is_err());
+    }
+
+    #[test]
+    fn validate_realm_rejects_wrong_shape() {
+        // right length, wrong separators / non-hex
+        assert!(validate_realm_is_uuid("40894092x7ec5x4693x94f0xafb1c7fb51c4").is_err());
+        assert!(validate_realm_is_uuid("ZZ894092-7ec5-4693-94f0-afb1c7fb51c4").is_err());
+        // missing one char
+        assert!(validate_realm_is_uuid("40894092-7ec5-4693-94f0-afb1c7fb51c").is_err());
+    }
 
     #[test]
     fn realm_body_has_security_defaults() {
