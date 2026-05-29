@@ -3,25 +3,26 @@
 The target is **CCN ≤ 25** (per `CLAUDE.md`). The debloat baseline restore left
 21 functions above that. Per the project policy for legacy code — *"start at the
 current max, tighten by 5 each refactor"* — the CI `lizard` gate is currently
-currently set to **`-C 64`** and should keep ratcheting down: 64 → 59 → … → 25.
+currently set to **`-C 59`** and should keep ratcheting down: 59 → 54 → … → 25.
 
-**Progress (2026-05-29):** gate lowered 72 → 64.
+**Progress (2026-05-29):** gate lowered 72 → 64 → 59.
 - `cmd_fetch` 72 → **48** (commit 2a0d9181): extracted the FETCH data-item
   parser into `fetch_plan()`.
-- `handle_tls` 72 → **64**: extracted the shared AUTH PLAIN/LOGIN tail into
-  `finish_smtp_auth()`.
-Both verified behaviour-preserving (573 mail tests pass).
+- `handle_tls` 72 → 64 (`finish_smtp_auth()`) → **57** (`finalize_data_message()`
+  — the end-of-DATA DKIM-sign+ingest+respond+reset).
+All verified behaviour-preserving (573 mail tests pass).
 
-Next gate-blocker is `handle_tls` again at 64 (the SMTP verb-dispatch loop) —
-extract the DATA-mode / MAIL FROM / RCPT TO branches next to reach 59.
+Next gate-blocker is `handle` in `services/expresso-mail/src/smtp/session.rs:65`
+(CCN 59 — the plaintext SMTP command loop, structurally similar to handle_tls).
+Extract its DATA-finalize / AUTH branches the same way to reach 54.
 
 Run `find services libs -name '*.rs' -not -path '*/target/*' | xargs lizard -l rust -C 25 -w`
 to see the current offenders. Highest remaining:
 
 | CCN | Function | File |
 |----:|----------|------|
-| 64 | `handle_tls` | services/expresso-mail/src/smtp/submission.rs:220 (verb dispatch loop) |
-| 59 | `handle` | services/expresso-mail/src/smtp/session.rs:65 |
+| 59 | `handle` | services/expresso-mail/src/smtp/session.rs:65 (next gate-blocker) |
+| 57 | `handle_tls` | services/expresso-mail/src/smtp/submission.rs:220 (was 72) |
 | 49 | `overrides_stats` | services/expresso-calendar/src/api/events.rs:6674 |
 | 48 | `cmd_fetch` | services/expresso-mail/src/imap/session.rs (was 72) |
 | 46 | `session_loop` | services/expresso-mail/src/smtp/session.rs:309 |

@@ -242,59 +242,7 @@ where
         if data_mode {
             if line == "." {
                 data_mode = false;
-                let raw = data_buf.as_bytes();
-                info!(
-                    from = ?env.from,
-                    rcpts = ?env.rcpts,
-                    user = ?env.authed_user,
-                    bytes = raw.len(),
-                    "submission message received"
-                );
-
-                // DKIM-sign outbound if signer configured
-                let signed = if let Some(signer) = state.dkim() {
-                    match signer.sign(raw) {
-                        Ok(s) => s,
-                        Err(e) => {
-                            warn!(error = %e, "DKIM sign failed — relaying unsigned");
-                            data_buf.clone()
-                        }
-                    }
-                } else {
-                    data_buf.clone()
-                };
-
-                // Ingest (local delivery if recipient matches domain; else relay)
-                match ingest::process(state, env.from.as_deref(), &env.rcpts, signed.as_bytes())
-                    .await
-                {
-                    Ok(n) => {
-                        writer
-                            .write_all(
-                                format!("250 OK queued ({n} delivered locally)\r\n").as_bytes(),
-                            )
-                            .await?;
-                        SMTP_COMMANDS_TOTAL
-                            .with_label_values(&["DATA", "smtp587", "ok"])
-                            .inc();
-                    }
-                    Err(e) => {
-                        error!(error = %e, "submission ingest failed");
-                        writer
-                            .write_all(b"451 Requested action aborted: local error\r\n")
-                            .await?;
-                        SMTP_COMMANDS_TOTAL
-                            .with_label_values(&["DATA", "smtp587", "error"])
-                            .inc();
-                    }
-                }
-
-                data_buf.clear();
-                env = Envelope {
-                    helo: env.helo,
-                    authed_user: env.authed_user,
-                    ..Default::default()
-                };
+                finalize_data_message(state, &mut writer, &mut data_buf, &mut env).await?;
             } else {
                 // Dot-stuffing (RFC 5321 §4.5.2)
                 let line = line.strip_prefix('.').unwrap_or(&line);
@@ -581,6 +529,66 @@ where
                 .inc();
         }
     }
+    Ok(())
+}
+
+/// End-of-DATA handler: DKIM-sign the buffered message, ingest it (local
+/// delivery or relay), write the SMTP reply, then clear the buffer and reset
+/// the envelope (keeping helo + authed_user). Extracted from `handle_tls`.
+async fn finalize_data_message<W>(
+    state: &AppState,
+    writer: &mut W,
+    data_buf: &mut String,
+    env: &mut Envelope,
+) -> anyhow::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    let raw = data_buf.as_bytes();
+    info!(
+        from = ?env.from,
+        rcpts = ?env.rcpts,
+        user = ?env.authed_user,
+        bytes = raw.len(),
+        "submission message received"
+    );
+
+    // DKIM-sign outbound if signer configured.
+    let signed = match state.dkim() {
+        Some(signer) => signer.sign(raw).unwrap_or_else(|e| {
+            warn!(error = %e, "DKIM sign failed — relaying unsigned");
+            data_buf.clone()
+        }),
+        None => data_buf.clone(),
+    };
+
+    // Ingest (local delivery if recipient matches domain; else relay).
+    match ingest::process(state, env.from.as_deref(), &env.rcpts, signed.as_bytes()).await {
+        Ok(n) => {
+            writer
+                .write_all(format!("250 OK queued ({n} delivered locally)\r\n").as_bytes())
+                .await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["DATA", "smtp587", "ok"])
+                .inc();
+        }
+        Err(e) => {
+            error!(error = %e, "submission ingest failed");
+            writer
+                .write_all(b"451 Requested action aborted: local error\r\n")
+                .await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["DATA", "smtp587", "error"])
+                .inc();
+        }
+    }
+
+    data_buf.clear();
+    *env = Envelope {
+        helo: env.helo.take(),
+        authed_user: env.authed_user.take(),
+        ..Default::default()
+    };
     Ok(())
 }
 
