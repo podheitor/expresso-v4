@@ -57,6 +57,92 @@ struct Envelope {
     declared_size: Option<usize>,
 }
 
+/// End-of-DATA handler for inbound SMTP (port 25): run SPF/DKIM/DMARC checks,
+/// reject on `p=reject`, otherwise prepend auth headers and ingest, then write
+/// the SMTP reply and reset the envelope. Shared by the plaintext and post-TLS
+/// session loops. Returns Ok in all non-I/O cases (a DMARC reject is a normal
+/// outcome, not an error) so callers just `?` and move to the next command.
+async fn finalize_inbound_message<W>(
+    state: &AppState,
+    writer: &mut W,
+    data_buf: &mut String,
+    env: &mut Envelope,
+    peer: SocketAddr,
+    domain: &str,
+) -> anyhow::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    let raw = data_buf.as_bytes();
+    info!(from = ?env.from, rcpts = ?env.rcpts, bytes = raw.len(), "received message");
+
+    let helo = env.helo.as_deref().unwrap_or("unknown");
+    let mail_from = env.from.as_deref().unwrap_or("");
+    let auth = dkim::verify_inbound(peer.ip(), helo, mail_from, domain, raw).await;
+    debug!(spf = %auth.spf, dkim = %auth.dkim, dmarc = %auth.dmarc,
+           policy = ?auth.dmarc_policy, "auth results");
+
+    if auth.should_reject() {
+        warn!(from = %mail_from, spf = %auth.spf, dkim = %auth.dkim,
+              "DMARC fail + p=reject — refusing message");
+        expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL
+            .with_label_values(&["reject"])
+            .inc();
+        writer
+            .write_all(b"550 5.7.1 DMARC policy: message rejected (p=reject)\r\n")
+            .await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["DATA", "smtp25", "reject"])
+            .inc();
+        data_buf.clear();
+        *env = Envelope::default();
+        return Ok(());
+    }
+    expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL
+        .with_label_values(&["accept"])
+        .inc();
+
+    let signed_raw = format!(
+        "{}{}{}",
+        auth.to_received_spf_header(domain),
+        auth.to_header(domain),
+        data_buf
+    );
+    match ingest::process(
+        state,
+        env.from.as_deref(),
+        &env.rcpts,
+        signed_raw.as_bytes(),
+    )
+    .await
+    {
+        Ok(delivered) if delivered > 0 => {
+            writer.write_all(b"250 OK message accepted\r\n").await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["DATA", "smtp25", "ok"])
+                .inc();
+        }
+        Ok(_) => {
+            writer.write_all(b"550 No valid recipients\r\n").await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["DATA", "smtp25", "reject"])
+                .inc();
+        }
+        Err(e) => {
+            error!(error = %e, "ingest failed");
+            writer
+                .write_all(b"451 Requested action aborted: local error\r\n")
+                .await?;
+            SMTP_COMMANDS_TOTAL
+                .with_label_values(&["DATA", "smtp25", "error"])
+                .inc();
+        }
+    }
+    data_buf.clear();
+    *env = Envelope::default();
+    Ok(())
+}
+
 /// Handle a single SMTP connection.
 /// Implements the full SMTP session including optional STARTTLS upgrade.
 /// STARTTLS: when tls_cert/tls_key are configured, announces STARTTLS in EHLO
@@ -127,51 +213,8 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
         if data_mode {
             if line == "." {
                 data_mode = false;
-                let raw = data_buf.as_bytes();
-                let bytes = raw.len();
-                info!(from = ?env.from, rcpts = ?env.rcpts, bytes, "received message");
-
-                let helo = env.helo.as_deref().unwrap_or("unknown");
-                let mail_from = env.from.as_deref().unwrap_or("");
-                let auth = dkim::verify_inbound(peer.ip(), helo, mail_from, &domain, raw).await;
-                debug!(spf = %auth.spf, dkim = %auth.dkim, dmarc = %auth.dmarc,
-                       policy = ?auth.dmarc_policy, "auth results");
-
-                if auth.should_reject() {
-                    warn!(from = %mail_from, spf = %auth.spf, dkim = %auth.dkim,
-                          "DMARC fail + p=reject — refusing message");
-                    expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL
-                        .with_label_values(&["reject"]).inc();
-                    writer.write_all(b"550 5.7.1 DMARC policy: message rejected (p=reject)\r\n").await?;
-                    SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp25", "reject"]).inc();
-                    data_buf.clear();
-                    env = Envelope::default();
-                    continue;
-                }
-                expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL
-                    .with_label_values(&["accept"]).inc();
-
-                let rspf_header = auth.to_received_spf_header(&domain);
-                let auth_header = auth.to_header(&domain);
-                let signed_raw = format!("{rspf_header}{auth_header}{data_buf}");
-
-                match ingest::process(&state, env.from.as_deref(), &env.rcpts, signed_raw.as_bytes()).await {
-                    Ok(delivered) if delivered > 0 => {
-                        writer.write_all(b"250 OK message accepted\r\n").await?;
-                        SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp25", "ok"]).inc();
-                    }
-                    Ok(_) => {
-                        writer.write_all(b"550 No valid recipients\r\n").await?;
-                        SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp25", "reject"]).inc();
-                    }
-                    Err(e) => {
-                        error!(error = %e, "ingest failed");
-                        writer.write_all(b"451 Requested action aborted: local error\r\n").await?;
-                        SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp25", "error"]).inc();
-                    }
-                }
-                data_buf.clear();
-                env = Envelope::default();
+                finalize_inbound_message(&state, &mut writer, &mut data_buf, &mut env, peer, &domain)
+                    .await?;
             } else {
                 let line = line.strip_prefix('.').unwrap_or(&line);
                 if data_buf.len() + line.len() + 2 > MAX_MSG_BYTES {
@@ -333,65 +376,8 @@ where
         if data_mode {
             if line == "." {
                 data_mode = false;
-                let raw = data_buf.as_bytes();
-                info!(from = ?env.from, rcpts = ?env.rcpts, bytes = raw.len(), "received message (TLS)");
-
-                let helo = env.helo.as_deref().unwrap_or("unknown");
-                let mail_from = env.from.as_deref().unwrap_or("");
-                let auth = dkim::verify_inbound(peer.ip(), helo, mail_from, domain, raw).await;
-                if auth.should_reject() {
-                    expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL
-                        .with_label_values(&["reject"])
-                        .inc();
-                    writer
-                        .write_all(b"550 5.7.1 DMARC policy: message rejected (p=reject)\r\n")
-                        .await?;
-                    SMTP_COMMANDS_TOTAL
-                        .with_label_values(&["DATA", "smtp25", "reject"])
-                        .inc();
-                    data_buf.clear();
-                    env = Envelope::default();
-                    continue;
-                }
-                expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL
-                    .with_label_values(&["accept"])
-                    .inc();
-                let signed_raw = format!(
-                    "{}{}{}",
-                    auth.to_received_spf_header(domain),
-                    auth.to_header(domain),
-                    data_buf
-                );
-                match ingest::process(
-                    state,
-                    env.from.as_deref(),
-                    &env.rcpts,
-                    signed_raw.as_bytes(),
-                )
-                .await
-                {
-                    Ok(n) if n > 0 => {
-                        writer.write_all(b"250 OK message accepted\r\n").await?;
-                        SMTP_COMMANDS_TOTAL
-                            .with_label_values(&["DATA", "smtp25", "ok"])
-                            .inc();
-                    }
-                    Ok(_) => {
-                        writer.write_all(b"550 No valid recipients\r\n").await?;
-                        SMTP_COMMANDS_TOTAL
-                            .with_label_values(&["DATA", "smtp25", "reject"])
-                            .inc();
-                    }
-                    Err(e) => {
-                        error!(error = %e, "ingest failed");
-                        writer.write_all(b"451 Local error\r\n").await?;
-                        SMTP_COMMANDS_TOTAL
-                            .with_label_values(&["DATA", "smtp25", "error"])
-                            .inc();
-                    }
-                }
-                data_buf.clear();
-                env = Envelope::default();
+                finalize_inbound_message(state, &mut writer, &mut data_buf, &mut env, peer, domain)
+                    .await?;
             } else {
                 let l = line.strip_prefix('.').unwrap_or(&line);
                 if data_buf.len() + l.len() + 2 > MAX_MSG_BYTES {
