@@ -891,14 +891,18 @@ async fn list_threads(
             COUNT(*) FILTER (WHERE NOT (m.flags @> ARRAY['\\\\Seen']))::BIGINT AS unread_count, \
             MIN(m.subject) AS subject, \
             MAX(m.received_at) AS last_received_at, \
-            BOOL_OR(m.has_attachments) AS has_attachments \
+            BOOL_OR(m.has_attachments) AS has_attachments, \
+            COALESCE(BOOL_OR(ts.muted), false)  AS muted, \
+            COALESCE(BOOL_OR(ts.pinned), false) AS pinned \
          FROM messages m \
          JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         LEFT JOIN mail_thread_state ts \
+            ON ts.tenant_id = m.tenant_id AND ts.user_id = mb.user_id AND ts.thread_id = m.thread_id \
          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
            AND m.thread_id IS NOT NULL \
            {folder_filter} \
          GROUP BY m.thread_id \
-         ORDER BY last_received_at DESC \
+         ORDER BY pinned DESC, last_received_at DESC \
          LIMIT $3 OFFSET $4"
     );
 
@@ -920,6 +924,8 @@ async fn list_threads(
         let subject:         Option<String>         = r.try_get("subject").ok().flatten();
         let last_received_at: OffsetDateTime        = r.get("last_received_at");
         let has_attachments: bool                   = r.get("has_attachments");
+        let muted:           bool                   = r.get("muted");
+        let pinned:          bool                   = r.get("pinned");
         serde_json::json!({
             "thread_id":       thread_id,
             "message_count":   message_count,
@@ -927,6 +933,8 @@ async fn list_threads(
             "subject":         subject,
             "last_received_at": last_received_at.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
             "has_attachments": has_attachments,
+            "muted":           muted,
+            "pinned":          pinned,
         })
     }).collect();
 
