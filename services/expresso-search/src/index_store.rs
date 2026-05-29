@@ -20,7 +20,7 @@ use tantivy::{
         Field, IndexRecordOption, NumericOptions, Schema, STORED, STRING, TEXT,
     },
     snippet::SnippetGenerator,
-    HasLen, Index, IndexReader, IndexWriter, ReloadPolicy, SegmentId,
+    Index, IndexReader, IndexWriter, ReloadPolicy, SegmentId,
 };
 use tokio::sync::Mutex;
 use tracing::info;
@@ -898,7 +898,7 @@ impl IndexStore {
     /// Returns the number of files deleted. Sprint #603.
     pub async fn vacuum(&self) -> anyhow::Result<usize> {
         let future = {
-            let mut writer = self.inner.writer.lock().await;
+            let writer = self.inner.writer.lock().await;
             writer.garbage_collect_files()
         };
         let result = future.await

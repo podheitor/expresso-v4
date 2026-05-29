@@ -733,7 +733,7 @@ pub async fn segments_top_n(
 }
 
 #[derive(Debug, serde::Deserialize)]
-struct TopNQuery {
+pub struct TopNQuery {
     limit: Option<u64>,
 }
 
@@ -842,7 +842,7 @@ pub async fn segment_size_stats(
 /// Ordenados por `num_docs ASC`. Útil pra automação de merge seletivo — identifica
 /// segmentos pequenos acima de um threshold mínimo. Sprint #689.
 #[derive(Debug, serde::Deserialize)]
-struct MergeCandidatesQuery {
+pub struct MergeCandidatesQuery {
     min_docs: Option<u64>,
     max_docs: Option<u64>,
 }
@@ -880,7 +880,7 @@ pub async fn segments_merge_candidates(
 /// `{rows:[{tenant_id,doc_count}]}` ordenado por `doc_count DESC`. Ops endpoint
 /// cross-tenant sem RLS. `limit` default 20 max 200. Sprint #684.
 #[derive(Debug, serde::Deserialize)]
-struct StatsByTenantQuery {
+pub struct StatsByTenantQuery {
     limit: Option<usize>,
 }
 
@@ -921,7 +921,7 @@ pub async fn segment_doc_ratio(
 /// Ordena segmentos por num_docs ASC, calcula rank percentil. `p` aceita 0-100 (default 50 = mediana).
 /// Retorna `{p,segment_count,num_docs_at_p,disk_bytes_at_p}`. Null quando índice vazio. Sprint #713.
 #[derive(Debug, serde::Deserialize)]
-struct PercentileQuery {
+pub struct PercentileQuery {
     p: Option<u64>,
 }
 
@@ -1474,7 +1474,7 @@ pub async fn segments_cumulative(
 /// a merge combinado. Retorna `{band,pairs:[{seg_a,seg_b,docs_a,docs_b}]}` ordenado por
 /// (docs_a ASC). `band` query param default 1000. Sprint #703.
 #[derive(Debug, serde::Deserialize)]
-struct OverlapQuery {
+pub struct OverlapQuery {
     band: Option<u64>,
 }
 
