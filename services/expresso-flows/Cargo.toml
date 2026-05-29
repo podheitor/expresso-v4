@@ -13,24 +13,13 @@ path = "src/main.rs"
 # Workspace deps
 tokio = { workspace = true }
 axum = { workspace = true }
-tower = { workspace = true }
-tower-http = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-opentelemetry = { workspace = true }
-opentelemetry-otlp = { workspace = true }
-opentelemetry_sdk = { workspace = true }
-tracing-opentelemetry = { workspace = true }
 anyhow = { workspace = true }
-thiserror = { workspace = true }
 uuid = { workspace = true }
 time = { workspace = true }
-prometheus = { workspace = true }
-reqwest = { workspace = true }
 async-trait = { workspace = true }
-futures = { workspace = true }
 sqlx = { workspace = true }
 
 
@@ -41,3 +30,7 @@ expresso-auth-client = { path = "../../libs/expresso-auth-client", package = "ex
 
 [dev-dependencies]
 tokio-test = "0.4"
+
+[package.metadata.cargo-machete]
+# Used via macros/features/lib-rename that machete's source scan can't see.
+ignored = ["async-trait"]

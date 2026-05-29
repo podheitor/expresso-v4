@@ -10,17 +10,10 @@ name = "expresso_storage"
 
 [dependencies]
 # Workspace deps
-tokio = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
-uuid = { workspace = true }
-time = { workspace = true }
-async-trait = { workspace = true }
 aws-sdk-s3 = { workspace = true }
-aws-config = { workspace = true }
 
 [dev-dependencies]
 tokio-test = "0.4"

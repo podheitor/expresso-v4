@@ -13,7 +13,6 @@ tokio        = { workspace = true }
 serde        = { workspace = true }
 serde_json   = { workspace = true }
 tracing      = { workspace = true }
-anyhow       = { workspace = true }
 thiserror    = { workspace = true }
 uuid         = { workspace = true }
 time         = { workspace = true }
@@ -28,3 +27,7 @@ once_cell    = { workspace = true }
 
 [dev-dependencies]
 tokio-test = "0.4"
+
+[package.metadata.cargo-machete]
+# Used via macros/features/lib-rename that machete's source scan can't see.
+ignored = ["async-trait"]
