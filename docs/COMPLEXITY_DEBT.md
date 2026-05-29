@@ -35,8 +35,14 @@ turned out cleanly liftable — `auth_plain()` / `auth_login()` take `&mut lines
 and return `Ok(false)` on mid-handshake disconnect (caller `break`s), preserving
 the exact control flow. `handle_tls` 39 → **31**. Gate 39 → **38**.
 
-**Binding ceiling now = three functions at 38:** `handle`@smtp/session.rs,
-`handle`@lmtp.rs, `cmd_fetch`@imap/session.rs. All the clean *branch* lifts are
+**lmtp MAIL/RCPT (2026-05-29):** `handle`@lmtp 38 → **31** via
+`handle_lmtp_mail_from()` / `handle_lmtp_rcpt_to()` (LMTP-specific replies).
+Gate stays 38 (two functions still at 38). 573 mail tests pass.
+
+**Binding ceiling now = two functions at 38:** `handle`@smtp/session.rs,
+`cmd_fetch`@imap/session.rs. Both need the structural extractions below; reducing
+ONE won't move the gate (the other still caps at 38) — both must drop together
+for gate→37. All the clean *branch* lifts are
 done (DATA/EHLO/MAIL/RCPT/AUTH/dot-stuffing all extracted into shared helpers).
 What remains in these three is **structural, not branch-level**:
 - the two `handle`s: the STARTTLS-upgrade prelude (consumes the reader/writer to

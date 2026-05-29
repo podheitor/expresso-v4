@@ -32,9 +32,72 @@ struct Envelope {
     declared_size: Option<usize>,
 }
 
+/// Handle LMTP `MAIL FROM:`: enforce SIZE, then set the envelope sender +
+/// declared size and reset recipients. Writes the LMTP reply.
+async fn handle_lmtp_mail_from<W>(
+    writer: &mut W,
+    env: &mut Envelope,
+    line: &str,
+) -> anyhow::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    let rest = &line[10..];
+    let declared = extract_size_param(rest);
+    if declared.is_some_and(|sz| sz > MAX_MSG_BYTES) {
+        writer
+            .write_all(b"552 5.3.4 Message size exceeds fixed maximum\r\n")
+            .await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["MAIL", "lmtp", "reject"])
+            .inc();
+        return Ok(());
+    }
+    env.from = Some(extract_angle(rest));
+    env.declared_size = declared;
+    env.rcpts.clear();
+    writer.write_all(b"250 2.1.0 Sender OK\r\n").await?;
+    SMTP_COMMANDS_TOTAL
+        .with_label_values(&["MAIL", "lmtp", "ok"])
+        .inc();
+    Ok(())
+}
+
+/// Handle LMTP `RCPT TO:`: require a prior MAIL FROM, cap recipient count, then
+/// append the recipient. Writes the LMTP reply.
+async fn handle_lmtp_rcpt_to<W>(
+    writer: &mut W,
+    env: &mut Envelope,
+    line: &str,
+) -> anyhow::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    if env.from.is_none() {
+        writer.write_all(b"503 5.5.1 MAIL first\r\n").await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["RCPT", "lmtp", "reject"])
+            .inc();
+    } else if env.rcpts.len() >= MAX_RCPTS {
+        writer
+            .write_all(b"452 4.5.3 Too many recipients\r\n")
+            .await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["RCPT", "lmtp", "reject"])
+            .inc();
+    } else {
+        env.rcpts.push(extract_angle(&line[8..]));
+        writer.write_all(b"250 2.1.5 Recipient OK\r\n").await?;
+        SMTP_COMMANDS_TOTAL
+            .with_label_values(&["RCPT", "lmtp", "ok"])
+            .inc();
+    }
+    Ok(())
+}
+
 /// Handle the LMTP `DATA` command: require a prior MAIL FROM + ≥1 RCPT, then
 /// write `354` to begin message input. Returns `true` if the session should
-/// enter DATA mode. Extracted from `handle`.
+/// enter DATA mode.
 async fn handle_lmtp_data_command<W>(writer: &mut W, env: &Envelope) -> anyhow::Result<bool>
 where
     W: AsyncWrite + Unpin,
@@ -156,32 +219,9 @@ async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow:
                 .await?;
             SMTP_COMMANDS_TOTAL.with_label_values(&["LHLO", "lmtp", "ok"]).inc();
         } else if upper.starts_with("MAIL FROM:") {
-            let rest = &line[10..];
-            let declared = extract_size_param(rest);
-            if let Some(sz) = declared {
-                if sz > MAX_MSG_BYTES {
-                    writer.write_all(b"552 5.3.4 Message size exceeds fixed maximum\r\n").await?;
-                    SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "lmtp", "reject"]).inc();
-                    continue;
-                }
-            }
-            env.from = Some(extract_angle(rest));
-            env.declared_size = declared;
-            env.rcpts.clear();
-            writer.write_all(b"250 2.1.0 Sender OK\r\n").await?;
-            SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "lmtp", "ok"]).inc();
+            handle_lmtp_mail_from(&mut writer, &mut env, &line).await?;
         } else if upper.starts_with("RCPT TO:") {
-            if env.from.is_none() {
-                writer.write_all(b"503 5.5.1 MAIL first\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "lmtp", "reject"]).inc();
-            } else if env.rcpts.len() >= MAX_RCPTS {
-                writer.write_all(b"452 4.5.3 Too many recipients\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "lmtp", "reject"]).inc();
-            } else {
-                env.rcpts.push(extract_angle(&line[8..]));
-                writer.write_all(b"250 2.1.5 Recipient OK\r\n").await?;
-                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "lmtp", "ok"]).inc();
-            }
+            handle_lmtp_rcpt_to(&mut writer, &mut env, &line).await?;
         } else if upper == "DATA" {
             data_mode = handle_lmtp_data_command(&mut writer, &env).await?;
         } else if upper == "RSET" {
