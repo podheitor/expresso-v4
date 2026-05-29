@@ -5,7 +5,7 @@ use axum::{
     extract::{Multipart, Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, head, patch, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use std::io::Write as IoWrite;
@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::{
     api::context::RequestCtx,
-    domain::{DriveFile, FileRepo, FileVersion, FolderQuota, FolderQuotaRepo, NewFile, NewVersion, QuotaRepo, TagRepo, UserUsage, VersionRepo},
+    domain::{DriveFile, FileRepo, FolderQuota, FolderQuotaRepo, NewFile, NewVersion, QuotaRepo, TagRepo, VersionRepo},
     error::{DriveError, Result},
     state::AppState,
 };
@@ -27,7 +27,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/drive/files",                       get(list).post(upload))
         .route("/api/v1/drive/files/mkdir",                 post(mkdir))
-        .route("/api/v1/drive/files/:id",                   get(download).delete(delete).head(head_file))
+        .route("/api/v1/drive/files/:id",                   get(download).delete(delete_file).head(head_file))
         .route("/api/v1/drive/files/:id/preview",           get(preview))
         .route("/api/v1/drive/files/:id/metadata",          get(metadata).patch(rename))
         .route("/api/v1/drive/files/search",                 get(search))
@@ -684,7 +684,7 @@ async fn preview(
     Ok((StatusCode::OK, headers, bytes).into_response())
 }
 
-async fn delete(
+async fn delete_file(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,

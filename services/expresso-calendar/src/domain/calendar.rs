@@ -526,7 +526,7 @@ mod tests {
 
     #[test]
     fn update_calendar_serde_roundtrip_color_only() {
-        let json = r#"{"color":"#123456"}"#;
+        let json = r##"{"color":"#123456"}"##;
         let u: UpdateCalendar = serde_json::from_str(json).unwrap();
         assert_eq!(u.color.as_deref(), Some("#123456"));
         assert!(u.name.is_none());

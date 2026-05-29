@@ -239,7 +239,6 @@ pub fn apply_proposed_times(
     proposed_dtstart: Option<time::OffsetDateTime>,
     proposed_dtend:   Option<time::OffsetDateTime>,
 ) -> Result<String> {
-    use time::format_description::well_known::Iso8601;
     let fmt_dt = |dt: time::OffsetDateTime| -> String {
         // iCalendar UTC format: YYYYMMDDTHHmmssZ
         let utc = dt.to_offset(time::UtcOffset::UTC);
@@ -249,7 +248,6 @@ pub fn apply_proposed_times(
             utc.hour(), utc.minute(), utc.second()
         )
     };
-    let _ = Iso8601; // suppress unused import warning
     let new_start = proposed_dtstart.map(fmt_dt);
     let new_end   = proposed_dtend.map(fmt_dt);
 

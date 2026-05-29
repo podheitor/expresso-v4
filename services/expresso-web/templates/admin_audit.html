@@ -68,7 +68,7 @@
           <tr class="audit-row"
               data-action="{{ ev.action }}"
               data-user="{{ ev.user_email }}"
-              data-resource="{{ ev.resource_id }}"
+              data-resource="{{ ev.resource_id.as_deref().unwrap_or_default() }}"
               data-ts="{{ ev.ts }}">
             <td class="mono small audit-ts-cell" title="{{ ev.ts }}">{{ ev.ts }}</td>
             <td class="small">{{ ev.user_email }}</td>

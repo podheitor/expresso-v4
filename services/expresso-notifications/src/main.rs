@@ -548,6 +548,8 @@ struct DlqStatsQuery {
     since: Option<String>,
     /// RFC3339 upper bound on failed_at (exclusive). Sprint #619.
     until: Option<String>,
+    /// Max rows to return; handlers clamp to [1, 500] (default 50).
+    limit: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]

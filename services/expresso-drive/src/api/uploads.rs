@@ -347,7 +347,7 @@ async fn finalize_upload(
             return Err(DriveError::Conflict("folder name collision".into()));
         }
         if let Some(prev_key) = existing.storage_key.as_deref() {
-            let next_no = ver_repo.next_no(existing.id).await?;
+            let next_no = ver_repo.next_no(ctx.tenant_id, existing.id).await?;
             ver_repo.insert(&NewVersion {
                 file_id:     existing.id,
                 tenant_id:   ctx.tenant_id,

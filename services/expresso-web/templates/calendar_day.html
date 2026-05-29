@@ -44,7 +44,7 @@
     <div style="flex:1">
 
   <!-- All-day events row -->
-  {% if events.iter().any(|e| e.is_all_day()) %}
+  {% if self.has_all_day_events() %}
   <div class="cal-day-allday-row">
     <div class="cal-day-allday-label muted small">Dia inteiro</div>
     <div class="cal-day-allday-events">
@@ -63,12 +63,12 @@
   <div class="cal-day-grid" id="cal-day-grid">
     {% for h in hours %}
     <div class="cal-day-row" data-hour="{{ h }}">
-      <div class="cal-day-hour-label">{% if h < 10 %}0{% endif %}{{ h }}:00</div>
+      <div class="cal-day-hour-label">{{ self.hh2(h) }}:00</div>
       <div class="cal-day-slot"
            onclick="quickNewEvent('{{ date_iso }}', {{ h }}, 0, '{{ selected.id }}')"></div>
     </div>
     <div class="cal-day-row cal-day-row-half">
-      <div class="cal-day-hour-label cal-day-half-label">{% if h < 10 %}0{% endif %}{{ h }}:30</div>
+      <div class="cal-day-hour-label cal-day-half-label">{{ self.hh2(h) }}:30</div>
       <div class="cal-day-slot"
            onclick="quickNewEvent('{{ date_iso }}', {{ h }}, 30, '{{ selected.id }}')"></div>
     </div>

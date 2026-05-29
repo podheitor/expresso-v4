@@ -70,7 +70,7 @@
               <div id="pj-mic-fill" style="height:100%;width:0%;background:#22c55e;transition:width .1s"></div>
             </div>
             <div class="meet-prejoin-name">
-              <input type="text" id="pj-name" placeholder="Seu nome" value="{{ me.display_name.as_deref().unwrap_or(&me.email) }}" class="tasks-add-input" style="text-align:center">
+              <input type="text" id="pj-name" placeholder="Seu nome" value="{{ me.display_name.as_deref().unwrap_or(me.email.as_str()) }}" class="tasks-add-input" style="text-align:center">
             </div>
             <button class="btn btn-primary" onclick="enterMeet()">Entrar agora →</button>
             <a class="btn btn-ghost btn-sm" href="/meet">Cancelar</a>
@@ -127,7 +127,7 @@
           var room    = '{{ room_name }}';
           var jwt     = '{{ jitsi_jwt }}';
           var isMod   = {{ is_moderator }};
-          var displayName = (document.getElementById('pj-name') || {}).value || '{{ me.display_name.as_deref().unwrap_or(&me.email) }}';
+          var displayName = (document.getElementById('pj-name') || {}).value || '{{ me.display_name.as_deref().unwrap_or(me.email.as_str()) }}';
           var opts = {
             roomName: room,
             parentNode: document.getElementById('jitsi-container'),
@@ -402,7 +402,7 @@ function removeLiveParticipant(name) {
 // ── Meet chat panel ───────────────────────────────────────────────────────────
 var _meetChatLastId = '';
 var _meetChatChannelId = '';
-var _meetMyName = '{{ me.display_name.as_deref().unwrap_or(&me.email) }}';
+var _meetMyName = '{{ me.display_name.as_deref().unwrap_or(me.email.as_str()) }}';
 var _meetRoomId = '{{ room_id }}';
 
 // Save room to recent-meets list (shown on /meet)

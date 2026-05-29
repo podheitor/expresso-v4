@@ -76,7 +76,7 @@ impl InviteMailer {
                 .port(self.smtp_port)
                 .build();
 
-        mailer.send(&email).await
+        mailer.send(email).await
             .map_err(|e| anyhow::anyhow!("smtp send failed: {e}"))?;
         Ok(())
     }

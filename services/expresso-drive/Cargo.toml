@@ -30,6 +30,8 @@ base64             = { workspace = true }
 hmac               = { workspace = true }
 hex                = { workspace = true }
 zip                = { workspace = true }
+prometheus         = { workspace = true }
+once_cell          = { workspace = true }
 
 expresso-core        = { path = "../../libs/expresso-core", package = "expresso-core" }
 expresso-observability = { workspace = true }

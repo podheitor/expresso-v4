@@ -15,7 +15,7 @@ use crate::{
     AppState,
     error::WebResult,
     templates::{
-        AddressBook, Attachment, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl,
+        AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl,
         DriveShareTpl, DriveVersionsTpl, DrivePreviewTpl, MailComposeTpl, MailListTpl, Me, MeTpl, HomeTpl,
         HomeEvent, HomeDriveFile,
         ShareRow, VersionRow, MailThreadTpl, MessageDetail, MessageListItem, SecurityTpl,
@@ -400,6 +400,7 @@ async fn mail_detail_page(
 
 // ─── /api/mail/:id/attachments ───────────────────────────────────────────────
 
+#[allow(unused_variables)] // uri unused here; shared handler signature
 async fn mail_attachments_api(
     State(st): State<AppState>, headers: HeaderMap, uri: Uri,
     Path(id): Path<String>,
@@ -954,7 +955,7 @@ async fn drive_search_page(
         return Ok(login_redirect(&uri).into_response());
     };
     let (t, u) = ctx_of(&me);
-    let (files, query) = if let Some(ref qstr) = q.q {
+    let (files, _query) = if let Some(ref qstr) = q.q {
         if !qstr.trim().is_empty() {
             let payload = serde_json::json!({ "query": qstr });
             let results = match post_json(&st, &st.backends.drive, "/api/v1/drive/files/search", &headers, Some((&t, &u)), &payload).await {
@@ -1061,6 +1062,7 @@ async fn contacts_gal_page(
 
 // ─── /api/gal/search (JSON autocomplete) ─────────────────────────────────────
 
+#[allow(unused_variables)] // uri unused here; shared handler signature
 async fn gal_search_api(
     State(st): State<AppState>, headers: HeaderMap, uri: Uri,
     Query(q): Query<GalQuery>,
@@ -2663,6 +2665,7 @@ async fn meet_new_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri)
 struct MeetCreateForm { name: Option<String> }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code)] // `name` is part of the API payload but not consumed here
 struct MeetCreated { id: String, #[serde(default)] name: Option<String> }
 
 #[derive(serde::Deserialize)]
@@ -2870,6 +2873,7 @@ async fn tasks_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) ->
 struct SettingsQuery { tab: Option<String>, flash: Option<String> }
 
 #[derive(Deserialize)]
+#[allow(dead_code)] // form fields accepted from the wire; not all read in this handler
 struct ProfileForm { display_name: Option<String>, locale: Option<String> }
 
 #[derive(Deserialize)]
@@ -2885,6 +2889,7 @@ struct AutoreplyForm {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)] // notification-pref form fields accepted from the wire
 struct NotificationsForm {
     notify_new_mail: Option<String>,
     notify_calendar: Option<String>,
@@ -3252,7 +3257,7 @@ async fn admin_user_set_quota(
         "max_attach_mb": f.max_attach_mb,
     });
     let _ = patch_json::<serde_json::Value>(&st, &st.backends.auth, &format!("/api/v1/admin/users/{id}/quota"), &headers, Some((&t, &u)), &body).await;
-    Ok(redirect_to(&format!("/admin/users/{id}?flash=Quotas+salvas")).into_response())
+    Ok(Redirect::to(&format!("/admin/users/{id}?flash=Quotas+salvas")).into_response())
 }
 async fn admin_user_revoke_sessions(
     State(st): State<AppState>, headers: HeaderMap, uri: Uri,
@@ -3262,7 +3267,7 @@ async fn admin_user_revoke_sessions(
     if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
     let (t, u) = ctx_of(&me);
     let _ = post_empty(&st, &st.backends.auth, &format!("/api/v1/admin/users/{id}/sessions/revoke"), &headers, Some((&t, &u))).await;
-    Ok(redirect_to(&format!("/admin/users/{id}?flash=Sessões+revogadas")).into_response())
+    Ok(Redirect::to(&format!("/admin/users/{id}?flash=Sessões+revogadas")).into_response())
 }
 
 #[derive(Deserialize)]

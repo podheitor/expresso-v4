@@ -32,7 +32,7 @@
         </div>
       </div>
     </div>
-    {% if me.roles.iter().any(|r| r == "admin" || r == "superadmin") %}
+    {% if me.is_admin() %}
       <a class="appnav-item appnav-admin" href="/admin" title="Painel Admin">⚙ Admin</a>
     {% endif %}
     <a class="appnav-item{% if current == "settings" %} active{% endif %}" href="/settings" title="Configurações" aria-label="Configurações">⚙</a>

@@ -45,8 +45,7 @@
           Mensagens diretas
           <button class="chat-dm-new-btn" onclick="showModal('chat-dm-modal')" title="Nova mensagem direta">+</button>
         </div>
-        {% let no_dms = !channels.iter().any(|c| c.is_direct()) %}
-        {% if no_dms %}
+        {% if !self.has_dms() %}
           <p class="muted small" style="padding:.25rem 1rem .5rem;">Nenhuma DM ainda.</p>
         {% endif %}
         {% for ch in channels %}{% if ch.is_direct() %}
@@ -148,12 +147,12 @@
           </div>
         {% else %}
           {% for msg in messages %}
-            {% if loop.index == messages.len().saturating_sub(ch.unread_count as usize) && ch.unread_count > 0 && !loop.last %}
+            {% if self.is_unread_divider(loop.index) && !loop.last %}
             <div class="chat-unread-divider" id="chat-first-unread">
               <span>{{ ch.unread_count }} {% if ch.unread_count != 1 %}novas mensagens{% else %}nova mensagem{% endif %}</span>
             </div>
             {% endif %}
-            <div class="chat-msg {% if msg.is_own(&me.user_id) %}chat-msg-own{% endif %}" data-msg-id="{{ msg.id }}">
+            <div class="chat-msg {% if msg.is_own(me.user_id.as_str()) %}chat-msg-own{% endif %}" data-msg-id="{{ msg.id }}">
               <div class="chat-msg-avatar" title="{{ msg.sender() }}">
                 {{ msg.sender().chars().next().unwrap_or('?').to_uppercase() }}
               </div>
@@ -189,7 +188,7 @@
                   <button class="chat-action-btn" onclick="toggleReactionPicker('{{ msg.id }}')" title="Reação">😊</button>
                   <button class="chat-action-btn" onclick="pinMessage('{{ msg.id }}', this)" title="Fixar mensagem">📌</button>
                   <button class="chat-action-btn" onclick="copyMsgLink('{{ ch.id }}','{{ msg.id }}', this)" title="Copiar link da mensagem">🔗</button>
-                  {% if msg.is_own(&me.user_id) %}<button class="chat-action-btn" onclick="startEditMsg('{{ msg.id }}')" title="Editar">✏</button>{% endif %}
+                  {% if msg.is_own(me.user_id.as_str()) %}<button class="chat-action-btn" onclick="startEditMsg('{{ msg.id }}')" title="Editar">✏</button>{% endif %}
                 </div>
                 <div class="chat-reaction-picker" id="rpicker-{{ msg.id }}" style="display:none">
                   <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','👍')">👍</button>
@@ -966,7 +965,7 @@ var _typingTimer = null;
 var _typingActive = false;
 var _typingPeers = {}; // uid → { name, ts }
 var _MY_UID = '{{ me.user_id }}';
-var _MY_NAME = '{{ me.display_name.as_deref().unwrap_or(&me.email) }}';
+var _MY_NAME = '{{ me.display_name.as_deref().unwrap_or(me.email.as_str()) }}';
 {% match active_channel %}{% when Some with (ch) %}var _TYPING_CH = '{{ ch.id }}';{% when None %}var _TYPING_CH = '';{% endmatch %}
 
 function chatTyping() {

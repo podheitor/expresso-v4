@@ -165,7 +165,7 @@
         {% else %}
           {% for u in users %}
           <tr class="admin-user-row"
-              data-name="{{ u.display_name.as_deref().unwrap_or(&u.email) }}"
+              data-name="{{ u.display_name.as_deref().unwrap_or(u.email.as_str()) }}"
               data-email="{{ u.email }}"
               data-role="{{ u.role }}"
               data-status="{{ u.status }}">
@@ -217,7 +217,7 @@
   </div>
 
   <div class="admin-table-footer muted small">
-    Total: <strong id="admin-user-count">{{ users|length }}</strong> usuário{% if users|length != 1 %}s{% endif %}
+    Total: <strong id="admin-user-count">{{ users.len() }}</strong> usuário{% if users.len() != 1 %}s{% endif %}
   </div>
 </div>
 

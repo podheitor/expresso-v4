@@ -127,7 +127,7 @@ function downloadMeJson() {
   URL.revokeObjectURL(a.href);
 }
 function downloadMeVCard() {
-  var name = '{{ me.display_name }}'.replace(/\\/g, '\\\\').replace(/[,;]/g, '\\$&');
+  var name = '{{ me.display_name.as_deref().unwrap_or("") }}'.replace(/\\/g, '\\\\').replace(/[,;]/g, '\\$&');
   var email = '{{ me.email }}';
   var vcf = [
     'BEGIN:VCARD',

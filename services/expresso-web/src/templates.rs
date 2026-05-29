@@ -23,6 +23,14 @@ pub struct Me {
     #[serde(default)]  pub mfa:           Option<MfaInfo>,
 }
 
+impl Me {
+    /// True if the user holds an admin-tier role. Exposed as a method because
+    /// askama templates can't evaluate closures (`roles.iter().any(|r| …)`).
+    pub fn is_admin(&self) -> bool {
+        self.roles.iter().any(|r| r == "admin" || r == "superadmin")
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Folder {
     pub id:            String,
@@ -510,6 +518,13 @@ pub struct DayColumn {
     pub events:   Vec<Event>,
 }
 
+impl DayColumn {
+    /// All events are all-day (or there are none) — askama can't run closures.
+    pub fn all_all_day(&self) -> bool {
+        self.events.iter().all(|e| e.is_all_day())
+    }
+}
+
 #[derive(Template)]
 #[template(path = "calendar_week.html")]
 pub struct CalendarWeekTpl {
@@ -540,6 +555,19 @@ pub struct CalendarDayTpl {
     pub month_link:  String,
     pub events:      Vec<Event>,
     pub hours:       Vec<u8>,
+}
+
+impl CalendarDayTpl {
+    /// Any all-day events present — askama can't run closures in `{% if %}`.
+    pub fn has_all_day_events(&self) -> bool {
+        self.events.iter().any(|e| e.is_all_day())
+    }
+
+    /// Zero-padded two-digit hour ("09"). askama rejects both the `*h` deref and
+    /// the `&u8`-vs-int comparison the template would otherwise need.
+    pub fn hh2(&self, h: &u8) -> String {
+        format!("{h:02}")
+    }
 }
 
 #[derive(Template)]
@@ -738,6 +766,25 @@ pub struct ChatTpl {
     pub channels:       Vec<ChatChannel>,
     pub active_channel: Option<ChatChannel>,
     pub messages:       Vec<ChatMessage>,
+}
+
+impl ChatTpl {
+    /// Whether the user has any direct-message channels — askama can't run the
+    /// closure `channels.iter().any(|c| c.is_direct())` inline.
+    pub fn has_dms(&self) -> bool {
+        self.channels.iter().any(|c| c.is_direct())
+    }
+
+    /// True when the unread divider ("N new messages") belongs *before* the
+    /// 1-based message position `idx` (askama's `loop.index`). Computed here
+    /// because askama can't parse the `as usize` cast inline.
+    pub fn is_unread_divider(&self, idx: &usize) -> bool {
+        let unread = self.active_channel.as_ref().map(|c| c.unread_count).unwrap_or(0);
+        if unread <= 0 {
+            return false;
+        }
+        *idx == self.messages.len().saturating_sub(unread as usize)
+    }
 }
 
 #[derive(Template)]

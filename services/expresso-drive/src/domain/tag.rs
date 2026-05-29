@@ -3,7 +3,7 @@
 use expresso_core::{begin_tenant_tx, DbPool};
 use uuid::Uuid;
 
-use crate::error::{DriveError, Result};
+use crate::error::Result;
 
 pub struct TagRepo<'a> {
     pool: &'a DbPool,

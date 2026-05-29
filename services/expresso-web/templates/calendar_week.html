@@ -67,16 +67,16 @@
       </div>
       <div class="week-grid">
         {% for d in days %}
-        <section class="week-col{% if d.is_today %} today{% endif %}" data-date="{{ d.iso }}">
+        <section class="week-col{% if d.is_today %} today{% endif %}" data-date="{{ d.date_iso }}">
           <header class="week-col-head">
-            <a class="week-col-label" href="/calendar/{{ selected.id }}/day?date={{ d.iso }}" title="Ver dia">{{ d.label }}</a>
+            <a class="week-col-label" href="/calendar/{{ selected.id }}/day?date={{ d.date_iso }}" title="Ver dia">{{ d.label }}</a>
           </header>
           <div class="week-col-events">
             {% for ev in d.events %}{% if !ev.is_all_day() %}
             <a class="event-chip{% if ev.is_recurring() %} event-chip-recurring{% endif %}"
                href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit"
                draggable="true"
-               ondragstart="calDragStart(event,'{{ ev.id }}','{{ d.iso }}')"
+               ondragstart="calDragStart(event,'{{ ev.id }}','{{ d.date_iso }}')"
                data-evid="{{ ev.id }}"
                data-calid="{{ selected.id }}">
               {% if ev.is_recurring() %}<span class="ev-recur">↻</span>{% endif %}
@@ -85,7 +85,7 @@
               <span class="ev-resize-handle" title="Arrastar para redimensionar" onmousedown="evResizeStart(event,'{{ ev.id }}','{{ selected.id }}')">▲</span>
             </a>
             {% endif %}{% endfor %}
-            {% if d.events.iter().all(|e| e.is_all_day()) %}
+            {% if d.all_all_day() %}
             <p class="muted small">—</p>
             {% endif %}
           </div>

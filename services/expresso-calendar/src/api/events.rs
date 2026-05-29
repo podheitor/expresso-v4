@@ -4821,6 +4821,7 @@ async fn cancel_event_instance(
     let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
     state.events().publish(crate::events::Event::EventUpdated {
         tenant_id: ctx.tenant_id, event_id: updated.id, summary: updated.summary.clone(),
+        sequence: updated.sequence,
     });
 
     Ok(Json(serde_json::json!({
