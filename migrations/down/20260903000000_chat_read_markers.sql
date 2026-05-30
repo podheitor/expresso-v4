@@ -1,0 +1,3 @@
+BEGIN;
+DROP TABLE IF EXISTS chat_read_markers;
+COMMIT;

@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
-use crate::domain::ChannelRepo;
+use crate::domain::{ChannelRepo, ReadMarkerRepo};
 use crate::error::{ChatError, Result};
 use crate::state::AppState;
 
@@ -81,6 +81,17 @@ async fn send(
         event_id.clone(),
         body.body,
     ));
+
+    // Unread bookkeeping: bump channel activity (others now see it unread),
+    // then mark it read for the sender (their own message isn't "unread" to
+    // them). Best-effort — a failure here must not fail an accepted send.
+    let marks = ReadMarkerRepo::new(pool);
+    if let Err(e) = marks.bump_activity(ctx.tenant_id, id).await {
+        tracing::warn!(error = %e, channel = %id, "chat: bump_activity failed");
+    }
+    if let Err(e) = marks.mark_read(ctx.tenant_id, id, ctx.user_id).await {
+        tracing::warn!(error = %e, channel = %id, "chat: sender mark_read failed");
+    }
 
     Ok((StatusCode::CREATED, Json(json!({ "event_id": event_id }))))
 }

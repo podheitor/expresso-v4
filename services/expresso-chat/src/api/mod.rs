@@ -2,6 +2,7 @@ mod channels;
 pub mod context;
 mod health;
 mod messages;
+mod read;
 mod stream;
 
 use std::sync::Arc;
@@ -23,6 +24,7 @@ pub fn router(
         .merge(expresso_observability::metrics_router())
         .merge(channels::routes())
         .merge(messages::routes())
+        .merge(read::routes())
         .merge(stream::routes())
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
