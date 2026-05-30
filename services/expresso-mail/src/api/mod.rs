@@ -1,5 +1,6 @@
 //! Axum HTTP router for webmail REST API
 
+pub mod aliases;
 pub mod attachments;
 pub mod compose;
 pub mod context;
@@ -60,6 +61,7 @@ pub fn router(state: AppState) -> Router {
 fn api_routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .merge(folders::routes())
+        .merge(aliases::routes())
         .merge(messages::routes())
         .merge(compose::routes())
         .merge(attachments::routes())
