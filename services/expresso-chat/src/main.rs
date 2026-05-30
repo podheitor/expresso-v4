@@ -9,6 +9,7 @@ mod domain;
 mod error;
 mod events;
 mod matrix;
+mod metrics;
 mod state;
 
 use std::{env, net::SocketAddr, sync::Arc};
@@ -149,6 +150,9 @@ async fn main() -> anyhow::Result<()> {
         version = env!("CARGO_PKG_VERSION"),
         "expresso-chat starting"
     );
+
+    // Pre-populate metric series so rate()/increase() work from first scrape.
+    metrics::init();
 
     let db = match resolve_database_config() {
         Some(cfg) => match create_db_pool(&cfg).await {

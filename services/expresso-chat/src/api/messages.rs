@@ -64,6 +64,17 @@ fn default_limit() -> u32 {
 }
 
 async fn send(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    id: Path<Uuid>,
+    body: Json<SendBody>,
+) -> Result<(StatusCode, Json<Value>)> {
+    let r = send_inner(state, ctx, id, body).await;
+    crate::metrics::record_result(crate::metrics::OP_MESSAGE_SEND, &r);
+    r
+}
+
+async fn send_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(id): Path<Uuid>,
@@ -111,6 +122,17 @@ async fn send(
 }
 
 async fn list(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    id: Path<Uuid>,
+    q: Query<ListQuery>,
+) -> Result<Json<Value>> {
+    let r = list_inner(state, ctx, id, q).await;
+    crate::metrics::record_result(crate::metrics::OP_MESSAGE_LIST, &r);
+    r
+}
+
+async fn list_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(id): Path<Uuid>,
@@ -150,6 +172,17 @@ pub struct DeleteQuery {
 /// PUT …/messages/:event_id — edit a message via an m.replace relation. The HS
 /// rejects edits to events the caller didn't author, surfacing as 502 Matrix.
 async fn edit(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    path: Path<(Uuid, String)>,
+    body: Json<EditBody>,
+) -> Result<(StatusCode, Json<Value>)> {
+    let r = edit_inner(state, ctx, path, body).await;
+    crate::metrics::record_result(crate::metrics::OP_MESSAGE_EDIT, &r);
+    r
+}
+
+async fn edit_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path((id, event_id)): Path<(Uuid, String)>,
@@ -186,6 +219,17 @@ async fn edit(
 /// DELETE …/messages/:event_id — redact a message. The HS enforces redaction
 /// permission (sender, or sufficient power level), surfacing as 502 Matrix.
 async fn remove(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    path: Path<(Uuid, String)>,
+    q: Query<DeleteQuery>,
+) -> Result<(StatusCode, Json<Value>)> {
+    let r = remove_inner(state, ctx, path, q).await;
+    crate::metrics::record_result(crate::metrics::OP_MESSAGE_DELETE, &r);
+    r
+}
+
+async fn remove_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path((id, event_id)): Path<(Uuid, String)>,

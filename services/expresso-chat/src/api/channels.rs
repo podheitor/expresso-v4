@@ -46,6 +46,16 @@ pub struct CreateBody {
 }
 
 async fn create(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    body: Json<CreateBody>,
+) -> Result<(StatusCode, Json<Channel>)> {
+    let r = create_inner(state, ctx, body).await;
+    crate::metrics::record_result(crate::metrics::OP_CHANNEL_CREATE, &r);
+    r
+}
+
+async fn create_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Json(body): Json<CreateBody>,
@@ -196,7 +206,13 @@ async fn get_one(
     Ok(resp)
 }
 
-async fn archive(
+async fn archive(state: State<AppState>, ctx: RequestCtx, id: Path<Uuid>) -> Result<StatusCode> {
+    let r = archive_inner(state, ctx, id).await;
+    crate::metrics::record_result(crate::metrics::OP_CHANNEL_LEAVE, &r);
+    r
+}
+
+async fn archive_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(id): Path<Uuid>,
@@ -225,6 +241,17 @@ pub struct AddMemberBody {
 }
 
 async fn add_member(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    id: Path<Uuid>,
+    body: Json<AddMemberBody>,
+) -> Result<StatusCode> {
+    let r = add_member_inner(state, ctx, id, body).await;
+    crate::metrics::record_result(crate::metrics::OP_CHANNEL_JOIN, &r);
+    r
+}
+
+async fn add_member_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(id): Path<Uuid>,

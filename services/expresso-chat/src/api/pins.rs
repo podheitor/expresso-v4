@@ -80,6 +80,17 @@ async fn list(
 }
 
 async fn pin(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    channel_id: Path<Uuid>,
+    body: Json<PinBody>,
+) -> Result<(StatusCode, Json<Value>)> {
+    let r = pin_inner(state, ctx, channel_id, body).await;
+    crate::metrics::record_result(crate::metrics::OP_PIN, &r);
+    r
+}
+
+async fn pin_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(channel_id): Path<Uuid>,
@@ -105,6 +116,17 @@ async fn pin(
 }
 
 async fn unpin(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    channel_id: Path<Uuid>,
+    body: Json<PinBody>,
+) -> Result<(StatusCode, Json<Value>)> {
+    let r = unpin_inner(state, ctx, channel_id, body).await;
+    crate::metrics::record_result(crate::metrics::OP_PIN, &r);
+    r
+}
+
+async fn unpin_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(channel_id): Path<Uuid>,

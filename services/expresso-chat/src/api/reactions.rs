@@ -78,6 +78,17 @@ async fn require_member(state: &AppState, ctx: &RequestCtx, channel: Uuid) -> Re
 }
 
 async fn add(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    channel_id: Path<Uuid>,
+    body: Json<ReactionBody>,
+) -> Result<StatusCode> {
+    let r = add_inner(state, ctx, channel_id, body).await;
+    crate::metrics::record_result(crate::metrics::OP_REACTION, &r);
+    r
+}
+
+async fn add_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(channel_id): Path<Uuid>,
@@ -110,6 +121,17 @@ async fn add(
 }
 
 async fn remove(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    channel_id: Path<Uuid>,
+    body: Json<ReactionBody>,
+) -> Result<StatusCode> {
+    let r = remove_inner(state, ctx, channel_id, body).await;
+    crate::metrics::record_result(crate::metrics::OP_REACTION, &r);
+    r
+}
+
+async fn remove_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(channel_id): Path<Uuid>,

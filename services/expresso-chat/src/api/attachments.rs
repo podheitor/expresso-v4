@@ -110,6 +110,17 @@ fn validate_upload(filename: &str, size: usize) -> Result<()> {
 }
 
 async fn upload(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    channel_id: Path<Uuid>,
+    mp: Multipart,
+) -> Result<(StatusCode, Json<Attachment>)> {
+    let r = upload_inner(state, ctx, channel_id, mp).await;
+    crate::metrics::record_result(crate::metrics::OP_ATTACHMENT_UPLOAD, &r);
+    r
+}
+
+async fn upload_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(channel_id): Path<Uuid>,
