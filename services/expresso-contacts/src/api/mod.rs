@@ -4,6 +4,7 @@ mod addressbooks;
 mod contacts;
 pub mod context;
 mod gal;
+mod groups;
 mod health;
 mod sharing;
 mod users;
@@ -21,6 +22,7 @@ pub fn router(state: AppState) -> Router {
         .merge(addressbooks::routes())
         .merge(contacts::routes())
         .merge(gal::routes())
+        .merge(groups::routes())
         .merge(sharing::routes())
         .merge(users::routes())
         .merge(wellknown::routes())
