@@ -62,9 +62,15 @@ pub async fn process(
     let recipients = normalized_recipients(rcpts);
 
     for rcpt in recipients {
-        let (user_id, tenant_id) = match resolve_recipient(state, &rcpt).await? {
-            Some(pair) => pair,
-            None => continue, // resolve_recipient logs the specific reason
+        let (user_id, tenant_id) = match resolve_recipient(state, &rcpt, raw).await? {
+            Resolution::Local { user_id, tenant_id } => (user_id, tenant_id),
+            Resolution::Relayed => {
+                // Alias forwarded the message off-platform; count it as handled.
+                delivered += 1;
+                continue;
+            }
+            // resolve_recipient logs the specific reason for a drop.
+            Resolution::Drop => continue,
         };
 
         // Now arm the tenant session var for the rest of this delivery so RLS
@@ -278,18 +284,28 @@ pub async fn process(
 
 /// Resolve an inbound recipient address to a local `(user_id, tenant_id)`.
 ///
+/// Outcome of resolving an inbound recipient address.
+enum Resolution {
+    /// Deliver to a local mailbox.
+    Local { user_id: Uuid, tenant_id: Uuid },
+    /// The address aliased to an off-platform target and the message was
+    /// relayed there; nothing more to store locally.
+    Relayed,
+    /// Unknown / ambiguous / unrelayable — drop (the resolver logs why).
+    Drop,
+}
+
 /// First tries a direct `users.email` match. On a miss, falls back to the
 /// `email_aliases` table: an enabled `alias -> target` row redirects delivery
-/// to the target, which is then resolved as a local user (one hop only — alias
-/// chains are not followed, so a target that is itself another alias is not
-/// re-expanded). Returns `None` (and logs the reason) when the address is
-/// unknown, ambiguous across tenants, or aliased to a non-local target.
+/// to the target (one hop only — alias chains are not followed). A target that
+/// is a local user delivers there; a target off-platform is relayed via the
+/// configured smarthost when one is set, else dropped.
 ///
 /// Runs without a tenant session var — inbound delivery legitimately crosses
 /// tenants, one recipient at a time.
-async fn resolve_recipient(state: &AppState, rcpt: &str) -> anyhow::Result<Option<(Uuid, Uuid)>> {
-    if let Some(pair) = lookup_local_user(state, rcpt).await? {
-        return Ok(Some(pair));
+async fn resolve_recipient(state: &AppState, rcpt: &str, raw: &[u8]) -> anyhow::Result<Resolution> {
+    if let Some((user_id, tenant_id)) = lookup_local_user(state, rcpt).await? {
+        return Ok(Resolution::Local { user_id, tenant_id });
     }
 
     // No direct mailbox — consult the alias table for an enabled redirect.
@@ -309,30 +325,42 @@ async fn resolve_recipient(state: &AppState, rcpt: &str) -> anyhow::Result<Optio
         [t] => t.trim().to_ascii_lowercase(),
         [] => {
             tracing::warn!(rcpt = %rcpt, "recipient not found; dropping delivery");
-            return Ok(None);
+            return Ok(Resolution::Drop);
         }
         _ => {
             // alias is UNIQUE per (tenant_id, alias) but not globally; the same
             // alias in two tenants pointing at different targets is ambiguous
             // without a tenant context on the inbound path. Refuse rather than guess.
             tracing::error!(rcpt = %rcpt, "alias ambiguous across tenants; dropping delivery");
-            return Ok(None);
+            return Ok(Resolution::Drop);
         }
     };
 
-    match lookup_local_user(state, &target).await? {
-        Some(pair) => {
-            tracing::info!(rcpt = %rcpt, target = %target, "alias resolved to local user");
-            Ok(Some(pair))
+    if let Some((user_id, tenant_id)) = lookup_local_user(state, &target).await? {
+        tracing::info!(rcpt = %rcpt, target = %target, "alias resolved to local user");
+        return Ok(Resolution::Local { user_id, tenant_id });
+    }
+
+    // Off-platform target: relay via the configured smarthost. Without one,
+    // we can't deliver — drop rather than silently lose-but-claim-success.
+    let relay_host = state.cfg().mail_server.relay_host.clone();
+    let relay_port = state.cfg().mail_server.relay_port;
+    if relay_host.trim().is_empty() {
+        tracing::warn!(
+            rcpt = %rcpt, target = %target,
+            "alias target is off-platform but no relay smarthost configured; dropping"
+        );
+        return Ok(Resolution::Drop);
+    }
+    let domain = state.cfg().mail_server.domain.clone();
+    match relay_forward(&relay_host, relay_port, &domain, &target, raw).await {
+        Ok(()) => {
+            tracing::info!(rcpt = %rcpt, target = %target, "alias relayed off-platform");
+            Ok(Resolution::Relayed)
         }
-        None => {
-            // The alias points off-platform (or at another alias). Storing it
-            // locally is impossible; relaying is a separate concern.
-            tracing::warn!(
-                rcpt = %rcpt, target = %target,
-                "alias target is not a local user; dropping delivery (external relay not wired)"
-            );
-            Ok(None)
+        Err(e) => {
+            tracing::warn!(error=%e, rcpt = %rcpt, target = %target, "alias relay failed; dropping");
+            Ok(Resolution::Drop)
         }
     }
 }
