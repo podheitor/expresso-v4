@@ -16,6 +16,7 @@
 
 mod api;
 mod index_store;
+mod metrics;
 
 use std::{env, net::SocketAddr, path::PathBuf};
 
@@ -97,6 +98,9 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .json()
         .init();
+
+    // Pre-populate metric series so rate()/increase() work from first scrape.
+    metrics::init();
 
     let data_dir = env::var("SEARCH_DATA_DIR")
         .map(PathBuf::from)

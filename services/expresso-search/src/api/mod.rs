@@ -109,6 +109,16 @@ pub struct SearchResponse {
 
 /// POST /api/v1/index — index a document
 pub async fn index_doc(
+    store: State<IndexStore>,
+    doc: Json<IndexDoc>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let started = std::time::Instant::now();
+    let r = index_doc_inner(store, doc).await;
+    crate::metrics::record_result(crate::metrics::OP_INDEX, started, &r);
+    r
+}
+
+async fn index_doc_inner(
     State(store): State<IndexStore>,
     Json(doc): Json<IndexDoc>,
 ) -> Result<StatusCode, (StatusCode, String)> {
@@ -134,6 +144,16 @@ pub struct BulkIndexResponse {
 
 /// POST /api/v1/index/bulk — index multiple documents in one request
 pub async fn bulk_index(
+    store: State<IndexStore>,
+    body: Json<BulkIndexRequest>,
+) -> Result<Json<BulkIndexResponse>, (StatusCode, String)> {
+    let started = std::time::Instant::now();
+    let r = bulk_index_inner(store, body).await;
+    crate::metrics::record_result(crate::metrics::OP_BULK_INDEX, started, &r);
+    r
+}
+
+async fn bulk_index_inner(
     State(store): State<IndexStore>,
     Json(body): Json<BulkIndexRequest>,
 ) -> Result<Json<BulkIndexResponse>, (StatusCode, String)> {
@@ -175,6 +195,16 @@ fn map_search_err(e: anyhow::Error) -> (StatusCode, String) {
 
 /// GET /api/v1/search?q=...&tenant_id=...&limit=20&offset=0[&facet=kind][&after_secs=&before_secs=]
 pub async fn search(
+    store: State<IndexStore>,
+    params: Query<SearchParams>,
+) -> Result<Json<SearchResponse>, (StatusCode, String)> {
+    let started = std::time::Instant::now();
+    let r = search_inner(store, params).await;
+    crate::metrics::record_result(crate::metrics::OP_SEARCH, started, &r);
+    r
+}
+
+async fn search_inner(
     State(store): State<IndexStore>,
     Query(mut params): Query<SearchParams>,
 ) -> Result<Json<SearchResponse>, (StatusCode, String)> {
@@ -312,6 +342,16 @@ pub async fn search(
 
 /// DELETE /api/v1/index/:id — remove document from index
 pub async fn delete_doc(
+    store: State<IndexStore>,
+    id: Path<String>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let started = std::time::Instant::now();
+    let r = delete_doc_inner(store, id).await;
+    crate::metrics::record_result(crate::metrics::OP_DELETE, started, &r);
+    r
+}
+
+async fn delete_doc_inner(
     State(store): State<IndexStore>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
