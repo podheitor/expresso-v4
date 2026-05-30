@@ -5,6 +5,7 @@ use std::sync::Arc;
 use expresso_core::DbPool;
 
 use crate::error::{ChatError, Result};
+use crate::events::ChatBus;
 use crate::matrix::MatrixClient;
 
 #[derive(Clone)]
@@ -13,11 +14,16 @@ pub struct AppState(Arc<Inner>);
 struct Inner {
     db: Option<DbPool>,
     matrix: Option<MatrixClient>,
+    bus: ChatBus,
 }
 
 impl AppState {
     pub fn new(db: Option<DbPool>, matrix: Option<MatrixClient>) -> Self {
-        Self(Arc::new(Inner { db, matrix }))
+        Self(Arc::new(Inner {
+            db,
+            matrix,
+            bus: ChatBus::new(),
+        }))
     }
 
     pub fn db(&self) -> Option<&DbPool> {
@@ -30,6 +36,11 @@ impl AppState {
 
     pub fn matrix_or_unavailable(&self) -> Result<&MatrixClient> {
         self.0.matrix.as_ref().ok_or(ChatError::MatrixUnavailable)
+    }
+
+    /// Process-local realtime bus (message/typing/presence → SSE).
+    pub fn bus(&self) -> &ChatBus {
+        &self.0.bus
     }
 }
 

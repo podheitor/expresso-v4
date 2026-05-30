@@ -71,6 +71,17 @@ async fn send(
     let event_id = matrix
         .send_text(&acting_as, &ch.matrix_room_id, &body.body)
         .await?;
+
+    // Fan out to live SSE subscribers of this channel (best-effort; durable
+    // copy already lives in Matrix). Skipped silently when nobody is connected.
+    state.bus().publish(crate::events::ChatEvent::message(
+        ctx.tenant_id,
+        id,
+        ctx.user_id,
+        event_id.clone(),
+        body.body,
+    ));
+
     Ok((StatusCode::CREATED, Json(json!({ "event_id": event_id }))))
 }
 

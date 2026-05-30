@@ -7,6 +7,7 @@
 mod api;
 mod domain;
 mod error;
+mod events;
 mod matrix;
 mod state;
 
