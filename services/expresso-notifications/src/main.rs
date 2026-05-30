@@ -28,18 +28,9 @@
 use std::{env, net::SocketAddr, sync::Arc, time::Duration};
 
 use expresso_core::{create_db_pool, DbPool};
-use once_cell::sync::Lazy;
-use prometheus::{register_int_counter_vec, IntCounterVec};
 use std::collections::HashMap;
 
-static NOTIFICATIONS_DISPATCHED: Lazy<IntCounterVec> = Lazy::new(|| {
-    register_int_counter_vec!(
-        "notifications_dispatched_total",
-        "Total notifications dispatched, by kind",
-        &["kind"]
-    )
-    .expect("metric registration failed")
-});
+mod metrics;
 
 use axum::{
     async_trait,
@@ -134,12 +125,12 @@ async fn internal_notify(
     State(st): State<AppState>,
     Json(notif): Json<Notification>,
 ) -> Json<serde_json::Value> {
+    let started = std::time::Instant::now();
+
     // Broadcast to local SSE streams on this pod.
     let _ = st.tx.send(notif.clone());
 
-    NOTIFICATIONS_DISPATCHED
-        .with_label_values(&[&notif.kind])
-        .inc();
+    metrics::record_dispatch(&notif.kind);
 
     // Publish to Redis so other pods pick it up via their subscriber relay.
     if let Some(pool) = &st.redis_pub {
@@ -152,12 +143,18 @@ async fn internal_notify(
                         .await
                     {
                         warn!(error = %e, "Redis publish failed");
+                        metrics::record_failure(&notif.kind);
                     }
                 }
-                Err(e) => warn!(error = %e, "Redis pool get failed for publish"),
+                Err(e) => {
+                    warn!(error = %e, "Redis pool get failed for publish");
+                    metrics::record_failure(&notif.kind);
+                }
             }
         }
     }
+
+    metrics::observe_dispatch(started);
 
     // Fire external webhook with retry (3 attempts, exponential backoff 1s/2s/4s).
     // On exhaustion, payload is written to notification_dlq for inspection/replay.
@@ -3193,9 +3190,7 @@ async fn retry_dlq_entry(
 
     // Re-dispatch: broadcast locally + Redis + webhook (same as internal_notify).
     let _ = st.tx.send(notif.clone());
-    NOTIFICATIONS_DISPATCHED
-        .with_label_values(&[&notif.kind])
-        .inc();
+    metrics::record_dispatch(&notif.kind);
 
     if let Some(redis_pool) = &st.redis_pub {
         if let Ok(body) = serde_json::to_string(&notif) {
@@ -3302,9 +3297,7 @@ async fn retry_all_dlq(
         };
 
         let _ = st.tx.send(notif.clone());
-        NOTIFICATIONS_DISPATCHED
-            .with_label_values(&[&notif.kind])
-            .inc();
+        metrics::record_dispatch(&notif.kind);
 
         if let Some(redis_pool) = &st.redis_pub {
             if let Ok(body) = serde_json::to_string(&notif) {
@@ -3399,9 +3392,7 @@ async fn retry_filtered_dlq(
         };
 
         let _ = st.tx.send(notif.clone());
-        NOTIFICATIONS_DISPATCHED
-            .with_label_values(&[&notif.kind])
-            .inc();
+        metrics::record_dispatch(&notif.kind);
 
         if let Some(redis_pool) = &st.redis_pub {
             if let Ok(body) = serde_json::to_string(&notif) {
@@ -3574,9 +3565,7 @@ async fn bulk_retry_dlq(
         };
 
         let _ = st.tx.send(notif.clone());
-        NOTIFICATIONS_DISPATCHED
-            .with_label_values(&[&notif.kind])
-            .inc();
+        metrics::record_dispatch(&notif.kind);
 
         if let Some(redis_pool) = &st.redis_pub {
             if let Ok(body_str) = serde_json::to_string(&notif) {
@@ -3743,6 +3732,8 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .json()
         .init();
+
+    metrics::init();
 
     let (tx, _) = broadcast::channel::<Notification>(CHANNEL_CAP);
     let tx = Arc::new(tx);

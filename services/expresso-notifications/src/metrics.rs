@@ -1,168 +1,143 @@
-//! Prometheus metric name constants for expresso-notifications.
+//! Prometheus metrics for expresso-notifications.
+//!
+//! - `notifications_dispatched_total{kind}` — notifications fanned out to the
+//!   local SSE bus + Redis relay, by event kind (new_mail/flags_changed/…).
+//! - `notifications_failed_total{kind}` — dispatches where the Redis relay
+//!   publish failed, by kind. A nonzero rate means other pods may miss events.
+//! - `notifications_dispatch_duration_ms` — wall-clock of a single dispatch
+//!   (local broadcast + Redis publish) as a histogram.
+//!
+//! `record_dispatch(kind)` bumps the dispatched counter; `record_failure(kind)`
+//! bumps the failed counter; `observe_dispatch(started)` records latency. All
+//! three register into the shared `expresso_observability` (default) registry,
+//! so they appear on the service's `/metrics` endpoint.
 
-pub const METRIC_NOTIFICATIONS_DISPATCHED: &str = "expresso_notifications_dispatched_total";
-pub const METRIC_NOTIFICATIONS_FAILED:     &str = "expresso_notifications_failed_total";
-pub const METRIC_SUBSCRIPTIONS_ACTIVE:     &str = "expresso_notifications_subscriptions_active";
-pub const METRIC_DISPATCH_DURATION_MS:     &str = "expresso_notifications_dispatch_duration_ms";
+use std::time::Instant;
 
-/// Labels used on the dispatched / failed counters.
-pub const LABEL_CHANNEL: &str = "channel";
-pub const LABEL_STATUS:  &str = "status";
+use once_cell::sync::Lazy;
+use prometheus::{HistogramVec, IntCounterVec};
 
-/// Known channel values for label cardinality control.
-pub const CHANNEL_PUSH:      &str = "push";
-pub const CHANNEL_EMAIL:     &str = "email";
-pub const CHANNEL_WEBSOCKET: &str = "websocket";
+pub const METRIC_NOTIFICATIONS_DISPATCHED: &str = "notifications_dispatched_total";
+pub const METRIC_NOTIFICATIONS_FAILED: &str = "notifications_failed_total";
+pub const METRIC_DISPATCH_DURATION_MS: &str = "notifications_dispatch_duration_ms";
+
+pub const LABEL_KIND: &str = "kind";
+
+static DISPATCHED_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let c = IntCounterVec::new(
+        prometheus::Opts::new(
+            METRIC_NOTIFICATIONS_DISPATCHED,
+            "Total notifications dispatched, by kind",
+        ),
+        &[LABEL_KIND],
+    )
+    .expect("metric build");
+    expresso_observability::register(c)
+});
+
+static FAILED_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let c = IntCounterVec::new(
+        prometheus::Opts::new(
+            METRIC_NOTIFICATIONS_FAILED,
+            "Notification dispatches whose Redis relay publish failed, by kind",
+        ),
+        &[LABEL_KIND],
+    )
+    .expect("metric build");
+    expresso_observability::register(c)
+});
+
+static DISPATCH_DURATION_MS: Lazy<HistogramVec> = Lazy::new(|| {
+    let h = HistogramVec::new(
+        prometheus::HistogramOpts::new(
+            METRIC_DISPATCH_DURATION_MS,
+            "Notification dispatch latency (ms)",
+        )
+        .buckets(vec![
+            0.5, 1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0,
+        ]),
+        &[],
+    )
+    .expect("metric build");
+    expresso_observability::register(h)
+});
+
+/// Force lazy init so the metric families appear on the first scrape even
+/// before any dispatch. Idempotent.
+pub fn init() {
+    Lazy::force(&DISPATCHED_TOTAL);
+    Lazy::force(&FAILED_TOTAL);
+    Lazy::force(&DISPATCH_DURATION_MS);
+}
+
+/// Count one dispatched notification of `kind`.
+pub fn record_dispatch(kind: &str) {
+    DISPATCHED_TOTAL.with_label_values(&[kind]).inc();
+}
+
+/// Count one dispatch whose Redis relay publish failed.
+pub fn record_failure(kind: &str) {
+    FAILED_TOTAL.with_label_values(&[kind]).inc();
+}
+
+/// Observe the elapsed dispatch latency since `started`.
+pub fn observe_dispatch(started: Instant) {
+    let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+    DISPATCH_DURATION_MS
+        .with_label_values(&[])
+        .observe(elapsed_ms);
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn dispatched_metric_has_expresso_prefix() {
-        assert!(METRIC_NOTIFICATIONS_DISPATCHED.starts_with("expresso_"));
+    fn metric_names_have_notifications_prefix() {
+        for m in [
+            METRIC_NOTIFICATIONS_DISPATCHED,
+            METRIC_NOTIFICATIONS_FAILED,
+            METRIC_DISPATCH_DURATION_MS,
+        ] {
+            assert!(m.starts_with("notifications_"), "{m}");
+        }
     }
 
     #[test]
-    fn failed_metric_has_expresso_prefix() {
-        assert!(METRIC_NOTIFICATIONS_FAILED.starts_with("expresso_"));
-    }
-
-    #[test]
-    fn subscriptions_active_metric_has_expresso_prefix() {
-        assert!(METRIC_SUBSCRIPTIONS_ACTIVE.starts_with("expresso_"));
-    }
-
-    #[test]
-    fn dispatch_duration_metric_has_expresso_prefix() {
-        assert!(METRIC_DISPATCH_DURATION_MS.starts_with("expresso_"));
-    }
-
-    #[test]
-    fn dispatched_metric_ends_with_total() {
+    fn counter_metrics_end_with_total() {
         assert!(METRIC_NOTIFICATIONS_DISPATCHED.ends_with("_total"));
-    }
-
-    #[test]
-    fn failed_metric_ends_with_total() {
         assert!(METRIC_NOTIFICATIONS_FAILED.ends_with("_total"));
     }
 
     #[test]
-    fn label_channel_is_channel() {
-        assert_eq!(LABEL_CHANNEL, "channel");
+    fn histogram_not_total() {
+        assert!(!METRIC_DISPATCH_DURATION_MS.ends_with("_total"));
     }
 
     #[test]
-    fn label_status_is_status() {
-        assert_eq!(LABEL_STATUS, "status");
-    }
-
-    #[test]
-    fn channel_push_value() {
-        assert_eq!(CHANNEL_PUSH, "push");
-    }
-
-    #[test]
-    fn channel_email_value() {
-        assert_eq!(CHANNEL_EMAIL, "email");
-    }
-
-    #[test]
-    fn channel_websocket_value() {
-        assert_eq!(CHANNEL_WEBSOCKET, "websocket");
-    }
-
-    #[test]
-    fn all_channel_values_are_distinct() {
-        let channels = [CHANNEL_PUSH, CHANNEL_EMAIL, CHANNEL_WEBSOCKET];
-        let mut sorted = channels.to_vec();
+    fn metric_names_all_distinct() {
+        let names = [
+            METRIC_NOTIFICATIONS_DISPATCHED,
+            METRIC_NOTIFICATIONS_FAILED,
+            METRIC_DISPATCH_DURATION_MS,
+        ];
+        let mut sorted = names.to_vec();
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.len(), 3);
     }
 
     #[test]
-    fn metric_names_are_nonempty() {
-        assert!(!METRIC_NOTIFICATIONS_DISPATCHED.is_empty());
-        assert!(!METRIC_NOTIFICATIONS_FAILED.is_empty());
-        assert!(!METRIC_SUBSCRIPTIONS_ACTIVE.is_empty());
-        assert!(!METRIC_DISPATCH_DURATION_MS.is_empty());
+    fn label_kind_is_kind() {
+        assert_eq!(LABEL_KIND, "kind");
     }
 
     #[test]
-    fn dispatched_metric_contains_notifications() {
-        assert!(METRIC_NOTIFICATIONS_DISPATCHED.contains("notifications"));
-    }
-
-    #[test]
-    fn failed_metric_contains_notifications() {
-        assert!(METRIC_NOTIFICATIONS_FAILED.contains("notifications"));
-    }
-
-    #[test]
-    fn subscriptions_metric_contains_subscriptions() {
-        assert!(METRIC_SUBSCRIPTIONS_ACTIVE.contains("subscriptions"));
-    }
-
-    #[test]
-    fn duration_metric_contains_duration() {
-        assert!(METRIC_DISPATCH_DURATION_MS.contains("duration"));
-    }
-
-    #[test]
-    fn label_channel_nonempty() {
-        assert!(!LABEL_CHANNEL.is_empty());
-    }
-
-    #[test]
-    fn label_status_nonempty() {
-        assert!(!LABEL_STATUS.is_empty());
-    }
-
-    #[test]
-    fn all_metric_names_use_snake_case() {
-        for m in [
-            METRIC_NOTIFICATIONS_DISPATCHED,
-            METRIC_NOTIFICATIONS_FAILED,
-            METRIC_SUBSCRIPTIONS_ACTIVE,
-            METRIC_DISPATCH_DURATION_MS,
-        ] {
-            assert!(!m.contains('-'), "metric contains hyphen: {m}");
-            assert_eq!(m, m.to_ascii_lowercase(), "metric not lowercase: {m}");
-        }
-    }
-
-    #[test]
-    fn dispatched_and_failed_metrics_differ() {
-        assert_ne!(METRIC_NOTIFICATIONS_DISPATCHED, METRIC_NOTIFICATIONS_FAILED);
-    }
-
-    #[test]
-    fn channel_labels_are_lowercase() {
-        assert_eq!(CHANNEL_PUSH, CHANNEL_PUSH.to_ascii_lowercase());
-        assert_eq!(CHANNEL_EMAIL, CHANNEL_EMAIL.to_ascii_lowercase());
-        assert_eq!(CHANNEL_WEBSOCKET, CHANNEL_WEBSOCKET.to_ascii_lowercase());
-    }
-
-    #[test]
-    fn dispatch_duration_metric_contains_dispatch() {
-        assert!(METRIC_DISPATCH_DURATION_MS.contains("dispatch"));
-    }
-
-    #[test]
-    fn subscriptions_active_metric_does_not_end_with_total() {
-        assert!(!METRIC_SUBSCRIPTIONS_ACTIVE.ends_with("_total"));
-    }
-
-    #[test]
-    fn channel_push_and_email_are_distinct() {
-        assert_ne!(CHANNEL_PUSH, CHANNEL_EMAIL);
-    }
-
-    #[test]
-    fn channel_websocket_differs_from_push_and_email() {
-        assert_ne!(CHANNEL_WEBSOCKET, CHANNEL_PUSH);
-        assert_ne!(CHANNEL_WEBSOCKET, CHANNEL_EMAIL);
+    fn record_paths_do_not_panic() {
+        init();
+        init();
+        record_dispatch("new_mail");
+        record_failure("new_mail");
+        observe_dispatch(Instant::now());
     }
 }
