@@ -1,12 +1,37 @@
-# Fuzzing harness — lib targets added (pending green-CI confirmation)
+# Fuzzing harness — fixed, now a blocking CI gate
 
-**Status (2026-05-30):** the three services now have `src/lib.rs` exposing
-`pub async fn run()` plus the module tree, and a `[lib]` target in each
-`Cargo.toml`; `main.rs` is a thin shim calling `expresso_<svc>::run()`. The
-fuzz crate should now link `expresso_{mail,calendar,contacts}::fuzz_entry`.
-The `fuzz-smoke` job is kept `continue-on-error: true` for one CI run to
-confirm the harness builds green; once observed green, drop that line to make
-it a merge gate.
+**Status (2026-05-30):** the harness builds and runs; the `fuzz-smoke` job is a
+blocking merge gate (verified green on commit 240e310d, `continue-on-error`
+removed). It had **four** stacked blockers, fixed in order:
+
+1. **Missing lib targets** — the three services were bin-only, so the fuzz crate
+   couldn't link `expresso_{mail,calendar,contacts}::fuzz_entry`. Fix: each
+   service got `src/lib.rs` (module tree + `pub async fn run()`) and a `[lib]`
+   target; `main.rs` is a thin shim calling `expresso_<svc>::run()`.
+2. **gitleaks false positive** — `let key = "MAIL_TEST_UNSET_19981"` test
+   env-var NAMES tripped the default `generic-api-key` rule when they moved
+   bin→lib. Fix: narrow `.gitleaks.toml` allowlist for the `_TEST_` convention.
+3. **`cargo install cargo-fuzz --locked`** — the pinned `Cargo.lock` carries a
+   `rustix` that fails on recent nightly (`rustc_attrs` reserved-attr errors).
+   Fix: drop `--locked`; add `rust-src` component.
+4. **cargo-fuzz invocation** — `fuzz/Cargo.toml` lacked
+   `[package.metadata] cargo-fuzz = true`, and the CI step ran with
+   `working-directory: fuzz` (cargo-fuzz then looked for `fuzz/fuzz/Cargo.toml`).
+   Fix: add the marker; run `cargo +nightly fuzz build` from the **repo root**.
+
+Verified on the build host (.105, nightly 1.98): `cargo fuzz build` from root
+compiles all 4 targets under ASan + build-std (green, ~7m), and
+`cargo fuzz run fuzz_vcard -max_total_time=5` does 295k runs, no crash.
+
+The `fuzz-smoke` job is now a blocking merge gate (`continue-on-error` removed
+on commit 240e310d after build+run passed green on the runner).
+
+**.105 gotchas hit this round:** `~/.bashrc` exports `RUSTC_WRAPPER=sccache`
+(binary missing) and it re-sources inside every `setsid bash -c`, so `unset`
+before the heredoc doesn't stick — must `export RUSTC_WRAPPER=` *inside* the
+build shell. The host's nightly was stale (2026-05-08) and couldn't even build
+cargo-fuzz; `rustup toolchain install nightly` to 1.98 fixed it. And `git reset`
+restores the tracked `.cargo/config.toml` mold flag — re-neutralize every time.
 
 ---
 

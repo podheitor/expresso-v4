@@ -66,11 +66,10 @@ jobs:
   fuzz-smoke:
     name: Fuzz smoke (5s per target)
     runs-on: ubuntu-24.04
-    # The three services now expose lib targets (src/lib.rs + run()), so the
-    # fuzz crate can link expresso_{mail,calendar,contacts}::fuzz_entry. Kept
-    # non-blocking for one green run to confirm the harness links in CI; once
-    # observed green, drop continue-on-error to make it a merge gate.
-    continue-on-error: true
+    # Blocking merge gate. The three services expose lib targets (src/lib.rs +
+    # run()), so the fuzz crate links expresso_{mail,calendar,contacts}::
+    # fuzz_entry; build + 5s smoke-run of all four targets passed green on
+    # commit 240e310d, so this is no longer continue-on-error.
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
