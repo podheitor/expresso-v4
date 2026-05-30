@@ -62,34 +62,9 @@ pub async fn process(
     let recipients = normalized_recipients(rcpts);
 
     for rcpt in recipients {
-        // Recipient resolution runs without a tenant session var — inbound
-        // delivery legitimately crosses tenants, one rcpt at a time.
-        let mut probe = state.db().begin().await?;
-        let user_rows: Vec<(Uuid, Uuid)> = sqlx::query_as(
-            r#"
-            SELECT id, tenant_id
-            FROM users
-            WHERE lower(email) = $1
-            LIMIT 2
-            "#,
-        )
-        .bind(&rcpt)
-        .fetch_all(&mut *probe)
-        .await?;
-        probe.commit().await?;
-
-        let (user_id, tenant_id) = match user_rows.as_slice() {
-            [(uid, tid)] => (*uid, *tid),
-            [] => {
-                tracing::warn!(rcpt = %rcpt, "recipient not found; dropping delivery");
-                continue;
-            }
-            _ => {
-                // users.email is per-tenant unique; the same address in two
-                // tenants is legal schema-wise. Refuse rather than guess.
-                tracing::error!(rcpt = %rcpt, "recipient ambiguous across tenants; dropping delivery");
-                continue;
-            }
+        let (user_id, tenant_id) = match resolve_recipient(state, &rcpt).await? {
+            Some(pair) => pair,
+            None => continue, // resolve_recipient logs the specific reason
         };
 
         // Now arm the tenant session var for the rest of this delivery so RLS
@@ -299,6 +274,96 @@ pub async fn process(
     }
 
     Ok(delivered)
+}
+
+/// Resolve an inbound recipient address to a local `(user_id, tenant_id)`.
+///
+/// First tries a direct `users.email` match. On a miss, falls back to the
+/// `email_aliases` table: an enabled `alias -> target` row redirects delivery
+/// to the target, which is then resolved as a local user (one hop only — alias
+/// chains are not followed, so a target that is itself another alias is not
+/// re-expanded). Returns `None` (and logs the reason) when the address is
+/// unknown, ambiguous across tenants, or aliased to a non-local target.
+///
+/// Runs without a tenant session var — inbound delivery legitimately crosses
+/// tenants, one recipient at a time.
+async fn resolve_recipient(state: &AppState, rcpt: &str) -> anyhow::Result<Option<(Uuid, Uuid)>> {
+    if let Some(pair) = lookup_local_user(state, rcpt).await? {
+        return Ok(Some(pair));
+    }
+
+    // No direct mailbox — consult the alias table for an enabled redirect.
+    let alias_targets: Vec<String> = sqlx::query_scalar(
+        r#"
+        SELECT target
+        FROM email_aliases
+        WHERE lower(alias) = $1 AND is_enabled = true
+        LIMIT 2
+        "#,
+    )
+    .bind(rcpt)
+    .fetch_all(state.db())
+    .await?;
+
+    let target = match alias_targets.as_slice() {
+        [t] => t.trim().to_ascii_lowercase(),
+        [] => {
+            tracing::warn!(rcpt = %rcpt, "recipient not found; dropping delivery");
+            return Ok(None);
+        }
+        _ => {
+            // alias is UNIQUE per (tenant_id, alias) but not globally; the same
+            // alias in two tenants pointing at different targets is ambiguous
+            // without a tenant context on the inbound path. Refuse rather than guess.
+            tracing::error!(rcpt = %rcpt, "alias ambiguous across tenants; dropping delivery");
+            return Ok(None);
+        }
+    };
+
+    match lookup_local_user(state, &target).await? {
+        Some(pair) => {
+            tracing::info!(rcpt = %rcpt, target = %target, "alias resolved to local user");
+            Ok(Some(pair))
+        }
+        None => {
+            // The alias points off-platform (or at another alias). Storing it
+            // locally is impossible; relaying is a separate concern.
+            tracing::warn!(
+                rcpt = %rcpt, target = %target,
+                "alias target is not a local user; dropping delivery (external relay not wired)"
+            );
+            Ok(None)
+        }
+    }
+}
+
+/// Look up a single local user by (lowercased) email. Returns `None` if no row
+/// matches and an error path (logged by the caller) if the address is shared by
+/// users in two tenants — `users.email` is per-tenant unique, so a cross-tenant
+/// collision is real and must not be guessed.
+async fn lookup_local_user(state: &AppState, email: &str) -> anyhow::Result<Option<(Uuid, Uuid)>> {
+    let mut probe = state.db().begin().await?;
+    let rows: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        r#"
+        SELECT id, tenant_id
+        FROM users
+        WHERE lower(email) = $1
+        LIMIT 2
+        "#,
+    )
+    .bind(email)
+    .fetch_all(&mut *probe)
+    .await?;
+    probe.commit().await?;
+
+    match rows.as_slice() {
+        [(uid, tid)] => Ok(Some((*uid, *tid))),
+        [] => Ok(None),
+        _ => {
+            tracing::error!(email = %email, "recipient ambiguous across tenants; dropping delivery");
+            Ok(None)
+        }
+    }
 }
 
 /// Execute actions returned by expresso-flows (best-effort; errors are logged, not fatal).
