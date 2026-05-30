@@ -154,9 +154,35 @@ async fn verify_domain(
     ctx: RequestCtx,
     Path(id): Path<Uuid>,
 ) -> Result<Json<TenantDomain>> {
-    // NOTE: the DNS TXT lookup of verify_token is a follow-up. This endpoint
-    // flips the verification state; wiring the resolver check is tracked
-    // separately so the registry + state machine land first.
+    // Fetch the pending domain + its expected token.
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let row = sqlx::query(&format!(
+        "SELECT {SELECT_COLS} FROM tenant_domains WHERE id = $1 AND tenant_id = $2"
+    ))
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let current = row.as_ref().map(row_to_domain).ok_or(MailError::NotFound)?;
+    tx.commit().await?;
+
+    // Already verified — idempotent success, no DNS round-trip.
+    if current.is_verified {
+        return Ok(Json(current));
+    }
+
+    // Prove ownership: the tenant must publish verify_token as a TXT record on
+    // the domain. A miss/transient failure is a clean 400, not a 500.
+    let ok = expresso_mail_auth::verify_domain_txt(&current.domain, &current.verify_token)
+        .await
+        .map_err(|e| MailError::BadRequest(format!("dns verification error: {e}")))?;
+    if !ok {
+        return Err(MailError::BadRequest(format!(
+            "TXT record not found; publish \"{}\" on {} and retry",
+            current.verify_token, current.domain
+        )));
+    }
+
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row = sqlx::query(&format!(
         "UPDATE tenant_domains \

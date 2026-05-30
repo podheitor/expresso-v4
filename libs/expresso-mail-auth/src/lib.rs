@@ -292,6 +292,45 @@ pub async fn verify_inbound(
     }
 }
 
+/// Check whether `domain` publishes a TXT record containing `token`, proving
+/// ownership for tenant-domain verification. Queries the apex `domain` (the
+/// conventional place a verification TXT is published) over the system DNS
+/// config via hickory (re-exported by `mail-auth`, so no extra dependency).
+///
+/// Returns `Ok(true)` when any TXT record's joined value contains `token`,
+/// `Ok(false)` when it resolves but no record matches (incl. NXDOMAIN), and
+/// `Err` only on resolver-build failure — a transient lookup error is treated
+/// as "not verified yet" so the caller answers a clean negative, not a 500.
+pub async fn verify_domain_txt(domain: &str, token: &str) -> anyhow::Result<bool> {
+    use mail_auth::hickory_resolver::Resolver;
+
+    let resolver = Resolver::builder_tokio()
+        .map_err(|e| anyhow::anyhow!("dns resolver init: {e}"))?
+        .build();
+
+    let lookup = match resolver.txt_lookup(domain.to_string()).await {
+        Ok(l) => l,
+        Err(e) => {
+            debug!(domain, error = %e, "domain TXT lookup failed (treated as unverified)");
+            return Ok(false);
+        }
+    };
+
+    for txt in lookup.iter() {
+        // A TXT record is a sequence of character-strings; join them before
+        // matching so a token split across chunks still compares whole.
+        let joined: String = txt
+            .txt_data()
+            .iter()
+            .map(|chunk| String::from_utf8_lossy(chunk))
+            .collect();
+        if joined.contains(token) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
