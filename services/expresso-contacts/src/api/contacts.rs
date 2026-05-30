@@ -62,6 +62,17 @@ pub fn routes() -> Router<AppState> {
 }
 
 async fn create(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    book_id: Path<Uuid>,
+    raw: String,
+) -> Result<Response> {
+    let r = create_inner(state, ctx, book_id, raw).await;
+    crate::metrics::record_result(crate::metrics::OP_CONTACT_CREATE, &r);
+    r
+}
+
+async fn create_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(book_id): Path<Uuid>,
@@ -89,6 +100,17 @@ async fn create(
 }
 
 async fn list(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    book_id: Path<Uuid>,
+    req_headers: HeaderMap,
+) -> Result<Response> {
+    let r = list_inner(state, ctx, book_id, req_headers).await;
+    crate::metrics::record_result(crate::metrics::OP_CONTACT_LIST, &r);
+    r
+}
+
+async fn list_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(book_id): Path<Uuid>,
@@ -173,6 +195,18 @@ async fn get_one(
 }
 
 async fn update(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    path: Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    raw: String,
+) -> Result<Response> {
+    let r = update_inner(state, ctx, path, headers, raw).await;
+    crate::metrics::record_result(crate::metrics::OP_CONTACT_UPDATE, &r);
+    r
+}
+
+async fn update_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path((book_id, id)): Path<(Uuid, Uuid)>,
@@ -199,6 +233,16 @@ async fn update(
 }
 
 async fn delete(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    path: Path<(Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    let r = delete_inner(state, ctx, path).await;
+    crate::metrics::record_result(crate::metrics::OP_CONTACT_DELETE, &r);
+    r
+}
+
+async fn delete_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path((book_id, id)): Path<(Uuid, Uuid)>,
@@ -217,6 +261,16 @@ async fn delete(
 /// GET /api/v1/addressbooks/:book_id/export.vcf — concat of all contacts'
 /// raw vCards as a single text/vcard download.
 async fn export_vcf(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    book_id: Path<Uuid>,
+) -> Result<Response> {
+    let r = export_vcf_inner(state, ctx, book_id).await;
+    crate::metrics::record_result(crate::metrics::OP_EXPORT_VCF, &r);
+    r
+}
+
+async fn export_vcf_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(book_id): Path<Uuid>,

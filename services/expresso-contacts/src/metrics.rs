@@ -1,4 +1,14 @@
-//! Contacts service Prometheus metrics labels and helpers.
+//! Contacts service Prometheus metrics.
+//!
+//! Single counter `expresso_contacts_ops_total{op, outcome}` covers handler
+//! outcomes. `op` is one of: contact_create, contact_update, contact_delete,
+//! contact_list, import_vcard, import_csv, export_vcf. `outcome` is `ok` on
+//! success or a mapped error label (see `outcome_for_err`).
+
+use once_cell::sync::Lazy;
+use prometheus::IntCounterVec;
+
+use crate::error::ContactsError;
 
 /// Metric namespace for all contacts service metrics.
 pub const NAMESPACE: &str = "expresso_contacts";
@@ -18,23 +28,86 @@ pub const OP_IMPORT_CSV: &str = "import_csv";
 /// Label for vCard export operations.
 pub const OP_EXPORT_VCF: &str = "export_vcf";
 
+const OPS: &[&str] = &[
+    OP_CONTACT_CREATE,
+    OP_CONTACT_UPDATE,
+    OP_CONTACT_DELETE,
+    OP_CONTACT_LIST,
+    OP_IMPORT_VCARD,
+    OP_IMPORT_CSV,
+    OP_EXPORT_VCF,
+];
+
+const OUTCOMES: &[&str] = &[
+    "ok",
+    "not_found",
+    "bad_request",
+    "forbidden",
+    "not_supported",
+    "unavailable",
+    "error",
+];
+
+pub static CONTACTS_OPS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let c = IntCounterVec::new(
+        prometheus::Opts::new(
+            metric_name("ops_total"),
+            "Contacts handler outcomes per operation",
+        ),
+        &["op", "outcome"],
+    )
+    .expect("metric build");
+    expresso_observability::register(c)
+});
+
 /// Returns the full Prometheus metric name for a given base name.
 pub fn metric_name(base: &str) -> String {
-    format!("{}_{}", NAMESPACE, base)
+    format!("{NAMESPACE}_{base}")
 }
 
-/// Returns true when the operation label is recognized.
-pub fn is_known_op(op: &str) -> bool {
-    matches!(
-        op,
-        OP_CONTACT_CREATE | OP_CONTACT_UPDATE | OP_CONTACT_DELETE
-            | OP_CONTACT_LIST | OP_IMPORT_VCARD | OP_IMPORT_CSV | OP_EXPORT_VCF
-    )
+/// Pre-populate label series so `rate()`/`increase()` work from the first
+/// scrape. Idempotent.
+pub fn init() {
+    Lazy::force(&CONTACTS_OPS_TOTAL);
+    for op in OPS {
+        for outcome in OUTCOMES {
+            CONTACTS_OPS_TOTAL
+                .with_label_values(&[op, outcome])
+                .inc_by(0);
+        }
+    }
+}
+
+/// Record one handler outcome.
+#[inline]
+pub fn record(op: &'static str, outcome: &'static str) {
+    CONTACTS_OPS_TOTAL.with_label_values(&[op, outcome]).inc();
+}
+
+/// Map a `ContactsError` to the canonical `outcome` label.
+pub fn outcome_for_err(e: &ContactsError) -> &'static str {
+    match e {
+        ContactsError::ContactNotFound(_) | ContactsError::AddressbookNotFound(_) => "not_found",
+        ContactsError::InvalidVCard(_) | ContactsError::BadRequest(_) => "bad_request",
+        ContactsError::Forbidden => "forbidden",
+        ContactsError::NotSupported(_) => "not_supported",
+        ContactsError::DatabaseUnavailable => "unavailable",
+        _ => "error",
+    }
+}
+
+/// Record `ok` on success or the mapped error label on failure.
+pub fn record_result<T>(op: &'static str, result: &Result<T, ContactsError>) {
+    match result {
+        Ok(_) => record(op, "ok"),
+        Err(e) => record(op, outcome_for_err(e)),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[test]
     fn namespace_value() {
@@ -42,137 +115,94 @@ mod tests {
     }
 
     #[test]
-    fn op_contact_create_value() {
+    fn op_values() {
         assert_eq!(OP_CONTACT_CREATE, "contact_create");
-    }
-
-    #[test]
-    fn op_contact_update_value() {
         assert_eq!(OP_CONTACT_UPDATE, "contact_update");
-    }
-
-    #[test]
-    fn op_contact_delete_value() {
         assert_eq!(OP_CONTACT_DELETE, "contact_delete");
-    }
-
-    #[test]
-    fn op_contact_list_value() {
         assert_eq!(OP_CONTACT_LIST, "contact_list");
-    }
-
-    #[test]
-    fn op_import_vcard_value() {
         assert_eq!(OP_IMPORT_VCARD, "import_vcard");
-    }
-
-    #[test]
-    fn op_import_csv_value() {
         assert_eq!(OP_IMPORT_CSV, "import_csv");
-    }
-
-    #[test]
-    fn op_export_vcf_value() {
         assert_eq!(OP_EXPORT_VCF, "export_vcf");
     }
 
     #[test]
     fn metric_name_prefixes_namespace() {
-        assert_eq!(metric_name("requests_total"), "expresso_contacts_requests_total");
+        assert_eq!(
+            metric_name("requests_total"),
+            "expresso_contacts_requests_total"
+        );
+        assert!(metric_name("x").starts_with(NAMESPACE));
+        assert_eq!(metric_name("latency"), format!("{NAMESPACE}_latency"));
     }
 
     #[test]
-    fn is_known_op_contact_create() {
-        assert!(is_known_op(OP_CONTACT_CREATE));
-    }
-
-    #[test]
-    fn is_known_op_contact_update() {
-        assert!(is_known_op(OP_CONTACT_UPDATE));
-    }
-
-    #[test]
-    fn is_known_op_contact_delete() {
-        assert!(is_known_op(OP_CONTACT_DELETE));
-    }
-
-    #[test]
-    fn is_known_op_contact_list() {
-        assert!(is_known_op(OP_CONTACT_LIST));
-    }
-
-    #[test]
-    fn is_known_op_import_vcard() {
-        assert!(is_known_op(OP_IMPORT_VCARD));
-    }
-
-    #[test]
-    fn is_known_op_import_csv() {
-        assert!(is_known_op(OP_IMPORT_CSV));
-    }
-
-    #[test]
-    fn is_known_op_export_vcf() {
-        assert!(is_known_op(OP_EXPORT_VCF));
-    }
-
-    #[test]
-    fn is_known_op_rejects_unknown() {
-        assert!(!is_known_op("search"));
-        assert!(!is_known_op(""));
-    }
-
-    #[test]
-    fn all_op_labels_lowercase() {
-        for op in [OP_CONTACT_CREATE, OP_CONTACT_UPDATE, OP_CONTACT_DELETE,
-                   OP_CONTACT_LIST, OP_IMPORT_VCARD, OP_IMPORT_CSV, OP_EXPORT_VCF] {
-            assert_eq!(op, op.to_lowercase());
-        }
-    }
-
-    #[test]
-    fn all_op_labels_distinct() {
-        let labels = [OP_CONTACT_CREATE, OP_CONTACT_UPDATE, OP_CONTACT_DELETE,
-                      OP_CONTACT_LIST, OP_IMPORT_VCARD, OP_IMPORT_CSV, OP_EXPORT_VCF];
-        for (i, a) in labels.iter().enumerate() {
-            for (j, b) in labels.iter().enumerate() {
-                if i != j { assert_ne!(a, b); }
+    fn op_labels_distinct_lowercase() {
+        for (i, a) in OPS.iter().enumerate() {
+            assert_eq!(*a, a.to_lowercase());
+            assert!(!a.contains(' '));
+            for (j, b) in OPS.iter().enumerate() {
+                if i != j {
+                    assert_ne!(a, b);
+                }
             }
         }
     }
 
     #[test]
-    fn metric_name_contains_base() {
-        assert!(metric_name("contact_count").contains("contact_count"));
+    fn outcomes_distinct_nonempty() {
+        for (i, a) in OUTCOMES.iter().enumerate() {
+            assert!(!a.is_empty());
+            for (j, b) in OUTCOMES.iter().enumerate() {
+                if i != j {
+                    assert_ne!(a, b);
+                }
+            }
+        }
     }
 
     #[test]
-    fn namespace_is_nonempty() {
-        assert!(!NAMESPACE.is_empty());
+    fn outcome_for_err_maps_variants() {
+        assert_eq!(
+            outcome_for_err(&ContactsError::ContactNotFound(Uuid::nil())),
+            "not_found"
+        );
+        assert_eq!(
+            outcome_for_err(&ContactsError::AddressbookNotFound("a".into())),
+            "not_found"
+        );
+        assert_eq!(
+            outcome_for_err(&ContactsError::InvalidVCard("x".into())),
+            "bad_request"
+        );
+        assert_eq!(
+            outcome_for_err(&ContactsError::BadRequest("x".into())),
+            "bad_request"
+        );
+        assert_eq!(outcome_for_err(&ContactsError::Forbidden), "forbidden");
+        assert_eq!(
+            outcome_for_err(&ContactsError::NotSupported("x")),
+            "not_supported"
+        );
+        assert_eq!(
+            outcome_for_err(&ContactsError::DatabaseUnavailable),
+            "unavailable"
+        );
     }
 
     #[test]
-    fn is_known_op_case_sensitive_rejects_uppercase() {
-        assert!(!is_known_op("CONTACT_CREATE"));
+    fn record_paths_do_not_panic() {
+        init();
+        init();
+        record(OP_CONTACT_CREATE, "ok");
+        let ok: Result<(), ContactsError> = Ok(());
+        record_result(OP_CONTACT_CREATE, &ok);
+        let err: Result<(), ContactsError> = Err(ContactsError::Forbidden);
+        record_result(OP_CONTACT_DELETE, &err);
     }
 
     #[test]
-    fn namespace_contains_no_spaces() {
-        assert!(!NAMESPACE.contains(' '));
-    }
-
-    #[test]
-    fn metric_name_starts_with_namespace() {
-        assert!(metric_name("baz").starts_with(NAMESPACE));
-    }
-
-    #[test]
-    fn namespace_does_not_contain_hyphen() {
-        assert!(!NAMESPACE.contains('-'));
-    }
-
-    #[test]
-    fn metric_name_length_is_greater_than_namespace_length() {
-        assert!(metric_name("x").len() > NAMESPACE.len());
+    fn ops_and_outcomes_counts() {
+        assert_eq!(OPS.len(), 7);
+        assert_eq!(OUTCOMES.len(), 7);
     }
 }
