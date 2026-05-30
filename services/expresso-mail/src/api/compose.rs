@@ -50,9 +50,79 @@ pub const MAX_SUBJECT_BYTES: usize = 998;
 pub const MAX_ICS_BYTES: usize = 256 * 1024;
 
 #[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
+/// Recipient entries beginning with this prefix name a contact group by UUID
+/// (`group:<uuid>`) and are expanded to the group's member emails.
+const GROUP_PREFIX: &str = "group:";
+
+/// Expand `group:<uuid>` entries in a recipient list into member emails; plain
+/// addresses pass through unchanged. A group must belong to the caller (same
+/// tenant + owner) — sending to another user's group is silently treated as an
+/// unknown group (no rows), never a leak. Members without an `email_primary`
+/// are skipped. Deduplicates while preserving first-seen order.
+async fn expand_recipients(
+    state: &AppState,
+    ctx: &RequestCtx,
+    entries: &[String],
+) -> Result<Vec<String>> {
+    let mut out: Vec<String> = Vec::with_capacity(entries.len());
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for entry in entries {
+        match entry.strip_prefix(GROUP_PREFIX).map(str::trim) {
+            Some(id_str) => {
+                let group_id = Uuid::parse_str(id_str).map_err(|_| {
+                    MailError::InvalidMessage(format!("invalid group id: {id_str}"))
+                })?;
+                for email in group_member_emails(state, ctx, group_id).await? {
+                    if seen.insert(email.to_ascii_lowercase()) {
+                        out.push(email);
+                    }
+                }
+            }
+            None => {
+                if seen.insert(entry.to_ascii_lowercase()) {
+                    out.push(entry.clone());
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Fetch the member emails of a contact group owned by the caller. Tenant- and
+/// owner-scoped so one user cannot expand another's group; RLS on the joined
+/// tables backs the explicit `WHERE`.
+async fn group_member_emails(
+    state: &AppState,
+    ctx: &RequestCtx,
+    group_id: Uuid,
+) -> Result<Vec<String>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let emails: Vec<String> = sqlx::query_scalar(
+        r#"
+        SELECT c.email_primary
+        FROM contact_group_members m
+        JOIN contact_groups g ON g.id = m.group_id
+        JOIN contacts        c ON c.id = m.contact_id
+        WHERE m.tenant_id = $1
+          AND m.group_id  = $2
+          AND g.owner_user_id = $3
+          AND c.email_primary IS NOT NULL
+          AND c.email_primary <> ''
+        ORDER BY c.email_primary
+        "#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(group_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(emails)
+}
+
 /// Rejeita com 403 se `claimed_from` não bater com o email do usuário
 /// autenticado (case-insensitive, trim). A consulta usa `begin_tenant_tx`
-/// + `WHERE tenant_id = $1 AND id = $2` — defense-in-depth contra RLS
+/// e `WHERE tenant_id = $1 AND id = $2` — defense-in-depth contra RLS
 /// NULL-bypass em `users`.
 async fn assert_from_is_authenticated_user(
     state: &AppState,
@@ -120,6 +190,12 @@ pub async fn send_message(
     validate_send_request(&req)?;
     assert_from_is_authenticated_user(&state, &ctx, &req.from).await?;
 
+    // Expand any `group:<uuid>` recipients into their member emails before the
+    // message is built; plain addresses pass through unchanged.
+    let to = expand_recipients(&state, &ctx, &req.to).await?;
+    let cc = expand_recipients(&state, &ctx, req.cc.as_deref().unwrap_or(&[])).await?;
+    let bcc = expand_recipients(&state, &ctx, req.bcc.as_deref().unwrap_or(&[])).await?;
+
     let from_addr: Address = req
         .from
         .parse()
@@ -129,19 +205,19 @@ pub async fn send_message(
         .from(Mailbox::new(None, from_addr))
         .subject(&req.subject);
 
-    for addr_str in &req.to {
+    for addr_str in &to {
         let a: Address = addr_str
             .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid to: {addr_str}")))?;
         builder = builder.to(Mailbox::new(None, a));
     }
-    for addr_str in req.cc.iter().flatten() {
+    for addr_str in &cc {
         let a: Address = addr_str
             .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid cc: {addr_str}")))?;
         builder = builder.cc(Mailbox::new(None, a));
     }
-    for addr_str in req.bcc.iter().flatten() {
+    for addr_str in &bcc {
         let a: Address = addr_str
             .parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid bcc: {addr_str}")))?;
