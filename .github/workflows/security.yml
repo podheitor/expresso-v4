@@ -14,7 +14,7 @@ jobs:
     name: cargo-audit (RustSec)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       # .cargo/config.toml pins -fuse-ld=mold; install it so cargo install links.
       - uses: rui314/setup-mold@v1
@@ -34,7 +34,7 @@ jobs:
     name: gitleaks (secret scan)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
@@ -45,7 +45,7 @@ jobs:
     name: Miri (UB — pure-logic modules)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri, rust-src
@@ -71,7 +71,7 @@ jobs:
     # fuzz_entry; build + 5s smoke-run of all four targets passed green on
     # commit 240e310d, so this is no longer continue-on-error.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rust-src
