@@ -388,6 +388,71 @@ impl MatrixClient {
             .map_err(|e| ChatError::Matrix(format!("decode thread list: {e}")))
     }
 
+    /// Read a room's pinned event ids from the `m.room.pinned_events` state
+    /// event. Returns an empty list when no pins are set (the HS answers 404
+    /// `M_NOT_FOUND` for an absent state event — treated as "no pins").
+    pub async fn get_pinned_events(&self, acting_as: &str, room_id: &str) -> Result<Vec<String>> {
+        self.ensure_registered(acting_as).await?;
+        let path = format!("/rooms/{}/state/m.room.pinned_events/", urlencode(room_id));
+        let url = self.cs_url(&path, acting_as)?;
+        let resp = self
+            .http
+            .get(url)
+            .bearer_auth(self.as_token()?)
+            .send()
+            .await
+            .map_err(|e| ChatError::Matrix(format!("get pinned failed: {e}")))?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(Vec::new());
+        }
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ChatError::Matrix(format!(
+                "get pinned HS {}: {}",
+                status, body
+            )));
+        }
+        #[derive(Deserialize)]
+        struct R {
+            #[serde(default)]
+            pinned: Vec<String>,
+        }
+        let r: R = resp
+            .json()
+            .await
+            .map_err(|e| ChatError::Matrix(format!("decode pinned: {e}")))?;
+        Ok(r.pinned)
+    }
+
+    /// Replace a room's pinned event ids by writing the `m.room.pinned_events`
+    /// state event. The HS enforces the power level required to send state
+    /// (surfaced as a Matrix error if the caller lacks it).
+    pub async fn set_pinned_events(
+        &self,
+        acting_as: &str,
+        room_id: &str,
+        pinned: &[String],
+    ) -> Result<String> {
+        self.ensure_registered(acting_as).await?;
+        let path = format!("/rooms/{}/state/m.room.pinned_events/", urlencode(room_id));
+        let url = self.cs_url(&path, acting_as)?;
+        let payload = json!({ "pinned": pinned });
+        #[derive(Deserialize)]
+        struct R {
+            event_id: String,
+        }
+        let r: R = self
+            .send(
+                self.http
+                    .put(url)
+                    .bearer_auth(self.as_token()?)
+                    .json(&payload),
+            )
+            .await?;
+        Ok(r.event_id)
+    }
+
     /// List recent messages (reverse-chronological; limit capped at 100 by HS).
     pub async fn list_messages(&self, acting_as: &str, room_id: &str, limit: u32) -> Result<Value> {
         self.ensure_registered(acting_as).await?;

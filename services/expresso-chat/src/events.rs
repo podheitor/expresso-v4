@@ -31,6 +31,7 @@ pub enum ChatEventKind {
     Delete,
     Typing,
     Reaction,
+    Pin,
 }
 
 impl ChatEventKind {
@@ -42,6 +43,7 @@ impl ChatEventKind {
             Self::Delete => "delete",
             Self::Typing => "typing",
             Self::Reaction => "reaction",
+            Self::Pin => "pin",
         }
     }
 }
@@ -174,6 +176,28 @@ impl ChatEvent {
         }
     }
 
+    /// A pin/unpin of a message (`target_event_id`). `added` = `true` pinned,
+    /// `false` unpinned.
+    pub fn pin(
+        tenant_id: Uuid,
+        channel_id: Uuid,
+        user_id: Uuid,
+        target_event_id: String,
+        added: bool,
+    ) -> Self {
+        Self {
+            tenant_id,
+            channel_id,
+            kind: ChatEventKind::Pin,
+            user_id,
+            event_id: Some(target_event_id),
+            body: None,
+            emoji: None,
+            added: Some(added),
+            thread_root: None,
+        }
+    }
+
     /// A reaction add/remove on a message (`target_event_id`).
     pub fn reaction(
         tenant_id: Uuid,
@@ -274,6 +298,17 @@ mod tests {
         let json = serde_json::to_string(&ChatEvent::message(t, c, u, "$e:hs".into(), "hi".into()))
             .unwrap();
         assert!(!json.contains("thread_root"), "got: {json}");
+    }
+
+    #[test]
+    fn pin_event_carries_added_flag() {
+        let (t, c, u) = ids();
+        let ev = ChatEvent::pin(t, c, u, "$msg:hs".into(), true);
+        assert_eq!(ev.kind, ChatEventKind::Pin);
+        assert_eq!(ev.event_id.as_deref(), Some("$msg:hs"));
+        assert_eq!(ev.added, Some(true));
+        let json = serde_json::to_string(&ev).unwrap();
+        assert!(json.contains("\"kind\":\"pin\""), "got: {json}");
     }
 
     #[test]

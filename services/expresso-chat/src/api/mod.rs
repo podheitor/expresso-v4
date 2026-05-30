@@ -2,6 +2,7 @@ mod channels;
 pub mod context;
 mod health;
 mod messages;
+mod pins;
 mod reactions;
 mod read;
 mod stream;
@@ -25,6 +26,7 @@ pub fn router(
         .merge(expresso_observability::metrics_router())
         .merge(channels::routes())
         .merge(messages::routes())
+        .merge(pins::routes())
         .merge(reactions::routes())
         .merge(read::routes())
         .merge(stream::routes())
