@@ -50,8 +50,10 @@ async fn create(
     ctx: RequestCtx,
     Json(body): Json<CreateBody>,
 ) -> Result<(StatusCode, Json<Channel>)> {
-    if body.name.trim().is_empty() {
-        return Err(ChatError::BadRequest("name required".into()));
+    crate::api::rooms::validate_room_name(&body.name)
+        .map_err(|e| ChatError::BadRequest(e.into()))?;
+    if let Some(topic) = body.topic.as_deref() {
+        crate::api::rooms::validate_topic(topic).map_err(|e| ChatError::BadRequest(e.into()))?;
     }
     let pool = state.db_or_unavailable()?;
     let matrix = state.matrix_or_unavailable()?;

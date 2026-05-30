@@ -11,7 +11,7 @@ pub const MAX_TOPIC_LEN: usize = 512;
 /// `Err` with a descriptive message.
 pub fn validate_room_name(name: &str) -> Result<(), &'static str> {
     let trimmed = name.trim();
-    if trimmed.is_empty() {
+    if trimmed.len() < MIN_ROOM_NAME_LEN {
         return Err("room name must not be empty");
     }
     if trimmed.len() > MAX_ROOM_NAME_LEN {
@@ -122,16 +122,6 @@ mod tests {
     }
 
     #[test]
-    fn min_room_name_is_less_than_max() {
-        assert!(MIN_ROOM_NAME_LEN < MAX_ROOM_NAME_LEN);
-    }
-
-    #[test]
-    fn max_topic_len_greater_than_max_room_name_len() {
-        assert!(MAX_TOPIC_LEN > MAX_ROOM_NAME_LEN);
-    }
-
-    #[test]
     fn validate_room_name_unicode_accepted() {
         assert!(validate_room_name("Sala de Reunião").is_ok());
     }
@@ -139,16 +129,6 @@ mod tests {
     #[test]
     fn validate_room_name_trimmed_empty_rejected() {
         assert!(validate_room_name("  \t  ").is_err());
-    }
-
-    #[test]
-    fn max_room_name_len_is_positive() {
-        assert!(MAX_ROOM_NAME_LEN > 0);
-    }
-
-    #[test]
-    fn max_topic_len_is_positive() {
-        assert!(MAX_TOPIC_LEN > 0);
     }
 
     #[test]

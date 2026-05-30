@@ -6,6 +6,7 @@ mod messages;
 mod pins;
 mod reactions;
 mod read;
+mod rooms;
 mod stream;
 
 use std::sync::Arc;
