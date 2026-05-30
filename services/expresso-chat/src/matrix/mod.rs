@@ -67,6 +67,18 @@ pub struct CreateRoomResponse {
     pub room_id: String,
 }
 
+/// Parameters for a file message referencing uploaded media. `msgtype` is one
+/// of `m.image`/`m.video`/`m.audio`/`m.file`; `mxc_uri` is an `upload_media`
+/// result.
+#[derive(Debug)]
+pub struct FileMessage<'a> {
+    pub msgtype: &'a str,
+    pub filename: &'a str,
+    pub content_type: &'a str,
+    pub mxc_uri: &'a str,
+    pub size_bytes: i64,
+}
+
 impl MatrixClient {
     /// Admin API token (Synapse `/_synapse/admin/*`) — wired for user provisioning
     /// once Keycloak→Matrix sync lands. Returned lazily so callers can fail with
@@ -104,6 +116,19 @@ impl MatrixClient {
     fn cs_url(&self, path: &str, acting_as: &str) -> Result<reqwest::Url> {
         let base = format!(
             "{}/_matrix/client/v3{}",
+            self.cfg.hs_url.trim_end_matches('/'),
+            path
+        );
+        let mut url =
+            reqwest::Url::parse(&base).map_err(|e| ChatError::Matrix(format!("bad url: {e}")))?;
+        url.query_pairs_mut().append_pair("user_id", acting_as);
+        Ok(url)
+    }
+
+    /// Media-repo endpoint URL (`/_matrix/media/v3`) + impersonation query param.
+    fn media_url(&self, path: &str, acting_as: &str) -> Result<reqwest::Url> {
+        let base = format!(
+            "{}/_matrix/media/v3{}",
             self.cfg.hs_url.trim_end_matches('/'),
             path
         );
@@ -438,6 +463,68 @@ impl MatrixClient {
         let path = format!("/rooms/{}/state/m.room.pinned_events/", urlencode(room_id));
         let url = self.cs_url(&path, acting_as)?;
         let payload = json!({ "pinned": pinned });
+        #[derive(Deserialize)]
+        struct R {
+            event_id: String,
+        }
+        let r: R = self
+            .send(
+                self.http
+                    .put(url)
+                    .bearer_auth(self.as_token()?)
+                    .json(&payload),
+            )
+            .await?;
+        Ok(r.event_id)
+    }
+
+    /// Upload bytes to the Matrix media repo (`POST /_matrix/media/v3/upload`).
+    /// Returns the resulting `mxc://` content URI. `filename` is sent so the HS
+    /// records it; `content_type` becomes the stored MIME type.
+    pub async fn upload_media(
+        &self,
+        acting_as: &str,
+        filename: &str,
+        content_type: &str,
+        bytes: Vec<u8>,
+    ) -> Result<String> {
+        self.ensure_registered(acting_as).await?;
+        let mut url = self.media_url("/upload", acting_as)?;
+        url.query_pairs_mut().append_pair("filename", filename);
+        #[derive(Deserialize)]
+        struct R {
+            content_uri: String,
+        }
+        let r: R = self
+            .send(
+                self.http
+                    .post(url)
+                    .bearer_auth(self.as_token()?)
+                    .header(reqwest::header::CONTENT_TYPE, content_type)
+                    .body(bytes),
+            )
+            .await?;
+        Ok(r.content_uri)
+    }
+
+    /// Send a file message referencing previously-uploaded media. Returns the
+    /// message event id.
+    pub async fn send_file_message(
+        &self,
+        acting_as: &str,
+        room_id: &str,
+        msg: &FileMessage<'_>,
+    ) -> Result<String> {
+        self.ensure_registered(acting_as).await?;
+        let txn = Uuid::new_v4();
+        let path = format!("/rooms/{}/send/m.room.message/{}", urlencode(room_id), txn);
+        let url = self.cs_url(&path, acting_as)?;
+        let payload = json!({
+            "msgtype": msg.msgtype,
+            "body": msg.filename,
+            "url": msg.mxc_uri,
+            "info": { "mimetype": msg.content_type, "size": msg.size_bytes },
+        });
         #[derive(Deserialize)]
         struct R {
             event_id: String,

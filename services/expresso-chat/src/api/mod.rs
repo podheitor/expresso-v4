@@ -1,3 +1,4 @@
+mod attachments;
 mod channels;
 pub mod context;
 mod health;
@@ -24,6 +25,7 @@ pub fn router(
     let mut router = Router::new()
         .merge(health::routes())
         .merge(expresso_observability::metrics_router())
+        .merge(attachments::routes())
         .merge(channels::routes())
         .merge(messages::routes())
         .merge(pins::routes())
