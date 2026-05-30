@@ -85,11 +85,11 @@ jobs:
       # errors); letting cargo resolve fresh picks a compatible version.
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --quiet
+      # cargo-fuzz must run from the project root: it locates the fuzz crate at
+      # ./fuzz and refuses a nested `fuzz/fuzz/Cargo.toml`. (Do NOT cd into fuzz/.)
       - name: Build fuzz targets
-        working-directory: fuzz
         run: cargo +nightly fuzz build
       - name: Smoke-run each target (5 s)
-        working-directory: fuzz
         run: |
           for target in fuzz_imip fuzz_sieve fuzz_ical fuzz_vcard; do
             cargo +nightly fuzz run "$target" -- -max_total_time=5

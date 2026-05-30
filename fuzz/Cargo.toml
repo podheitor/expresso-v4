@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+# Marks this as a cargo-fuzz crate; `cargo fuzz build` refuses to run without it.
+[package.metadata]
+cargo-fuzz = true
+
 # Isolate from the parent workspace so `cargo fuzz` can manage its own
 # nightly toolchain requirements without affecting the main workspace build.
 [workspace]
