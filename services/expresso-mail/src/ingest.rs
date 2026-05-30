@@ -282,8 +282,6 @@ pub async fn process(
     Ok(delivered)
 }
 
-/// Resolve an inbound recipient address to a local `(user_id, tenant_id)`.
-///
 /// Outcome of resolving an inbound recipient address.
 enum Resolution {
     /// Deliver to a local mailbox.
@@ -295,21 +293,75 @@ enum Resolution {
     Drop,
 }
 
-/// First tries a direct `users.email` match. On a miss, falls back to the
-/// `email_aliases` table: an enabled `alias -> target` row redirects delivery
-/// to the target (one hop only — alias chains are not followed). A target that
-/// is a local user delivers there; a target off-platform is relayed via the
-/// configured smarthost when one is set, else dropped.
+/// Hard cap on how many `alias -> target` hops to follow before giving up.
+/// Bounds work and is a backstop for cycles the visited-set might miss.
+const MAX_ALIAS_HOPS: usize = 10;
+
+/// Resolve an inbound recipient to a delivery outcome, following alias chains.
+///
+/// At each hop: a direct `users.email` match delivers locally; otherwise an
+/// enabled `email_aliases` row redirects to its target and the loop continues
+/// from there. A target with neither a mailbox nor an alias is the final
+/// off-platform address and is relayed via the configured smarthost. A visited
+/// set breaks cycles (`a -> b -> a`) and `MAX_ALIAS_HOPS` bounds the chain.
 ///
 /// Runs without a tenant session var — inbound delivery legitimately crosses
 /// tenants, one recipient at a time.
 async fn resolve_recipient(state: &AppState, rcpt: &str, raw: &[u8]) -> anyhow::Result<Resolution> {
-    if let Some((user_id, tenant_id)) = lookup_local_user(state, rcpt).await? {
-        return Ok(Resolution::Local { user_id, tenant_id });
+    let mut addr = rcpt.to_string();
+    let mut visited: BTreeSet<String> = BTreeSet::new();
+
+    for _ in 0..MAX_ALIAS_HOPS {
+        if let Some((user_id, tenant_id)) = lookup_local_user(state, &addr).await? {
+            if addr != rcpt {
+                tracing::info!(rcpt = %rcpt, target = %addr, "alias chain resolved to local user");
+            }
+            return Ok(Resolution::Local { user_id, tenant_id });
+        }
+
+        // Not a local mailbox — is it an enabled alias pointing elsewhere?
+        match lookup_alias_target(state, &addr).await? {
+            AliasLookup::Target(next) => {
+                if !visited.insert(addr.clone()) {
+                    tracing::error!(rcpt = %rcpt, at = %addr, "alias cycle detected; dropping");
+                    return Ok(Resolution::Drop);
+                }
+                addr = next;
+            }
+            AliasLookup::Ambiguous => {
+                tracing::error!(rcpt = %rcpt, at = %addr, "alias ambiguous across tenants; dropping");
+                return Ok(Resolution::Drop);
+            }
+            AliasLookup::None => {
+                // Final address: no mailbox, no alias. If it's still the
+                // original recipient it's simply unknown; otherwise an alias
+                // chain pointed off-platform and we relay.
+                if addr == rcpt {
+                    tracing::warn!(rcpt = %rcpt, "recipient not found; dropping delivery");
+                    return Ok(Resolution::Drop);
+                }
+                return relay_off_platform(state, rcpt, &addr, raw).await;
+            }
+        }
     }
 
-    // No direct mailbox — consult the alias table for an enabled redirect.
-    let alias_targets: Vec<String> = sqlx::query_scalar(
+    tracing::error!(rcpt = %rcpt, max = MAX_ALIAS_HOPS, "alias chain too long; dropping");
+    Ok(Resolution::Drop)
+}
+
+/// Result of looking up an address in the alias table.
+enum AliasLookup {
+    /// Exactly one enabled alias → its (normalized) target.
+    Target(String),
+    /// The address is shared by aliases in two tenants — ambiguous on the
+    /// tenant-less inbound path; refuse rather than guess.
+    Ambiguous,
+    /// No enabled alias.
+    None,
+}
+
+async fn lookup_alias_target(state: &AppState, addr: &str) -> anyhow::Result<AliasLookup> {
+    let targets: Vec<String> = sqlx::query_scalar(
         r#"
         SELECT target
         FROM email_aliases
@@ -317,32 +369,24 @@ async fn resolve_recipient(state: &AppState, rcpt: &str, raw: &[u8]) -> anyhow::
         LIMIT 2
         "#,
     )
-    .bind(rcpt)
+    .bind(addr)
     .fetch_all(state.db())
     .await?;
+    Ok(match targets.as_slice() {
+        [t] => AliasLookup::Target(t.trim().to_ascii_lowercase()),
+        [] => AliasLookup::None,
+        _ => AliasLookup::Ambiguous,
+    })
+}
 
-    let target = match alias_targets.as_slice() {
-        [t] => t.trim().to_ascii_lowercase(),
-        [] => {
-            tracing::warn!(rcpt = %rcpt, "recipient not found; dropping delivery");
-            return Ok(Resolution::Drop);
-        }
-        _ => {
-            // alias is UNIQUE per (tenant_id, alias) but not globally; the same
-            // alias in two tenants pointing at different targets is ambiguous
-            // without a tenant context on the inbound path. Refuse rather than guess.
-            tracing::error!(rcpt = %rcpt, "alias ambiguous across tenants; dropping delivery");
-            return Ok(Resolution::Drop);
-        }
-    };
-
-    if let Some((user_id, tenant_id)) = lookup_local_user(state, &target).await? {
-        tracing::info!(rcpt = %rcpt, target = %target, "alias resolved to local user");
-        return Ok(Resolution::Local { user_id, tenant_id });
-    }
-
-    // Off-platform target: relay via the configured smarthost. Without one,
-    // we can't deliver — drop rather than silently lose-but-claim-success.
+/// Relay `target` off-platform via the configured smarthost. Without one we
+/// can't deliver — drop rather than silently lose-but-claim-success.
+async fn relay_off_platform(
+    state: &AppState,
+    rcpt: &str,
+    target: &str,
+    raw: &[u8],
+) -> anyhow::Result<Resolution> {
     let relay_host = state.cfg().mail_server.relay_host.clone();
     let relay_port = state.cfg().mail_server.relay_port;
     if relay_host.trim().is_empty() {
@@ -353,7 +397,7 @@ async fn resolve_recipient(state: &AppState, rcpt: &str, raw: &[u8]) -> anyhow::
         return Ok(Resolution::Drop);
     }
     let domain = state.cfg().mail_server.domain.clone();
-    match relay_forward(&relay_host, relay_port, &domain, &target, raw).await {
+    match relay_forward(&relay_host, relay_port, &domain, target, raw).await {
         Ok(()) => {
             tracing::info!(rcpt = %rcpt, target = %target, "alias relayed off-platform");
             Ok(Resolution::Relayed)
