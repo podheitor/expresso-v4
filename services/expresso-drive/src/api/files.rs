@@ -340,9 +340,23 @@ async fn list_inner(
     }
     let limit = q.limit.unwrap_or(200).clamp(1, 500);
     let offset = q.offset.unwrap_or(0).max(0);
-    let mut rows = FileRepo::new(pool)
-        .list_children_paged(ctx.tenant_id, q.parent_id, sort, order, limit, offset)
-        .await?;
+    // Owner-private listing. Inside a folder, the caller must be able to read it
+    // (own / granted / inherited), and then its children are listed normally.
+    // At the root, show the user's own top-level nodes plus directly-shared
+    // roots ("Shared with me").
+    let mut rows = match q.parent_id {
+        Some(pid) => {
+            require_read(pool, ctx.tenant_id, pid, ctx.user_id).await?;
+            FileRepo::new(pool)
+                .list_children_paged(ctx.tenant_id, Some(pid), sort, order, limit, offset)
+                .await?
+        }
+        None => {
+            FileRepo::new(pool)
+                .list_roots_paged_for_user(ctx.tenant_id, ctx.user_id, sort, order, limit, offset)
+                .await?
+        }
+    };
     if let Some(k) = q.kind.as_deref() {
         rows.retain(|f| f.kind == k);
     }

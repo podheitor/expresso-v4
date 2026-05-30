@@ -197,6 +197,56 @@ impl<'a> FileRepo<'a> {
         Ok(rows)
     }
 
+    /// Root listing for the owner-private model: the user's own top-level nodes
+    /// plus any node shared *directly* with them (their "Shared with me" roots).
+    /// Descendants of a shared folder are reached by navigating into it (where
+    /// the folder-read gate grants access), so only direct grants surface here.
+    pub async fn list_roots_paged_for_user(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        sort_col: &str,
+        order: &str,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<DriveFile>> {
+        let order_clause = match (sort_col, order) {
+            ("name", "asc") => "kind DESC, lower(name) ASC",
+            ("name", _) => "kind DESC, lower(name) DESC",
+            ("updated_at", "asc") => "updated_at ASC",
+            ("updated_at", _) => "updated_at DESC",
+            ("created_at", "asc") => "created_at ASC",
+            ("created_at", _) => "created_at DESC",
+            ("size_bytes", "asc") => "size_bytes ASC",
+            ("size_bytes", _) => "size_bytes DESC",
+            _ => "kind DESC, lower(name) ASC",
+        };
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "SELECT {SELECT_COLS} FROM drive_files f \
+             WHERE f.tenant_id = $1 \
+               AND f.deleted_at IS NULL \
+               AND ( \
+                 (f.parent_id IS NULL AND f.owner_user_id = $2) \
+                 OR EXISTS ( \
+                   SELECT 1 FROM drive_file_acl a \
+                    WHERE a.file_id = f.id AND a.tenant_id = $1 AND a.grantee_id = $2 \
+                 ) \
+               ) \
+             ORDER BY {order_clause} \
+             LIMIT $3 OFFSET $4"
+        );
+        let rows: Vec<DriveFile> = sqlx::query_as(&sql)
+            .bind(tenant_id)
+            .bind(user_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     pub async fn list_trash(&self, tenant_id: Uuid) -> Result<Vec<DriveFile>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
