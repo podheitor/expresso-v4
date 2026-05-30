@@ -309,6 +309,85 @@ impl MatrixClient {
         Ok(r.event_id)
     }
 
+    /// Reply inside a thread: send an `m.room.message` carrying an `m.thread`
+    /// relation to `root_event_id` (MSC3440). `m.in_reply_to` + the
+    /// `is_falling_back` flag give clients without thread support a sensible
+    /// reply fallback. Returns the reply event's id.
+    pub async fn reply_in_thread(
+        &self,
+        acting_as: &str,
+        room_id: &str,
+        root_event_id: &str,
+        body: &str,
+    ) -> Result<String> {
+        self.ensure_registered(acting_as).await?;
+        let txn = Uuid::new_v4();
+        let path = format!("/rooms/{}/send/m.room.message/{}", urlencode(room_id), txn);
+        let url = self.cs_url(&path, acting_as)?;
+        let payload = json!({
+            "msgtype": "m.text",
+            "body": body,
+            "m.relates_to": {
+                "rel_type": "m.thread",
+                "event_id": root_event_id,
+                "is_falling_back": true,
+                "m.in_reply_to": { "event_id": root_event_id },
+            },
+        });
+        #[derive(Deserialize)]
+        struct R {
+            event_id: String,
+        }
+        let r: R = self
+            .send(
+                self.http
+                    .put(url)
+                    .bearer_auth(self.as_token()?)
+                    .json(&payload),
+            )
+            .await?;
+        Ok(r.event_id)
+    }
+
+    /// List events in a thread rooted at `root_event_id` via
+    /// `GET /rooms/{room}/relations/{event}/m.thread` (MSC3440). Returns the raw
+    /// `chunk` response (chronological); `limit` is capped at 100 by the HS.
+    pub async fn list_thread(
+        &self,
+        acting_as: &str,
+        room_id: &str,
+        root_event_id: &str,
+        limit: u32,
+    ) -> Result<Value> {
+        self.ensure_registered(acting_as).await?;
+        let path = format!(
+            "/rooms/{}/relations/{}/m.thread",
+            urlencode(room_id),
+            urlencode(root_event_id),
+        );
+        let mut url = self.cs_url(&path, acting_as)?;
+        url.query_pairs_mut()
+            .append_pair("limit", &limit.min(100).to_string());
+        let resp = self
+            .http
+            .get(url)
+            .bearer_auth(self.as_token()?)
+            .send()
+            .await
+            .map_err(|e| ChatError::Matrix(format!("thread list failed: {e}")))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ChatError::Matrix(format!(
+                "thread list HS {}: {}",
+                status, body
+            )));
+        }
+        resp.json::<Value>()
+            .await
+            .map_err(|e| ChatError::Matrix(format!("decode thread list: {e}")))
+    }
+
     /// List recent messages (reverse-chronological; limit capped at 100 by HS).
     pub async fn list_messages(&self, acting_as: &str, room_id: &str, limit: u32) -> Result<Value> {
         self.ensure_registered(acting_as).await?;

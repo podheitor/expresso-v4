@@ -26,6 +26,7 @@ const BUS_CAPACITY: usize = 256;
 #[serde(rename_all = "snake_case")]
 pub enum ChatEventKind {
     Message,
+    Reply,
     Edit,
     Delete,
     Typing,
@@ -36,6 +37,7 @@ impl ChatEventKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Message => "message",
+            Self::Reply => "reply",
             Self::Edit => "edit",
             Self::Delete => "delete",
             Self::Typing => "typing",
@@ -66,6 +68,10 @@ pub struct ChatEvent {
     /// For `reaction` events: `true` = added, `false` = removed. `None` otherwise.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub added: Option<bool>,
+    /// Thread root event id for `reply` events; `None` otherwise. Lets clients
+    /// route the reply under its thread without re-fetching the relation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_root: Option<String>,
 }
 
 impl ChatEvent {
@@ -86,6 +92,29 @@ impl ChatEvent {
             body: Some(body),
             emoji: None,
             added: None,
+            thread_root: None,
+        }
+    }
+
+    /// A reply posted inside a thread rooted at `thread_root`.
+    pub fn reply(
+        tenant_id: Uuid,
+        channel_id: Uuid,
+        user_id: Uuid,
+        thread_root: String,
+        event_id: String,
+        body: String,
+    ) -> Self {
+        Self {
+            tenant_id,
+            channel_id,
+            kind: ChatEventKind::Reply,
+            user_id,
+            event_id: Some(event_id),
+            body: Some(body),
+            emoji: None,
+            added: None,
+            thread_root: Some(thread_root),
         }
     }
 
@@ -100,6 +129,7 @@ impl ChatEvent {
             body: None,
             emoji: None,
             added: None,
+            thread_root: None,
         }
     }
 
@@ -120,6 +150,7 @@ impl ChatEvent {
             body: Some(new_body),
             emoji: None,
             added: None,
+            thread_root: None,
         }
     }
 
@@ -139,6 +170,7 @@ impl ChatEvent {
             body: None,
             emoji: None,
             added: None,
+            thread_root: None,
         }
     }
 
@@ -160,6 +192,7 @@ impl ChatEvent {
             body: None,
             emoji: Some(emoji),
             added: Some(added),
+            thread_root: None,
         }
     }
 }
@@ -214,6 +247,33 @@ mod tests {
         assert_eq!(ev.kind, ChatEventKind::Message);
         assert_eq!(ev.event_id.as_deref(), Some("$evt:hs"));
         assert_eq!(ev.body.as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn reply_event_carries_thread_root() {
+        let (t, c, u) = ids();
+        let ev = ChatEvent::reply(t, c, u, "$root:hs".into(), "$reply:hs".into(), "yes".into());
+        assert_eq!(ev.kind, ChatEventKind::Reply);
+        assert_eq!(ev.thread_root.as_deref(), Some("$root:hs"));
+        assert_eq!(ev.event_id.as_deref(), Some("$reply:hs"));
+        assert_eq!(ev.body.as_deref(), Some("yes"));
+    }
+
+    #[test]
+    fn reply_event_serializes_thread_root() {
+        let (t, c, u) = ids();
+        let ev = ChatEvent::reply(t, c, u, "$root:hs".into(), "$reply:hs".into(), "yes".into());
+        let json = serde_json::to_string(&ev).unwrap();
+        assert!(json.contains("\"kind\":\"reply\""), "got: {json}");
+        assert!(json.contains("thread_root"), "got: {json}");
+    }
+
+    #[test]
+    fn message_event_omits_thread_root() {
+        let (t, c, u) = ids();
+        let json = serde_json::to_string(&ChatEvent::message(t, c, u, "$e:hs".into(), "hi".into()))
+            .unwrap();
+        assert!(!json.contains("thread_root"), "got: {json}");
     }
 
     #[test]

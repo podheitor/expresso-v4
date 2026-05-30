@@ -1,9 +1,11 @@
 //! Messages — thin proxy to Matrix CS API.
 //!
-//! POST   /api/v1/channels/:id/messages            → send m.room.message (text)
-//! GET    /api/v1/channels/:id/messages            → list recent events (raw chunk JSON)
-//! PUT    /api/v1/channels/:id/messages/:event_id  → edit (m.replace)
-//! DELETE /api/v1/channels/:id/messages/:event_id  → delete (redact)
+//! POST   /api/v1/channels/:id/messages                    → send m.room.message (text)
+//! GET    /api/v1/channels/:id/messages                    → list recent events (raw chunk JSON)
+//! PUT    /api/v1/channels/:id/messages/:event_id          → edit (m.replace)
+//! DELETE /api/v1/channels/:id/messages/:event_id          → delete (redact)
+//! POST   /api/v1/channels/:id/messages/:event_id/replies  → reply in thread (m.thread)
+//! GET    /api/v1/channels/:id/messages/:event_id/replies  → list thread (raw chunk JSON)
 
 use axum::{
     extract::{Path, Query, State},
@@ -39,6 +41,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/channels/:id/messages/:event_id",
             axum::routing::put(edit).delete(remove),
+        )
+        .route(
+            "/api/v1/channels/:id/messages/:event_id/replies",
+            post(reply).get(list_thread),
         )
 }
 
@@ -213,6 +219,88 @@ async fn remove(
     Ok((StatusCode::OK, Json(json!({ "event_id": redaction_id }))))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ReplyBody {
+    pub body: String,
+}
+
+/// POST …/messages/:event_id/replies — post a threaded reply rooted at
+/// `:event_id` (m.thread). Body validation mirrors `send`; the reply is fanned
+/// out to live subscribers and bumps channel activity like a top-level message.
+async fn reply(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((id, event_id)): Path<(Uuid, String)>,
+    Json(body): Json<ReplyBody>,
+) -> Result<(StatusCode, Json<Value>)> {
+    validate_message_body(&body.body)?;
+    let pool = state.db_or_unavailable()?;
+    let matrix = state.matrix_or_unavailable()?;
+    let repo = ChannelRepo::new(pool);
+    if !repo.is_member(ctx.tenant_id, id, ctx.user_id).await? {
+        return Err(ChatError::NotMember);
+    }
+    let ch = repo
+        .get(ctx.tenant_id, id)
+        .await
+        .map_err(|_| ChatError::ChannelNotFound(id))?;
+
+    let acting_as = matrix.mxid_for(ctx.user_id);
+    let reply_event_id = matrix
+        .reply_in_thread(&acting_as, &ch.matrix_room_id, &event_id, &body.body)
+        .await?;
+
+    state.bus().publish(ChatEvent::reply(
+        ctx.tenant_id,
+        id,
+        ctx.user_id,
+        event_id,
+        reply_event_id.clone(),
+        body.body,
+    ));
+
+    let marks = ReadMarkerRepo::new(pool);
+    if let Err(e) = marks.bump_activity(ctx.tenant_id, id).await {
+        tracing::warn!(error = %e, channel = %id, "chat: bump_activity failed");
+    }
+    if let Err(e) = marks.mark_read(ctx.tenant_id, id, ctx.user_id).await {
+        tracing::warn!(error = %e, channel = %id, "chat: sender mark_read failed");
+    }
+
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "event_id": reply_event_id })),
+    ))
+}
+
+/// GET …/messages/:event_id/replies — list the thread rooted at `:event_id`.
+async fn list_thread(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((id, event_id)): Path<(Uuid, String)>,
+    Query(mut q): Query<ListQuery>,
+) -> Result<Json<Value>> {
+    if q.limit == 0 || q.limit > MAX_LIST_LIMIT {
+        q.limit = q.limit.clamp(1, MAX_LIST_LIMIT);
+    }
+    let pool = state.db_or_unavailable()?;
+    let matrix = state.matrix_or_unavailable()?;
+    let repo = ChannelRepo::new(pool);
+    if !repo.is_member(ctx.tenant_id, id, ctx.user_id).await? {
+        return Err(ChatError::NotMember);
+    }
+    let ch = repo
+        .get(ctx.tenant_id, id)
+        .await
+        .map_err(|_| ChatError::ChannelNotFound(id))?;
+
+    let acting_as = matrix.mxid_for(ctx.user_id);
+    let value = matrix
+        .list_thread(&acting_as, &ch.matrix_room_id, &event_id, q.limit)
+        .await?;
+    Ok(Json(value))
+}
+
 /// Gate em send: empty já era rejeitado; agora rejeita oversize ANTES
 /// de tocar Matrix (evita gastar fanout/federation budget em payload abusivo).
 fn validate_message_body(body: &str) -> Result<()> {
@@ -232,6 +320,25 @@ fn validate_message_body(body: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reply_body_deserializes() {
+        let b: ReplyBody = serde_json::from_str(r#"{"body":"in thread"}"#).unwrap();
+        assert_eq!(b.body, "in thread");
+    }
+
+    #[test]
+    fn reply_reuses_message_body_validation() {
+        // reply() calls validate_message_body, so empty/oversize replies are rejected.
+        assert!(validate_message_body("").is_err());
+        assert!(validate_message_body("ok").is_ok());
+    }
+
+    #[test]
+    fn reply_body_missing_field_fails_deser() {
+        let result: std::result::Result<ReplyBody, _> = serde_json::from_str(r#"{}"#);
+        assert!(result.is_err());
+    }
 
     #[test]
     fn edit_body_deserializes() {
