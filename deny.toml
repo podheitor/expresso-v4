@@ -42,10 +42,12 @@ allow = [
   "CDLA-Permissive-2.0", # webpki-roots (transitive via reqwest/aws/lettre) — permissive
 ]
 confidence-threshold = 0.8
-# Copyleft deps flagged for legal review (see docs/LICENSING_NOTES.md):
-# indymilter (GPL-3.0) runs as a separate milter process over a socket;
-# sieve-rs (AGPL-3.0) is linked into expresso-mail and is the stronger
-# concern. Scoped exceptions keep CI honest while the licensing call is made.
+# Copyleft deps that are license-compatible with this project (AGPL-3.0, see
+# LICENSE + docs/LICENSING_NOTES.md). The exceptions exist only because our own
+# workspace crates lack SPDX `license` fields, so cargo-deny can't auto-derive
+# the compatibility — they make it explicit, not a legal blocker.
+# - sieve-rs (AGPL-3.0): same license as the project — natural fit.
+# - indymilter (GPL-3.0-or-later): GPLv3 is compatible with AGPL-3.0 (AGPL §13).
 exceptions = [
   { allow = ["GPL-3.0-or-later"], name = "indymilter" },
   { allow = ["AGPL-3.0-only"],    name = "sieve-rs" },
