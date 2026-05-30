@@ -2071,6 +2071,31 @@ fn push_part_section_items(
     }
 }
 
+/// RFC 3501 §6.4.5: a non-peek body fetch implicitly sets `\Seen`. Updates the
+/// DB row (idempotently) and pushes the flag into `flags_val` so the FLAGS
+/// response reflects the new state without a second round-trip. Returns `true`
+/// if the flag was newly set.
+async fn apply_implicit_seen(
+    state: &AppState,
+    msg_id: Uuid,
+    flags_val: &mut Vec<String>,
+    set_seen: bool,
+) -> bool {
+    if !set_seen || flags_val.iter().any(|f| f == "\\Seen") {
+        return false;
+    }
+    let _ = sqlx::query(
+        "UPDATE messages \
+         SET flags = array_cat(flags, ARRAY['\\Seen']::text[]) \
+         WHERE id = $1 AND NOT '\\Seen' = ANY(flags)",
+    )
+    .bind(msg_id)
+    .execute(state.db())
+    .await;
+    flags_val.push("\\Seen".to_string());
+    true
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_fetch(
     state: &AppState,
@@ -2178,19 +2203,7 @@ async fn cmd_fetch(
         // RFC 3501 §6.4.5: non-peek body fetch MUST implicitly set \Seen.
         // We update the DB first, then update flags_val so the FLAGS response
         // (if emitted) reflects the new state without a second DB round-trip.
-        let mut seen_was_set = false;
-        if set_seen && !flags_val.iter().any(|f| f == "\\Seen") {
-            let _ = sqlx::query(
-                "UPDATE messages \
-                 SET flags = array_cat(flags, ARRAY['\\Seen']::text[]) \
-                 WHERE id = $1 AND NOT '\\Seen' = ANY(flags)",
-            )
-            .bind(msg_id)
-            .execute(state.db())
-            .await;
-            flags_val.push("\\Seen".to_string());
-            seen_was_set = true;
-        }
+        let seen_was_set = apply_implicit_seen(state, msg_id, &mut flags_val, set_seen).await;
 
         // Emit FLAGS when explicitly requested OR when \Seen was just set
         // (RFC 3501 §7.4.2: server SHOULD report updated flags).

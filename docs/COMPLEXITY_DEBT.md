@@ -39,10 +39,18 @@ the exact control flow. `handle_tls` 39 → **31**. Gate 39 → **38**.
 `handle_lmtp_mail_from()` / `handle_lmtp_rcpt_to()` (LMTP-specific replies).
 Gate stays 38 (two functions still at 38). 573 mail tests pass.
 
-**Binding ceiling now = two functions at 38:** `handle`@smtp/session.rs,
-`cmd_fetch`@imap/session.rs. Both need the structural extractions below; reducing
-ONE won't move the gate (the other still caps at 38) — both must drop together
-for gate→37. All the clean *branch* lifts are
+**Structural extractions done (2026-05-30):** both 38-cappers reduced together —
+`handle`@session 38→**37** (STARTTLS upgrade prelude → `upgrade_to_tls()`,
+returning the established TLS stream for the caller to split), and `cmd_fetch`
+38→**36** (the implicit `\Seen` DB update → `apply_implicit_seen()`). Gate
+38 → **37**. These were the "fiddly ownership / async DB-coupled" cases; both
+turned out cleanly extractable. 573 mail tests pass.
+
+**Ceiling now ≈37** (handle@session 37 + a couple calendar fns at 37). The bulk
+of the SMTP/IMAP decomposition is complete; further ratcheting is the
+diminishing-returns tail (verb-chain branches at 1 CCN each, calendar tally
+loops). Everything is now ≤37 — over half-way from the original 72 to the 25
+target, all via behaviour-preserving extractions. All the clean *branch* lifts are
 done (DATA/EHLO/MAIL/RCPT/AUTH/dot-stuffing all extracted into shared helpers).
 What remains in these three is **structural, not branch-level**:
 - the two `handle`s: the STARTTLS-upgrade prelude (consumes the reader/writer to

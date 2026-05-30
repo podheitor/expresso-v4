@@ -5,10 +5,13 @@
 
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader},
-    net::TcpStream,
+    io::{AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader, Lines},
+    net::{
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
+        TcpStream,
+    },
 };
-use tokio_rustls::TlsAcceptor;
+use tokio_rustls::{server::TlsStream, TlsAcceptor};
 use tracing::{debug, error, info, instrument, warn};
 
 use rustls::ServerConfig;
@@ -279,6 +282,25 @@ where
     Ok(true)
 }
 
+/// Complete a STARTTLS upgrade: reunite the split halves back into the TCP
+/// stream (buffered bytes are discarded — STARTTLS must be the last command in
+/// a plain pipeline, RFC 3207 §4), then perform the TLS handshake. Returns the
+/// established TLS stream for the caller to split and re-enter the session loop.
+async fn upgrade_to_tls(
+    lines: Lines<BufReader<OwnedReadHalf>>,
+    writer: OwnedWriteHalf,
+    acceptor: TlsAcceptor,
+    peer: SocketAddr,
+) -> anyhow::Result<TlsStream<TcpStream>> {
+    let reader = lines.into_inner().into_inner();
+    let tcp = reader
+        .reunite(writer)
+        .map_err(|_| anyhow::anyhow!("TCP reunite failed"))?;
+    let tls_stream = acceptor.accept(tcp).await?;
+    info!(peer = %peer, "SMTP inbound TLS established");
+    Ok(tls_stream)
+}
+
 /// Handle a single SMTP connection.
 /// Implements the full SMTP session including optional STARTTLS upgrade.
 /// STARTTLS: when tls_cert/tls_key are configured, announces STARTTLS in EHLO
@@ -328,14 +350,7 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
             // If a TLS upgrade is pending, it means we already responded "220 Ready"
             // and need to complete the upgrade now before reading the next line.
             if let Some(acc) = pending_tls.take() {
-                // BufReader::into_inner() gives back OwnedReadHalf (any buffered bytes lost
-                // — safe: STARTTLS must be the last command in a plain pipeline, RFC 3207 §4).
-                let reader = lines.into_inner().into_inner();
-                let tcp = reader
-                    .reunite(writer)
-                    .map_err(|_| anyhow::anyhow!("TCP reunite failed"))?;
-                let tls_stream = acc.accept(tcp).await?;
-                info!(peer = %peer, "SMTP inbound TLS established");
+                let tls_stream = upgrade_to_tls(lines, writer, acc, peer).await?;
                 let (r, w) = tokio::io::split(tls_stream);
                 // Re-enter the session loop over TLS.
                 return session_loop(r, w, &domain, &state, peer, env, false).await;
