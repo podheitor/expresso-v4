@@ -22,6 +22,8 @@ uuid = { workspace = true }
 time = { workspace = true }
 reqwest = { workspace = true }
 sqlx = { workspace = true }
+prometheus = { workspace = true }
+once_cell = { workspace = true }
 
 # Crypto / encoding for PKCE + state
 base64 = "0.22"

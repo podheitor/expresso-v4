@@ -1,26 +1,111 @@
-//! Auth service Prometheus metrics labels and helpers.
+//! Prometheus metrics for expresso-auth.
+//!
+//! - `expresso_auth_requests_total{operation, status}` — per-operation request
+//!   counter (operation ∈ login/callback/refresh/logout/forgot/
+//!   impersonate_start/impersonate_end; status ∈ ok/error).
+//! - `expresso_auth_errors_total{operation}` — error-only counter, a
+//!   convenience for error-rate alerts without a status filter.
+//! - `expresso_auth_latency_ms{operation}` — request latency histogram.
+//!
+//! `record_result(op, started, &result)` is the single entry point used by the
+//! handlers: it derives the status label, bumps the counters, and observes the
+//! elapsed latency. `record(op, started, ok)` is the boolean variant for
+//! handlers that don't return a `Result` (e.g. the always-204 `forgot` flow).
 
-/// Metric label for successful authentication flows.
-pub const AUTH_FLOW_SUCCESS: &str = "success";
-/// Metric label for failed authentication flows.
-pub const AUTH_FLOW_FAILURE: &str = "failure";
-/// Metric label for the OIDC callback endpoint.
-pub const ENDPOINT_CALLBACK: &str = "callback";
-/// Metric label for the logout endpoint.
-pub const ENDPOINT_LOGOUT: &str = "logout";
-/// Metric label for the token-refresh endpoint.
-pub const ENDPOINT_REFRESH: &str = "refresh";
-/// Metric label for the userinfo endpoint.
-pub const ENDPOINT_USERINFO: &str = "userinfo";
+use std::time::Instant;
 
-/// Returns the metric namespace shared by all auth service metrics.
-pub fn namespace() -> &'static str {
-    "expresso_auth"
+use once_cell::sync::Lazy;
+use prometheus::{HistogramVec, IntCounterVec};
+
+pub const METRIC_AUTH_REQUESTS: &str = "expresso_auth_requests_total";
+pub const METRIC_AUTH_ERRORS: &str = "expresso_auth_errors_total";
+pub const METRIC_AUTH_LATENCY_MS: &str = "expresso_auth_latency_ms";
+
+pub const LABEL_OPERATION: &str = "operation";
+pub const LABEL_STATUS: &str = "status";
+
+pub const OP_LOGIN: &str = "login";
+pub const OP_CALLBACK: &str = "callback";
+pub const OP_REFRESH: &str = "refresh";
+pub const OP_LOGOUT: &str = "logout";
+pub const OP_FORGOT: &str = "forgot";
+pub const OP_IMPERSONATE_START: &str = "impersonate_start";
+pub const OP_IMPERSONATE_END: &str = "impersonate_end";
+
+const OPS: &[&str] = &[
+    OP_LOGIN,
+    OP_CALLBACK,
+    OP_REFRESH,
+    OP_LOGOUT,
+    OP_FORGOT,
+    OP_IMPERSONATE_START,
+    OP_IMPERSONATE_END,
+];
+const STATUSES: &[&str] = &["ok", "error"];
+
+static REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let c = IntCounterVec::new(
+        prometheus::Opts::new(
+            METRIC_AUTH_REQUESTS,
+            "Auth requests per operation and status",
+        ),
+        &[LABEL_OPERATION, LABEL_STATUS],
+    )
+    .expect("metric build");
+    expresso_observability::register(c)
+});
+
+static ERRORS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let c = IntCounterVec::new(
+        prometheus::Opts::new(METRIC_AUTH_ERRORS, "Auth errors per operation"),
+        &[LABEL_OPERATION],
+    )
+    .expect("metric build");
+    expresso_observability::register(c)
+});
+
+static LATENCY_MS: Lazy<HistogramVec> = Lazy::new(|| {
+    let h = HistogramVec::new(
+        prometheus::HistogramOpts::new(METRIC_AUTH_LATENCY_MS, "Auth request latency (ms)")
+            .buckets(vec![
+                1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 5000.0,
+            ]),
+        &[LABEL_OPERATION],
+    )
+    .expect("metric build");
+    expresso_observability::register(h)
+});
+
+/// Pre-populate label series so `rate()`/`increase()` work from the first
+/// scrape. Idempotent.
+pub fn init() {
+    Lazy::force(&REQUESTS_TOTAL);
+    Lazy::force(&ERRORS_TOTAL);
+    Lazy::force(&LATENCY_MS);
+    for op in OPS {
+        for status in STATUSES {
+            REQUESTS_TOTAL.with_label_values(&[op, status]).inc_by(0);
+        }
+        ERRORS_TOTAL.with_label_values(&[op]).inc_by(0);
+    }
 }
 
-/// Returns the full metric name for a given base name.
-pub fn metric_name(base: &str) -> String {
-    format!("{}_{}", namespace(), base)
+/// Record a completed operation: bump the request counter (and error counter on
+/// failure) and observe latency since `started`. `op` is one of the `OP_*`
+/// labels; `ok` is the success flag.
+pub fn record(op: &'static str, started: Instant, ok: bool) {
+    let status = if ok { "ok" } else { "error" };
+    REQUESTS_TOTAL.with_label_values(&[op, status]).inc();
+    if !ok {
+        ERRORS_TOTAL.with_label_values(&[op]).inc();
+    }
+    let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+    LATENCY_MS.with_label_values(&[op]).observe(elapsed_ms);
+}
+
+/// `record` for handlers that return a `Result`: success is `result.is_ok()`.
+pub fn record_result<T, E>(op: &'static str, started: Instant, result: &Result<T, E>) {
+    record(op, started, result.is_ok());
 }
 
 #[cfg(test)]
@@ -28,147 +113,73 @@ mod tests {
     use super::*;
 
     #[test]
-    fn auth_flow_success_label_value() {
-        assert_eq!(AUTH_FLOW_SUCCESS, "success");
-    }
-
-    #[test]
-    fn auth_flow_failure_label_value() {
-        assert_eq!(AUTH_FLOW_FAILURE, "failure");
-    }
-
-    #[test]
-    fn endpoint_callback_label_value() {
-        assert_eq!(ENDPOINT_CALLBACK, "callback");
-    }
-
-    #[test]
-    fn endpoint_logout_label_value() {
-        assert_eq!(ENDPOINT_LOGOUT, "logout");
-    }
-
-    #[test]
-    fn endpoint_refresh_label_value() {
-        assert_eq!(ENDPOINT_REFRESH, "refresh");
-    }
-
-    #[test]
-    fn endpoint_userinfo_label_value() {
-        assert_eq!(ENDPOINT_USERINFO, "userinfo");
-    }
-
-    #[test]
-    fn namespace_returns_expresso_auth() {
-        assert_eq!(namespace(), "expresso_auth");
-    }
-
-    #[test]
-    fn metric_name_prefixes_with_namespace() {
-        assert_eq!(metric_name("requests_total"), "expresso_auth_requests_total");
-    }
-
-    #[test]
-    fn metric_name_callback_requests() {
-        assert_eq!(metric_name("callback_requests"), "expresso_auth_callback_requests");
-    }
-
-    #[test]
-    fn metric_name_logout_requests() {
-        assert_eq!(metric_name("logout_requests"), "expresso_auth_logout_requests");
-    }
-
-    #[test]
-    fn success_and_failure_labels_are_distinct() {
-        assert_ne!(AUTH_FLOW_SUCCESS, AUTH_FLOW_FAILURE);
-    }
-
-    #[test]
-    fn all_endpoint_labels_are_distinct() {
-        let labels = [ENDPOINT_CALLBACK, ENDPOINT_LOGOUT, ENDPOINT_REFRESH, ENDPOINT_USERINFO];
-        for (i, a) in labels.iter().enumerate() {
-            for (j, b) in labels.iter().enumerate() {
-                if i != j {
-                    assert_ne!(a, b);
-                }
-            }
+    fn metric_names_have_expresso_prefix() {
+        for m in [
+            METRIC_AUTH_REQUESTS,
+            METRIC_AUTH_ERRORS,
+            METRIC_AUTH_LATENCY_MS,
+        ] {
+            assert!(m.starts_with("expresso_auth_"), "{m}");
         }
     }
 
     #[test]
-    fn metric_name_contains_base() {
-        let base = "token_exchanges";
-        assert!(metric_name(base).contains(base));
+    fn counter_metrics_end_with_total() {
+        assert!(METRIC_AUTH_REQUESTS.ends_with("_total"));
+        assert!(METRIC_AUTH_ERRORS.ends_with("_total"));
     }
 
     #[test]
-    fn namespace_is_nonempty() {
-        assert!(!namespace().is_empty());
+    fn histogram_not_total() {
+        assert!(!METRIC_AUTH_LATENCY_MS.ends_with("_total"));
     }
 
     #[test]
-    fn metric_name_is_nonempty_for_nonempty_base() {
-        assert!(!metric_name("latency_seconds").is_empty());
+    fn label_values() {
+        assert_eq!(LABEL_OPERATION, "operation");
+        assert_eq!(LABEL_STATUS, "status");
+        assert_ne!(LABEL_OPERATION, LABEL_STATUS);
     }
 
     #[test]
-    fn namespace_contains_no_spaces() {
-        assert!(!namespace().contains(' '));
-    }
-
-    #[test]
-    fn auth_flow_success_is_lowercase() {
-        assert_eq!(AUTH_FLOW_SUCCESS, AUTH_FLOW_SUCCESS.to_lowercase());
-    }
-
-    #[test]
-    fn auth_flow_failure_is_lowercase() {
-        assert_eq!(AUTH_FLOW_FAILURE, AUTH_FLOW_FAILURE.to_lowercase());
-    }
-
-    #[test]
-    fn endpoint_labels_are_lowercase() {
-        for label in [ENDPOINT_CALLBACK, ENDPOINT_LOGOUT, ENDPOINT_REFRESH, ENDPOINT_USERINFO] {
-            assert_eq!(label, label.to_lowercase());
+    fn ops_distinct_lowercase() {
+        let mut sorted = OPS.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), OPS.len());
+        for op in OPS {
+            assert_eq!(*op, op.to_ascii_lowercase());
+            assert!(!op.contains('-'));
         }
     }
 
     #[test]
-    fn metric_name_separates_namespace_and_base_with_underscore() {
-        let result = metric_name("foo");
-        assert!(result.starts_with("expresso_auth_"));
-        assert!(result.ends_with("foo"));
+    fn metric_names_all_distinct() {
+        let names = [
+            METRIC_AUTH_REQUESTS,
+            METRIC_AUTH_ERRORS,
+            METRIC_AUTH_LATENCY_MS,
+        ];
+        let mut sorted = names.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), 3);
     }
 
     #[test]
-    fn metric_name_does_not_double_namespace() {
-        let result = metric_name("bar");
-        assert!(!result.starts_with("expresso_auth_expresso_auth_"));
+    fn record_paths_do_not_panic() {
+        init();
+        init();
+        record(OP_LOGIN, Instant::now(), true);
+        record(OP_REFRESH, Instant::now(), false);
+        let ok: Result<(), ()> = Ok(());
+        record_result(OP_CALLBACK, Instant::now(), &ok);
+        let err: Result<(), ()> = Err(());
+        record_result(OP_IMPERSONATE_START, Instant::now(), &err);
     }
 
     #[test]
-    fn all_endpoint_labels_are_nonempty() {
-        for label in [ENDPOINT_CALLBACK, ENDPOINT_LOGOUT, ENDPOINT_REFRESH, ENDPOINT_USERINFO] {
-            assert!(!label.is_empty());
-        }
-    }
-
-    #[test]
-    fn metric_name_logout_contains_logout() {
-        assert!(metric_name("logout_count").contains("logout"));
-    }
-
-    #[test]
-    fn namespace_has_no_trailing_underscore() {
-        assert!(!namespace().ends_with('_'));
-    }
-
-    #[test]
-    fn metric_name_starts_with_namespace_underscore() {
-        assert!(metric_name("x").starts_with(&format!("{}_", namespace())));
-    }
-
-    #[test]
-    fn namespace_is_lowercase() {
-        assert_eq!(namespace(), namespace().to_lowercase());
+    fn statuses_are_ok_and_error() {
+        assert_eq!(STATUSES, &["ok", "error"]);
     }
 }

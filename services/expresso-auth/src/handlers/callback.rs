@@ -1,6 +1,6 @@
 //! GET /auth/callback → token exchange (multi-tenant aware).
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use axum::{
     extract::{Query, State},
@@ -40,6 +40,17 @@ pub struct CallbackResponse {
 }
 
 pub async fn callback(
+    app: State<Arc<AppState>>,
+    headers: HeaderMap,
+    q: Query<CallbackQuery>,
+) -> Result<Response> {
+    let started = Instant::now();
+    let r = callback_inner(app, headers, q).await;
+    crate::metrics::record_result(crate::metrics::OP_CALLBACK, started, &r);
+    r
+}
+
+async fn callback_inner(
     State(app): State<Arc<AppState>>,
     headers: HeaderMap,
     Query(q): Query<CallbackQuery>,

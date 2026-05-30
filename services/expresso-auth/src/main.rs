@@ -12,6 +12,7 @@ mod config;
 mod error;
 mod handlers;
 mod kc_admin;
+mod metrics;
 mod oidc;
 mod ratelimit;
 mod state;
@@ -62,6 +63,8 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .json()
         .init();
+
+    metrics::init();
 
     let cfg = RpConfig::from_env()?;
 

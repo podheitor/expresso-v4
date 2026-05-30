@@ -3,7 +3,7 @@
 //! Accepts refresh_token from JSON body OR `expresso_rt` cookie. On success
 //! re-issues both cookies (for browser) and returns JSON.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use axum::{
     extract::State,
@@ -31,6 +31,17 @@ pub struct RefreshBody {
 }
 
 pub async fn refresh(
+    app: State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Option<Json<RefreshBody>>,
+) -> Result<Response> {
+    let started = Instant::now();
+    let r = refresh_inner(app, headers, body).await;
+    crate::metrics::record_result(crate::metrics::OP_REFRESH, started, &r);
+    r
+}
+
+async fn refresh_inner(
     State(app): State<Arc<AppState>>,
     headers: HeaderMap,
     body: Option<Json<RefreshBody>>,

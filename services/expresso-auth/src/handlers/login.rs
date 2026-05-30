@@ -22,6 +22,17 @@ pub struct LoginQuery {
 }
 
 pub async fn login(
+    app: State<Arc<AppState>>,
+    headers: HeaderMap,
+    q: Query<LoginQuery>,
+) -> Result<Redirect> {
+    let started = Instant::now();
+    let r = login_inner(app, headers, q).await;
+    crate::metrics::record_result(crate::metrics::OP_LOGIN, started, &r);
+    r
+}
+
+async fn login_inner(
     State(app): State<Arc<AppState>>,
     headers: HeaderMap,
     Query(q): Query<LoginQuery>,

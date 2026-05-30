@@ -23,6 +23,7 @@ use expresso_core::audit::{record_async, AuditEntry};
 use crate::kc_admin::{ImpersonationTokens, KcAdmin, KcAdminConfig};
 use crate::state::AppState;
 use std::sync::Arc;
+use std::time::Instant;
 
 const SUPER_ROLE: &str = "superadmin";
 
@@ -48,6 +49,17 @@ fn is_super(ctx: &expresso_auth_client::AuthContext) -> bool {
 }
 
 pub async fn start(
+    st: State<Arc<AppState>>,
+    auth: Authenticated,
+    target: Path<Uuid>,
+) -> Result<Json<ImpersonateResp>, StatusCode> {
+    let started = Instant::now();
+    let r = start_inner(st, auth, target).await;
+    crate::metrics::record_result(crate::metrics::OP_IMPERSONATE_START, started, &r);
+    r
+}
+
+async fn start_inner(
     State(st): State<Arc<AppState>>,
     Authenticated(ctx): Authenticated,
     Path(target_user_id): Path<Uuid>,
@@ -125,6 +137,16 @@ pub async fn start(
 }
 
 pub async fn end(
+    st: State<Arc<AppState>>,
+    auth: Authenticated,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let started = Instant::now();
+    let r = end_inner(st, auth).await;
+    crate::metrics::record_result(crate::metrics::OP_IMPERSONATE_END, started, &r);
+    r
+}
+
+async fn end_inner(
     State(st): State<Arc<AppState>>,
     Authenticated(ctx): Authenticated,
 ) -> Result<Json<serde_json::Value>, StatusCode> {

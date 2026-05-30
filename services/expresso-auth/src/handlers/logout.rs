@@ -1,6 +1,6 @@
 //! GET /auth/logout → clear session cookies + redirect to IdP end_session.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use axum::{
     extract::{Query, State},
@@ -25,6 +25,17 @@ pub struct LogoutQuery {
 }
 
 pub async fn logout(
+    app: State<Arc<AppState>>,
+    headers: HeaderMap,
+    q: Query<LogoutQuery>,
+) -> Result<Response> {
+    let started = Instant::now();
+    let r = logout_inner(app, headers, q).await;
+    crate::metrics::record_result(crate::metrics::OP_LOGOUT, started, &r);
+    r
+}
+
+async fn logout_inner(
     State(app): State<Arc<AppState>>,
     headers: HeaderMap,
     Query(q): Query<LogoutQuery>,
