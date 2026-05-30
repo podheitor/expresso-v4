@@ -1,4 +1,14 @@
-//! Calendar service Prometheus metrics labels and helpers.
+//! Calendar service Prometheus metrics.
+//!
+//! Single counter `expresso_calendar_ops_total{op, outcome}` covers handler
+//! outcomes. `op` is one of: event_create, event_update, event_delete,
+//! calendar_list, share, export_ical. `outcome` is `ok` on success or a
+//! mapped error label (see `outcome_for_err`).
+
+use once_cell::sync::Lazy;
+use prometheus::IntCounterVec;
+
+use crate::error::CalendarError;
 
 /// Metric namespace for all calendar service metrics.
 pub const NAMESPACE: &str = "expresso_calendar";
@@ -16,22 +26,89 @@ pub const OP_SHARE: &str = "share";
 /// Label value for iCal export operations.
 pub const OP_EXPORT_ICAL: &str = "export_ical";
 
+const OPS: &[&str] = &[
+    OP_EVENT_CREATE,
+    OP_EVENT_UPDATE,
+    OP_EVENT_DELETE,
+    OP_CALENDAR_LIST,
+    OP_SHARE,
+    OP_EXPORT_ICAL,
+];
+
+const OUTCOMES: &[&str] = &[
+    "ok",
+    "not_found",
+    "bad_request",
+    "conflict",
+    "forbidden",
+    "not_supported",
+    "unavailable",
+    "error",
+];
+
+pub static CALENDAR_OPS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let c = IntCounterVec::new(
+        prometheus::Opts::new(
+            metric_name("ops_total"),
+            "Calendar handler outcomes per operation",
+        ),
+        &["op", "outcome"],
+    )
+    .expect("metric build");
+    expresso_observability::register(c)
+});
+
 /// Returns the full Prometheus metric name for a given base name.
 pub fn metric_name(base: &str) -> String {
-    format!("{}_{}", NAMESPACE, base)
+    format!("{NAMESPACE}_{base}")
 }
 
-/// Returns true when the operation label is known.
-pub fn is_known_op(op: &str) -> bool {
-    matches!(
-        op,
-        OP_EVENT_CREATE | OP_EVENT_UPDATE | OP_EVENT_DELETE | OP_CALENDAR_LIST | OP_SHARE | OP_EXPORT_ICAL
-    )
+/// Pre-populate label series so `rate()`/`increase()` work from the first
+/// scrape. Idempotent.
+pub fn init() {
+    Lazy::force(&CALENDAR_OPS_TOTAL);
+    for op in OPS {
+        for outcome in OUTCOMES {
+            CALENDAR_OPS_TOTAL
+                .with_label_values(&[op, outcome])
+                .inc_by(0);
+        }
+    }
+}
+
+/// Record one handler outcome.
+#[inline]
+pub fn record(op: &'static str, outcome: &'static str) {
+    CALENDAR_OPS_TOTAL.with_label_values(&[op, outcome]).inc();
+}
+
+/// Map a `CalendarError` to the canonical `outcome` label.
+pub fn outcome_for_err(e: &CalendarError) -> &'static str {
+    match e {
+        CalendarError::EventNotFound(_)
+        | CalendarError::CalendarNotFound(_)
+        | CalendarError::AlarmNotFound(_) => "not_found",
+        CalendarError::InvalidICal(_) | CalendarError::BadRequest(_) => "bad_request",
+        CalendarError::Conflict(_) => "conflict",
+        CalendarError::Forbidden => "forbidden",
+        CalendarError::NotSupported(_) => "not_supported",
+        CalendarError::DatabaseUnavailable => "unavailable",
+        _ => "error",
+    }
+}
+
+/// Record `ok` on success or the mapped error label on failure.
+pub fn record_result<T>(op: &'static str, result: &Result<T, CalendarError>) {
+    match result {
+        Ok(_) => record(op, "ok"),
+        Err(e) => record(op, outcome_for_err(e)),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[test]
     fn namespace_value() {
@@ -39,93 +116,31 @@ mod tests {
     }
 
     #[test]
-    fn op_event_create_value() {
+    fn op_values() {
         assert_eq!(OP_EVENT_CREATE, "event_create");
-    }
-
-    #[test]
-    fn op_event_update_value() {
         assert_eq!(OP_EVENT_UPDATE, "event_update");
-    }
-
-    #[test]
-    fn op_event_delete_value() {
         assert_eq!(OP_EVENT_DELETE, "event_delete");
-    }
-
-    #[test]
-    fn op_calendar_list_value() {
         assert_eq!(OP_CALENDAR_LIST, "calendar_list");
-    }
-
-    #[test]
-    fn op_share_value() {
         assert_eq!(OP_SHARE, "share");
-    }
-
-    #[test]
-    fn op_export_ical_value() {
         assert_eq!(OP_EXPORT_ICAL, "export_ical");
     }
 
     #[test]
     fn metric_name_prefixes_namespace() {
-        assert_eq!(metric_name("requests_total"), "expresso_calendar_requests_total");
+        assert_eq!(
+            metric_name("requests_total"),
+            "expresso_calendar_requests_total"
+        );
+        assert!(metric_name("x").starts_with(NAMESPACE));
+        assert_eq!(metric_name("latency"), format!("{NAMESPACE}_latency"));
     }
 
     #[test]
-    fn metric_name_event_count() {
-        assert_eq!(metric_name("event_count"), "expresso_calendar_event_count");
-    }
-
-    #[test]
-    fn is_known_op_event_create() {
-        assert!(is_known_op(OP_EVENT_CREATE));
-    }
-
-    #[test]
-    fn is_known_op_event_update() {
-        assert!(is_known_op(OP_EVENT_UPDATE));
-    }
-
-    #[test]
-    fn is_known_op_event_delete() {
-        assert!(is_known_op(OP_EVENT_DELETE));
-    }
-
-    #[test]
-    fn is_known_op_calendar_list() {
-        assert!(is_known_op(OP_CALENDAR_LIST));
-    }
-
-    #[test]
-    fn is_known_op_share() {
-        assert!(is_known_op(OP_SHARE));
-    }
-
-    #[test]
-    fn is_known_op_export_ical() {
-        assert!(is_known_op(OP_EXPORT_ICAL));
-    }
-
-    #[test]
-    fn is_known_op_rejects_unknown() {
-        assert!(!is_known_op("unknown_op"));
-        assert!(!is_known_op(""));
-    }
-
-    #[test]
-    fn all_op_labels_are_lowercase() {
-        for op in [OP_EVENT_CREATE, OP_EVENT_UPDATE, OP_EVENT_DELETE, OP_CALENDAR_LIST, OP_SHARE, OP_EXPORT_ICAL] {
-            assert_eq!(op, op.to_lowercase());
-        }
-    }
-
-    #[test]
-    fn all_op_labels_are_distinct() {
-        let labels = [OP_EVENT_CREATE, OP_EVENT_UPDATE, OP_EVENT_DELETE, OP_CALENDAR_LIST, OP_SHARE, OP_EXPORT_ICAL];
-        for (i, a) in labels.iter().enumerate() {
-            for (j, b) in labels.iter().enumerate() {
+    fn op_labels_distinct_lowercase() {
+        for (i, a) in OPS.iter().enumerate() {
+            assert_eq!(*a, a.to_lowercase());
+            assert!(!a.contains(' '));
+            for (j, b) in OPS.iter().enumerate() {
                 if i != j {
                     assert_ne!(a, b);
                 }
@@ -134,46 +149,64 @@ mod tests {
     }
 
     #[test]
-    fn metric_name_contains_base() {
-        let base = "latency_seconds";
-        assert!(metric_name(base).contains(base));
+    fn outcomes_distinct_nonempty() {
+        for (i, a) in OUTCOMES.iter().enumerate() {
+            assert!(!a.is_empty());
+            for (j, b) in OUTCOMES.iter().enumerate() {
+                if i != j {
+                    assert_ne!(a, b);
+                }
+            }
+        }
     }
 
     #[test]
-    fn namespace_is_nonempty() {
-        assert!(!NAMESPACE.is_empty());
+    fn outcome_for_err_maps_variants() {
+        assert_eq!(
+            outcome_for_err(&CalendarError::EventNotFound(Uuid::nil())),
+            "not_found"
+        );
+        assert_eq!(
+            outcome_for_err(&CalendarError::CalendarNotFound("c".into())),
+            "not_found"
+        );
+        assert_eq!(
+            outcome_for_err(&CalendarError::InvalidICal("x".into())),
+            "bad_request"
+        );
+        assert_eq!(
+            outcome_for_err(&CalendarError::BadRequest("x".into())),
+            "bad_request"
+        );
+        assert_eq!(
+            outcome_for_err(&CalendarError::Conflict("x".into())),
+            "conflict"
+        );
+        assert_eq!(outcome_for_err(&CalendarError::Forbidden), "forbidden");
+        assert_eq!(
+            outcome_for_err(&CalendarError::NotSupported("x")),
+            "not_supported"
+        );
+        assert_eq!(
+            outcome_for_err(&CalendarError::DatabaseUnavailable),
+            "unavailable"
+        );
     }
 
     #[test]
-    fn metric_name_nonempty_for_nonempty_base() {
-        assert!(!metric_name("count").is_empty());
+    fn record_paths_do_not_panic() {
+        init();
+        init();
+        record(OP_EVENT_CREATE, "ok");
+        let ok: Result<(), CalendarError> = Ok(());
+        record_result(OP_EVENT_CREATE, &ok);
+        let err: Result<(), CalendarError> = Err(CalendarError::Forbidden);
+        record_result(OP_EVENT_DELETE, &err);
     }
 
     #[test]
-    fn metric_name_uses_underscore_separator() {
-        let result = metric_name("foo");
-        assert!(result.contains('_'));
-    }
-
-    #[test]
-    fn is_known_op_case_sensitive() {
-        assert!(!is_known_op("EVENT_CREATE"));
-        assert!(!is_known_op("Event_Create"));
-    }
-
-    #[test]
-    fn namespace_contains_no_spaces() {
-        assert!(!NAMESPACE.contains(' '));
-    }
-
-    #[test]
-    fn metric_name_separator_is_between_namespace_and_base() {
-        let result = metric_name("latency");
-        assert_eq!(result, format!("{NAMESPACE}_latency"));
-    }
-
-    #[test]
-    fn namespace_does_not_contain_hyphen() {
-        assert!(!NAMESPACE.contains('-'));
+    fn ops_and_outcomes_counts() {
+        assert_eq!(OPS.len(), 6);
+        assert_eq!(OUTCOMES.len(), 8);
     }
 }

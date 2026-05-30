@@ -43,7 +43,13 @@ async fn create(
     Ok((StatusCode::CREATED, Json(cal)))
 }
 
-async fn list(
+async fn list(state: State<AppState>, ctx: RequestCtx, req_headers: HeaderMap) -> Result<Response> {
+    let r = list_inner(state, ctx, req_headers).await;
+    crate::metrics::record_result(crate::metrics::OP_CALENDAR_LIST, &r);
+    r
+}
+
+async fn list_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     req_headers: HeaderMap,

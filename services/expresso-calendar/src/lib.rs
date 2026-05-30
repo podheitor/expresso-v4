@@ -8,6 +8,7 @@ mod events;
 #[cfg(feature = "fuzzing")]
 pub mod fuzz_entry;
 mod imip_publish;
+mod metrics;
 mod state;
 
 use std::{env, net::SocketAddr, sync::Arc};
@@ -138,6 +139,9 @@ pub async fn run() -> anyhow::Result<()> {
         version = env!("CARGO_PKG_VERSION"),
         "expresso-calendar starting"
     );
+
+    // Pre-populate metric series so rate()/increase() work from first scrape.
+    metrics::init();
 
     let db = match resolve_database_config() {
         Some(database) => match create_db_pool(&database).await {

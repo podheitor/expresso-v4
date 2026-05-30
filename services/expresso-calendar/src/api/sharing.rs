@@ -132,6 +132,17 @@ pub async fn list_acl(
 }
 
 pub async fn share(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    cal_id: Path<Uuid>,
+    req: Json<ShareRequest>,
+) -> Result<Json<AclEntry>> {
+    let r = share_inner(state, ctx, cal_id, req).await;
+    crate::metrics::record_result(crate::metrics::OP_SHARE, &r);
+    r
+}
+
+async fn share_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,

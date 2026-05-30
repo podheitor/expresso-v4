@@ -429,6 +429,17 @@ pub fn routes() -> Router<AppState> {
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
 async fn create(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    cal_id: Path<Uuid>,
+    raw: String,
+) -> Result<Response> {
+    let r = create_inner(state, ctx, cal_id, raw).await;
+    crate::metrics::record_result(crate::metrics::OP_EVENT_CREATE, &r);
+    r
+}
+
+async fn create_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
@@ -4247,6 +4258,17 @@ async fn get_one(
 }
 
 async fn update(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    path: Path<(Uuid, Uuid)>,
+    raw: String,
+) -> Result<Response> {
+    let r = update_inner(state, ctx, path, raw).await;
+    crate::metrics::record_result(crate::metrics::OP_EVENT_UPDATE, &r);
+    r
+}
+
+async fn update_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
@@ -4366,6 +4388,16 @@ async fn patch_event(
 }
 
 async fn delete(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    path: Path<(Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    let r = delete_inner(state, ctx, path).await;
+    crate::metrics::record_result(crate::metrics::OP_EVENT_DELETE, &r);
+    r
+}
+
+async fn delete_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
@@ -4386,6 +4418,17 @@ async fn delete(
 /// VCALENDAR (text/calendar). Unauthenticated CalDAV clients can also fetch
 /// raw calendar via CalDAV REPORT; this endpoint is for simple downloads.
 async fn export_ics(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    cal_id: Path<Uuid>,
+    req_headers: HeaderMap,
+) -> Result<Response> {
+    let r = export_ics_inner(state, ctx, cal_id, req_headers).await;
+    crate::metrics::record_result(crate::metrics::OP_EXPORT_ICAL, &r);
+    r
+}
+
+async fn export_ics_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
