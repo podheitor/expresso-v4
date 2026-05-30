@@ -31,6 +31,9 @@ pub const OP_LOGOUT: &str = "logout";
 pub const OP_FORGOT: &str = "forgot";
 pub const OP_IMPERSONATE_START: &str = "impersonate_start";
 pub const OP_IMPERSONATE_END: &str = "impersonate_end";
+pub const OP_MFA_LIST: &str = "mfa_list";
+pub const OP_MFA_REQUIRE: &str = "mfa_require";
+pub const OP_MFA_DELETE: &str = "mfa_delete";
 
 const OPS: &[&str] = &[
     OP_LOGIN,
@@ -40,6 +43,9 @@ const OPS: &[&str] = &[
     OP_FORGOT,
     OP_IMPERSONATE_START,
     OP_IMPERSONATE_END,
+    OP_MFA_LIST,
+    OP_MFA_REQUIRE,
+    OP_MFA_DELETE,
 ];
 const STATUSES: &[&str] = &["ok", "error"];
 

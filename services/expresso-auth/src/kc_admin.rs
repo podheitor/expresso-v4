@@ -209,6 +209,67 @@ impl KcAdmin {
             .error_for_status()?;
         Ok(())
     }
+
+    /// List a user's stored credentials (Keycloak admin `GET
+    /// /users/{id}/credentials`). Used to surface which MFA factors a user has
+    /// enrolled — OTP and WebAuthn entries carry `type` `"otp"` /
+    /// `"webauthn"` (passwordless: `"webauthn-passwordless"`); the `password`
+    /// entry is included by Keycloak too but is not an MFA factor.
+    pub async fn list_credentials(&self, user_id: &str) -> Result<Vec<KcCredential>> {
+        let tok = self.token().await?;
+        let url = format!(
+            "{}/admin/realms/{}/users/{}/credentials",
+            self.cfg.base_url, self.cfg.realm, user_id
+        );
+        let creds: Vec<KcCredential> = self
+            .http
+            .get(&url)
+            .bearer_auth(&tok)
+            .send()
+            .await
+            .context("kc list-credentials req")?
+            .error_for_status()
+            .context("kc list-credentials status")?
+            .json()
+            .await
+            .context("kc list-credentials json")?;
+        Ok(creds)
+    }
+
+    /// Remove a single credential by id (Keycloak admin `DELETE
+    /// /users/{id}/credentials/{credentialId}`). Resets an MFA factor — the
+    /// user must re-enroll. Idempotent from the caller's view: KC returns 404
+    /// for an unknown credential, surfaced here as an error.
+    pub async fn delete_credential(&self, user_id: &str, credential_id: &str) -> Result<()> {
+        let tok = self.token().await?;
+        let url = format!(
+            "{}/admin/realms/{}/users/{}/credentials/{}",
+            self.cfg.base_url, self.cfg.realm, user_id, credential_id
+        );
+        self.http
+            .delete(&url)
+            .bearer_auth(&tok)
+            .send()
+            .await
+            .context("kc delete-credential req")?
+            .error_for_status()
+            .context("kc delete-credential status")?;
+        Ok(())
+    }
+}
+
+/// A Keycloak stored credential, as returned by the admin credentials API.
+/// Only the fields we expose are deserialized; `user_label` is the
+/// user-assigned name (e.g. device name for WebAuthn keys).
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct KcCredential {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub credential_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_date: Option<i64>,
 }
 
 #[cfg(test)]

@@ -21,7 +21,7 @@ use std::{collections::HashMap, env, net::SocketAddr, sync::Arc};
 
 use axum::{
     extract::Extension,
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde_json::{json, Value};
@@ -207,6 +207,15 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/auth/impersonate/:target_user_id",
             post(handlers::impersonate::start),
+        )
+        .route("/auth/admin/users/:id/mfa", get(handlers::mfa::list))
+        .route(
+            "/auth/admin/users/:id/mfa/require",
+            post(handlers::mfa::require),
+        )
+        .route(
+            "/auth/admin/users/:id/mfa/:credential_id",
+            delete(handlers::mfa::delete),
         )
         .route(
             "/auth/forgot",
