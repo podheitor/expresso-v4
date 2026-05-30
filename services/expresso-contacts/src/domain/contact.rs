@@ -114,6 +114,38 @@ impl<'a> ContactRepo<'a> {
         Ok(rows)
     }
 
+    /// Case-insensitive substring search across the denormalized name / email /
+    /// organization columns, over ALL of the tenant's contacts (every
+    /// addressbook). RLS + the explicit `tenant_id` filter keep it tenant-local;
+    /// `limit` is clamped by the caller. The `%` and `_` LIKE metacharacters in
+    /// `query` are escaped so a user can search for a literal address.
+    pub async fn search(&self, tenant_id: Uuid, query: &str, limit: i64) -> Result<Vec<Contact>> {
+        let escaped = query
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let pattern = format!("%{escaped}%");
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let rows = sqlx::query_as::<_, Contact>(
+            r#"
+            SELECT * FROM contacts
+             WHERE tenant_id = $1
+               AND (full_name    ILIKE $2 ESCAPE '\'
+                 OR email_primary ILIKE $2 ESCAPE '\'
+                 OR organization  ILIKE $2 ESCAPE '\')
+             ORDER BY COALESCE(full_name, uid)
+             LIMIT $3
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(&pattern)
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     pub async fn update(&self, tenant_id: Uuid, id: Uuid, raw: &str) -> Result<Contact> {
         let parsed = vcard::parse(raw).map_err(ContactsError::InvalidVCard)?;
         let etag = vcard::compute_etag(raw);

@@ -3,16 +3,18 @@
 
 use axum::{
     body::Body,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
+use serde::Deserialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
+use crate::domain::contact::Contact;
 use crate::domain::ContactRepo;
 use crate::error::{ContactsError, Result};
 use crate::events::ContactsEvent;
@@ -59,6 +61,40 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/addressbooks/:book_id/export.vcf", get(export_vcf))
         .route("/api/v1/addressbooks/:book_id/import", post(import_vcf))
         .route("/api/v1/contacts/import", post(import_csv))
+        .route("/api/v1/contacts/search", get(search))
+}
+
+/// Default and maximum number of contacts a single search returns.
+const SEARCH_DEFAULT_LIMIT: i64 = 50;
+const SEARCH_MAX_LIMIT: i64 = 200;
+
+#[derive(Debug, Deserialize)]
+struct SearchParams {
+    q: String,
+    limit: Option<i64>,
+}
+
+/// GET /api/v1/contacts/search?q=&limit= — case-insensitive substring search
+/// over the caller's tenant contacts (name / email / organization). Empty `q`
+/// is a 400; `limit` is clamped to `[1, SEARCH_MAX_LIMIT]`.
+async fn search(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Query(params): Query<SearchParams>,
+) -> Result<Json<Vec<Contact>>> {
+    let query = params.q.trim();
+    if query.is_empty() {
+        return Err(ContactsError::BadRequest("q must not be empty".into()));
+    }
+    let limit = params
+        .limit
+        .unwrap_or(SEARCH_DEFAULT_LIMIT)
+        .clamp(1, SEARCH_MAX_LIMIT);
+    let pool = state.db_or_unavailable()?;
+    let hits = ContactRepo::new(pool)
+        .search(ctx.tenant_id, query, limit)
+        .await?;
+    Ok(Json(hits))
 }
 
 async fn create(
