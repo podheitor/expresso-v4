@@ -74,12 +74,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
       - uses: rui314/setup-mold@v1
       - uses: Swatinem/rust-cache@v2
         with:
           key: fuzz
+      # No --locked: cargo-fuzz's pinned Cargo.lock can carry a `rustix` that
+      # fails to build against the latest nightly (rustc_attrs reserved-attr
+      # errors); letting cargo resolve fresh picks a compatible version.
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked --quiet
+        run: cargo install cargo-fuzz --quiet
       - name: Build fuzz targets
         working-directory: fuzz
         run: cargo +nightly fuzz build

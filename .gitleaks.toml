@@ -1,0 +1,22 @@
+# gitleaks configuration — extends the bundled default ruleset.
+#
+# The only customization is an allowlist for test-fixture environment-variable
+# NAMES. Several services unit-test their `env_*` config helpers with literals
+# like `let key = "MAIL_TEST_UNSET_19981"`. gitleaks' default `generic-api-key`
+# rule matches the `key = "<string>"` shape and flags these as secrets, even
+# though they are env-var *names*, never values. The false positive surfaces
+# whenever such a line moves between files (e.g. the bin→lib split), because
+# gitleaks then sees it as newly added.
+#
+# Scope is deliberately narrow: only literals matching the project's test
+# env-var convention (UPPER_SNAKE containing `_TEST_`) are allowlisted, so real
+# secrets are still detected.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Test-fixture env-var names (UPPER_SNAKE with _TEST_), not secrets"
+regexes = [
+  '''(?:CAL|CONT|MAIL|ADMIN|AUTH|MEET|DRIVE|FLOWS|CHAT|WOPI|COMPLIANCE)_TEST_[A-Z0-9_]+''',
+]
