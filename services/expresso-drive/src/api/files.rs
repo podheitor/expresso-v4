@@ -45,6 +45,24 @@ async fn require_read(
     }
 }
 
+/// Require WRITE-or-stronger (OWNER / ADMIN / WRITE — not bare READ) on
+/// `file_id`; 403 otherwise. The write gate for mutating handlers.
+async fn require_write(
+    pool: &expresso_core::DbPool,
+    tenant_id: Uuid,
+    file_id: Uuid,
+    user_id: Uuid,
+) -> Result<()> {
+    match AclRepo::new(pool)
+        .access_level(tenant_id, file_id, user_id)
+        .await?
+        .as_deref()
+    {
+        Some("OWNER") | Some("ADMIN") | Some("WRITE") => Ok(()),
+        _ => Err(DriveError::Forbidden),
+    }
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/drive/files", get(list).post(upload))
@@ -843,9 +861,12 @@ async fn move_file(
     Path(id): Path<Uuid>,
     Json(body): Json<MoveBody>,
 ) -> Result<Json<DriveFile>> {
+    let pool = state.db_or_unavailable()?;
+    // Moving the node mutates it — require write on the source.
+    require_write(pool, ctx.tenant_id, id, ctx.user_id).await?;
     if let Some(parent) = body.parent_id {
-        // Sanity: target folder must exist in the same tenant.
-        let pool = state.db_or_unavailable()?;
+        // Sanity: target folder must exist in the same tenant, and the caller
+        // must be able to write into it.
         let target = FileRepo::new(pool).get(ctx.tenant_id, parent).await?;
         if target.kind != "folder" {
             return Err(DriveError::BadRequest("parent_id must be a folder".into()));
@@ -855,8 +876,8 @@ async fn move_file(
                 "cannot move a folder into itself".into(),
             ));
         }
+        require_write(pool, ctx.tenant_id, parent, ctx.user_id).await?;
     }
-    let pool = state.db_or_unavailable()?;
     let f = FileRepo::new(pool)
         .move_to(ctx.tenant_id, id, body.parent_id)
         .await?;
@@ -872,6 +893,7 @@ async fn rename(
 ) -> Result<Json<DriveFile>> {
     let name = sanitize_name(&body.name)?;
     let pool = state.db_or_unavailable()?;
+    require_write(pool, ctx.tenant_id, id, ctx.user_id).await?;
     let f = FileRepo::new(pool).rename(ctx.tenant_id, id, name).await?;
     Ok(Json(f))
 }
@@ -986,6 +1008,7 @@ async fn delete_file_inner(
     Query(q): Query<DeleteQuery>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
+    require_write(pool, ctx.tenant_id, id, ctx.user_id).await?;
     let repo = FileRepo::new(pool);
     if q.permanent {
         let key = repo.purge(ctx.tenant_id, id).await?;
