@@ -234,6 +234,81 @@ impl MatrixClient {
         Ok(r.event_id)
     }
 
+    /// Edit a message: send a new `m.room.message` carrying an `m.replace`
+    /// relation to `target_event_id` (MSC2676). `body`/`msgtype` are the
+    /// fallback for clients that don't render edits; `m.new_content` is the
+    /// replacement. Returns the edit event's id. The HS enforces that only the
+    /// original sender may edit (the relation is rejected otherwise).
+    pub async fn edit_text(
+        &self,
+        acting_as: &str,
+        room_id: &str,
+        target_event_id: &str,
+        new_body: &str,
+    ) -> Result<String> {
+        self.ensure_registered(acting_as).await?;
+        let txn = Uuid::new_v4();
+        let path = format!("/rooms/{}/send/m.room.message/{}", urlencode(room_id), txn);
+        let url = self.cs_url(&path, acting_as)?;
+        let payload = json!({
+            "msgtype": "m.text",
+            "body": format!("* {new_body}"),
+            "m.new_content": { "msgtype": "m.text", "body": new_body },
+            "m.relates_to": { "rel_type": "m.replace", "event_id": target_event_id },
+        });
+        #[derive(Deserialize)]
+        struct R {
+            event_id: String,
+        }
+        let r: R = self
+            .send(
+                self.http
+                    .put(url)
+                    .bearer_auth(self.as_token()?)
+                    .json(&payload),
+            )
+            .await?;
+        Ok(r.event_id)
+    }
+
+    /// Redact (delete) an event. `PUT /rooms/{room}/redact/{event}/{txn}`.
+    /// Returns the redaction event's id. The HS enforces redaction permission
+    /// (sender, or a power-level high enough to redact others).
+    pub async fn redact(
+        &self,
+        acting_as: &str,
+        room_id: &str,
+        target_event_id: &str,
+        reason: Option<&str>,
+    ) -> Result<String> {
+        self.ensure_registered(acting_as).await?;
+        let txn = Uuid::new_v4();
+        let path = format!(
+            "/rooms/{}/redact/{}/{}",
+            urlencode(room_id),
+            urlencode(target_event_id),
+            txn
+        );
+        let url = self.cs_url(&path, acting_as)?;
+        let payload = match reason {
+            Some(r) => json!({ "reason": r }),
+            None => json!({}),
+        };
+        #[derive(Deserialize)]
+        struct R {
+            event_id: String,
+        }
+        let r: R = self
+            .send(
+                self.http
+                    .put(url)
+                    .bearer_auth(self.as_token()?)
+                    .json(&payload),
+            )
+            .await?;
+        Ok(r.event_id)
+    }
+
     /// List recent messages (reverse-chronological; limit capped at 100 by HS).
     pub async fn list_messages(&self, acting_as: &str, room_id: &str, limit: u32) -> Result<Value> {
         self.ensure_registered(acting_as).await?;

@@ -18,14 +18,16 @@ use uuid::Uuid;
 /// history via the REST list endpoint on reconnect).
 const BUS_CAPACITY: usize = 256;
 
-/// Kind of realtime signal. `message` and `reaction` reflect durable state
-/// (Matrix message / local chat_reactions row); `typing` is ephemeral — never
-/// stored, only forwarded live. (Presence is a planned kind; added when
-/// online/offline tracking lands.)
+/// Kind of realtime signal. `message`/`edit`/`delete`/`reaction` reflect
+/// durable state (Matrix message or relation / local chat_reactions row);
+/// `typing` is ephemeral — never stored, only forwarded live. (Presence is a
+/// planned kind; added when online/offline tracking lands.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChatEventKind {
     Message,
+    Edit,
+    Delete,
     Typing,
     Reaction,
 }
@@ -34,6 +36,8 @@ impl ChatEventKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Message => "message",
+            Self::Edit => "edit",
+            Self::Delete => "delete",
             Self::Typing => "typing",
             Self::Reaction => "reaction",
         }
@@ -93,6 +97,45 @@ impl ChatEvent {
             kind: ChatEventKind::Typing,
             user_id,
             event_id: None,
+            body: None,
+            emoji: None,
+            added: None,
+        }
+    }
+
+    /// A message edit: `target_event_id` now reads `new_body`.
+    pub fn edit(
+        tenant_id: Uuid,
+        channel_id: Uuid,
+        user_id: Uuid,
+        target_event_id: String,
+        new_body: String,
+    ) -> Self {
+        Self {
+            tenant_id,
+            channel_id,
+            kind: ChatEventKind::Edit,
+            user_id,
+            event_id: Some(target_event_id),
+            body: Some(new_body),
+            emoji: None,
+            added: None,
+        }
+    }
+
+    /// A message deletion (redaction) of `target_event_id`.
+    pub fn delete(
+        tenant_id: Uuid,
+        channel_id: Uuid,
+        user_id: Uuid,
+        target_event_id: String,
+    ) -> Self {
+        Self {
+            tenant_id,
+            channel_id,
+            kind: ChatEventKind::Delete,
+            user_id,
+            event_id: Some(target_event_id),
             body: None,
             emoji: None,
             added: None,

@@ -1,7 +1,9 @@
 //! Messages — thin proxy to Matrix CS API.
 //!
-//! POST /api/v1/channels/:id/messages       → send m.room.message (text)
-//! GET  /api/v1/channels/:id/messages       → list recent events (raw Matrix chunk JSON)
+//! POST   /api/v1/channels/:id/messages            → send m.room.message (text)
+//! GET    /api/v1/channels/:id/messages            → list recent events (raw chunk JSON)
+//! PUT    /api/v1/channels/:id/messages/:event_id  → edit (m.replace)
+//! DELETE /api/v1/channels/:id/messages/:event_id  → delete (redact)
 
 use axum::{
     extract::{Path, Query, State},
@@ -16,6 +18,7 @@ use uuid::Uuid;
 use crate::api::context::RequestCtx;
 use crate::domain::{ChannelRepo, ReadMarkerRepo};
 use crate::error::{ChatError, Result};
+use crate::events::ChatEvent;
 use crate::state::AppState;
 
 /// Cap por mensagem individual. Matrix CS API aceita textos grandes mas
@@ -31,7 +34,12 @@ pub const MAX_LIST_LIMIT: u32 = 200;
 pub const DEFAULT_LIST_LIMIT: u32 = 50;
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/api/v1/channels/:id/messages", post(send).get(list))
+    Router::new()
+        .route("/api/v1/channels/:id/messages", post(send).get(list))
+        .route(
+            "/api/v1/channels/:id/messages/:event_id",
+            axum::routing::put(edit).delete(remove),
+        )
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,6 +131,88 @@ async fn list(
     Ok(Json(value))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct EditBody {
+    pub body: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteQuery {
+    pub reason: Option<String>,
+}
+
+/// PUT …/messages/:event_id — edit a message via an m.replace relation. The HS
+/// rejects edits to events the caller didn't author, surfacing as 502 Matrix.
+async fn edit(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((id, event_id)): Path<(Uuid, String)>,
+    Json(body): Json<EditBody>,
+) -> Result<(StatusCode, Json<Value>)> {
+    validate_message_body(&body.body)?;
+    let pool = state.db_or_unavailable()?;
+    let matrix = state.matrix_or_unavailable()?;
+    let repo = ChannelRepo::new(pool);
+    if !repo.is_member(ctx.tenant_id, id, ctx.user_id).await? {
+        return Err(ChatError::NotMember);
+    }
+    let ch = repo
+        .get(ctx.tenant_id, id)
+        .await
+        .map_err(|_| ChatError::ChannelNotFound(id))?;
+
+    let acting_as = matrix.mxid_for(ctx.user_id);
+    let edit_event_id = matrix
+        .edit_text(&acting_as, &ch.matrix_room_id, &event_id, &body.body)
+        .await?;
+
+    state.bus().publish(ChatEvent::edit(
+        ctx.tenant_id,
+        id,
+        ctx.user_id,
+        event_id,
+        body.body,
+    ));
+
+    Ok((StatusCode::OK, Json(json!({ "event_id": edit_event_id }))))
+}
+
+/// DELETE …/messages/:event_id — redact a message. The HS enforces redaction
+/// permission (sender, or sufficient power level), surfacing as 502 Matrix.
+async fn remove(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((id, event_id)): Path<(Uuid, String)>,
+    Query(q): Query<DeleteQuery>,
+) -> Result<(StatusCode, Json<Value>)> {
+    let pool = state.db_or_unavailable()?;
+    let matrix = state.matrix_or_unavailable()?;
+    let repo = ChannelRepo::new(pool);
+    if !repo.is_member(ctx.tenant_id, id, ctx.user_id).await? {
+        return Err(ChatError::NotMember);
+    }
+    let ch = repo
+        .get(ctx.tenant_id, id)
+        .await
+        .map_err(|_| ChatError::ChannelNotFound(id))?;
+
+    let acting_as = matrix.mxid_for(ctx.user_id);
+    let redaction_id = matrix
+        .redact(
+            &acting_as,
+            &ch.matrix_room_id,
+            &event_id,
+            q.reason.as_deref(),
+        )
+        .await?;
+
+    state
+        .bus()
+        .publish(ChatEvent::delete(ctx.tenant_id, id, ctx.user_id, event_id));
+
+    Ok((StatusCode::OK, Json(json!({ "event_id": redaction_id }))))
+}
+
 /// Gate em send: empty já era rejeitado; agora rejeita oversize ANTES
 /// de tocar Matrix (evita gastar fanout/federation budget em payload abusivo).
 fn validate_message_body(body: &str) -> Result<()> {
@@ -142,6 +232,27 @@ fn validate_message_body(body: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edit_body_deserializes() {
+        let b: EditBody = serde_json::from_str(r#"{"body":"fixed typo"}"#).unwrap();
+        assert_eq!(b.body, "fixed typo");
+    }
+
+    #[test]
+    fn edit_reuses_message_body_validation() {
+        // edit() calls validate_message_body, so empty edits are rejected too.
+        assert!(validate_message_body("").is_err());
+        assert!(validate_message_body("ok").is_ok());
+    }
+
+    #[test]
+    fn delete_query_reason_optional() {
+        let q: DeleteQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.reason.is_none());
+        let q: DeleteQuery = serde_json::from_str(r#"{"reason":"spam"}"#).unwrap();
+        assert_eq!(q.reason.as_deref(), Some("spam"));
+    }
 
     #[test]
     fn rejects_empty_body() {
