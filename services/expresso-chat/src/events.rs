@@ -18,14 +18,16 @@ use uuid::Uuid;
 /// history via the REST list endpoint on reconnect).
 const BUS_CAPACITY: usize = 256;
 
-/// Kind of realtime signal. `message` is durable (also in Matrix); `typing`
-/// is ephemeral — never stored, only forwarded live. (Presence is a planned
-/// third kind; added when online/offline tracking lands.)
+/// Kind of realtime signal. `message` and `reaction` reflect durable state
+/// (Matrix message / local chat_reactions row); `typing` is ephemeral — never
+/// stored, only forwarded live. (Presence is a planned kind; added when
+/// online/offline tracking lands.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChatEventKind {
     Message,
     Typing,
+    Reaction,
 }
 
 impl ChatEventKind {
@@ -33,6 +35,7 @@ impl ChatEventKind {
         match self {
             Self::Message => "message",
             Self::Typing => "typing",
+            Self::Reaction => "reaction",
         }
     }
 }
@@ -46,12 +49,19 @@ pub struct ChatEvent {
     /// Acting user (message author / who is typing). Clients use it to skip
     /// echoing their own typing indicator.
     pub user_id: Uuid,
-    /// Matrix event id for `message` events; `None` for ephemeral signals.
+    /// Target id: the Matrix event id for `message`/`reaction` events; `None`
+    /// for ephemeral signals.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_id: Option<String>,
-    /// Message text for `message` events; `None` for ephemeral signals.
+    /// Message text for `message` events; `None` otherwise.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
+    /// Emoji for `reaction` events; `None` otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emoji: Option<String>,
+    /// For `reaction` events: `true` = added, `false` = removed. `None` otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub added: Option<bool>,
 }
 
 impl ChatEvent {
@@ -70,6 +80,8 @@ impl ChatEvent {
             user_id,
             event_id: Some(event_id),
             body: Some(body),
+            emoji: None,
+            added: None,
         }
     }
 
@@ -82,6 +94,29 @@ impl ChatEvent {
             user_id,
             event_id: None,
             body: None,
+            emoji: None,
+            added: None,
+        }
+    }
+
+    /// A reaction add/remove on a message (`target_event_id`).
+    pub fn reaction(
+        tenant_id: Uuid,
+        channel_id: Uuid,
+        user_id: Uuid,
+        target_event_id: String,
+        emoji: String,
+        added: bool,
+    ) -> Self {
+        Self {
+            tenant_id,
+            channel_id,
+            kind: ChatEventKind::Reaction,
+            user_id,
+            event_id: Some(target_event_id),
+            body: None,
+            emoji: Some(emoji),
+            added: Some(added),
         }
     }
 }
