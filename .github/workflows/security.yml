@@ -66,11 +66,10 @@ jobs:
   fuzz-smoke:
     name: Fuzz smoke (5s per target)
     runs-on: ubuntu-24.04
-    # Non-blocking: the fuzz targets call expresso_{mail,calendar,contacts}::
-    # fuzz_entry, but those services are bin-only (no lib target) so cargo
-    # cannot link them — the harness has never built. Restructuring the three
-    # services into lib+bin is tracked in docs/FUZZING_DEBT.md; until then this
-    # job is informational, not a merge gate.
+    # The three services now expose lib targets (src/lib.rs + run()), so the
+    # fuzz crate can link expresso_{mail,calendar,contacts}::fuzz_entry. Kept
+    # non-blocking for one green run to confirm the harness links in CI; once
+    # observed green, drop continue-on-error to make it a merge gate.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4

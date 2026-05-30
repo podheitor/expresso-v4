@@ -5,6 +5,10 @@ version = "0.1.0"
 edition = "2021"
 description = "CalDAV server + meeting management"
 
+[lib]
+name = "expresso_calendar"
+path = "src/lib.rs"
+
 [[bin]]
 name = "expresso-calendar"
 path = "src/main.rs"

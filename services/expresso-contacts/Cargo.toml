@@ -5,6 +5,10 @@ version = "0.1.0"
 edition = "2021"
 description = "CardDAV server + LDAP gateway"
 
+[lib]
+name = "expresso_contacts"
+path = "src/lib.rs"
+
 [[bin]]
 name = "expresso-contacts"
 path = "src/main.rs"

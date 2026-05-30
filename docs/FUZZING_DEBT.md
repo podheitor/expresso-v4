@@ -1,4 +1,14 @@
-# Fuzzing harness — blocked on lib targets
+# Fuzzing harness — lib targets added (pending green-CI confirmation)
+
+**Status (2026-05-30):** the three services now have `src/lib.rs` exposing
+`pub async fn run()` plus the module tree, and a `[lib]` target in each
+`Cargo.toml`; `main.rs` is a thin shim calling `expresso_<svc>::run()`. The
+fuzz crate should now link `expresso_{mail,calendar,contacts}::fuzz_entry`.
+The `fuzz-smoke` job is kept `continue-on-error: true` for one CI run to
+confirm the harness builds green; once observed green, drop that line to make
+it a merge gate.
+
+---
 
 The `fuzz/` crate defines targets that call into the services:
 

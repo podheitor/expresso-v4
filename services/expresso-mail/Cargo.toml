@@ -5,6 +5,10 @@ version = "0.1.0"
 edition = "2021"
 description = "SMTP/IMAP server + webmail API"
 
+[lib]
+name = "expresso_mail"
+path = "src/lib.rs"
+
 [[bin]]
 name = "expresso-mail"
 path = "src/main.rs"
