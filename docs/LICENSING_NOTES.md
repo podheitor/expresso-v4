@@ -19,7 +19,42 @@ Two transitive/direct dependencies carry strong copyleft licenses:
      (e.g. self-hosted-only customers vs. SaaS).
   2. Replace with a non-AGPL Sieve implementation, or reimplement the subset
      of RFC 5228 actually used.
-  3. Obtain a commercial license from the `sieve-rs` author if offered.
+  3. Obtain a commercial license from the `sieve-rs` author. **Confirmed
+     available:** `sieve-rs` is the Stalwart Labs Sieve interpreter
+     (github.com/stalwartlabs/sieve), dual-licensed — a commercial license that
+     releases you from AGPLv3 obligations is offered via `licensing@stalw.art`.
+     This is the lowest-engineering path if the price is acceptable; option 2
+     (reimplement the contained subset) is the fallback if not.
+
+### Usage scope (audited 2026-05-30) — relevant to option 2
+
+The AGPL surface is **contained to two functions in two files**; every other
+caller goes through our own wrapper, not the `sieve` crate:
+
+- `services/expresso-mail/src/sieve.rs` — the only file that imports `sieve::*`
+  (`Compiler`, `Runtime`, `Input`, `Event`, `Recipient`). It exposes a local
+  `evaluate(script, raw) -> Vec<FilterAction>` and a `FilterAction` enum that
+  the rest of the service depends on. ~115 LOC + ~200 LOC of tests.
+- `services/expresso-mail/src/api/sieve.rs::validate_script` — one extra direct
+  call: `sieve::Compiler::new().compile(bytes)` to validate a script on PUT.
+
+`ingest.rs` and the REST handlers consume only `crate::sieve::{evaluate,
+FilterAction}` — they are already insulated from the AGPL crate. So a
+replacement only has to preserve that wrapper's public contract.
+
+**Subset actually exercised** (what a reimplementation must cover): the RFC 5228
+actions `keep`, `fileinto`, `reject`, `discard`, `redirect`, plus `header
+:contains` tests (per the wrapper's tests). The wrapper already **stubs out**
+`include`, `notify`, `duplicate`, and `mailboxexists`/`listcontains` (returns
+unsupported/false), so those are out of scope. Compile errors and malformed
+input degrade to `Keep` (never panic — covered by fuzz target `fuzz_sieve`).
+
+**Cost read:** because the blast radius is one wrapper with a fixed public API
+and a thorough test suite already in place, swapping the engine (to a
+permissively-licensed Sieve crate, or a hand-rolled parser for the ~5-action
+subset) is a **localized change behind a stable seam**, not a cross-cutting
+refactor. The test suite in `sieve.rs` doubles as the acceptance spec for any
+replacement.
 
 ## `indymilter` 0.3.0 — GPL-3.0-or-later (lower concern)
 
