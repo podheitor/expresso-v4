@@ -1,10 +1,12 @@
 //! Storage quota endpoint.
 //!
-//! GET /api/v1/mail/quota — returns used bytes and optional quota limit.
+//! GET /api/v1/mail/quota — returns used bytes and the per-user quota limit.
 //!
-//! `used_bytes` = SUM(size_bytes) of non-expunged messages owned by the user.
-//! `quota_bytes` = NULL (no per-user quota enforced yet; field reserved for
-//!   future admin-configurable soft/hard limits).
+//! `used_bytes` = SUM(size_bytes) of non-expunged messages owned by the user
+//!   (the live truth; `users.used_bytes` is a denormalized counter that is not
+//!   maintained, so it is intentionally ignored here).
+//! `quota_bytes` = `users.quota_bytes` (per-user hard limit, default 50 GiB).
+//!   Inbound delivery enforces this in `ingest`; this endpoint reports it.
 
 use axum::{
     extract::State,
@@ -72,9 +74,17 @@ async fn get_quota(
     .await
     .unwrap_or(0i64);
 
+    let quota: Option<i64> =
+        sqlx::query_scalar("SELECT quota_bytes FROM users WHERE id = $1 AND tenant_id = $2")
+            .bind(ctx.user_id)
+            .bind(ctx.tenant_id)
+            .fetch_optional(state.db())
+            .await
+            .unwrap_or(None);
+
     let mut resp = Json(QuotaDto {
         used_bytes: used,
-        quota_bytes: None,
+        quota_bytes: quota,
     })
     .into_response();
     if let Some(ts) = max_ts {

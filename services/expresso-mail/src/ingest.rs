@@ -77,6 +77,15 @@ pub async fn process(
         // can shadow-check every write below.
         let mut tx = begin_tenant_tx(state.db(), tenant_id).await?;
 
+        // Enforce the recipient's storage quota before persisting. Over-quota
+        // inbound mail is dropped for that recipient (logged) rather than
+        // failing the whole batch — other recipients still receive.
+        if quota_exceeded(&mut tx, user_id, tenant_id, size_bytes).await? {
+            tracing::warn!(rcpt = %rcpt, "recipient over quota; dropping delivery");
+            tx.commit().await?;
+            continue;
+        }
+
         // Sieve evaluation — fetch user script, evaluate, determine target folder/action.
         let target_folder: String = match apply_sieve(&mut tx, user_id, raw).await {
             SieveDecision::Deliver { folder } => folder,
@@ -407,6 +416,43 @@ async fn relay_off_platform(
             Ok(Resolution::Drop)
         }
     }
+}
+
+/// Whether storing `incoming` more bytes would push the user past their quota.
+///
+/// Compares the live `SUM(messages.size_bytes)` against `users.quota_bytes`.
+/// Fails open: a missing user or a NULL quota means "no limit" (`false`) so a
+/// config gap never silently loses mail. Runs inside the caller's tenant tx so
+/// the count is consistent with the pending insert.
+async fn quota_exceeded(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user_id: Uuid,
+    tenant_id: Uuid,
+    incoming: i32,
+) -> anyhow::Result<bool> {
+    let quota: Option<i64> =
+        sqlx::query_scalar("SELECT quota_bytes FROM users WHERE id = $1 AND tenant_id = $2")
+            .bind(user_id)
+            .bind(tenant_id)
+            .fetch_optional(&mut **tx)
+            .await?
+            .flatten();
+    let Some(quota) = quota else {
+        return Ok(false);
+    };
+
+    let used: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(m.size_bytes), 0) \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE mb.user_id = $1 AND m.tenant_id = $2",
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    Ok(used.saturating_add(i64::from(incoming)) > quota)
 }
 
 /// Look up a single local user by (lowercased) email. Returns `None` if no row
