@@ -19,12 +19,31 @@ use uuid::Uuid;
 use crate::{
     api::context::RequestCtx,
     domain::{
-        DriveFile, FileRepo, FolderQuota, FolderQuotaRepo, NewFile, NewVersion, QuotaRepo, TagRepo,
-        VersionRepo,
+        AclRepo, DriveFile, FileRepo, FolderQuota, FolderQuotaRepo, NewFile, NewVersion, QuotaRepo,
+        TagRepo, VersionRepo,
     },
     error::{DriveError, Result},
     state::AppState,
 };
+
+/// Require the caller to have any access (owner, or a READ/WRITE/ADMIN grant on
+/// the node or an ancestor folder) on `file_id`; 403 otherwise. The node's
+/// existence in the tenant is assumed already checked by the caller's
+/// `FileRepo::get`. This is the read gate for the owner-private drive model.
+async fn require_read(
+    pool: &expresso_core::DbPool,
+    tenant_id: Uuid,
+    file_id: Uuid,
+    user_id: Uuid,
+) -> Result<()> {
+    match AclRepo::new(pool)
+        .access_level(tenant_id, file_id, user_id)
+        .await?
+    {
+        Some(_) => Ok(()),
+        None => Err(DriveError::Forbidden),
+    }
+}
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -538,6 +557,7 @@ async fn metadata(
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    require_read(pool, ctx.tenant_id, id, ctx.user_id).await?;
     let etag = format!("\"{}-{}\"", f.updated_at.unix_timestamp(), f.id);
     let lm = f
         .updated_at
@@ -575,6 +595,7 @@ async fn head_file(
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    require_read(pool, ctx.tenant_id, id, ctx.user_id).await?;
     let etag = format!("\"{}-{}\"", f.updated_at.unix_timestamp(), f.id);
     let lm = f
         .updated_at
@@ -854,6 +875,7 @@ async fn download_inner(
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    require_read(pool, ctx.tenant_id, id, ctx.user_id).await?;
 
     if f.kind != "file" {
         return Err(DriveError::BadRequest("target is a folder".into()));
@@ -881,6 +903,7 @@ async fn preview(
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    require_read(pool, ctx.tenant_id, id, ctx.user_id).await?;
 
     if f.kind != "file" {
         return Err(DriveError::BadRequest("target is a folder".into()));

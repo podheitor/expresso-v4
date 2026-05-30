@@ -36,9 +36,13 @@ impl<'a> AclRepo<'a> {
         Self { pool }
     }
 
-    /// Resolve `user_id`'s effective privilege on `file_id`:
-    /// `Some("OWNER")` for the owner, `Some(priv)` for a grantee, `None` for no
-    /// access or a missing/trashed node.
+    /// Resolve `user_id`'s effective privilege on `file_id`, honoring folder
+    /// inheritance: `Some("OWNER")` for the node owner, otherwise the strongest
+    /// grant on the node OR any ancestor folder (a grant on a folder cascades
+    /// to its descendants), or `None` for no access / a missing-or-trashed node.
+    ///
+    /// The ancestor walk is a single recursive CTE over `parent_id`; the
+    /// strongest of the matched privileges wins (ADMIN > WRITE > READ).
     pub async fn access_level(
         &self,
         tenant_id: Uuid,
@@ -65,9 +69,22 @@ impl<'a> AclRepo<'a> {
             }
             _ => {}
         }
-        let acl: Option<(String,)> = sqlx::query_as(
-            "SELECT privilege FROM drive_file_acl \
-             WHERE file_id = $1 AND tenant_id = $2 AND grantee_id = $3",
+        // Walk the node + its ancestors; take the strongest grant for the user.
+        let rank: Option<(i32,)> = sqlx::query_as(
+            "WITH RECURSIVE chain AS ( \
+                 SELECT id, parent_id FROM drive_files \
+                  WHERE id = $1 AND tenant_id = $2 \
+                 UNION ALL \
+                 SELECT f.id, f.parent_id FROM drive_files f \
+                  JOIN chain c ON f.id = c.parent_id \
+                  WHERE f.tenant_id = $2 \
+             ) \
+             SELECT MAX(CASE a.privilege \
+                          WHEN 'ADMIN' THEN 3 WHEN 'WRITE' THEN 2 WHEN 'READ' THEN 1 \
+                          ELSE 0 END) \
+               FROM drive_file_acl a \
+               JOIN chain c ON c.id = a.file_id \
+              WHERE a.tenant_id = $2 AND a.grantee_id = $3",
         )
         .bind(file_id)
         .bind(tenant_id)
@@ -75,7 +92,12 @@ impl<'a> AclRepo<'a> {
         .fetch_optional(&mut *tx)
         .await?;
         tx.commit().await?;
-        Ok(acl.map(|(p,)| p))
+        Ok(rank.and_then(|(r,)| match r {
+            3 => Some(PRIV_ADMIN.to_string()),
+            2 => Some(PRIV_WRITE.to_string()),
+            1 => Some(PRIV_READ.to_string()),
+            _ => None,
+        }))
     }
 
     /// Upsert a grant. Idempotent: re-granting a different privilege updates it.
