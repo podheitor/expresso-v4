@@ -1,3 +1,4 @@
+mod acl;
 mod activity;
 mod comments;
 pub mod context;
@@ -26,6 +27,7 @@ pub fn router(state: AppState) -> Router {
         .merge(activity::routes())
         .merge(comments::routes())
         .merge(reactions::routes())
+        .merge(acl::routes())
         .merge(files::routes())
         .merge(settings::routes())
         .merge(shares::routes())

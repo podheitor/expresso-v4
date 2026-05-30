@@ -1,3 +1,4 @@
+pub mod acl;
 pub mod file;
 pub mod quota;
 pub mod share;
@@ -6,6 +7,7 @@ pub mod upload;
 pub mod version;
 pub mod wopi_lock;
 
+pub use acl::{AclRepo, FileAcl};
 pub use file::{DriveFile, FileRepo, NewFile};
 pub use quota::{FolderQuota, FolderQuotaRepo, QuotaRepo};
 pub use share::{Share, ShareRepo};
