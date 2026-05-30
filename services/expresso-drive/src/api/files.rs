@@ -252,6 +252,17 @@ pub struct DeleteQuery {
 }
 
 async fn list(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    q: Query<ListQuery>,
+    req_headers: HeaderMap,
+) -> Result<Response> {
+    let r = list_inner(state, ctx, q, req_headers).await;
+    crate::metrics::record_result(crate::metrics::OP_FILE_LIST, &r);
+    r
+}
+
+async fn list_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Query(q): Query<ListQuery>,
@@ -328,6 +339,16 @@ async fn list(
 }
 
 async fn mkdir(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    body: Json<MkdirBody>,
+) -> Result<(StatusCode, Json<DriveFile>)> {
+    let r = mkdir_inner(state, ctx, body).await;
+    crate::metrics::record_result(crate::metrics::OP_MKDIR, &r);
+    r
+}
+
+async fn mkdir_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Json(body): Json<MkdirBody>,
@@ -351,6 +372,16 @@ async fn mkdir(
 }
 
 async fn upload(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    mp: Multipart,
+) -> Result<(StatusCode, Json<DriveFile>)> {
+    let r = upload_inner(state, ctx, mp).await;
+    crate::metrics::record_result(crate::metrics::OP_FILE_UPLOAD, &r);
+    r
+}
+
+async fn upload_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     mut mp: Multipart,
@@ -810,7 +841,13 @@ async fn rename(
     Ok(Json(f))
 }
 
-async fn download(
+async fn download(state: State<AppState>, ctx: RequestCtx, id: Path<Uuid>) -> Result<Response> {
+    let r = download_inner(state, ctx, id).await;
+    crate::metrics::record_result(crate::metrics::OP_FILE_DOWNLOAD, &r);
+    r
+}
+
+async fn download_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(id): Path<Uuid>,
@@ -895,6 +932,17 @@ async fn preview(
 }
 
 async fn delete_file(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    id: Path<Uuid>,
+    q: Query<DeleteQuery>,
+) -> Result<StatusCode> {
+    let r = delete_file_inner(state, ctx, id, q).await;
+    crate::metrics::record_result(crate::metrics::OP_FILE_DELETE, &r);
+    r
+}
+
+async fn delete_file_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(id): Path<Uuid>,

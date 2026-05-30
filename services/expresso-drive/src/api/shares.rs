@@ -51,6 +51,17 @@ pub struct CreateResp {
 }
 
 async fn create(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    file_id: Path<Uuid>,
+    body: Json<CreateBody>,
+) -> Result<(StatusCode, Json<CreateResp>)> {
+    let r = create_inner(state, ctx, file_id, body).await;
+    crate::metrics::record_result(crate::metrics::OP_SHARE_CREATE, &r);
+    r
+}
+
+async fn create_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(file_id): Path<Uuid>,
@@ -132,7 +143,13 @@ async fn list(
     Ok(resp)
 }
 
-async fn revoke(
+async fn revoke(state: State<AppState>, ctx: RequestCtx, id: Path<Uuid>) -> Result<StatusCode> {
+    let r = revoke_inner(state, ctx, id).await;
+    crate::metrics::record_result(crate::metrics::OP_SHARE_REVOKE, &r);
+    r
+}
+
+async fn revoke_inner(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(id): Path<Uuid>,

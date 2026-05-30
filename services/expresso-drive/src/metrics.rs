@@ -1,4 +1,14 @@
-//! Drive service Prometheus metrics labels and helpers.
+//! Drive service Prometheus metrics.
+//!
+//! Single counter `expresso_drive_ops_total{op, outcome}` covers handler
+//! outcomes. `op` is one of: file_upload, file_download, file_delete,
+//! file_list, share_create, share_revoke, mkdir. `outcome` is `ok` on success
+//! or a mapped error label (see `outcome_for_err`), including quota_exceeded.
+
+use once_cell::sync::Lazy;
+use prometheus::IntCounterVec;
+
+use crate::error::DriveError;
 
 /// Metric namespace for all drive service metrics.
 pub const NAMESPACE: &str = "expresso_drive";
@@ -17,26 +27,93 @@ pub const OP_SHARE_CREATE: &str = "share_create";
 pub const OP_SHARE_REVOKE: &str = "share_revoke";
 /// Label for folder-create (mkdir) operations.
 pub const OP_MKDIR: &str = "mkdir";
-/// Label for quota-exceeded events.
+/// Outcome label for a quota-exceeded rejection.
 pub const EVENT_QUOTA_EXCEEDED: &str = "quota_exceeded";
+
+const OPS: &[&str] = &[
+    OP_FILE_UPLOAD,
+    OP_FILE_DOWNLOAD,
+    OP_FILE_DELETE,
+    OP_FILE_LIST,
+    OP_SHARE_CREATE,
+    OP_SHARE_REVOKE,
+    OP_MKDIR,
+];
+
+const OUTCOMES: &[&str] = &[
+    "ok",
+    "not_found",
+    "gone",
+    "conflict",
+    "bad_request",
+    "forbidden",
+    "unauthorized",
+    EVENT_QUOTA_EXCEEDED,
+    "unavailable",
+    "error",
+];
+
+pub static DRIVE_OPS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let c = IntCounterVec::new(
+        prometheus::Opts::new(
+            metric_name("ops_total"),
+            "Drive handler outcomes per operation",
+        ),
+        &["op", "outcome"],
+    )
+    .expect("metric build");
+    expresso_observability::register(c)
+});
 
 /// Returns the full Prometheus metric name for a given base name.
 pub fn metric_name(base: &str) -> String {
-    format!("{}_{}", NAMESPACE, base)
+    format!("{NAMESPACE}_{base}")
 }
 
-/// Returns true when the operation label is recognized.
-pub fn is_known_op(op: &str) -> bool {
-    matches!(
-        op,
-        OP_FILE_UPLOAD | OP_FILE_DOWNLOAD | OP_FILE_DELETE
-            | OP_FILE_LIST | OP_SHARE_CREATE | OP_SHARE_REVOKE | OP_MKDIR
-    )
+/// Pre-populate label series so `rate()`/`increase()` work from the first
+/// scrape. Idempotent.
+pub fn init() {
+    Lazy::force(&DRIVE_OPS_TOTAL);
+    for op in OPS {
+        for outcome in OUTCOMES {
+            DRIVE_OPS_TOTAL.with_label_values(&[op, outcome]).inc_by(0);
+        }
+    }
+}
+
+/// Record one handler outcome.
+#[inline]
+pub fn record(op: &'static str, outcome: &'static str) {
+    DRIVE_OPS_TOTAL.with_label_values(&[op, outcome]).inc();
+}
+
+/// Map a `DriveError` to the canonical `outcome` label.
+pub fn outcome_for_err(e: &DriveError) -> &'static str {
+    match e {
+        DriveError::NotFound(_) => "not_found",
+        DriveError::Gone(_) => "gone",
+        DriveError::Conflict(_) => "conflict",
+        DriveError::BadRequest(_) => "bad_request",
+        DriveError::Forbidden => "forbidden",
+        DriveError::Unauthorized => "unauthorized",
+        DriveError::QuotaExceeded => EVENT_QUOTA_EXCEEDED,
+        DriveError::DatabaseUnavailable => "unavailable",
+        _ => "error",
+    }
+}
+
+/// Record `ok` on success or the mapped error label on failure.
+pub fn record_result<T>(op: &'static str, result: &Result<T, DriveError>) {
+    match result {
+        Ok(_) => record(op, "ok"),
+        Err(e) => record(op, outcome_for_err(e)),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[test]
     fn namespace_value() {
@@ -44,137 +121,92 @@ mod tests {
     }
 
     #[test]
-    fn op_file_upload_value() {
+    fn op_values() {
         assert_eq!(OP_FILE_UPLOAD, "file_upload");
-    }
-
-    #[test]
-    fn op_file_download_value() {
         assert_eq!(OP_FILE_DOWNLOAD, "file_download");
-    }
-
-    #[test]
-    fn op_file_delete_value() {
         assert_eq!(OP_FILE_DELETE, "file_delete");
-    }
-
-    #[test]
-    fn op_file_list_value() {
         assert_eq!(OP_FILE_LIST, "file_list");
-    }
-
-    #[test]
-    fn op_share_create_value() {
         assert_eq!(OP_SHARE_CREATE, "share_create");
-    }
-
-    #[test]
-    fn op_share_revoke_value() {
         assert_eq!(OP_SHARE_REVOKE, "share_revoke");
-    }
-
-    #[test]
-    fn op_mkdir_value() {
         assert_eq!(OP_MKDIR, "mkdir");
     }
 
     #[test]
-    fn event_quota_exceeded_value() {
-        assert_eq!(EVENT_QUOTA_EXCEEDED, "quota_exceeded");
-    }
-
-    #[test]
     fn metric_name_prefixes_namespace() {
-        assert_eq!(metric_name("requests_total"), "expresso_drive_requests_total");
+        assert_eq!(
+            metric_name("requests_total"),
+            "expresso_drive_requests_total"
+        );
+        assert!(metric_name("x").starts_with(NAMESPACE));
+        assert_eq!(metric_name("latency"), format!("{NAMESPACE}_latency"));
     }
 
     #[test]
-    fn metric_name_upload_bytes() {
-        assert_eq!(metric_name("upload_bytes"), "expresso_drive_upload_bytes");
-    }
-
-    #[test]
-    fn is_known_op_file_upload() {
-        assert!(is_known_op(OP_FILE_UPLOAD));
-    }
-
-    #[test]
-    fn is_known_op_file_download() {
-        assert!(is_known_op(OP_FILE_DOWNLOAD));
-    }
-
-    #[test]
-    fn is_known_op_file_delete() {
-        assert!(is_known_op(OP_FILE_DELETE));
-    }
-
-    #[test]
-    fn is_known_op_file_list() {
-        assert!(is_known_op(OP_FILE_LIST));
-    }
-
-    #[test]
-    fn is_known_op_share_create() {
-        assert!(is_known_op(OP_SHARE_CREATE));
-    }
-
-    #[test]
-    fn is_known_op_share_revoke() {
-        assert!(is_known_op(OP_SHARE_REVOKE));
-    }
-
-    #[test]
-    fn is_known_op_mkdir() {
-        assert!(is_known_op(OP_MKDIR));
-    }
-
-    #[test]
-    fn is_known_op_rejects_unknown() {
-        assert!(!is_known_op("rename"));
-        assert!(!is_known_op(""));
-    }
-
-    #[test]
-    fn all_op_labels_lowercase() {
-        for op in [OP_FILE_UPLOAD, OP_FILE_DOWNLOAD, OP_FILE_DELETE,
-                   OP_FILE_LIST, OP_SHARE_CREATE, OP_SHARE_REVOKE, OP_MKDIR] {
-            assert_eq!(op, op.to_lowercase());
-        }
-    }
-
-    #[test]
-    fn all_op_labels_distinct() {
-        let labels = [OP_FILE_UPLOAD, OP_FILE_DOWNLOAD, OP_FILE_DELETE,
-                      OP_FILE_LIST, OP_SHARE_CREATE, OP_SHARE_REVOKE, OP_MKDIR];
-        for (i, a) in labels.iter().enumerate() {
-            for (j, b) in labels.iter().enumerate() {
-                if i != j { assert_ne!(a, b); }
+    fn op_labels_distinct_lowercase() {
+        for (i, a) in OPS.iter().enumerate() {
+            assert_eq!(*a, a.to_lowercase());
+            assert!(!a.contains(' '));
+            for (j, b) in OPS.iter().enumerate() {
+                if i != j {
+                    assert_ne!(a, b);
+                }
             }
         }
     }
 
     #[test]
-    fn metric_name_contains_base() {
-        assert!(metric_name("file_count").contains("file_count"));
+    fn outcomes_distinct_nonempty() {
+        for (i, a) in OUTCOMES.iter().enumerate() {
+            assert!(!a.is_empty());
+            for (j, b) in OUTCOMES.iter().enumerate() {
+                if i != j {
+                    assert_ne!(a, b);
+                }
+            }
+        }
     }
 
     #[test]
-    fn namespace_is_nonempty() {
-        assert!(!NAMESPACE.is_empty());
+    fn outcome_for_err_maps_variants() {
+        assert_eq!(
+            outcome_for_err(&DriveError::NotFound(Uuid::nil())),
+            "not_found"
+        );
+        assert_eq!(outcome_for_err(&DriveError::Gone(Uuid::nil())), "gone");
+        assert_eq!(
+            outcome_for_err(&DriveError::Conflict("x".into())),
+            "conflict"
+        );
+        assert_eq!(
+            outcome_for_err(&DriveError::BadRequest("x".into())),
+            "bad_request"
+        );
+        assert_eq!(outcome_for_err(&DriveError::Forbidden), "forbidden");
+        assert_eq!(outcome_for_err(&DriveError::Unauthorized), "unauthorized");
+        assert_eq!(
+            outcome_for_err(&DriveError::QuotaExceeded),
+            "quota_exceeded"
+        );
+        assert_eq!(
+            outcome_for_err(&DriveError::DatabaseUnavailable),
+            "unavailable"
+        );
     }
 
     #[test]
-    fn is_known_op_case_sensitive_rejects_uppercase() {
-        assert!(!is_known_op("FILE_UPLOAD"));
+    fn record_paths_do_not_panic() {
+        init();
+        init();
+        record(OP_FILE_UPLOAD, "ok");
+        let ok: Result<(), DriveError> = Ok(());
+        record_result(OP_FILE_UPLOAD, &ok);
+        let err: Result<(), DriveError> = Err(DriveError::QuotaExceeded);
+        record_result(OP_FILE_UPLOAD, &err);
     }
 
     #[test]
-    fn event_quota_exceeded_label_is_nonempty() {
-        assert!(!EVENT_QUOTA_EXCEEDED.is_empty());
-    }
-
-    #[test]
-    fn namespace_does_not_contain_hyphen() {
-        assert!(!NAMESPACE.contains('-'));
+    fn ops_and_outcomes_counts() {
+        assert_eq!(OPS.len(), 7);
+        assert_eq!(OUTCOMES.len(), 10);
     }
 }

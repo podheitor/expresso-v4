@@ -3,6 +3,7 @@
 mod api;
 mod domain;
 mod error;
+mod metrics;
 mod state;
 
 use std::{env, net::SocketAddr, path::PathBuf, sync::Arc};
@@ -100,6 +101,9 @@ async fn main() -> anyhow::Result<()> {
         version = env!("CARGO_PKG_VERSION"),
         "expresso-drive starting"
     );
+
+    // Pre-populate metric series so rate()/increase() work from first scrape.
+    metrics::init();
 
     let db = match resolve_db() {
         Some(cfg) => match create_db_pool(&cfg).await {
