@@ -6,6 +6,7 @@
 //! PATCH  /api/v1/meetings/:id                → update title/schedule/lobby/password (moderator-only)
 //! DELETE /api/v1/meetings/:id                → archive (creator OR moderator)
 //! POST   /api/v1/meetings/:id/restore        → restore archived meeting (creator OR moderator)
+//! GET    /api/v1/meetings/:id/instances       → expand recurring series in [from,to] (participant-only)
 //! POST   /api/v1/meetings/:id/tokens         → mint a JWT for the caller (or for
 //!                                              a target user, moderator-only)
 //! POST   /api/v1/meetings/:id/participants   → add participant (moderator-only)
@@ -29,7 +30,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
-use crate::domain::{Meeting, MeetingRepo, NewMeeting, ParticipantRole};
+use crate::domain::{Meeting, MeetingInstance, MeetingRepo, NewMeeting, ParticipantRole};
 use crate::error::{MeetError, Result};
 use crate::jitsi::IssueRequest;
 use crate::state::AppState;
@@ -63,6 +64,7 @@ pub fn routes() -> Router<AppState> {
             get(get_one).patch(update).delete(archive),
         )
         .route("/api/v1/meetings/:id/restore", post(restore))
+        .route("/api/v1/meetings/:id/instances", get(list_instances))
         .route("/api/v1/meetings/:id/tokens", post(mint_token))
         .route(
             "/api/v1/meetings/:id/participants",
@@ -154,6 +156,17 @@ fn valid_room_name(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
+/// Reject an RRULE the shared expander can't parse, so a recurring series is
+/// never stored with a rule that would silently expand to nothing.
+fn validate_rrule(rrule: Option<&str>) -> Result<()> {
+    if let Some(raw) = rrule.map(str::trim).filter(|s| !s.is_empty()) {
+        if expresso_rrule::Rrule::parse(raw).is_none() {
+            return Err(MeetError::BadRequest(format!("invalid RRULE: {raw}")));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateBody {
     pub title: String,
@@ -164,6 +177,8 @@ pub struct CreateBody {
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub ends_at: Option<OffsetDateTime>,
     pub is_recurring: Option<bool>,
+    /// RFC 5545 RRULE for a recurring series (validated; rejected if unparseable).
+    pub rrule: Option<String>,
     pub lobby_enabled: Option<bool>,
     pub password: Option<String>,
     /// Extra participants (beyond the creator) to pre-add as participants.
@@ -215,6 +230,7 @@ async fn create(
             MAX_INVITE_LEN
         )));
     }
+    validate_rrule(body.rrule.as_deref())?;
     let pool = state.db_or_unavailable()?;
     let jitsi = state.jitsi_or_unavailable()?;
 
@@ -242,6 +258,7 @@ async fn create(
                 scheduled_for: body.scheduled_for,
                 ends_at: body.ends_at,
                 is_recurring: body.is_recurring,
+                rrule: body.rrule,
                 lobby_enabled: body.lobby_enabled,
                 password: body.password,
             },
@@ -408,6 +425,8 @@ pub struct UpdateBody {
     pub password: Option<String>,
     pub clear_password: Option<bool>,
     pub is_recurring: Option<bool>,
+    pub rrule: Option<String>,
+    pub clear_rrule: Option<bool>,
 }
 
 async fn update(
@@ -456,6 +475,12 @@ async fn update(
     } else {
         body.password.map(Some)
     };
+    validate_rrule(body.rrule.as_deref())?;
+    let rrule = if body.clear_rrule.unwrap_or(false) {
+        Some(None)
+    } else {
+        body.rrule.map(Some)
+    };
 
     let updated = repo
         .update(
@@ -467,6 +492,7 @@ async fn update(
             body.lobby_enabled,
             password,
             body.is_recurring,
+            rrule,
         )
         .await?;
 
@@ -474,6 +500,51 @@ async fn update(
         Some(m) => Ok(Json(m)),
         None => Err(MeetError::MeetingNotFound(id)),
     }
+}
+
+/// Query window for instance expansion. Both bounds required (RFC3339).
+#[derive(Debug, Deserialize)]
+pub struct InstancesQuery {
+    #[serde(with = "time::serde::rfc3339")]
+    pub from: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub to: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InstancesResponse {
+    pub meeting_id: Uuid,
+    pub instances: Vec<MeetingInstance>,
+}
+
+/// GET /api/v1/meetings/:id/instances?from=&to= — expand a (recurring) meeting
+/// into concrete occurrences within the window (participant-only).
+async fn list_instances(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Query(q): Query<InstancesQuery>,
+) -> Result<Json<InstancesResponse>> {
+    if q.to <= q.from {
+        return Err(MeetError::BadRequest("`to` must be after `from`".into()));
+    }
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    if repo
+        .participant_role(ctx.tenant_id, id, ctx.user_id)
+        .await?
+        .is_none()
+    {
+        return Err(MeetError::NotParticipant);
+    }
+    let m = repo
+        .get(ctx.tenant_id, id)
+        .await
+        .map_err(|_| MeetError::MeetingNotFound(id))?;
+    Ok(Json(InstancesResponse {
+        meeting_id: id,
+        instances: m.expand_instances(q.from, q.to),
+    }))
 }
 
 /// POST /api/v1/meetings/:id/restore — reativa reunião arquivada (creator ou moderador).

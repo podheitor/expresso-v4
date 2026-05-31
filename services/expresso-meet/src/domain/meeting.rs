@@ -8,10 +8,11 @@
 
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 use expresso_core::{begin_tenant_tx, DbPool};
+use expresso_rrule::{single_instance, Rrule};
 
 use crate::error::Result;
 
@@ -36,6 +37,8 @@ pub struct Meeting {
     #[serde(with = "time::serde::rfc3339::option")]
     pub ends_at: Option<OffsetDateTime>,
     pub is_recurring: bool,
+    /// RFC 5545 RRULE string for a recurring series (None = single occurrence).
+    pub rrule: Option<String>,
     pub is_archived: bool,
     pub lobby_enabled: bool,
     pub password: Option<String>,
@@ -45,6 +48,58 @@ pub struct Meeting {
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
+}
+
+/// One concrete occurrence of a (possibly recurring) meeting.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct MeetingInstance {
+    #[serde(with = "time::serde::rfc3339")]
+    pub start: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub end: OffsetDateTime,
+}
+
+impl Meeting {
+    /// Expand this meeting into concrete occurrences within `[from, to]`.
+    ///
+    /// A recurring meeting with a parseable `rrule` is expanded via the shared
+    /// `expresso-rrule` engine, anchored at `scheduled_for` with the master's
+    /// duration (`ends_at - scheduled_for`, or zero). Anything else — no
+    /// `scheduled_for`, no/invalid rule, or `is_recurring = false` — yields at
+    /// most the single base occurrence clamped to the window.
+    pub fn expand_instances(
+        &self,
+        from: OffsetDateTime,
+        to: OffsetDateTime,
+    ) -> Vec<MeetingInstance> {
+        let Some(start) = self.scheduled_for else {
+            return Vec::new();
+        };
+        let duration = self
+            .ends_at
+            .map(|e| e - start)
+            .filter(|d| d.is_positive())
+            .unwrap_or(Duration::ZERO);
+
+        let rule = self
+            .is_recurring
+            .then_some(self.rrule.as_deref())
+            .flatten()
+            .filter(|s| !s.trim().is_empty())
+            .and_then(Rrule::parse);
+
+        match rule {
+            Some(r) => r
+                .expand(start, duration, from, to)
+                .into_iter()
+                .map(|(start, end)| MeetingInstance { start, end })
+                .collect(),
+            None => single_instance(start, self.ends_at, from, to)
+                .map(|(start, end)| MeetingInstance { start, end })
+                .into_iter()
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, FromRow)]
@@ -65,6 +120,7 @@ pub struct NewMeeting {
     pub scheduled_for: Option<OffsetDateTime>,
     pub ends_at: Option<OffsetDateTime>,
     pub is_recurring: Option<bool>,
+    pub rrule: Option<String>,
     pub lobby_enabled: Option<bool>,
     pub password: Option<String>,
 }
@@ -83,10 +139,10 @@ impl<'a> MeetingRepo<'a> {
         let row: Meeting = sqlx::query_as(
             r#"INSERT INTO meetings
                  (tenant_id, room_name, title, channel_id, created_by,
-                  scheduled_for, ends_at, is_recurring, lobby_enabled, password)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                  scheduled_for, ends_at, is_recurring, rrule, lobby_enabled, password)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
-                         scheduled_for, ends_at, is_recurring, is_archived,
+                         scheduled_for, ends_at, is_recurring, rrule, is_archived,
                          lobby_enabled, password, recording_started_at, created_at, updated_at"#,
         )
         .bind(tenant)
@@ -97,6 +153,7 @@ impl<'a> MeetingRepo<'a> {
         .bind(n.scheduled_for)
         .bind(n.ends_at)
         .bind(n.is_recurring.unwrap_or(false))
+        .bind(&n.rrule)
         .bind(n.lobby_enabled.unwrap_or(true))
         .bind(&n.password)
         .fetch_one(&mut *tx)
@@ -119,7 +176,7 @@ impl<'a> MeetingRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let row: Meeting = sqlx::query_as(
             r#"SELECT id, tenant_id, room_name, title, channel_id, created_by,
-                      scheduled_for, ends_at, is_recurring, is_archived,
+                      scheduled_for, ends_at, is_recurring, rrule, is_archived,
                       lobby_enabled, password, recording_started_at, created_at, updated_at
                FROM meetings WHERE tenant_id=$1 AND id=$2"#,
         )
@@ -135,7 +192,7 @@ impl<'a> MeetingRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows: Vec<Meeting> = sqlx::query_as(
             r#"SELECT m.id, m.tenant_id, m.room_name, m.title, m.channel_id, m.created_by,
-                      m.scheduled_for, m.ends_at, m.is_recurring, m.is_archived,
+                      m.scheduled_for, m.ends_at, m.is_recurring, m.rrule, m.is_archived,
                       m.lobby_enabled, m.password, m.recording_started_at, m.created_at, m.updated_at
                FROM meetings m
                JOIN meeting_participants p ON p.meeting_id = m.id
@@ -158,7 +215,7 @@ impl<'a> MeetingRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows: Vec<Meeting> = sqlx::query_as(
             r#"SELECT m.id, m.tenant_id, m.room_name, m.title, m.channel_id, m.created_by,
-                      m.scheduled_for, m.ends_at, m.is_recurring, m.is_archived,
+                      m.scheduled_for, m.ends_at, m.is_recurring, m.rrule, m.is_archived,
                       m.lobby_enabled, m.password, m.recording_started_at, m.created_at, m.updated_at
                FROM meetings m
                JOIN meeting_participants p ON p.meeting_id = m.id
@@ -176,7 +233,7 @@ impl<'a> MeetingRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows: Vec<Meeting> = sqlx::query_as(
             r#"SELECT m.id, m.tenant_id, m.room_name, m.title, m.channel_id, m.created_by,
-                      m.scheduled_for, m.ends_at, m.is_recurring, m.is_archived,
+                      m.scheduled_for, m.ends_at, m.is_recurring, m.rrule, m.is_archived,
                       m.lobby_enabled, m.password, m.recording_started_at, m.created_at, m.updated_at
                FROM meetings m
                JOIN meeting_participants p ON p.meeting_id = m.id
@@ -372,7 +429,7 @@ impl<'a> MeetingRepo<'a> {
             r#"UPDATE meetings SET is_archived = FALSE, updated_at = NOW()
                WHERE tenant_id=$1 AND id=$2 AND is_archived = TRUE
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
-                         scheduled_for, ends_at, is_recurring, is_archived,
+                         scheduled_for, ends_at, is_recurring, rrule, is_archived,
                          lobby_enabled, password, recording_started_at, created_at, updated_at"#,
         )
         .bind(tenant)
@@ -394,6 +451,7 @@ impl<'a> MeetingRepo<'a> {
         lobby_enabled: Option<bool>,
         password: Option<Option<String>>,
         is_recurring: Option<bool>,
+        rrule: Option<Option<String>>,
     ) -> Result<Option<Meeting>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let row: Option<Meeting> = sqlx::query_as(
@@ -404,10 +462,11 @@ impl<'a> MeetingRepo<'a> {
                    lobby_enabled  = COALESCE($8, lobby_enabled),
                    password       = CASE WHEN $9 THEN $10 ELSE password END,
                    is_recurring   = COALESCE($11, is_recurring),
+                   rrule          = CASE WHEN $12 THEN $13 ELSE rrule END,
                    updated_at     = NOW()
                WHERE tenant_id = $1 AND id = $2 AND is_archived = FALSE
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
-                         scheduled_for, ends_at, is_recurring, is_archived,
+                         scheduled_for, ends_at, is_recurring, rrule, is_archived,
                          lobby_enabled, password, recording_started_at, created_at, updated_at"#,
         )
         .bind(tenant)
@@ -421,6 +480,8 @@ impl<'a> MeetingRepo<'a> {
         .bind(password.is_some())
         .bind(password.and_then(|v| v))
         .bind(is_recurring)
+        .bind(rrule.is_some())
+        .bind(rrule.and_then(|v| v))
         .fetch_optional(&mut *tx)
         .await?;
         tx.commit().await?;
@@ -435,7 +496,7 @@ impl<'a> MeetingRepo<'a> {
                WHERE tenant_id = $1 AND id = $2 AND is_archived = FALSE
                  AND recording_started_at IS NULL
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
-                         scheduled_for, ends_at, is_recurring, is_archived,
+                         scheduled_for, ends_at, is_recurring, rrule, is_archived,
                          lobby_enabled, password, recording_started_at, created_at, updated_at"#,
         )
         .bind(tenant)
@@ -454,7 +515,7 @@ impl<'a> MeetingRepo<'a> {
                WHERE tenant_id = $1 AND id = $2 AND is_archived = FALSE
                  AND recording_started_at IS NOT NULL
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
-                         scheduled_for, ends_at, is_recurring, is_archived,
+                         scheduled_for, ends_at, is_recurring, rrule, is_archived,
                          lobby_enabled, password, recording_started_at, created_at, updated_at"#,
         )
         .bind(tenant)
@@ -634,5 +695,97 @@ mod tests {
     #[test]
     fn participant_role_participant_debug_is_nonempty() {
         assert!(!format!("{:?}", ParticipantRole::Participant).is_empty());
+    }
+
+    #[test]
+    fn new_meeting_rrule_optional_defaults_none() {
+        let json = r#"{"room_name":"r","title":"T"}"#;
+        let n: NewMeeting = serde_json::from_str(json).unwrap();
+        assert!(n.rrule.is_none());
+    }
+
+    #[test]
+    fn new_meeting_rrule_parsed() {
+        let json = r#"{"room_name":"r","title":"T","rrule":"FREQ=WEEKLY;COUNT=3"}"#;
+        let n: NewMeeting = serde_json::from_str(json).unwrap();
+        assert_eq!(n.rrule.as_deref(), Some("FREQ=WEEKLY;COUNT=3"));
+    }
+
+    // ---- expand_instances ----
+
+    /// Build a Meeting fixture anchored at `start` (unix seconds) with a 1h
+    /// duration, optional rrule, and the given recurrence flag.
+    fn fixture(start_unix: i64, is_recurring: bool, rrule: Option<&str>) -> Meeting {
+        let start = OffsetDateTime::from_unix_timestamp(start_unix).unwrap();
+        Meeting {
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            room_name: "r".into(),
+            title: "T".into(),
+            channel_id: None,
+            created_by: Uuid::nil(),
+            scheduled_for: Some(start),
+            ends_at: Some(start + Duration::hours(1)),
+            is_recurring,
+            rrule: rrule.map(str::to_owned),
+            is_archived: false,
+            lobby_enabled: true,
+            password: None,
+            recording_started_at: None,
+            created_at: start,
+            updated_at: start,
+        }
+    }
+
+    #[test]
+    fn expand_recurring_weekly_yields_series() {
+        // Mon 2026-05-11 09:00 UTC = 1778490000.
+        let m = fixture(1778490000, true, Some("FREQ=WEEKLY;BYDAY=MO;COUNT=3"));
+        let from = m.scheduled_for.unwrap();
+        let to = from + Duration::weeks(5);
+        let occ = m.expand_instances(from, to);
+        assert_eq!(occ.len(), 3);
+        assert_eq!(occ[0].start, from);
+        assert_eq!(occ[0].end, from + Duration::hours(1));
+        assert_eq!(occ[1].start, from + Duration::weeks(1));
+    }
+
+    #[test]
+    fn expand_non_recurring_yields_single() {
+        let m = fixture(1778490000, false, Some("FREQ=WEEKLY;COUNT=9"));
+        let from = m.scheduled_for.unwrap();
+        let to = from + Duration::weeks(5);
+        // is_recurring=false → rule ignored, single occurrence only.
+        let occ = m.expand_instances(from, to);
+        assert_eq!(occ.len(), 1);
+        assert_eq!(occ[0].start, from);
+    }
+
+    #[test]
+    fn expand_recurring_without_rule_falls_back_to_single() {
+        let m = fixture(1778490000, true, None);
+        let from = m.scheduled_for.unwrap();
+        let to = from + Duration::weeks(5);
+        let occ = m.expand_instances(from, to);
+        assert_eq!(occ.len(), 1);
+    }
+
+    #[test]
+    fn expand_without_schedule_is_empty() {
+        let mut m = fixture(1778490000, false, None);
+        m.scheduled_for = None;
+        let from = OffsetDateTime::from_unix_timestamp(1778490000).unwrap();
+        let occ = m.expand_instances(from, from + Duration::weeks(5));
+        assert!(occ.is_empty());
+    }
+
+    #[test]
+    fn expand_window_clips_series() {
+        let m = fixture(1778490000, true, Some("FREQ=DAILY;COUNT=10"));
+        let base = m.scheduled_for.unwrap();
+        // Window covering only days 2..4 of the series.
+        let occ = m.expand_instances(base + Duration::days(2), base + Duration::days(5));
+        // Days 2,3,4 start within the window.
+        assert_eq!(occ.len(), 3);
     }
 }
