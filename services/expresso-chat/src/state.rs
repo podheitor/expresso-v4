@@ -7,6 +7,7 @@ use expresso_core::DbPool;
 use crate::error::{ChatError, Result};
 use crate::events::ChatBus;
 use crate::matrix::MatrixClient;
+use crate::presence::PresenceTracker;
 
 #[derive(Clone)]
 pub struct AppState(Arc<Inner>);
@@ -15,6 +16,7 @@ struct Inner {
     db: Option<DbPool>,
     matrix: Option<MatrixClient>,
     bus: ChatBus,
+    presence: PresenceTracker,
 }
 
 impl AppState {
@@ -23,6 +25,7 @@ impl AppState {
             db,
             matrix,
             bus: ChatBus::new(),
+            presence: PresenceTracker::default(),
         }))
     }
 
@@ -41,6 +44,11 @@ impl AppState {
     /// Process-local realtime bus (message/typing/presence → SSE).
     pub fn bus(&self) -> &ChatBus {
         &self.0.bus
+    }
+
+    /// In-process online-presence tracker (heartbeat-driven, TTL-expired).
+    pub fn presence(&self) -> &PresenceTracker {
+        &self.0.presence
     }
 }
 

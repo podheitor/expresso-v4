@@ -10,6 +10,7 @@ mod error;
 mod events;
 mod matrix;
 mod metrics;
+mod presence;
 mod state;
 
 use std::{env, net::SocketAddr, sync::Arc};
@@ -180,12 +181,36 @@ async fn main() -> anyhow::Result<()> {
     let (multi, resolver) = resolve_multi_realm();
     let http_addr = resolve_addr()?;
     let state = AppState::new(db, matrix);
+    spawn_presence_sweeper(state.clone());
     let app = api::router(state, oidc, multi, resolver);
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 
     info!(addr = %http_addr, "HTTP API listening");
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+/// Spawn the background presence-expiry task. Every `ttl/2` it drops heartbeats
+/// older than `ttl` and publishes an `offline` presence event for each expired
+/// user (tenant-wide delivery, so a nil channel is fine). Runs for the process
+/// lifetime; cheap when nobody is online (sweep of an empty map).
+fn spawn_presence_sweeper(state: AppState) {
+    let period = state.presence().ttl() / 2;
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(period);
+        loop {
+            tick.tick().await;
+            let expired = state.presence().sweep_at(std::time::Instant::now());
+            for (tenant, user) in expired {
+                state.bus().publish(events::ChatEvent::presence(
+                    tenant,
+                    uuid::Uuid::nil(),
+                    user,
+                    false,
+                ));
+            }
+        }
+    });
 }
 
 #[cfg(test)]

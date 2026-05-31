@@ -20,8 +20,8 @@ const BUS_CAPACITY: usize = 256;
 
 /// Kind of realtime signal. `message`/`edit`/`delete`/`reaction` reflect
 /// durable state (Matrix message or relation / local chat_reactions row);
-/// `typing` is ephemeral — never stored, only forwarded live. (Presence is a
-/// planned kind; added when online/offline tracking lands.)
+/// `typing` and `presence` are ephemeral — never stored, only forwarded live.
+/// `presence` carries online/offline in the `added` flag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChatEventKind {
@@ -32,6 +32,7 @@ pub enum ChatEventKind {
     Typing,
     Reaction,
     Pin,
+    Presence,
 }
 
 impl ChatEventKind {
@@ -44,6 +45,7 @@ impl ChatEventKind {
             Self::Typing => "typing",
             Self::Reaction => "reaction",
             Self::Pin => "pin",
+            Self::Presence => "presence",
         }
     }
 }
@@ -131,6 +133,23 @@ impl ChatEvent {
             body: None,
             emoji: None,
             added: None,
+            thread_root: None,
+        }
+    }
+
+    /// An ephemeral presence change: `user_id` is now online (`online = true`)
+    /// or offline (`false`). Scoped to `channel_id` so it rides the channel's
+    /// SSE fanout; clients track presence per user across the channels they view.
+    pub fn presence(tenant_id: Uuid, channel_id: Uuid, user_id: Uuid, online: bool) -> Self {
+        Self {
+            tenant_id,
+            channel_id,
+            kind: ChatEventKind::Presence,
+            user_id,
+            event_id: None,
+            body: None,
+            emoji: None,
+            added: Some(online),
             thread_root: None,
         }
     }
@@ -327,6 +346,26 @@ mod tests {
         assert!(!json.contains("event_id"), "got: {json}");
         assert!(!json.contains("body"), "got: {json}");
         assert!(json.contains("\"kind\":\"typing\""), "got: {json}");
+    }
+
+    #[test]
+    fn presence_event_carries_online_flag() {
+        let (t, c, u) = ids();
+        let online = ChatEvent::presence(t, c, u, true);
+        assert_eq!(online.kind, ChatEventKind::Presence);
+        assert_eq!(online.added, Some(true));
+        assert!(online.event_id.is_none());
+        let offline = ChatEvent::presence(t, c, u, false);
+        assert_eq!(offline.added, Some(false));
+    }
+
+    #[test]
+    fn presence_event_serializes_kind_and_added() {
+        let (t, c, u) = ids();
+        let json = serde_json::to_string(&ChatEvent::presence(t, c, u, true)).unwrap();
+        assert!(json.contains("\"kind\":\"presence\""), "got: {json}");
+        assert!(json.contains("\"added\":true"), "got: {json}");
+        assert!(!json.contains("event_id"), "got: {json}");
     }
 
     #[tokio::test]
