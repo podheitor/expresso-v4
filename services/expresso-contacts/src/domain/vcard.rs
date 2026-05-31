@@ -4,7 +4,19 @@
 //! Handles RFC 5545-style line unfolding (CRLF + WSP) and strips TYPE params.
 //! Anything not recognised is retained in `raw`.
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use sha2::{Digest, Sha256};
+
+/// A contact PHOTO (RFC 6350 §6.2.4). Either an external URI reference, or
+/// inline image bytes with their media type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Photo {
+    /// `PHOTO:https://…` / `PHOTO;MEDIATYPE=image/jpeg:https://…`.
+    Uri(String),
+    /// Decoded inline image: `(media_type, bytes)`. Media type defaults to
+    /// `application/octet-stream` when the vCard omits TYPE/MEDIATYPE.
+    Inline { media_type: String, bytes: Vec<u8> },
+}
 
 #[derive(Debug, Default)]
 pub struct ParsedVCard {
@@ -73,6 +85,87 @@ pub fn parse(raw: &str) -> Result<ParsedVCard, String> {
         return Err("vCard missing UID property".into());
     }
     Ok(out)
+}
+
+/// Extract the first PHOTO property from a vCard, resolving its form (external
+/// URI vs inline base64). Returns `None` when there is no PHOTO or the inline
+/// payload can't be decoded. Handles the vCard 3.0 (`ENCODING=b`/`BASE64`) and
+/// 4.0 (`data:` URI, or bare URI) variants.
+pub fn parse_photo(raw: &str) -> Option<Photo> {
+    let unfolded = unfold(raw);
+    for line in unfolded.lines() {
+        let trimmed = line.trim_end_matches('\r');
+        let Some((head, value)) = trimmed.split_once(':') else {
+            continue;
+        };
+        let name = head.split(';').next().unwrap_or(head);
+        if !name.eq_ignore_ascii_case("PHOTO") {
+            continue;
+        }
+        return interpret_photo(head, value.trim());
+    }
+    None
+}
+
+/// Resolve a PHOTO `head` (property + params) and `value` into a [`Photo`].
+fn interpret_photo(head: &str, value: &str) -> Option<Photo> {
+    let params: Vec<&str> = head.split(';').skip(1).collect();
+    let is_b64 = params.iter().any(|p| {
+        let p = p.to_ascii_uppercase();
+        p == "ENCODING=B" || p == "ENCODING=BASE64" || p == "BASE64"
+    });
+
+    // vCard 4.0 inline data URI: `PHOTO:data:image/png;base64,AAAA…`.
+    if let Some(rest) = value.strip_prefix("data:") {
+        return decode_data_uri(rest);
+    }
+    if is_b64 {
+        let media_type = photo_media_type(&params);
+        let bytes = STANDARD.decode(value.replace([' ', '\t'], "")).ok()?;
+        return Some(Photo::Inline { media_type, bytes });
+    }
+    // Otherwise it's a URI reference (http/https/etc.).
+    if value.is_empty() {
+        return None;
+    }
+    Some(Photo::Uri(value.to_owned()))
+}
+
+/// Decode a `data:` URI body (`<media>;base64,<b64>` or `<media>,<urlenc>`).
+/// Only the base64 form is supported (the common PHOTO encoding).
+fn decode_data_uri(rest: &str) -> Option<Photo> {
+    let (meta, data) = rest.split_once(',')?;
+    if !meta.to_ascii_lowercase().contains("base64") {
+        return None;
+    }
+    let media_type = meta
+        .split(';')
+        .next()
+        .filter(|m| !m.is_empty())
+        .map_or_else(
+            || "application/octet-stream".to_owned(),
+            |m| m.to_ascii_lowercase(),
+        );
+    let bytes = STANDARD.decode(data.replace([' ', '\t'], "")).ok()?;
+    Some(Photo::Inline { media_type, bytes })
+}
+
+/// Derive an image media type from a vCard 3.0 `TYPE=JPEG` param, or fall back
+/// to a generic binary type.
+fn photo_media_type(params: &[&str]) -> String {
+    for p in params {
+        if let Some(t) = p.to_ascii_uppercase().strip_prefix("TYPE=") {
+            if !t.is_empty() {
+                return format!("image/{}", t.to_ascii_lowercase());
+            }
+        }
+        if let Some(m) = p.to_ascii_uppercase().strip_prefix("MEDIATYPE=") {
+            if !m.is_empty() {
+                return m.to_ascii_lowercase();
+            }
+        }
+    }
+    "application/octet-stream".to_owned()
 }
 
 /// Stable ETag — sha256(raw) hex-encoded.
@@ -356,5 +449,79 @@ mod tests {
     fn build_vcard_uid_present_in_output() {
         let v = build_vcard("test-uid-42", "Alice", None, None, None, None);
         assert!(v.contains("test-uid-42"));
+    }
+
+    // ---- PHOTO ----
+
+    /// base64 of the 3 bytes 0x01 0x02 0x03 = "AQID".
+    const B64_3: &str = "AQID";
+
+    #[test]
+    fn parse_photo_none_when_absent() {
+        assert!(parse_photo(SAMPLE).is_none());
+    }
+
+    #[test]
+    fn parse_photo_uri_reference() {
+        let raw = "BEGIN:VCARD\r\nUID:u\r\nFN:A\r\nPHOTO;MEDIATYPE=image/jpeg:https://x.org/p.jpg\r\nEND:VCARD\r\n";
+        assert_eq!(
+            parse_photo(raw),
+            Some(Photo::Uri("https://x.org/p.jpg".into()))
+        );
+    }
+
+    #[test]
+    fn parse_photo_vcard3_inline_base64() {
+        let raw =
+            format!("BEGIN:VCARD\r\nUID:u\r\nPHOTO;ENCODING=b;TYPE=PNG:{B64_3}\r\nEND:VCARD\r\n");
+        assert_eq!(
+            parse_photo(&raw),
+            Some(Photo::Inline {
+                media_type: "image/png".into(),
+                bytes: vec![1, 2, 3],
+            })
+        );
+    }
+
+    #[test]
+    fn parse_photo_vcard4_data_uri() {
+        let raw =
+            format!("BEGIN:VCARD\r\nUID:u\r\nPHOTO:data:image/gif;base64,{B64_3}\r\nEND:VCARD\r\n");
+        assert_eq!(
+            parse_photo(&raw),
+            Some(Photo::Inline {
+                media_type: "image/gif".into(),
+                bytes: vec![1, 2, 3],
+            })
+        );
+    }
+
+    #[test]
+    fn parse_photo_folded_base64_is_unfolded() {
+        // A base64 PHOTO split across folded continuation lines must rejoin.
+        let raw = "BEGIN:VCARD\r\nUID:u\r\nPHOTO;ENCODING=b;TYPE=JPEG:AQ\r\n ID\r\nEND:VCARD\r\n";
+        assert_eq!(
+            parse_photo(raw),
+            Some(Photo::Inline {
+                media_type: "image/jpeg".into(),
+                bytes: vec![1, 2, 3],
+            })
+        );
+    }
+
+    #[test]
+    fn parse_photo_inline_without_type_defaults_octet_stream() {
+        let raw = format!("BEGIN:VCARD\r\nUID:u\r\nPHOTO;ENCODING=BASE64:{B64_3}\r\nEND:VCARD\r\n");
+        let p = parse_photo(&raw).unwrap();
+        assert!(
+            matches!(p, Photo::Inline { media_type, .. } if media_type == "application/octet-stream")
+        );
+    }
+
+    #[test]
+    fn parse_photo_bad_base64_returns_none() {
+        let raw =
+            "BEGIN:VCARD\r\nUID:u\r\nPHOTO;ENCODING=b;TYPE=PNG:!!!notbase64!!!\r\nEND:VCARD\r\n";
+        assert!(parse_photo(raw).is_none());
     }
 }

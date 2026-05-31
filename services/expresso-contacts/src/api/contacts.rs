@@ -58,6 +58,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/addressbooks/:book_id/contacts/:id",
             get(get_one).put(update).delete(delete),
         )
+        .route(
+            "/api/v1/addressbooks/:book_id/contacts/:id/photo",
+            get(get_photo),
+        )
         .route("/api/v1/addressbooks/:book_id/export.vcf", get(export_vcf))
         .route("/api/v1/addressbooks/:book_id/import", post(import_vcf))
         .route("/api/v1/contacts/import", post(import_csv))
@@ -229,6 +233,52 @@ async fn get_one(
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(serde_json::to_vec(&c).unwrap()))
         .unwrap())
+}
+
+/// GET /api/v1/addressbooks/:book_id/contacts/:id/photo
+///
+/// Serve the contact's vCard PHOTO. Inline base64 photos are decoded and
+/// returned with their image media type; URI-form photos redirect (302) to the
+/// external reference. 404 when the contact has no PHOTO. The photo lives in the
+/// stored `vcard_raw`, so there's no separate column to keep in sync.
+async fn get_photo(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((_book_id, id)): Path<(Uuid, Uuid)>,
+    req_headers: HeaderMap,
+) -> Result<Response> {
+    let pool = state.db_or_unavailable()?;
+    // 404 from `get` means the contact is absent; a present contact with no
+    // PHOTO returns a distinct 404 below so callers can tell the two apart.
+    let c = ContactRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let Some(photo) = crate::domain::vcard::parse_photo(&c.vcard_raw) else {
+        return Ok((StatusCode::NOT_FOUND, "contact has no photo").into_response());
+    };
+
+    match photo {
+        crate::domain::vcard::Photo::Uri(uri) => Ok(Response::builder()
+            .status(StatusCode::FOUND)
+            .header(header::LOCATION, uri)
+            .body(Body::empty())
+            .unwrap()),
+        crate::domain::vcard::Photo::Inline { media_type, bytes } => {
+            // The photo is content-addressed by the contact's etag; reuse it so
+            // clients can cache the avatar across requests.
+            let etag = format!("\"photo-{}\"", c.etag);
+            if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+                if inm.as_bytes() == etag.as_bytes() {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, media_type)
+                .header(header::ETAG, etag)
+                .header(header::CACHE_CONTROL, "private, max-age=86400")
+                .body(Body::from(bytes))
+                .unwrap())
+        }
+    }
 }
 
 async fn update(
