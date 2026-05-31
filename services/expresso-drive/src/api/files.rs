@@ -5,7 +5,7 @@ use axum::{
     extract::{Multipart, Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{delete, get, patch, post},
+    routing::{get, patch, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -20,7 +20,7 @@ use crate::{
     api::context::RequestCtx,
     domain::{
         AclRepo, DriveFile, FileRepo, FolderQuota, FolderQuotaRepo, NewFile, NewVersion, QuotaRepo,
-        TagRepo, VersionRepo,
+        VersionRepo,
     },
     error::{DriveError, Result},
     state::AppState,
@@ -84,8 +84,6 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id/copy", post(copy_file))
         .route("/api/v1/drive/files/:id/move", post(move_file))
         .route("/api/v1/drive/files/:id/restore", post(restore))
-        .route("/api/v1/drive/files/:id/tags", get(list_tags).post(add_tag))
-        .route("/api/v1/drive/files/:id/tags/:tag", delete(remove_tag))
         .route("/api/v1/drive/files/:id/versions", get(list_versions))
         .route(
             "/api/v1/drive/files/:id/versions/:v",
@@ -2243,64 +2241,9 @@ async fn delete_version(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ─── Tag handlers ─────────────────────────────────────────────────────────────
-
-/// GET /api/v1/drive/files/:id/tags — list tags on a file.
-async fn list_tags(
-    State(state): State<AppState>,
-    ctx: RequestCtx,
-    Path(id): Path<Uuid>,
-) -> Result<Json<Vec<String>>> {
-    let pool = state.db_or_unavailable()?;
-    // Verify file exists in tenant.
-    FileRepo::new(pool).get(ctx.tenant_id, id).await?;
-    let tags = TagRepo::new(pool).list(ctx.tenant_id, id).await?;
-    Ok(Json(tags))
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct AddTagBody {
-    tag: String,
-}
-
-/// POST /api/v1/drive/files/:id/tags — add a tag to a file (idempotent).
-async fn add_tag(
-    State(state): State<AppState>,
-    ctx: RequestCtx,
-    Path(id): Path<Uuid>,
-    Json(body): Json<AddTagBody>,
-) -> Result<StatusCode> {
-    let tag = body.tag.trim().to_string();
-    if tag.is_empty() || tag.len() > 64 {
-        return Err(DriveError::BadRequest("tag must be 1–64 characters".into()));
-    }
-    let pool = state.db_or_unavailable()?;
-    // Verify file exists in tenant.
-    FileRepo::new(pool).get(ctx.tenant_id, id).await?;
-    TagRepo::new(pool).add(ctx.tenant_id, id, &tag).await?;
-    tracing::info!(target: "audit",
-        event = "drive.file.tag_added",
-        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
-        file_id = %id, tag = %tag);
-    Ok(StatusCode::NO_CONTENT)
-}
-
-/// DELETE /api/v1/drive/files/:id/tags/:tag — remove a tag from a file.
-async fn remove_tag(
-    State(state): State<AppState>,
-    ctx: RequestCtx,
-    Path((id, tag)): Path<(Uuid, String)>,
-) -> Result<StatusCode> {
-    let pool = state.db_or_unavailable()?;
-    // Verify file exists in tenant.
-    FileRepo::new(pool).get(ctx.tenant_id, id).await?;
-    TagRepo::new(pool).remove(ctx.tenant_id, id, &tag).await?;
-    tracing::info!(target: "audit",
-        event = "drive.file.tag_removed",
-        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
-        file_id = %id, tag = %tag);
-    Ok(StatusCode::NO_CONTENT)
-}
+// Tag handlers live in the dedicated `tags` module (list_file_tags / add_tag /
+// remove_tag / clear_tags + bulk/merge/stats). The thin duplicates that used to
+// live here registered the same routes and made the router panic on mount.
 
 pub(crate) fn attachment_response(name: &str, mime: Option<&str>, bytes: Vec<u8>) -> Response {
     let mut headers = HeaderMap::new();
