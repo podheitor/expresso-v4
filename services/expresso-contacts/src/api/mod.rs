@@ -6,6 +6,7 @@ pub mod context;
 mod gal;
 mod groups;
 mod health;
+mod search_index;
 mod sharing;
 mod users;
 mod wellknown;

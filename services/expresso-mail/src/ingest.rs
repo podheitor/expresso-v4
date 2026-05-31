@@ -195,6 +195,7 @@ pub async fn process(
                 "subject": parsed.subject,
                 "from_addr": parsed.from_addr,
                 "body": parsed.preview_text,
+                "kind": "mail",
             });
             tokio::spawn(async move {
                 let mut req = reqwest::Client::new()

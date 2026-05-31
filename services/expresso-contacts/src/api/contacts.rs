@@ -125,6 +125,7 @@ async fn create_inner(
         addressbook_id: book_id,
         contact_id: c.id,
     });
+    super::search_index::index_contact(&state, &c);
     let loc = format!("/api/v1/addressbooks/{}/contacts/{}", book_id, c.id);
     Ok(Response::builder()
         .status(StatusCode::CREATED)
@@ -260,6 +261,7 @@ async fn update_inner(
         addressbook_id: book_id,
         contact_id: c.id,
     });
+    super::search_index::index_contact(&state, &c);
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::ETAG, format!("\"{}\"", c.etag))
@@ -291,6 +293,7 @@ async fn delete_inner(
         addressbook_id: book_id,
         contact_id: id,
     });
+    super::search_index::deindex_contact(&state, id);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -349,7 +352,10 @@ async fn import_vcf(
     let mut errors: Vec<String> = Vec::new();
     for (idx, block) in blocks.iter().enumerate() {
         match repo.replace_by_uid(ctx.tenant_id, book_id, block).await {
-            Ok(_) => imported += 1,
+            Ok(c) => {
+                super::search_index::index_contact(&state, &c);
+                imported += 1;
+            }
             Err(e) => errors.push(format!("vcard[{idx}]: {e}")),
         }
     }
@@ -439,13 +445,14 @@ async fn import_csv(
         let uid = format!("csv-import-{}-{}", book_id, uuid::Uuid::new_v4());
         let vcard = build_vcard_from_csv(rec, &uid);
         match repo.replace_by_uid(ctx.tenant_id, book_id, &vcard).await {
-            Ok(_) => {
+            Ok(c) => {
                 imported += 1;
                 state.bus().publish(ContactsEvent::ContactUpserted {
                     tenant_id: ctx.tenant_id,
                     addressbook_id: book_id,
-                    contact_id: uuid::Uuid::nil(),
+                    contact_id: c.id,
                 });
+                super::search_index::index_contact(&state, &c);
             }
             Err(e) => errors.push(format!("row[{idx}]: {e}")),
         }

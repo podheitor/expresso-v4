@@ -15,19 +15,39 @@ struct Inner {
     db: Option<DbPool>,
     kc_basic: Option<KcBasicAuthenticator>,
     bus: ContactsEventBus,
+    search_url: String,
+    search_token: String,
 }
 
 impl AppState {
-    pub fn new(
+    /// Construct with full-text search wired. Empty `search_url` disables
+    /// indexing (the helpers no-op), keeping search an optional dependency.
+    pub fn with_search(
         db: Option<DbPool>,
         kc_basic: Option<KcBasicAuthenticator>,
         bus: ContactsEventBus,
+        search_url: String,
+        search_token: String,
     ) -> Self {
-        Self(Arc::new(Inner { db, kc_basic, bus }))
+        Self(Arc::new(Inner {
+            db,
+            kc_basic,
+            bus,
+            search_url,
+            search_token,
+        }))
     }
 
     pub fn bus(&self) -> &ContactsEventBus {
         &self.0.bus
+    }
+
+    pub fn search_url(&self) -> &str {
+        &self.0.search_url
+    }
+
+    pub fn search_token(&self) -> &str {
+        &self.0.search_token
     }
 
     pub fn db(&self) -> Option<&DbPool> {

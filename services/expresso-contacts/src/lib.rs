@@ -187,7 +187,12 @@ pub async fn run() -> anyhow::Result<()> {
         },
         None => crate::events::ContactsEventBus::noop(),
     };
-    let state = AppState::new(db, kc_basic, bus);
+    let search_url = env_string("SEARCH__URL").unwrap_or_default();
+    let search_token = env_string("SEARCH__TOKEN").unwrap_or_default();
+    if search_url.is_empty() {
+        info!("SEARCH__URL unset — contact full-text indexing disabled");
+    }
+    let state = AppState::with_search(db, kc_basic, bus, search_url, search_token);
     // Per-tenant rate limiter (shared core; see expresso_core::ratelimit).
     let rate_cfg = expresso_core::ratelimit::RateLimitConfig::from_env();
     info!(
