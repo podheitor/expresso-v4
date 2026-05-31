@@ -17,7 +17,7 @@ use axum::{
 use crate::caldav::auth::CalDavPrincipal;
 use crate::caldav::xml::{self, PropRequest};
 use crate::caldav::{uri, MULTISTATUS_CT};
-use crate::domain::{CalendarRepo, DeadProp, DeadPropRepo, EventQuery, EventRepo};
+use crate::domain::{CalendarRepo, DeadProp, DeadPropRepo, EventQuery, EventRepo, TaskRepo};
 use crate::error::Result;
 use crate::state::AppState;
 
@@ -272,7 +272,28 @@ async fn propfind_calendar(
             .await?;
         for ev in events {
             let ev_href = format!("/caldav/{}/{}/{}.ics", principal.user_id, cal.id, ev.uid);
-            append_event_response(&mut out, &ev_href, &ev.etag, req, ev.ical_raw.as_str());
+            append_object_response(
+                &mut out,
+                &ev_href,
+                &ev.etag,
+                req,
+                ev.ical_raw.as_str(),
+                "VEVENT",
+            );
+        }
+        let tasks = TaskRepo::new(pool)
+            .list(principal.tenant_id, calendar_id)
+            .await?;
+        for task in tasks {
+            let task_href = format!("/caldav/{}/{}/{}.ics", principal.user_id, cal.id, task.uid);
+            append_object_response(
+                &mut out,
+                &task_href,
+                &task.caldav_etag(),
+                req,
+                &task.to_ical(),
+                "VTODO",
+            );
         }
     }
 
@@ -288,18 +309,44 @@ async fn propfind_event(
     req: &PropRequest,
 ) -> Result<String> {
     let pool = state.db_or_unavailable()?;
-    let ev = EventRepo::new(pool)
-        .get_by_uid(principal.tenant_id, calendar_id, uid)
-        .await?;
 
     let mut out = String::with_capacity(1024);
     out.push_str(xml::XML_PROLOG);
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/">"#);
-    let href = format!(
-        "/caldav/{}/{}/{}.ics",
-        principal.user_id, calendar_id, ev.uid
-    );
-    append_event_response(&mut out, &href, &ev.etag, req, ev.ical_raw.as_str());
+    // The .ics URI doesn't encode the component type — try event, then task.
+    if let Ok(ev) = EventRepo::new(pool)
+        .get_by_uid(principal.tenant_id, calendar_id, uid)
+        .await
+    {
+        let href = format!(
+            "/caldav/{}/{}/{}.ics",
+            principal.user_id, calendar_id, ev.uid
+        );
+        append_object_response(
+            &mut out,
+            &href,
+            &ev.etag,
+            req,
+            ev.ical_raw.as_str(),
+            "VEVENT",
+        );
+    } else {
+        let task = TaskRepo::new(pool)
+            .get_by_uid(principal.tenant_id, calendar_id, uid)
+            .await?;
+        let href = format!(
+            "/caldav/{}/{}/{}.ics",
+            principal.user_id, calendar_id, task.uid
+        );
+        append_object_response(
+            &mut out,
+            &href,
+            &task.caldav_etag(),
+            req,
+            &task.to_ical(),
+            "VTODO",
+        );
+    }
     out.push_str("</D:multistatus>");
     Ok(out)
 }
@@ -440,12 +487,15 @@ fn append_collection_response(
     out.push_str("</D:response>");
 }
 
-fn append_event_response(
+/// Emit a `<D:response>` for a calendar object resource. `component` is the
+/// iCalendar component name (VEVENT/VTODO) reported in getcontenttype.
+fn append_object_response(
     out: &mut String,
     href: &str,
     etag: &str,
     req: &PropRequest,
     ical_raw: &str,
+    component: &str,
 ) {
     out.push_str("<D:response>");
     out.push_str("<D:href>");
@@ -461,7 +511,9 @@ fn append_event_response(
         out.push_str("\"</D:getetag>");
     }
     if req.getcontenttype {
-        out.push_str(r#"<D:getcontenttype>text/calendar; charset=utf-8; component=VEVENT</D:getcontenttype>"#);
+        out.push_str("<D:getcontenttype>text/calendar; charset=utf-8; component=");
+        out.push_str(component);
+        out.push_str("</D:getcontenttype>");
     }
     if req.calendar_data {
         out.push_str("<C:calendar-data>");

@@ -39,10 +39,48 @@ pub struct Task {
     pub due: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option")]
     pub completed_at: Option<OffsetDateTime>,
+    /// Verbatim VCALENDAR body when created over CalDAV; None for REST-created
+    /// tasks (CalDAV GET serializes those from the columns on the fly).
+    #[serde(skip)]
+    pub ical_raw: Option<String>,
+    /// SHA-256 of `ical_raw` for CalDAV If-Match/sync; None when REST-created.
+    #[serde(skip)]
+    pub etag: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
+}
+
+impl Task {
+    /// The task's CalDAV ETag: the stored one when present (CalDAV-created),
+    /// else computed from the serialized body so REST-created tasks still get a
+    /// stable validator.
+    pub fn caldav_etag(&self) -> String {
+        match &self.etag {
+            Some(e) => e.clone(),
+            None => crate::domain::ical::compute_etag(&self.to_ical()),
+        }
+    }
+
+    /// The task's VCALENDAR/VTODO body: the stored verbatim source when present,
+    /// else serialized from the structured fields.
+    pub fn to_ical(&self) -> String {
+        if let Some(raw) = &self.ical_raw {
+            return raw.clone();
+        }
+        crate::domain::ical::serialize_vtodo(&crate::domain::ical::Vtodo {
+            uid: &self.uid,
+            summary: &self.summary,
+            description: self.description.as_deref(),
+            status: &self.status,
+            priority: self.priority,
+            percent_complete: self.percent_complete,
+            dtstart: self.dtstart,
+            due: self.due,
+            completed: self.completed_at,
+        })
+    }
 }
 
 /// Create payload. `uid` is optional — generated when absent.
@@ -211,6 +249,114 @@ impl<'a> TaskRepo<'a> {
         .await?;
         tx.commit().await?;
         Ok(row)
+    }
+
+    /// CalDAV upsert from a raw VCALENDAR/VTODO body. Parses the VTODO for the
+    /// structured columns, stores the body verbatim + its etag, keyed by
+    /// `(calendar_id, uid)`. Mirrors `EventRepo::replace_by_uid`.
+    pub async fn replace_by_uid(&self, tenant: Uuid, calendar_id: Uuid, raw: &str) -> Result<Task> {
+        let parsed = crate::domain::ical::parse_vtodo(raw)?;
+        let etag = crate::domain::ical::compute_etag(raw);
+        let summary = validate_summary(parsed.summary.as_deref().unwrap_or(""))?;
+        let status = validate_status(parsed.status.as_deref())?;
+        let completed_at = parsed
+            .completed
+            .or_else(|| completed_now(status, parsed.percent_complete));
+
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let row = sqlx::query_as::<_, Task>(
+            r#"INSERT INTO calendar_tasks
+                   (tenant_id, calendar_id, uid, summary, description, status,
+                    priority, percent_complete, dtstart, due, completed_at,
+                    ical_raw, etag)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+               ON CONFLICT (calendar_id, uid) DO UPDATE SET
+                   summary = EXCLUDED.summary, description = EXCLUDED.description,
+                   status = EXCLUDED.status, priority = EXCLUDED.priority,
+                   percent_complete = EXCLUDED.percent_complete,
+                   dtstart = EXCLUDED.dtstart, due = EXCLUDED.due,
+                   completed_at = EXCLUDED.completed_at,
+                   ical_raw = EXCLUDED.ical_raw, etag = EXCLUDED.etag
+               RETURNING *"#,
+        )
+        .bind(tenant)
+        .bind(calendar_id)
+        .bind(&parsed.uid)
+        .bind(summary)
+        .bind(parsed.description.as_deref())
+        .bind(status)
+        .bind(parsed.priority)
+        .bind(parsed.percent_complete)
+        .bind(parsed.dtstart)
+        .bind(parsed.due)
+        .bind(completed_at)
+        .bind(raw)
+        .bind(&etag)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
+    /// Fetch one task by its iCalendar UID (CalDAV addressing). 404 if absent.
+    pub async fn get_by_uid(&self, tenant: Uuid, calendar_id: Uuid, uid: &str) -> Result<Task> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let row = sqlx::query_as::<_, Task>(
+            r#"SELECT * FROM calendar_tasks
+                WHERE tenant_id = $1 AND calendar_id = $2 AND uid = $3"#,
+        )
+        .bind(tenant)
+        .bind(calendar_id)
+        .bind(uid)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| CalendarError::CalendarNotFound(uid.to_owned()))?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
+    /// Fetch tasks by a set of UIDs (CalDAV calendar-multiget). Missing UIDs are
+    /// simply absent from the result.
+    pub async fn list_by_uids(
+        &self,
+        tenant: Uuid,
+        calendar_id: Uuid,
+        uids: &[String],
+    ) -> Result<Vec<Task>> {
+        if uids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let rows = sqlx::query_as::<_, Task>(
+            r#"SELECT * FROM calendar_tasks
+                WHERE tenant_id = $1 AND calendar_id = $2 AND uid = ANY($3)
+                ORDER BY created_at"#,
+        )
+        .bind(tenant)
+        .bind(calendar_id)
+        .bind(uids)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
+    /// Delete a task by its iCalendar UID (CalDAV DELETE). 404 if absent.
+    pub async fn delete_by_uid(&self, tenant: Uuid, calendar_id: Uuid, uid: &str) -> Result<()> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let res = sqlx::query(
+            "DELETE FROM calendar_tasks WHERE tenant_id = $1 AND calendar_id = $2 AND uid = $3",
+        )
+        .bind(tenant)
+        .bind(calendar_id)
+        .bind(uid)
+        .execute(&mut *tx)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(CalendarError::CalendarNotFound(uid.to_owned()));
+        }
+        tx.commit().await?;
+        Ok(())
     }
 
     /// Delete a task by id. 404 when nothing was removed.

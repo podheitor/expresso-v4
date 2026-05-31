@@ -13,7 +13,7 @@ use crate::caldav::auth::CalDavPrincipal;
 use crate::caldav::uri::{self, Target};
 use crate::caldav::xml::{self, PropRequest};
 use crate::caldav::MULTISTATUS_CT;
-use crate::domain::{EventQuery, EventRepo};
+use crate::domain::{EventQuery, EventRepo, TaskRepo};
 use crate::error::Result;
 use crate::state::AppState;
 
@@ -83,16 +83,27 @@ async fn multiget(
     let events = EventRepo::new(pool)
         .list_by_uids(principal.tenant_id, calendar_id, &uids)
         .await?;
+    let tasks = TaskRepo::new(pool)
+        .list_by_uids(principal.tenant_id, calendar_id, &uids)
+        .await?;
 
     let mut out = String::with_capacity(2048);
     out.push_str(xml::XML_PROLOG);
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">"#);
     for ev in events {
-        let href = format!(
-            "/caldav/{}/{}/{}.ics",
-            principal.user_id, calendar_id, ev.uid
+        let href = object_href(principal, calendar_id, &ev.uid);
+        append_object(&mut out, &href, &ev.etag, req, &ev.ical_raw, "VEVENT");
+    }
+    for task in tasks {
+        let href = object_href(principal, calendar_id, &task.uid);
+        append_object(
+            &mut out,
+            &href,
+            &task.caldav_etag(),
+            req,
+            &task.to_ical(),
+            "VTODO",
         );
-        append_event(&mut out, &href, &ev.etag, req, &ev.ical_raw);
     }
     out.push_str("</D:multistatus>");
     Ok(out)
@@ -118,22 +129,48 @@ async fn query(
     let events = EventRepo::new(pool)
         .list(principal.tenant_id, calendar_id, &q)
         .await?;
+    // VTODO has no required time-bound, so calendar-query returns all tasks on
+    // the collection (clients drop components their comp-filter excludes).
+    let tasks = TaskRepo::new(pool)
+        .list(principal.tenant_id, calendar_id)
+        .await?;
 
     let mut out = String::with_capacity(4096);
     out.push_str(xml::XML_PROLOG);
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">"#);
     for ev in events {
-        let href = format!(
-            "/caldav/{}/{}/{}.ics",
-            principal.user_id, calendar_id, ev.uid
+        let href = object_href(principal, calendar_id, &ev.uid);
+        append_object(&mut out, &href, &ev.etag, req, &ev.ical_raw, "VEVENT");
+    }
+    for task in tasks {
+        let href = object_href(principal, calendar_id, &task.uid);
+        append_object(
+            &mut out,
+            &href,
+            &task.caldav_etag(),
+            req,
+            &task.to_ical(),
+            "VTODO",
         );
-        append_event(&mut out, &href, &ev.etag, req, &ev.ical_raw);
     }
     out.push_str("</D:multistatus>");
     Ok(out)
 }
 
-fn append_event(out: &mut String, href: &str, etag: &str, req: &PropRequest, ical: &str) {
+fn object_href(principal: &CalDavPrincipal, calendar_id: Uuid, uid: &str) -> String {
+    format!("/caldav/{}/{}/{}.ics", principal.user_id, calendar_id, uid)
+}
+
+/// Emit one `<D:response>` for a calendar object. `component` is the iCalendar
+/// component name (VEVENT/VTODO) for the getcontenttype hint.
+fn append_object(
+    out: &mut String,
+    href: &str,
+    etag: &str,
+    req: &PropRequest,
+    ical: &str,
+    component: &str,
+) {
     out.push_str("<D:response>");
     out.push_str("<D:href>");
     out.push_str(&xml::escape(href));
@@ -145,7 +182,9 @@ fn append_event(out: &mut String, href: &str, etag: &str, req: &PropRequest, ica
         out.push_str("\"</D:getetag>");
     }
     if req.getcontenttype {
-        out.push_str(r#"<D:getcontenttype>text/calendar; charset=utf-8; component=VEVENT</D:getcontenttype>"#);
+        out.push_str("<D:getcontenttype>text/calendar; charset=utf-8; component=");
+        out.push_str(component);
+        out.push_str("</D:getcontenttype>");
     }
     if req.calendar_data {
         out.push_str("<C:calendar-data>");

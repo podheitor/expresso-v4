@@ -108,6 +108,145 @@ pub fn parse_vevent(raw: &str) -> Result<ParsedEvent> {
     Ok(ev)
 }
 
+/// Properties extracted from a single VTODO (RFC 5545 §3.6.2).
+#[derive(Debug, Clone, Default)]
+pub struct ParsedTask {
+    pub uid: String,
+    pub summary: Option<String>,
+    pub description: Option<String>,
+    pub status: Option<String>,
+    pub priority: i16,
+    pub percent_complete: i16,
+    pub dtstart: Option<OffsetDateTime>,
+    pub due: Option<OffsetDateTime>,
+    pub completed: Option<OffsetDateTime>,
+}
+
+/// Parse the first VTODO's indexed properties from raw VCALENDAR text. Mirrors
+/// [`parse_vevent`]; PRIORITY/PERCENT-COMPLETE default to 0 when absent or
+/// unparseable. Errors only when no UID is present.
+pub fn parse_vtodo(raw: &str) -> Result<ParsedTask> {
+    let mut in_todo = false;
+    let mut t = ParsedTask::default();
+
+    for line in unfold_lines(raw) {
+        let trimmed = line.trim_end_matches('\r');
+        let upper = trimmed.to_ascii_uppercase();
+        if upper == "BEGIN:VTODO" {
+            in_todo = true;
+            continue;
+        }
+        if upper == "END:VTODO" {
+            break;
+        }
+        if !in_todo {
+            continue;
+        }
+        let Some((head, value)) = trimmed.split_once(':') else {
+            continue;
+        };
+        let (name, params) = match head.split_once(';') {
+            Some((n, p)) => (n.to_ascii_uppercase(), Some(p)),
+            None => (head.to_ascii_uppercase(), None),
+        };
+        match name.as_str() {
+            "UID" => t.uid = value.to_owned(),
+            "SUMMARY" => t.summary = Some(unescape_text(value)),
+            "DESCRIPTION" => t.description = Some(unescape_text(value)),
+            "STATUS" => t.status = Some(value.to_ascii_uppercase()),
+            "PRIORITY" => t.priority = value.parse().unwrap_or(0).clamp(0, 9),
+            "PERCENT-COMPLETE" => t.percent_complete = value.parse().unwrap_or(0).clamp(0, 100),
+            "DTSTART" => t.dtstart = parse_dt(params, value),
+            "DUE" => t.due = parse_dt(params, value),
+            "COMPLETED" => t.completed = parse_dt(params, value),
+            _ => {}
+        }
+    }
+
+    if t.uid.is_empty() {
+        return Err(CalendarError::InvalidICal("missing UID".into()));
+    }
+    Ok(t)
+}
+
+/// The fields needed to serialize a VTODO. Borrowed view over a stored task,
+/// so the serializer stays decoupled from the `Task` struct.
+#[derive(Debug, Clone, Copy)]
+pub struct Vtodo<'a> {
+    pub uid: &'a str,
+    pub summary: &'a str,
+    pub description: Option<&'a str>,
+    pub status: &'a str,
+    pub priority: i16,
+    pub percent_complete: i16,
+    pub dtstart: Option<OffsetDateTime>,
+    pub due: Option<OffsetDateTime>,
+    pub completed: Option<OffsetDateTime>,
+}
+
+/// Serialize a task's structured fields into a minimal VCALENDAR/VTODO body.
+/// Used by CalDAV GET for tasks created via the REST API (no original
+/// `ical_raw`). CRLF line endings per RFC 5545 §3.1.
+pub fn serialize_vtodo(t: &Vtodo) -> String {
+    let mut out = String::with_capacity(256);
+    out.push_str("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Expresso//Calendar//EN\r\n");
+    out.push_str("BEGIN:VTODO\r\n");
+    push_prop(&mut out, "UID", t.uid);
+    push_prop(&mut out, "SUMMARY", t.summary);
+    if let Some(d) = t.description {
+        push_prop(&mut out, "DESCRIPTION", d);
+    }
+    push_prop(&mut out, "STATUS", t.status);
+    push_prop(&mut out, "PRIORITY", &t.priority.to_string());
+    push_prop(
+        &mut out,
+        "PERCENT-COMPLETE",
+        &t.percent_complete.to_string(),
+    );
+    if let Some(dt) = t.dtstart {
+        push_prop(&mut out, "DTSTART", &format_utc(dt));
+    }
+    if let Some(dt) = t.due {
+        push_prop(&mut out, "DUE", &format_utc(dt));
+    }
+    if let Some(dt) = t.completed {
+        push_prop(&mut out, "COMPLETED", &format_utc(dt));
+    }
+    out.push_str("END:VTODO\r\nEND:VCALENDAR\r\n");
+    out
+}
+
+/// Append `NAME:escaped-value` with CRLF. Text values are RFC 5545 §3.3.11
+/// escaped; numeric/datetime values pass through that escape harmlessly.
+fn push_prop(out: &mut String, name: &str, value: &str) {
+    out.push_str(name);
+    out.push(':');
+    out.push_str(&escape_text(value));
+    out.push_str("\r\n");
+}
+
+/// RFC 5545 §3.3.11 TEXT escaping: backslash, newline, comma, semicolon.
+fn escape_text(v: &str) -> String {
+    let mut out = String::with_capacity(v.len());
+    for c in v.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            ',' => out.push_str("\\,"),
+            ';' => out.push_str("\\;"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Format an instant as an RFC 5545 UTC date-time (`YYYYMMDDTHHMMSSZ`).
+fn format_utc(dt: OffsetDateTime) -> String {
+    let utc = dt.to_offset(time::UtcOffset::UTC);
+    let fmt = format_description!("[year][month][day]T[hour][minute][second]Z");
+    utc.format(&fmt).unwrap_or_default()
+}
+
 /// Compute a stable ETag for the raw iCalendar payload (hex sha256).
 pub fn compute_etag(raw: &str) -> String {
     let digest = Sha256::digest(raw.as_bytes());
@@ -547,5 +686,74 @@ END:VCALENDAR\r\n";
     fn no_attachment_yields_empty_vec() {
         let ev = parse_vevent(SAMPLE).unwrap();
         assert!(ev.attachments.is_empty());
+    }
+
+    // ---- VTODO ----
+
+    #[test]
+    fn parse_vtodo_extracts_fields() {
+        let raw = "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:t1@x\r\nSUMMARY:Buy milk\r\n\
+                   STATUS:IN-PROCESS\r\nPRIORITY:3\r\nPERCENT-COMPLETE:40\r\n\
+                   DUE:20260601T120000Z\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
+        let t = parse_vtodo(raw).unwrap();
+        assert_eq!(t.uid, "t1@x");
+        assert_eq!(t.summary.as_deref(), Some("Buy milk"));
+        assert_eq!(t.status.as_deref(), Some("IN-PROCESS"));
+        assert_eq!(t.priority, 3);
+        assert_eq!(t.percent_complete, 40);
+        assert!(t.due.is_some());
+    }
+
+    #[test]
+    fn parse_vtodo_requires_uid() {
+        let raw =
+            "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nSUMMARY:no uid\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
+        assert!(parse_vtodo(raw).is_err());
+    }
+
+    #[test]
+    fn parse_vtodo_clamps_out_of_range_priority_and_percent() {
+        let raw = "BEGIN:VTODO\r\nUID:t2\r\nPRIORITY:99\r\nPERCENT-COMPLETE:250\r\nEND:VTODO\r\n";
+        let t = parse_vtodo(raw).unwrap();
+        assert_eq!(t.priority, 9);
+        assert_eq!(t.percent_complete, 100);
+    }
+
+    #[test]
+    fn serialize_vtodo_roundtrips_through_parse() {
+        let ics = serialize_vtodo(&Vtodo {
+            uid: "rt@x",
+            summary: "Roundtrip; with, specials",
+            description: Some("line1\nline2"),
+            status: "NEEDS-ACTION",
+            priority: 5,
+            percent_complete: 0,
+            dtstart: None,
+            due: None,
+            completed: None,
+        });
+        assert!(ics.contains("BEGIN:VTODO"));
+        let t = parse_vtodo(&ics).unwrap();
+        assert_eq!(t.uid, "rt@x");
+        assert_eq!(t.summary.as_deref(), Some("Roundtrip; with, specials"));
+        assert_eq!(t.description.as_deref(), Some("line1\nline2"));
+        assert_eq!(t.priority, 5);
+    }
+
+    #[test]
+    fn serialize_vtodo_emits_utc_due() {
+        let due = time::macros::datetime!(2026-06-01 12:00:00 UTC);
+        let ics = serialize_vtodo(&Vtodo {
+            uid: "d@x",
+            summary: "due",
+            description: None,
+            status: "NEEDS-ACTION",
+            priority: 0,
+            percent_complete: 0,
+            dtstart: None,
+            due: Some(due),
+            completed: None,
+        });
+        assert!(ics.contains("DUE:20260601T120000Z"), "got: {ics}");
     }
 }

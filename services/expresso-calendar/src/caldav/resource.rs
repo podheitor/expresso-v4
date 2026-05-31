@@ -11,59 +11,78 @@ use axum::{
 
 use crate::caldav::auth::CalDavPrincipal;
 use crate::caldav::uri::{self, Target};
-use crate::domain::EventRepo;
-use crate::error::Result;
+use crate::domain::{EventRepo, TaskRepo};
+use crate::error::{CalendarError, Result};
 use crate::events::Event;
 use crate::state::AppState;
 
-/// GET → return the stored iCalendar payload.
-pub async fn get(state: AppState, principal: CalDavPrincipal, path: &str) -> Result<Response> {
-    let (cal_id, uid) = match uri::classify(path) {
+/// Resolve a CalDAV object URI to `(calendar_id, uid)` for the principal, or a
+/// forbidden/not-found response when it isn't this user's event resource.
+// Err is an axum Response (large by design — same as sibling CalDAV helpers).
+#[allow(clippy::result_large_err)]
+fn classify_object(
+    path: &str,
+    principal: &CalDavPrincipal,
+) -> std::result::Result<(uuid::Uuid, String), Response> {
+    match uri::classify(path) {
         Target::Event {
             user_id,
             calendar_id,
             uid,
-        } if user_id == principal.user_id => (calendar_id, uid),
-        Target::Event { .. } => return Ok(forbidden()),
-        _ => return Ok(not_found()),
-    };
-
-    let pool = state.db_or_unavailable()?;
-    let ev = EventRepo::new(pool)
-        .get_by_uid(principal.tenant_id, cal_id, &uid)
-        .await?;
-
-    let resp = Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/calendar; charset=utf-8")
-        .header(header::ETAG, format!("\"{}\"", ev.etag))
-        .body(Body::from(ev.ical_raw))
-        .unwrap();
-    Ok(resp)
+        } if user_id == principal.user_id => Ok((calendar_id, uid)),
+        Target::Event { .. } => Err(forbidden()),
+        _ => Err(not_found()),
+    }
 }
 
-/// PUT → upsert event from raw iCalendar body.
+/// GET → return the stored iCalendar payload. The `.ics` URI doesn't encode the
+/// component type, so we look the UID up as an event first, then as a task.
+pub async fn get(state: AppState, principal: CalDavPrincipal, path: &str) -> Result<Response> {
+    let (cal_id, uid) = match classify_object(path, &principal) {
+        Ok(v) => v,
+        Err(resp) => return Ok(resp),
+    };
+    let pool = state.db_or_unavailable()?;
+
+    if let Ok(ev) = EventRepo::new(pool)
+        .get_by_uid(principal.tenant_id, cal_id, &uid)
+        .await
+    {
+        return Ok(ical_response(&ev.etag, ev.ical_raw));
+    }
+    if let Ok(task) = TaskRepo::new(pool)
+        .get_by_uid(principal.tenant_id, cal_id, &uid)
+        .await
+    {
+        return Ok(ical_response(&task.caldav_etag(), task.to_ical()));
+    }
+    Ok(not_found())
+}
+
+/// PUT → upsert from a raw iCalendar body, routed by component type: a VTODO
+/// body becomes a task, anything else an event (preserving prior behavior).
 pub async fn put(
     state: AppState,
     principal: CalDavPrincipal,
     path: &str,
     body: String,
 ) -> Result<Response> {
-    let cal_id = match uri::classify(path) {
-        Target::Event {
-            user_id,
-            calendar_id,
-            ..
-        } if user_id == principal.user_id => calendar_id,
-        Target::Event { .. } => return Ok(forbidden()),
-        _ => return Ok(not_found()),
+    let cal_id = match classify_object(path, &principal) {
+        Ok((cal_id, _)) => cal_id,
+        Err(resp) => return Ok(resp),
     };
-
     let pool = state.db_or_unavailable()?;
+
+    if is_vtodo(&body) {
+        let task = TaskRepo::new(pool)
+            .replace_by_uid(principal.tenant_id, cal_id, &body)
+            .await?;
+        return Ok(created_with_etag(&task.caldav_etag()));
+    }
+
     let ev = EventRepo::new(pool)
         .replace_by_uid(principal.tenant_id, cal_id, &body)
         .await?;
-
     // Publish event (CalDAV PUT = upsert; emit as Updated with ev.sequence).
     state.events().publish(Event::EventUpdated {
         tenant_id: principal.tenant_id,
@@ -72,48 +91,71 @@ pub async fn put(
         sequence: ev.sequence,
     });
     state.events().publish_imip(ev.clone(), "REQUEST");
-
-    let resp = Response::builder()
-        .status(StatusCode::CREATED)
-        .header(header::ETAG, format!("\"{}\"", ev.etag))
-        // No Content-Location (same as request URI by CalDAV convention).
-        .body(Body::empty())
-        .unwrap();
-    Ok(resp)
+    Ok(created_with_etag(&ev.etag))
 }
 
-/// DELETE → remove event.
+/// DELETE → remove the object. Tries the event store first (publishing a
+/// cancellation), then the task store.
 pub async fn delete(state: AppState, principal: CalDavPrincipal, path: &str) -> Result<Response> {
-    let (cal_id, uid) = match uri::classify(path) {
-        Target::Event {
-            user_id,
-            calendar_id,
-            uid,
-        } if user_id == principal.user_id => (calendar_id, uid),
-        Target::Event { .. } => return Ok(forbidden()),
-        _ => return Ok(not_found()),
+    let (cal_id, uid) = match classify_object(path, &principal) {
+        Ok(v) => v,
+        Err(resp) => return Ok(resp),
     };
-
     let pool = state.db_or_unavailable()?;
+
     let ev_id = EventRepo::new(pool)
         .get_by_uid(principal.tenant_id, cal_id, &uid)
         .await
         .ok()
         .map(|e| e.id);
-    EventRepo::new(pool)
-        .delete_by_uid(principal.tenant_id, cal_id, &uid)
-        .await?;
     if let Some(event_id) = ev_id {
+        EventRepo::new(pool)
+            .delete_by_uid(principal.tenant_id, cal_id, &uid)
+            .await?;
         state.events().publish(Event::EventCancelled {
             tenant_id: principal.tenant_id,
             event_id,
         });
+        return Ok(no_content());
     }
 
-    Ok(Response::builder()
+    match TaskRepo::new(pool)
+        .delete_by_uid(principal.tenant_id, cal_id, &uid)
+        .await
+    {
+        Ok(()) => Ok(no_content()),
+        Err(CalendarError::CalendarNotFound(_)) => Ok(not_found()),
+        Err(e) => Err(e),
+    }
+}
+
+/// True when the body's first calendar component is a VTODO.
+fn is_vtodo(body: &str) -> bool {
+    body.to_ascii_uppercase().contains("BEGIN:VTODO")
+}
+
+fn ical_response(etag: &str, ical: String) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/calendar; charset=utf-8")
+        .header(header::ETAG, format!("\"{etag}\""))
+        .body(Body::from(ical))
+        .unwrap()
+}
+
+fn created_with_etag(etag: &str) -> Response {
+    Response::builder()
+        .status(StatusCode::CREATED)
+        .header(header::ETAG, format!("\"{etag}\""))
+        .body(Body::empty())
+        .unwrap()
+}
+
+fn no_content() -> Response {
+    Response::builder()
         .status(StatusCode::NO_CONTENT)
         .body(Body::empty())
-        .unwrap())
+        .unwrap()
 }
 
 /// OPTIONS → advertise supported DAV/CalDAV features.
