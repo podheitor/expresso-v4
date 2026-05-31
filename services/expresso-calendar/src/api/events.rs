@@ -3765,11 +3765,11 @@ struct EventsByRangeSetRruleQuery {
 /// passam por `Rrule::parse` que retorna `None` em syntax/FREQ unsupported
 /// → 400 ("rrule failed to parse — unsupported FREQ or invalid syntax").
 /// Subset suportado pelo parser interno (FREQ=DAILY|WEEKLY|MONTHLY|YEARLY,
-/// INTERVAL, COUNT, UNTIL, BYDAY) é o que faz parte do gate; tokens não-
-/// suportados como BYMONTHDAY/BYSETPOS são silently-ignored pelo parser
-/// (linha #62-63 do rrule.rs) e portanto ACEITOS pela validação — coluna
-/// armazena a string crua mesmo com tokens não suportados (mesma semantics
-/// do `update` regular que não rejeita rrule com tokens desconhecidos).
+/// INTERVAL, COUNT, UNTIL, BYDAY incl. ordinais, BYMONTHDAY, BYMONTH,
+/// BYSETPOS, EXDATE) é o que faz parte do gate; tokens ainda não-suportados
+/// são silently-ignored pelo parser (ramo `_ => {}` em rrule.rs) e portanto
+/// ACEITOS pela validação — coluna armazena a string crua mesmo com tokens
+/// não suportados (mesma semantics do `update` regular).
 /// CLASSE active-recurrence (insight #3 do sprint #552): mudança em massa
 /// re-expande virtualmente as séries — `events-recurrence-stats` #464,
 /// `events-recurrence-monthly` #469, `events/:id/instances` #500 e
