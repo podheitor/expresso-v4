@@ -9,6 +9,7 @@ mod resources;
 mod scheduling;
 mod sharing;
 mod stream;
+mod tasks;
 mod users;
 mod wellknown;
 
@@ -29,6 +30,7 @@ pub fn router(state: AppState) -> Router {
         .merge(scheduling::routes())
         .merge(stream::routes())
         .merge(sharing::routes())
+        .merge(tasks::routes())
         .merge(users::routes())
         .merge(wellknown::routes())
         .layer(CorsLayer::permissive());

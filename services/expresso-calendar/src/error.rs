@@ -49,6 +49,9 @@ pub enum CalendarError {
 
     #[error("resource not found: {0}")]
     ResourceNotFound(Uuid),
+
+    #[error("task not found: {0}")]
+    TaskNotFound(Uuid),
 }
 
 impl IntoResponse for CalendarError {
@@ -80,6 +83,7 @@ impl IntoResponse for CalendarError {
                 "resource_not_found",
                 self.to_string(),
             ),
+            Self::TaskNotFound(_) => (StatusCode::NOT_FOUND, "task_not_found", self.to_string()),
             // Unique violation → 409, FK violation / not-found → 404, everything else → 500.
             Self::Database(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => (
                 StatusCode::CONFLICT,
