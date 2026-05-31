@@ -30,6 +30,7 @@ members = [
     "libs/expresso-auth-client",
     "libs/expresso-observability",
     "libs/expresso-imip",
+    "libs/expresso-rrule",
 ]
 
 [workspace.dependencies]
@@ -137,6 +138,7 @@ config       = "0.14"
 # Metrics
 prometheus   = { version = "0.13", features = ["process"] }
 expresso-observability = { path = "libs/expresso-observability" }
+expresso-rrule         = { path = "libs/expresso-rrule" }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn   = "warn"

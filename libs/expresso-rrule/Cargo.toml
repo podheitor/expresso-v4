@@ -1,0 +1,25 @@
+[package]
+name = "expresso-rrule"
+publish = false
+version = "0.1.0"
+edition = "2021"
+description = "RFC 5545 RRULE expander (recurrence rules) shared across calendar and meet"
+
+[lib]
+name = "expresso_rrule"
+path = "src/lib.rs"
+
+[dependencies]
+time = { workspace = true }
+
+[dev-dependencies]
+# The test module uses time::macros::datetime!, which the workspace `time`
+# feature set doesn't enable. Pull it in for tests only.
+time = { workspace = true, features = ["macros"] }
+
+# NOTE: deliberately NOT inheriting `[workspace.lints]` (pedantic) here — no
+# crate in this workspace opts in, so the CI gate runs against the default lint
+# set. This code was extracted verbatim from expresso-calendar (which has no
+# `[lints]` table either); enabling pedantic only here would flag ~25 cast
+# lints that the source never had to satisfy. Tightening to pedantic is
+# tracked as future debt, to be done workspace-wide for consistency.

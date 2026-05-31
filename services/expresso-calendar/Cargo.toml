@@ -42,6 +42,7 @@ async-nats = "0.37"
 # Internal libs
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
 expresso-observability = { workspace = true }
+expresso-rrule = { workspace = true }
 expresso-auth-client = { path = "../../libs/expresso-auth-client", package = "expresso-auth-client" }
 sqlx = { workspace = true }
 
