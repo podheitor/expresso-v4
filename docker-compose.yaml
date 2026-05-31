@@ -276,6 +276,31 @@ services:
       timeout: 5s
       retries: 5
 
+  expresso-notes:
+    image: expresso-notes:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.notes
+    container_name: expresso-notes
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8012"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+    ports:
+      - "${NOTES_PORT:-8012}:8012"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8012/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   expresso-drive:
     image: expresso-drive:latest
     build:

@@ -8,6 +8,7 @@ members = [
     "services/expresso-meet",
     "services/expresso-calendar",
     "services/expresso-contacts",
+    "services/expresso-notes",
     "services/expresso-drive",
     "services/expresso-auth",
     "services/expresso-admin",
