@@ -15,6 +15,10 @@ pub struct Attendee {
     pub role: Option<String>,     // e.g. REQ-PARTICIPANT
     pub partstat: Option<String>, // NEEDS-ACTION | ACCEPTED | DECLINED | TENTATIVE
     pub rsvp: Option<bool>,
+    /// CUTYPE (RFC 5545 §3.2.3): INDIVIDUAL (default) | GROUP | RESOURCE | ROOM
+    /// | UNKNOWN. RESOURCE/ROOM mark a booked resource (projector, meeting room)
+    /// rather than a person. `None` when the property omits CUTYPE.
+    pub cutype: Option<String>,
 }
 
 /// Extract ATTENDEEs from the first VEVENT of a VCALENDAR.
@@ -58,6 +62,7 @@ pub fn parse_attendees(raw: &str) -> Vec<Attendee> {
             role: None,
             partstat: None,
             rsvp: None,
+            cutype: None,
         };
         if let Some(p) = params {
             for part in p.split(';') {
@@ -70,6 +75,7 @@ pub fn parse_attendees(raw: &str) -> Vec<Attendee> {
                     "ROLE" => a.role = Some(v.to_ascii_uppercase()),
                     "PARTSTAT" => a.partstat = Some(v.to_ascii_uppercase()),
                     "RSVP" => a.rsvp = Some(v.eq_ignore_ascii_case("TRUE")),
+                    "CUTYPE" => a.cutype = Some(v.to_ascii_uppercase()),
                     _ => {}
                 }
             }
@@ -468,7 +474,31 @@ END:VCALENDAR\r\n";
         assert_eq!(a[0].partstat.as_deref(), Some("NEEDS-ACTION"));
         assert_eq!(a[0].role.as_deref(), Some("REQ-PARTICIPANT"));
         assert_eq!(a[0].rsvp, Some(true));
+        // No CUTYPE param on these → defaults to None (caller treats as INDIVIDUAL).
+        assert!(a[0].cutype.is_none());
         assert_eq!(a[1].email, "carol@example.org");
+    }
+
+    #[test]
+    fn parses_resource_and_room_cutype() {
+        let raw = "BEGIN:VEVENT\r\nUID:e\r\n\
+ATTENDEE;CUTYPE=ROOM;CN=\"Sala 4\":mailto:room-4@example.org\r\n\
+ATTENDEE;CUTYPE=RESOURCE:mailto:projector@example.org\r\n\
+ATTENDEE:mailto:dave@example.org\r\n\
+END:VEVENT\r\n";
+        let a = parse_attendees(raw);
+        assert_eq!(a.len(), 3);
+        assert_eq!(a[0].cutype.as_deref(), Some("ROOM"));
+        assert_eq!(a[0].cn.as_deref(), Some("Sala 4"));
+        assert_eq!(a[1].cutype.as_deref(), Some("RESOURCE"));
+        assert!(a[2].cutype.is_none()); // plain person attendee
+    }
+
+    #[test]
+    fn cutype_is_uppercased() {
+        let raw = "BEGIN:VEVENT\r\nUID:e\r\nATTENDEE;CUTYPE=room:mailto:r@x.org\r\nEND:VEVENT\r\n";
+        let a = parse_attendees(raw);
+        assert_eq!(a[0].cutype.as_deref(), Some("ROOM"));
     }
 
     #[test]
@@ -578,6 +608,7 @@ END:VCALENDAR\r\n";
             role: None,
             partstat: None,
             rsvp: None,
+            cutype: None,
         };
         assert!(a.cn.is_none() && a.role.is_none() && a.partstat.is_none() && a.rsvp.is_none());
     }
@@ -590,6 +621,7 @@ END:VCALENDAR\r\n";
             role: None,
             partstat: None,
             rsvp: None,
+            cutype: None,
         };
         assert_eq!(a.email, "bob@example.com");
     }
@@ -602,6 +634,7 @@ END:VCALENDAR\r\n";
             role: None,
             partstat: None,
             rsvp: None,
+            cutype: None,
         };
         assert_eq!(a.cn.as_deref(), Some("Alice Smith"));
     }
@@ -614,6 +647,7 @@ END:VCALENDAR\r\n";
             role: Some("OPT-PARTICIPANT".into()),
             partstat: Some("NEEDS-ACTION".into()),
             rsvp: Some(true),
+            cutype: None,
         };
         assert_eq!(a.rsvp, Some(true));
         assert_eq!(a.role.as_deref(), Some("OPT-PARTICIPANT"));
@@ -627,6 +661,7 @@ END:VCALENDAR\r\n";
             role: None,
             partstat: Some("ACCEPTED".into()),
             rsvp: Some(false),
+            cutype: None,
         };
         assert_eq!(a.rsvp, Some(false));
     }
@@ -639,6 +674,7 @@ END:VCALENDAR\r\n";
             role: None,
             partstat: None,
             rsvp: None,
+            cutype: None,
         };
         assert!(a.partstat.is_none());
     }
@@ -651,6 +687,7 @@ END:VCALENDAR\r\n";
             role: Some("REQ-PARTICIPANT".into()),
             partstat: None,
             rsvp: None,
+            cutype: None,
         };
         assert_eq!(a.role.as_deref(), Some("REQ-PARTICIPANT"));
     }
@@ -663,6 +700,7 @@ END:VCALENDAR\r\n";
             role: None,
             partstat: Some("ACCEPTED".into()),
             rsvp: None,
+            cutype: None,
         };
         assert_eq!(a.partstat.as_deref(), Some("ACCEPTED"));
     }
@@ -675,6 +713,7 @@ END:VCALENDAR\r\n";
             role: None,
             partstat: None,
             rsvp: None,
+            cutype: None,
         };
         assert!(!a.email.is_empty());
     }
@@ -687,6 +726,7 @@ END:VCALENDAR\r\n";
             role: None,
             partstat: None,
             rsvp: None,
+            cutype: None,
         };
         assert!(a.cn.is_none());
     }

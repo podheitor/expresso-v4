@@ -4841,11 +4841,21 @@ async fn rsvp(
     Ok((StatusCode::OK, Json(out)).into_response())
 }
 
-/// GET /api/v1/calendars/:cal_id/events/:id/attendees — parsed attendee list.
+/// Filter for the attendee list. `cutype` (case-insensitive) narrows to a single
+/// calendar-user type — e.g. `?cutype=resource` or `?cutype=room` to list only
+/// booked resources/rooms; omit for all attendees.
+#[derive(Debug, serde::Deserialize)]
+struct AttendeeQuery {
+    cutype: Option<String>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/attendees[?cutype=] — parsed
+/// attendee list, optionally filtered by CUTYPE (resource/room/individual/…).
 async fn list_attendees(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path((_cal, id)): Path<(Uuid, Uuid)>,
+    Query(q): Query<AttendeeQuery>,
     req_headers: HeaderMap,
 ) -> Result<Response> {
     use crate::domain::itip;
@@ -4866,9 +4876,18 @@ async fn list_attendees(
             }
         }
     }
+    let cutype_filter = q.cutype.as_deref().map(str::to_ascii_uppercase);
     let atts = itip::parse_attendees(&ev.ical_raw);
     let body: Vec<_> = atts
         .into_iter()
+        .filter(|a| match &cutype_filter {
+            // INDIVIDUAL is the RFC 5545 default → match it when CUTYPE is absent.
+            Some(want) => {
+                a.cutype.as_deref() == Some(want.as_str())
+                    || (want == "INDIVIDUAL" && a.cutype.is_none())
+            }
+            None => true,
+        })
         .map(|a| {
             serde_json::json!({
                 "email":    a.email,
@@ -4876,6 +4895,7 @@ async fn list_attendees(
                 "role":     a.role,
                 "partstat": a.partstat,
                 "rsvp":     a.rsvp,
+                "cutype":   a.cutype,
             })
         })
         .collect();
