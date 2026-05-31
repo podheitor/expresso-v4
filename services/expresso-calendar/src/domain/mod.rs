@@ -8,9 +8,11 @@ pub mod event;
 pub mod freebusy;
 pub mod ical;
 pub mod itip;
+pub mod resource;
 pub mod rrule;
 pub mod tombstone_gc;
 
 pub use calendar::{Calendar, CalendarRepo, NewCalendar, UpdateCalendar};
 pub use dead_props::{DeadProp, DeadPropRepo};
 pub use event::{Event, EventQuery, EventRepo};
+pub use resource::{NewResource, ResourceRepo};

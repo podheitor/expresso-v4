@@ -12,6 +12,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::domain::ical;
+use crate::domain::itip;
 use crate::error::{CalendarError, Result};
 
 /// Stored event row. Mirrors `calendar_events` columns.
@@ -112,6 +113,7 @@ impl<'a> EventRepo<'a> {
             &parsed.attachments,
         )
         .await?;
+        sync_resources(&mut tx, tenant_id, row.calendar_id, row.id, raw).await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -989,6 +991,7 @@ impl<'a> EventRepo<'a> {
             &parsed.attachments,
         )
         .await?;
+        sync_resources(&mut tx, tenant_id, row.calendar_id, row.id, raw).await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -1151,6 +1154,52 @@ async fn sync_attachments(
         .bind(&a.fmttype)
         .bind(a.is_inline)
         .bind(i as i32)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+/// The set of resource emails an event books — its `ATTENDEE;CUTYPE=ROOM` and
+/// `CUTYPE=RESOURCE` attendees, lowercased and deduplicated.
+fn booked_resource_emails(raw: &str) -> Vec<String> {
+    let mut emails: Vec<String> = itip::parse_attendees(raw)
+        .into_iter()
+        .filter(|a| matches!(a.cutype.as_deref(), Some("ROOM") | Some("RESOURCE")))
+        .map(|a| a.email.to_ascii_lowercase())
+        .collect();
+    emails.sort();
+    emails.dedup();
+    emails
+}
+
+/// Replace the booked-resource index for an event: delete existing rows, then
+/// insert the resource emails parsed from its CUTYPE=ROOM/RESOURCE attendees.
+/// Runs in the caller's tx so the index tracks `ical_raw`. Drives double-booking
+/// detection (`calendar_event_resources` self-join).
+async fn sync_resources(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: Uuid,
+    calendar_id: Uuid,
+    event_id: Uuid,
+    raw: &str,
+) -> Result<()> {
+    sqlx::query("DELETE FROM calendar_event_resources WHERE tenant_id = $1 AND event_id = $2")
+        .bind(tenant_id)
+        .bind(event_id)
+        .execute(&mut **tx)
+        .await?;
+
+    for email in booked_resource_emails(raw) {
+        sqlx::query(
+            r#"INSERT INTO calendar_event_resources
+                 (tenant_id, calendar_id, event_id, resource_email)
+               VALUES ($1, $2, $3, $4)"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(event_id)
+        .bind(&email)
         .execute(&mut **tx)
         .await?;
     }
@@ -1345,5 +1394,33 @@ mod tests {
     fn event_query_limit_two_preserved() {
         let q: EventQuery = serde_json::from_str(r#"{"limit":2}"#).unwrap();
         assert_eq!(q.limit, Some(2));
+    }
+
+    #[test]
+    fn booked_resource_emails_picks_room_and_resource_only() {
+        let raw = "BEGIN:VEVENT\r\nUID:e\r\n\
+ATTENDEE;CUTYPE=ROOM:mailto:room-4@x.org\r\n\
+ATTENDEE;CUTYPE=RESOURCE:mailto:projector@x.org\r\n\
+ATTENDEE:mailto:dave@x.org\r\n\
+ATTENDEE;CUTYPE=INDIVIDUAL:mailto:erin@x.org\r\n\
+END:VEVENT\r\n";
+        let mut got = booked_resource_emails(raw);
+        got.sort();
+        assert_eq!(got, vec!["projector@x.org", "room-4@x.org"]);
+    }
+
+    #[test]
+    fn booked_resource_emails_lowercases_and_dedupes() {
+        let raw = "BEGIN:VEVENT\r\nUID:e\r\n\
+ATTENDEE;CUTYPE=ROOM:mailto:Room-A@X.org\r\n\
+ATTENDEE;CUTYPE=ROOM:mailto:room-a@x.org\r\n\
+END:VEVENT\r\n";
+        assert_eq!(booked_resource_emails(raw), vec!["room-a@x.org"]);
+    }
+
+    #[test]
+    fn booked_resource_emails_empty_when_no_resources() {
+        let raw = "BEGIN:VEVENT\r\nUID:e\r\nATTENDEE:mailto:dave@x.org\r\nEND:VEVENT\r\n";
+        assert!(booked_resource_emails(raw).is_empty());
     }
 }

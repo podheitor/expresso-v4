@@ -5,6 +5,7 @@ mod calendars;
 pub mod context;
 mod events;
 mod health;
+mod resources;
 mod scheduling;
 mod sharing;
 mod stream;
@@ -24,6 +25,7 @@ pub fn router(state: AppState) -> Router {
         .merge(alarms::routes())
         .merge(calendars::routes())
         .merge(events::routes())
+        .merge(resources::routes())
         .merge(scheduling::routes())
         .merge(stream::routes())
         .merge(sharing::routes())
