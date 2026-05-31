@@ -11,6 +11,23 @@ use time::{OffsetDateTime, PrimitiveDateTime};
 
 use crate::error::{CalendarError, Result};
 
+/// A single ATTACH property (RFC 5545 §3.8.1.1).
+///
+/// Two forms: an external `uri` reference (`ATTACH:https://…`) or inline binary
+/// (`ATTACH;ENCODING=BASE64;VALUE=BINARY:<base64>`). We index only the metadata
+/// — `fmttype` (MIME), `is_inline`, and the `uri` for external refs. The raw
+/// bytes of an inline attachment stay in `ical_raw`; we never copy the base64
+/// blob into the index (it could be megabytes).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedAttachment {
+    /// External reference URI, or None for inline binary.
+    pub uri: Option<String>,
+    /// FMTTYPE parameter (MIME type), if present.
+    pub fmttype: Option<String>,
+    /// True when the value is inline base64 binary (VALUE=BINARY).
+    pub is_inline: bool,
+}
+
 /// Properties extracted from a single VEVENT.
 #[derive(Debug, Clone, Default)]
 pub struct ParsedEvent {
@@ -27,6 +44,7 @@ pub struct ParsedEvent {
     pub transp: Option<String>,
     pub organizer_email: Option<String>,
     pub sequence: i32,
+    pub attachments: Vec<ParsedAttachment>,
 }
 
 /// Parse minimal VEVENT properties from raw VCALENDAR text.
@@ -79,6 +97,7 @@ pub fn parse_vevent(raw: &str) -> Result<ParsedEvent> {
             "DTSTART" => ev.dtstart = parse_dt(params, value),
             "DTEND" => ev.dtend = parse_dt(params, value),
             "DTSTAMP" => ev.dtstamp = parse_dt(params, value),
+            "ATTACH" => ev.attachments.push(parse_attach(params, value)),
             _ => {}
         }
     }
@@ -142,6 +161,38 @@ fn unescape_text(v: &str) -> String {
         }
     }
     out
+}
+
+/// Parse an ATTACH property into its indexed metadata.
+///
+/// Inline binary (`ENCODING=BASE64` or `VALUE=BINARY`) → `is_inline = true`,
+/// `uri = None` (the bytes live in ical_raw). Anything else is an external URI
+/// reference and `value` is stored as `uri`. `FMTTYPE` is captured when present.
+fn parse_attach(params: Option<&str>, value: &str) -> ParsedAttachment {
+    let params_upper = params.map(str::to_ascii_uppercase).unwrap_or_default();
+    let is_inline =
+        params_upper.contains("ENCODING=BASE64") || params_upper.contains("VALUE=BINARY");
+    let fmttype = params
+        .and_then(|p| attach_param(p, "FMTTYPE"))
+        .map(str::to_owned);
+    ParsedAttachment {
+        uri: if is_inline {
+            None
+        } else {
+            Some(value.trim().to_owned())
+        },
+        fmttype,
+        is_inline,
+    }
+}
+
+/// Find a `KEY=value` parameter (case-insensitive key) in a `;`-joined param
+/// string, returning its raw value. Used for FMTTYPE on ATTACH.
+fn attach_param<'a>(params: &'a str, key: &str) -> Option<&'a str> {
+    params.split(';').find_map(|p| {
+        let (k, v) = p.split_once('=')?;
+        k.trim().eq_ignore_ascii_case(key).then(|| v.trim())
+    })
 }
 
 /// Extract email address from ORGANIZER value like "mailto:user@example.org".
@@ -448,5 +499,53 @@ END:VCALENDAR\r\n";
         let raw = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:seq@x\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         let ev = parse_vevent(raw).unwrap();
         assert_eq!(ev.sequence, 0);
+    }
+
+    // ---- ATTACH ----
+
+    #[test]
+    fn parses_uri_attachment() {
+        let raw = "BEGIN:VEVENT\r\nUID:a1\r\nATTACH:https://files.example.org/agenda.pdf\r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert_eq!(ev.attachments.len(), 1);
+        let a = &ev.attachments[0];
+        assert_eq!(
+            a.uri.as_deref(),
+            Some("https://files.example.org/agenda.pdf")
+        );
+        assert!(!a.is_inline);
+        assert!(a.fmttype.is_none());
+    }
+
+    #[test]
+    fn parses_uri_attachment_with_fmttype() {
+        let raw = "BEGIN:VEVENT\r\nUID:a2\r\nATTACH;FMTTYPE=application/pdf:https://x.test/d.pdf\r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        let a = &ev.attachments[0];
+        assert_eq!(a.fmttype.as_deref(), Some("application/pdf"));
+        assert_eq!(a.uri.as_deref(), Some("https://x.test/d.pdf"));
+    }
+
+    #[test]
+    fn parses_inline_binary_attachment_without_storing_blob() {
+        let raw = "BEGIN:VEVENT\r\nUID:a3\r\nATTACH;FMTTYPE=text/plain;ENCODING=BASE64;VALUE=BINARY:SGVsbG8=\r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        let a = &ev.attachments[0];
+        assert!(a.is_inline);
+        assert!(a.uri.is_none()); // blob stays in ical_raw, not indexed
+        assert_eq!(a.fmttype.as_deref(), Some("text/plain"));
+    }
+
+    #[test]
+    fn collects_multiple_attachments() {
+        let raw = "BEGIN:VEVENT\r\nUID:a4\r\nATTACH:https://a.test/1\r\nATTACH:https://a.test/2\r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert_eq!(ev.attachments.len(), 2);
+    }
+
+    #[test]
+    fn no_attachment_yields_empty_vec() {
+        let ev = parse_vevent(SAMPLE).unwrap();
+        assert!(ev.attachments.is_empty());
     }
 }

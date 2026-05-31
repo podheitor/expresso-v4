@@ -104,6 +104,14 @@ impl<'a> EventRepo<'a> {
         .bind(&parsed.organizer_email)
         .fetch_one(&mut *tx)
         .await?;
+        sync_attachments(
+            &mut tx,
+            tenant_id,
+            row.calendar_id,
+            row.id,
+            &parsed.attachments,
+        )
+        .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -234,6 +242,15 @@ impl<'a> EventRepo<'a> {
         .bind(&row.etag)
         .bind(row.sequence)
         .execute(&mut *tx)
+        .await?;
+
+        sync_attachments(
+            &mut tx,
+            tenant_id,
+            row.calendar_id,
+            row.id,
+            &parsed.attachments,
+        )
         .await?;
 
         tx.commit().await?;
@@ -964,6 +981,14 @@ impl<'a> EventRepo<'a> {
         .bind(&parsed.organizer_email)
         .fetch_one(&mut *tx)
         .await?;
+        sync_attachments(
+            &mut tx,
+            tenant_id,
+            row.calendar_id,
+            row.id,
+            &parsed.attachments,
+        )
+        .await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -1062,6 +1087,74 @@ impl<'a> EventRepo<'a> {
         tx.commit().await?;
         Ok(())
     }
+
+    /// List the indexed ATTACH entries for an event (order preserved by
+    /// `position`). Returns empty when the event has no attachments. The caller
+    /// is responsible for the tenant/calendar 404 guard.
+    pub async fn list_attachments(
+        &self,
+        tenant_id: Uuid,
+        event_id: Uuid,
+    ) -> Result<Vec<EventAttachment>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let rows = sqlx::query_as::<_, EventAttachment>(
+            r#"SELECT id, uri, fmttype, is_inline, position
+                 FROM calendar_event_attachments
+                WHERE tenant_id = $1 AND event_id = $2
+                ORDER BY position, created_at"#,
+        )
+        .bind(tenant_id)
+        .bind(event_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+}
+
+/// An indexed ATTACH entry returned to API callers.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct EventAttachment {
+    pub id: Uuid,
+    pub uri: Option<String>,
+    pub fmttype: Option<String>,
+    pub is_inline: bool,
+    pub position: i32,
+}
+
+/// Replace the attachment index for an event: delete existing rows, then insert
+/// the freshly parsed ATTACH entries. Runs inside the caller's tx so the index
+/// and `ical_raw` move together. Position preserves VEVENT order.
+async fn sync_attachments(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: Uuid,
+    calendar_id: Uuid,
+    event_id: Uuid,
+    attachments: &[ical::ParsedAttachment],
+) -> Result<()> {
+    sqlx::query("DELETE FROM calendar_event_attachments WHERE tenant_id = $1 AND event_id = $2")
+        .bind(tenant_id)
+        .bind(event_id)
+        .execute(&mut **tx)
+        .await?;
+
+    for (i, a) in attachments.iter().enumerate() {
+        sqlx::query(
+            r#"INSERT INTO calendar_event_attachments
+                 (tenant_id, calendar_id, event_id, uri, fmttype, is_inline, position)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(event_id)
+        .bind(&a.uri)
+        .bind(&a.fmttype)
+        .bind(a.is_inline)
+        .bind(i as i32)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

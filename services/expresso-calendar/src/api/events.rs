@@ -322,6 +322,10 @@ pub fn routes() -> Router<AppState> {
             get(event_history).delete(delete_event_history),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events/:id/attachments",
+            get(list_event_attachments),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id/history/stats",
             get(event_history_stats),
         )
@@ -4590,6 +4594,33 @@ async fn event_history(
 #[derive(Debug, serde::Deserialize)]
 struct HistoryParams {
     limit: Option<u32>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/attachments — list the indexed
+/// ATTACH entries (RFC 5545) for an event. Returns metadata only (uri/fmttype/
+/// is_inline); inline binary bytes stay in the event's ical_raw. 404 if the
+/// event doesn't belong to this tenant/calendar.
+async fn list_event_attachments(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((cal_id, event_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>> {
+    use serde_json::json;
+    let pool = state.db_or_unavailable()?;
+    let repo = EventRepo::new(pool);
+
+    // Verify event belongs to this tenant + calendar (404 guard).
+    let ev = repo.get(ctx.tenant_id, event_id).await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(event_id));
+    }
+
+    let attachments = repo.list_attachments(ctx.tenant_id, event_id).await?;
+    Ok(Json(json!({
+        "event_id":    event_id,
+        "calendar_id": cal_id,
+        "attachments": attachments,
+    })))
 }
 
 /// DELETE /api/v1/calendars/:cal_id/events/:id/history — purge do log de histórico.
