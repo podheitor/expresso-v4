@@ -516,6 +516,12 @@ async fn upload_inner(
             ));
         }
 
+        // Overwriting an existing file's content is a write on that node.
+        if let Err(e) = require_write(pool, ctx.tenant_id, existing.id, ctx.user_id).await {
+            let _ = fs::remove_file(&path).await;
+            return Err(e);
+        }
+
         // Archive previous content (if any) before overwrite.
         if let Some(prev_key) = existing.storage_key.as_deref() {
             let next_no = ver_repo.next_no(ctx.tenant_id, existing.id).await?;
@@ -1638,6 +1644,7 @@ async fn list_versions(
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    require_read(pool, ctx.tenant_id, id, ctx.user_id).await?;
     let max_created: Option<OffsetDateTime> = sqlx::query_scalar(
         "SELECT MAX(created_at) FROM drive_file_versions WHERE tenant_id = $1 AND file_id = $2",
     )
@@ -1726,6 +1733,7 @@ async fn version_metadata(
     let pool = state.db_or_unavailable()?;
     // Tenant-gate via file ownership check.
     let _ = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    require_read(pool, ctx.tenant_id, id, ctx.user_id).await?;
     let ver = VersionRepo::new(pool)
         .get(ctx.tenant_id, id, v)
         .await?
@@ -1748,6 +1756,7 @@ async fn download_version(
     let pool = state.db_or_unavailable()?;
     // Tenant-gate.
     let parent = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    require_read(pool, ctx.tenant_id, id, ctx.user_id).await?;
     let ver = VersionRepo::new(pool)
         .get(ctx.tenant_id, id, v)
         .await?
@@ -1792,6 +1801,7 @@ async fn restore_version(
     let ver_repo = VersionRepo::new(pool);
 
     let current = file_repo.get(ctx.tenant_id, id).await?;
+    require_write(pool, ctx.tenant_id, id, ctx.user_id).await?;
     let target = ver_repo
         .get(ctx.tenant_id, id, v)
         .await?
@@ -1891,6 +1901,7 @@ async fn diff_version_content(
 
     let pool = state.db_or_unavailable()?;
     let _file = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    require_read(pool, ctx.tenant_id, id, ctx.user_id).await?;
 
     let ver_b = VersionRepo::new(pool)
         .get(ctx.tenant_id, id, v)
@@ -2579,6 +2590,7 @@ async fn star_file(
     Path(id): Path<Uuid>,
 ) -> Result<Json<DriveFile>> {
     let pool = state.db_or_unavailable()?;
+    require_read(pool, ctx.tenant_id, id, ctx.user_id).await?;
     let updated = FileRepo::new(pool)
         .star_file(ctx.tenant_id, id, ctx.user_id)
         .await?;
@@ -2592,6 +2604,7 @@ async fn unstar_file(
     Path(id): Path<Uuid>,
 ) -> Result<Json<DriveFile>> {
     let pool = state.db_or_unavailable()?;
+    require_read(pool, ctx.tenant_id, id, ctx.user_id).await?;
     let updated = FileRepo::new(pool)
         .unstar_file(ctx.tenant_id, id, ctx.user_id)
         .await?;
