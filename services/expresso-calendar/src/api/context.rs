@@ -31,6 +31,7 @@ use expresso_auth_client::{
 
 pub const H_TENANT: &str = "x-tenant-id";
 pub const H_USER: &str = "x-user-id";
+pub const H_ROLES: &str = "x-roles";
 
 #[derive(Debug, Clone, Copy)]
 pub struct RequestCtx {
@@ -43,75 +44,141 @@ impl<S: Send + Sync> FromRequestParts<S> for RequestCtx {
     type Rejection = CtxError;
 
     async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
-        // JWT mode: validator wired → Bearer required, strict validation.
-        // Multi-realm precedence: if MultiRealmValidator + TenantResolver
-        // present → resolve realm via Host header and validate.
-        if let (Some(m), Some(r)) = (
-            parts.extensions.get::<Arc<MultiRealmValidator>>().cloned(),
-            parts.extensions.get::<Arc<TenantResolver>>().cloned(),
-        ) {
-            if let Some(host) = parts.headers.get(HOST).and_then(|v| v.to_str().ok()) {
-                if let Some(realm) = r.resolve(host) {
-                    let token_owned;
-                    let token: &str = if let Some(t) = bearer_token(&parts.headers) {
-                        t
-                    } else if let Some(t) = cookie_token(&parts.headers, ACCESS_TOKEN_COOKIE) {
-                        token_owned = t;
-                        token_owned.as_str()
-                    } else {
-                        return Err(CtxError::MissingBearer);
-                    };
-                    let v = m.for_realm(realm).await.map_err(|e| {
+        let ResolvedCtx {
+            tenant_id, user_id, ..
+        } = resolve_ctx(parts).await?;
+        Ok(Self { tenant_id, user_id })
+    }
+}
+
+/// Resource-registry admin gate. Same authentication as [`RequestCtx`], but the
+/// caller must additionally hold a tenant-admin role — registering or deleting
+/// bookable rooms is an admin operation, not a per-user one. Mirrors
+/// expresso-auth's `is_super` check, scoped to the calendar admin roles.
+pub struct AdminCtx {
+    pub tenant_id: Uuid,
+}
+
+/// Roles accepted as tenant calendar admins (case-insensitive).
+const ADMIN_ROLES: [&str; 3] = ["admin", "calendar-admin", "calendar_admin"];
+
+#[async_trait]
+impl<S: Send + Sync> FromRequestParts<S> for AdminCtx {
+    type Rejection = CtxError;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
+        let c = resolve_ctx(parts).await?;
+        if !has_admin_role(&c.roles) {
+            return Err(CtxError::Forbidden("admin_role_required".into()));
+        }
+        Ok(Self {
+            tenant_id: c.tenant_id,
+        })
+    }
+}
+
+/// True if any role matches an entry in [`ADMIN_ROLES`] (case-insensitive).
+fn has_admin_role(roles: &[String]) -> bool {
+    roles
+        .iter()
+        .any(|r| ADMIN_ROLES.iter().any(|a| r.eq_ignore_ascii_case(a)))
+}
+
+/// Authenticated identity plus roles, resolved once and shared by both
+/// extractors. In header-fallback (dev) mode, roles come from `X-Roles`.
+struct ResolvedCtx {
+    tenant_id: Uuid,
+    user_id: Uuid,
+    roles: Vec<String>,
+}
+
+/// Validate the request and produce a [`ResolvedCtx`], using the same dual-mode
+/// precedence as the original `RequestCtx` extractor: multi-realm → single-realm
+/// OIDC → dev header fallback.
+async fn resolve_ctx(parts: &mut Parts) -> Result<ResolvedCtx, CtxError> {
+    // JWT mode: validator wired → Bearer required, strict validation.
+    // Multi-realm precedence: if MultiRealmValidator + TenantResolver
+    // present → resolve realm via Host header and validate.
+    if let (Some(m), Some(r)) = (
+        parts.extensions.get::<Arc<MultiRealmValidator>>().cloned(),
+        parts.extensions.get::<Arc<TenantResolver>>().cloned(),
+    ) {
+        if let Some(host) = parts.headers.get(HOST).and_then(|v| v.to_str().ok()) {
+            if let Some(realm) = r.resolve(host) {
+                let token = require_token(&parts.headers)?;
+                let v = m.for_realm(realm).await.map_err(|e| {
+                    auth_metrics::VALIDATION_TOTAL
+                        .with_label_values(&[realm, auth_metrics::result_label(&e)])
+                        .inc();
+                    CtxError::from(e)
+                })?;
+                return match v.validate(&token).await {
+                    Ok(c) => {
+                        auth_metrics::VALIDATION_TOTAL
+                            .with_label_values(&[realm, "ok"])
+                            .inc();
+                        Ok(ResolvedCtx {
+                            tenant_id: c.tenant_id,
+                            user_id: c.user_id,
+                            roles: c.roles,
+                        })
+                    }
+                    Err(e) => {
                         auth_metrics::VALIDATION_TOTAL
                             .with_label_values(&[realm, auth_metrics::result_label(&e)])
                             .inc();
-                        CtxError::from(e)
-                    })?;
-                    match v.validate(token).await {
-                        Ok(c) => {
-                            auth_metrics::VALIDATION_TOTAL
-                                .with_label_values(&[realm, "ok"])
-                                .inc();
-                            return Ok(Self {
-                                tenant_id: c.tenant_id,
-                                user_id: c.user_id,
-                            });
-                        }
-                        Err(e) => {
-                            auth_metrics::VALIDATION_TOTAL
-                                .with_label_values(&[realm, auth_metrics::result_label(&e)])
-                                .inc();
-                            return Err(CtxError::from(e));
-                        }
+                        Err(CtxError::from(e))
                     }
-                }
+                };
             }
         }
-
-        if let Some(validator) = parts.extensions.get::<Arc<OidcValidator>>().cloned() {
-            let token_owned;
-            let token: &str = if let Some(t) = bearer_token(&parts.headers) {
-                t
-            } else if let Some(t) = cookie_token(&parts.headers, ACCESS_TOKEN_COOKIE) {
-                token_owned = t;
-                token_owned.as_str()
-            } else {
-                return Err(CtxError::MissingBearer);
-            };
-            let ctx = validator.validate(token).await.map_err(CtxError::from)?;
-            return Ok(Self {
-                tenant_id: ctx.tenant_id,
-                user_id: ctx.user_id,
-            });
-        }
-
-        // Header fallback (dev only).
-        let tenant_id =
-            parse_uuid_header(&parts.headers, H_TENANT).ok_or(CtxError::MissingHeader(H_TENANT))?;
-        let user_id =
-            parse_uuid_header(&parts.headers, H_USER).ok_or(CtxError::MissingHeader(H_USER))?;
-        Ok(Self { tenant_id, user_id })
     }
+
+    if let Some(validator) = parts.extensions.get::<Arc<OidcValidator>>().cloned() {
+        let token = require_token(&parts.headers)?;
+        let ctx = validator.validate(&token).await.map_err(CtxError::from)?;
+        return Ok(ResolvedCtx {
+            tenant_id: ctx.tenant_id,
+            user_id: ctx.user_id,
+            roles: ctx.roles,
+        });
+    }
+
+    // Header fallback (dev only).
+    let tenant_id =
+        parse_uuid_header(&parts.headers, H_TENANT).ok_or(CtxError::MissingHeader(H_TENANT))?;
+    let user_id =
+        parse_uuid_header(&parts.headers, H_USER).ok_or(CtxError::MissingHeader(H_USER))?;
+    Ok(ResolvedCtx {
+        tenant_id,
+        user_id,
+        roles: parse_roles_header(&parts.headers),
+    })
+}
+
+/// Extract the bearer or access-token-cookie value, or fail with `MissingBearer`.
+/// Returns an owned `String` so both header and cookie sources unify (the cookie
+/// value is not a sub-slice of a single header value).
+fn require_token(h: &HeaderMap) -> Result<String, CtxError> {
+    if let Some(t) = bearer_token(h) {
+        return Ok(t.to_string());
+    }
+    cookie_token(h, ACCESS_TOKEN_COOKIE).ok_or(CtxError::MissingBearer)
+}
+
+/// Parse the dev-only `X-Roles` header (comma-separated) into a role list.
+/// Empty/absent → no roles. Only consulted in header-fallback mode.
+fn parse_roles_header(h: &HeaderMap) -> Vec<String> {
+    h.get(H_ROLES)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| {
+            s.split(',')
+                .map(str::trim)
+                .filter(|r| !r.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn parse_uuid_header(h: &HeaderMap, name: &'static str) -> Option<Uuid> {
@@ -191,5 +258,58 @@ impl IntoResponse for CtxError {
             Self::Forbidden(m) => (StatusCode::FORBIDDEN, "forbidden", m),
         };
         (status, Json(json!({"error": code, "message": msg}))).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn roles(rs: &[&str]) -> Vec<String> {
+        rs.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn admin_role_accepts_plain_admin() {
+        assert!(has_admin_role(&roles(&["user", "admin"])));
+    }
+
+    #[test]
+    fn admin_role_is_case_insensitive() {
+        assert!(has_admin_role(&roles(&["Calendar-Admin"])));
+        assert!(has_admin_role(&roles(&["ADMIN"])));
+    }
+
+    #[test]
+    fn admin_role_accepts_underscore_and_dash_variants() {
+        assert!(has_admin_role(&roles(&["calendar_admin"])));
+        assert!(has_admin_role(&roles(&["calendar-admin"])));
+    }
+
+    #[test]
+    fn admin_role_rejects_non_admin() {
+        assert!(!has_admin_role(&roles(&["user", "editor"])));
+        assert!(!has_admin_role(&[]));
+        // A role merely containing "admin" as a substring is not a match.
+        assert!(!has_admin_role(&roles(&["administrator", "adminx"])));
+    }
+
+    #[test]
+    fn roles_header_parses_csv_and_trims() {
+        let mut h = HeaderMap::new();
+        h.insert(H_ROLES, "admin, user ,editor".parse().unwrap());
+        assert_eq!(parse_roles_header(&h), roles(&["admin", "user", "editor"]));
+    }
+
+    #[test]
+    fn roles_header_absent_is_empty() {
+        assert!(parse_roles_header(&HeaderMap::new()).is_empty());
+    }
+
+    #[test]
+    fn roles_header_blank_entries_dropped() {
+        let mut h = HeaderMap::new();
+        h.insert(H_ROLES, " , admin , ".parse().unwrap());
+        assert_eq!(parse_roles_header(&h), roles(&["admin"]));
     }
 }

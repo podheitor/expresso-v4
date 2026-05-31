@@ -10,7 +10,10 @@
 //!
 //! A resource's email matches the `ATTENDEE;CUTYPE=ROOM|RESOURCE` it appears as
 //! in events; `EventRepo` indexes those bookings, and conflicts are the time
-//! overlaps among events sharing the resource (stored dtstart/dtend, no RRULE).
+//! overlaps among events sharing the resource (RRULE-expanded per occurrence).
+//!
+//! Registry mutations (POST/DELETE) require a tenant-admin role via `AdminCtx`;
+//! reads (list/get/conflicts) are open to any authenticated tenant user.
 
 use axum::{
     extract::{Path, Query, State},
@@ -22,7 +25,7 @@ use serde::Deserialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::api::context::RequestCtx;
+use crate::api::context::{AdminCtx, RequestCtx};
 use crate::domain::{NewResource, ResourceRepo};
 use crate::error::{CalendarError, Result};
 use crate::state::AppState;
@@ -42,7 +45,7 @@ async fn list(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<ser
 
 async fn create(
     State(state): State<AppState>,
-    ctx: RequestCtx,
+    ctx: AdminCtx,
     Json(body): Json<NewResource>,
 ) -> Result<(StatusCode, Json<serde_json::Value>)> {
     let pool = state.db_or_unavailable()?;
@@ -62,7 +65,7 @@ async fn get_one(
 
 async fn delete(
     State(state): State<AppState>,
-    ctx: RequestCtx,
+    ctx: AdminCtx,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
