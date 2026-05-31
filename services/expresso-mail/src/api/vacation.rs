@@ -8,7 +8,7 @@ use axum::{
     extract::State,
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, patch},
+    routing::{get, patch, post},
     Json, Router,
 };
 use expresso_core::begin_tenant_tx;
@@ -37,6 +37,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/mail/vacation", get(get_vacation).put(put_vacation))
         .route("/mail/vacation/toggle", patch(toggle_vacation))
+        .route("/mail/vacation/out-of-office", post(set_out_of_office))
 }
 
 /// Spawn vacation auto-deactivation worker.
@@ -282,6 +283,100 @@ async fn toggle_vacation(
     Ok(Json(v))
 }
 
+/// Request to arm out-of-office for a date window. Mirrors a calendar OOO event:
+/// `starts_at`/`ends_at` bound the absence; `subject`/`body` override the stored
+/// reply text when present (else the existing config — or defaults — is kept).
+#[derive(Debug, Deserialize)]
+struct OutOfOffice {
+    #[serde(with = "time::serde::rfc3339")]
+    starts_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    ends_at: OffsetDateTime,
+    subject: Option<String>,
+    body: Option<String>,
+}
+
+/// POST /api/v1/mail/vacation/out-of-office — arm the auto-responder for a window.
+///
+/// Enables vacation, sets `[starts_at, ends_at]`, and `deactivate_at = ends_at`
+/// so the hourly worker disables it when the window closes. The reply only fires
+/// within the window (ingest checks the bounds), so arming a future window does
+/// not auto-reply early. Existing subject/body/interval are preserved unless
+/// overridden. This is the endpoint a calendar OOO event drives.
+async fn set_out_of_office(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Json(ooo): Json<OutOfOffice>,
+) -> Result<Json<Vacation>> {
+    if ooo.ends_at <= ooo.starts_at {
+        return Err(MailError::BadRequest(
+            "ends_at must be after starts_at".into(),
+        ));
+    }
+
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let existing = sqlx::query(
+        "SELECT subject, body, interval_days FROM user_vacation \
+         WHERE user_id = $1 AND tenant_id = $2",
+    )
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let defaults = Vacation::default();
+    let (cur_subject, cur_body, interval_days) = match existing {
+        Some(r) => (
+            r.get::<String, _>("subject"),
+            r.get::<String, _>("body"),
+            r.get::<i32, _>("interval_days"),
+        ),
+        None => (defaults.subject, defaults.body, defaults.interval_days),
+    };
+
+    let mut v = Vacation {
+        enabled: true,
+        starts_at: Some(ooo.starts_at),
+        ends_at: Some(ooo.ends_at),
+        deactivate_at: Some(ooo.ends_at),
+        subject: ooo.subject.unwrap_or(cur_subject),
+        body: ooo.body.unwrap_or(cur_body),
+        interval_days,
+        sieve_script: String::new(),
+    };
+    validate(&v)?;
+    v.sieve_script = render_script(&v);
+
+    sqlx::query(
+        "INSERT INTO user_vacation \
+            (user_id, tenant_id, enabled, starts_at, ends_at, deactivate_at, subject, body, interval_days, sieve_script, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now()) \
+         ON CONFLICT (user_id) DO UPDATE SET \
+            enabled       = EXCLUDED.enabled, \
+            starts_at     = EXCLUDED.starts_at, \
+            ends_at       = EXCLUDED.ends_at, \
+            deactivate_at = EXCLUDED.deactivate_at, \
+            subject       = EXCLUDED.subject, \
+            body          = EXCLUDED.body, \
+            sieve_script  = EXCLUDED.sieve_script, \
+            updated_at    = now()",
+    )
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .bind(v.enabled)
+    .bind(v.starts_at)
+    .bind(v.ends_at)
+    .bind(v.deactivate_at)
+    .bind(&v.subject)
+    .bind(&v.body)
+    .bind(v.interval_days)
+    .bind(&v.sieve_script)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    Ok(Json(v))
+}
+
 /// Gate aplicado em PUT /mail/vacation. Ordem: tamanho → CR/LF →
 /// interval. Tamanho primeiro pra rejeitar abuso antes de tocar
 /// memória/regex desnecessários.
@@ -511,5 +606,33 @@ mod tests {
     fn vacation_default_ends_at_is_none() {
         let v = Vacation::default();
         assert!(v.ends_at.is_none());
+    }
+
+    #[test]
+    fn out_of_office_deserializes_window() {
+        let ooo: OutOfOffice = serde_json::from_str(
+            r#"{"starts_at":"2026-06-01T00:00:00Z","ends_at":"2026-06-08T00:00:00Z"}"#,
+        )
+        .unwrap();
+        assert!(ooo.ends_at > ooo.starts_at);
+        assert!(ooo.subject.is_none());
+    }
+
+    #[test]
+    fn out_of_office_window_renders_sieve() {
+        // A windowed OOO still produces a runnable vacation script.
+        let v = Vacation {
+            enabled: true,
+            starts_at: Some(time::macros::datetime!(2026-06-01 0:00 UTC)),
+            ends_at: Some(time::macros::datetime!(2026-06-08 0:00 UTC)),
+            deactivate_at: Some(time::macros::datetime!(2026-06-08 0:00 UTC)),
+            subject: "Away".into(),
+            body: "Back on the 8th".into(),
+            interval_days: 7,
+            sieve_script: String::new(),
+        };
+        let s = render_script(&v);
+        assert!(s.contains("vacation :days 7"));
+        assert!(s.contains("Back on the 8th"));
     }
 }

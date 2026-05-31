@@ -1122,8 +1122,16 @@ async fn apply_sieve(
     user_id: Uuid,
     raw: &[u8],
 ) -> SieveDecision {
+    // Honor the configured out-of-office window: the auto-reply fires only when
+    // enabled AND now() is within [starts_at, ends_at] (NULL bound = open). This
+    // lets a user arm vacation ahead of time without auto-replying early, and
+    // stops replies after the window even before the hourly deactivation worker
+    // runs.
     let vacation_script: Option<String> = sqlx::query_scalar(
-        r#"SELECT sieve_script FROM user_vacation WHERE user_id = $1 AND enabled = true"#,
+        r#"SELECT sieve_script FROM user_vacation
+            WHERE user_id = $1 AND enabled = true
+              AND (starts_at IS NULL OR starts_at <= now())
+              AND (ends_at   IS NULL OR ends_at   >= now())"#,
     )
     .bind(user_id)
     .fetch_optional(&mut **tx)
