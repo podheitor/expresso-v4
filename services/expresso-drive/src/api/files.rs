@@ -63,6 +63,52 @@ fn index_file_content(
     });
 }
 
+/// Remove a drive file's document from the expresso-search index by `file_id`.
+/// No-op when search is unconfigured. Fire-and-forget, same as
+/// [`index_file_content`]: a search outage must not block or fail the delete.
+/// Used on trash (soft-delete) and purge so content-search never returns blobs
+/// the user can no longer see; [`restore`] re-indexes on un-trash.
+fn deindex_file_content(state: &AppState, file_id: Uuid) {
+    let search_url = state.search_url();
+    if search_url.is_empty() {
+        return;
+    }
+    let url = format!("{}/api/v1/index/{}", search_url, file_id);
+    let token = state.search_token().to_string();
+    tokio::spawn(async move {
+        let mut req = reqwest::Client::new().delete(url);
+        if !token.is_empty() {
+            req = req.bearer_auth(&token);
+        }
+        let _ = req.send().await;
+    });
+}
+
+/// Read a blob from `data_root/<storage_key>` and push its extracted text to the
+/// search index under `file_id`. No-op when search is unconfigured, the key is
+/// empty, the blob is unreadable, or the content isn't text-extractable. Used by
+/// [`restore_version`] and [`restore`], which only hold a storage pointer (the
+/// upload path already has the bytes in memory and calls [`index_file_content`]).
+async fn reindex_file_from_blob(
+    state: &AppState,
+    tenant_id: Uuid,
+    file_id: Uuid,
+    name: &str,
+    mime: Option<&str>,
+    storage_key: Option<&str>,
+) {
+    if state.search_url().is_empty() {
+        return;
+    }
+    let Some(key) = storage_key.filter(|k| !k.is_empty()) else {
+        return;
+    };
+    let Ok(bytes) = fs::read(state.data_root().join(key)).await else {
+        return;
+    };
+    index_file_content(state, tenant_id, file_id, name, mime, &bytes);
+}
+
 /// Require the caller to have any access (owner, or a READ/WRITE/ADMIN grant on
 /// the node or an ancestor folder) on `file_id`; 403 otherwise. The node's
 /// existence in the tenant is assumed already checked by the caller's
@@ -1083,6 +1129,7 @@ async fn delete_file_inner(
                 }
             }
         }
+        deindex_file_content(&state, id);
         tracing::info!(target: "audit",
             event = "drive.file.purge",
             tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
@@ -1092,6 +1139,9 @@ async fn delete_file_inner(
     if removed == 0 {
         return Err(DriveError::NotFound(id));
     }
+    // Drop from the search index so content-search never surfaces trashed files;
+    // `restore` re-indexes on un-trash.
+    deindex_file_content(&state, id);
     tracing::info!(target: "audit",
         event = "drive.file.trash",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
@@ -1105,6 +1155,16 @@ async fn restore(
 ) -> Result<Json<DriveFile>> {
     let pool = state.db_or_unavailable()?;
     let row = FileRepo::new(pool).restore(ctx.tenant_id, id).await?;
+    // Re-add to the search index: `delete_file` dropped it on trash.
+    reindex_file_from_blob(
+        &state,
+        ctx.tenant_id,
+        row.id,
+        &row.name,
+        row.mime_type.as_deref(),
+        row.storage_key.as_deref(),
+    )
+    .await;
     tracing::info!(target: "audit",
         event = "drive.file.restore",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
@@ -1889,6 +1949,19 @@ async fn restore_version(
             target.mime_type.as_deref(),
         )
         .await?;
+
+    // Re-index the now-live content: search only saw the original upload, so
+    // without this the index keeps stale text after a restore. We only hold the
+    // version's storage pointer here, so read the blob back from disk.
+    reindex_file_from_blob(
+        &state,
+        ctx.tenant_id,
+        updated.id,
+        &updated.name,
+        updated.mime_type.as_deref(),
+        updated.storage_key.as_deref(),
+    )
+    .await;
 
     tracing::info!(target: "audit",
         event = "drive.file.restore_version",
