@@ -50,7 +50,12 @@ mod tests {
     /// tag/version modules registering the same paths).
     #[test]
     fn router_mounts_without_overlap() {
-        let state = AppState::new(None, std::path::PathBuf::from("/tmp"));
+        let state = AppState::with_search(
+            None,
+            std::path::PathBuf::from("/tmp"),
+            String::new(),
+            String::new(),
+        );
         let _ = router(state);
     }
 }

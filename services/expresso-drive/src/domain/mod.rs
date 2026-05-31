@@ -2,6 +2,7 @@ pub mod acl;
 pub mod file;
 pub mod quota;
 pub mod share;
+pub mod text_extract;
 pub mod upload;
 pub mod version;
 pub mod wopi_lock;

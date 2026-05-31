@@ -26,6 +26,43 @@ use crate::{
     state::AppState,
 };
 
+/// Fire-and-forget: extract text from an uploaded file and push it to the
+/// expresso-search index (`kind = "drive"`). No-op when search is unconfigured
+/// or the file isn't text-extractable. Never blocks or fails the upload — a
+/// search outage must not break drive writes (mirrors expresso-mail's ingest).
+fn index_file_content(
+    state: &AppState,
+    tenant_id: Uuid,
+    file_id: Uuid,
+    name: &str,
+    mime: Option<&str>,
+    bytes: &[u8],
+) {
+    let search_url = state.search_url();
+    if search_url.is_empty() {
+        return;
+    }
+    let Some(text) = crate::domain::text_extract::extract(mime, name, bytes) else {
+        return;
+    };
+    let doc = serde_json::json!({
+        "document_id": file_id.to_string(),
+        "tenant_id":   tenant_id.to_string(),
+        "subject":     name,
+        "body":        text,
+        "kind":        "drive",
+    });
+    let url = format!("{}/api/v1/index", search_url);
+    let token = state.search_token().to_string();
+    tokio::spawn(async move {
+        let mut req = reqwest::Client::new().post(url).json(&doc);
+        if !token.is_empty() {
+            req = req.bearer_auth(&token);
+        }
+        let _ = req.send().await;
+    });
+}
+
 /// Require the caller to have any access (owner, or a READ/WRITE/ADMIN grant on
 /// the node or an ancestor folder) on `file_id`; 403 otherwise. The node's
 /// existence in the tenant is assumed already checked by the caller's
@@ -77,6 +114,7 @@ pub fn routes() -> Router<AppState> {
             get(metadata).patch(rename),
         )
         .route("/api/v1/drive/files/search", get(search))
+        .route("/api/v1/drive/files/content-search", get(content_search))
         .route("/api/v1/drive/files/bulk-trash", post(bulk_trash))
         .route("/api/v1/drive/files/bulk-move", post(bulk_move))
         .route("/api/v1/drive/files/bulk-copy", post(bulk_copy))
@@ -554,6 +592,14 @@ async fn upload_inner(
             let _ = fs::remove_file(&path).await;
         }
         let updated = updated?;
+        index_file_content(
+            &state,
+            ctx.tenant_id,
+            updated.id,
+            &updated.name,
+            mime.as_deref(),
+            &bytes,
+        );
         tracing::info!(target: "audit",
             event = "drive.file.version",
             tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %updated.id);
@@ -579,6 +625,14 @@ async fn upload_inner(
         let _ = fs::remove_file(&path).await;
     }
     let row = row?;
+    index_file_content(
+        &state,
+        ctx.tenant_id,
+        row.id,
+        &row.name,
+        row.mime_type.as_deref(),
+        &bytes,
+    );
     tracing::info!(target: "audit",
         event = "drive.file.upload",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %row.id);
@@ -2372,6 +2426,73 @@ async fn search(
     .fetch_all(pool)
     .await?;
     Ok(Json(rows))
+}
+
+/// GET /api/v1/drive/files/content-search?q=<term>&limit=50
+///
+/// Full-text search over uploaded file *contents* via expresso-search, scoped
+/// to this tenant and `kind = "drive"`. Each hit is the matched file's id plus a
+/// snippet. 503 when search isn't configured. Complements `/search` (filename
+/// ILIKE); only files whose content was extractable at upload are indexed.
+async fn content_search(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Query(q): Query<SearchQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if q.q.trim().is_empty() {
+        return Err(DriveError::BadRequest("q must not be empty".into()));
+    }
+    let search_url = state.search_url();
+    if search_url.is_empty() {
+        return Err(DriveError::SearchUnavailable);
+    }
+    let limit = q.limit.clamp(1, 200);
+
+    let mut req = reqwest::Client::new()
+        .get(format!("{search_url}/api/v1/search"))
+        .query(&[
+            ("q", q.q.as_str()),
+            ("tenant_id", &ctx.tenant_id.to_string()),
+            ("limit", &limit.to_string()),
+        ]);
+    let token = state.search_token();
+    if !token.is_empty() {
+        req = req.bearer_auth(token);
+    }
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| DriveError::SearchUpstream(e.to_string()))?;
+    if !resp.status().is_success() {
+        return Err(DriveError::SearchUpstream(format!(
+            "search returned {}",
+            resp.status()
+        )));
+    }
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| DriveError::SearchUpstream(e.to_string()))?;
+
+    // Keep only drive-kind hits; surface file id + snippet to the caller.
+    let hits: Vec<serde_json::Value> = body
+        .get("hits")
+        .and_then(|h| h.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter(|h| h.get("kind").and_then(|k| k.as_str()) == Some("drive"))
+                .map(|h| {
+                    serde_json::json!({
+                        "file_id": h.get("document_id"),
+                        "name":    h.get("subject"),
+                        "snippet": h.get("snippet"),
+                        "score":   h.get("score"),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(Json(serde_json::json!({ "hits": hits })))
 }
 
 async fn quota(

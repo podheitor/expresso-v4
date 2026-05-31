@@ -46,6 +46,12 @@ pub enum DriveError {
 
     #[error("quota exceeded")]
     QuotaExceeded,
+
+    #[error("search service not configured")]
+    SearchUnavailable,
+
+    #[error("search upstream error: {0}")]
+    SearchUpstream(String),
 }
 
 impl IntoResponse for DriveError {
@@ -59,6 +65,8 @@ impl IntoResponse for DriveError {
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::QuotaExceeded => StatusCode::INSUFFICIENT_STORAGE,
+            Self::SearchUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+            Self::SearchUpstream(_) => StatusCode::BAD_GATEWAY,
             Self::Io(_) | Self::Database(_) | Self::Core(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         let body = Json(json!({"error": self.to_string()}));

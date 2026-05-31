@@ -10,11 +10,25 @@ pub struct AppState(Arc<Inner>);
 struct Inner {
     db: Option<DbPool>,
     data_root: PathBuf,
+    /// Base URL of expresso-search for full-text indexing (empty = disabled).
+    search_url: String,
+    /// Optional bearer token for the search service.
+    search_token: String,
 }
 
 impl AppState {
-    pub fn new(db: Option<DbPool>, data_root: PathBuf) -> Self {
-        Self(Arc::new(Inner { db, data_root }))
+    pub fn with_search(
+        db: Option<DbPool>,
+        data_root: PathBuf,
+        search_url: String,
+        search_token: String,
+    ) -> Self {
+        Self(Arc::new(Inner {
+            db,
+            data_root,
+            search_url,
+            search_token,
+        }))
     }
 
     pub fn db_or_unavailable(&self) -> Result<&DbPool> {
@@ -23,6 +37,15 @@ impl AppState {
 
     pub fn data_root(&self) -> &PathBuf {
         &self.0.data_root
+    }
+
+    /// expresso-search base URL (empty when indexing is disabled).
+    pub fn search_url(&self) -> &str {
+        &self.0.search_url
+    }
+
+    pub fn search_token(&self) -> &str {
+        &self.0.search_token
     }
 }
 

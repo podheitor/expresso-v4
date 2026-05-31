@@ -145,7 +145,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let addr = resolve_addr()?;
-    let state = AppState::new(db.clone(), data_root.clone());
+    let search_url = env_string("SEARCH__URL").unwrap_or_default();
+    let search_token = env_string("SEARCH__TOKEN").unwrap_or_default();
+    if search_url.is_empty() {
+        warn!("SEARCH__URL unset — drive full-text indexing disabled");
+    }
+    let state = AppState::with_search(db.clone(), data_root.clone(), search_url, search_token);
 
     api::init_wopi_metrics();
 
