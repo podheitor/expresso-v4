@@ -101,6 +101,10 @@ tantivy      = "0.22"
 # Compression / Archive
 zip          = { version = "2", features = ["aes-crypto"] }
 
+# PDF text extraction (drive full-text indexing). lopdf's built-in
+# `extract_text` over content streams; we wrap it panic-safe + lenient.
+lopdf        = "0.34"
+
 # HTTP client
 reqwest      = { version = "0.12", features = ["json", "stream", "native-tls"] }
 

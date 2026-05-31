@@ -17,6 +17,7 @@ libfuzzer-sys     = "0.4"
 expresso-mail     = { path = "../services/expresso-mail",     features = ["fuzzing"] }
 expresso-calendar = { path = "../services/expresso-calendar", features = ["fuzzing"] }
 expresso-contacts = { path = "../services/expresso-contacts", features = ["fuzzing"] }
+expresso-drive    = { path = "../services/expresso-drive",    features = ["fuzzing"] }
 
 [profile.release]
 opt-level     = 3
@@ -38,3 +39,7 @@ path = "fuzz_targets/fuzz_ical.rs"
 [[bin]]
 name = "fuzz_vcard"
 path = "fuzz_targets/fuzz_vcard.rs"
+
+[[bin]]
+name = "fuzz_text_extract"
+path = "fuzz_targets/fuzz_text_extract.rs"

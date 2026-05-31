@@ -5,9 +5,18 @@ version = "0.1.0"
 edition = "2021"
 description = "WebDAV server + file sync API"
 
+[lib]
+name = "expresso_drive"
+path = "src/lib.rs"
+
 [[bin]]
 name = "expresso-drive"
 path = "src/main.rs"
+
+[features]
+# Exposes `fuzz_entry` for the cargo-fuzz harness. text_extract is a pure
+# bytes->text API, so no extra deps are needed (no tempfile).
+fuzzing = []
 
 [dependencies]
 tokio              = { workspace = true }
@@ -27,6 +36,7 @@ base64             = { workspace = true }
 hmac               = { workspace = true }
 hex                = { workspace = true }
 zip                = { workspace = true }
+lopdf              = { workspace = true }
 reqwest            = { workspace = true }
 prometheus         = { workspace = true }
 once_cell          = { workspace = true }

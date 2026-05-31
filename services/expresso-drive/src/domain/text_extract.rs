@@ -3,9 +3,10 @@
 //! Turns an uploaded file's bytes into plain text for the search index.
 //!
 //! Handles text/* and a few text-ish application types (json/csv/xml/markdown),
-//! decoded as UTF-8 (lossy), and OOXML office docs (docx/xlsx/pptx) — ZIP
-//! containers whose relevant XML parts are read and their tag content
-//! concatenated. Anything else (PDF, images, binaries) returns `None`.
+//! decoded as UTF-8 (lossy), OOXML office docs (docx/xlsx/pptx) — ZIP containers
+//! whose relevant XML parts are read and their tag content concatenated — and
+//! PDF, via `lopdf` content-stream text extraction. Anything else (images,
+//! binaries) returns `None`.
 //!
 //! Output is capped at `MAX_TEXT_BYTES` so a huge document can't bloat the
 //! index payload. Extraction is intentionally lenient: a malformed archive or
@@ -25,6 +26,7 @@ pub fn extract(mime: Option<&str>, name: &str, bytes: &[u8]) -> Option<String> {
     let text = match kind {
         ExtractKind::PlainText => decode_utf8_lossy(bytes),
         ExtractKind::Ooxml => extract_ooxml(bytes)?,
+        ExtractKind::Pdf => extract_pdf(bytes)?,
         ExtractKind::Unsupported => return None,
     };
     let trimmed = text.trim();
@@ -37,6 +39,7 @@ pub fn extract(mime: Option<&str>, name: &str, bytes: &[u8]) -> Option<String> {
 enum ExtractKind {
     PlainText,
     Ooxml,
+    Pdf,
     Unsupported,
 }
 
@@ -50,12 +53,16 @@ fn classify(mime: Option<&str>, name: &str) -> ExtractKind {
     if is_ooxml_mime(&mime) {
         return ExtractKind::Ooxml;
     }
+    if mime == "application/pdf" || mime == "application/x-pdf" {
+        return ExtractKind::Pdf;
+    }
     match extension(name).as_deref() {
         Some(
             "txt" | "md" | "markdown" | "csv" | "tsv" | "json" | "xml" | "log" | "yaml" | "yml"
             | "toml" | "rs" | "py" | "js" | "ts" | "html" | "css" | "sh",
         ) => ExtractKind::PlainText,
         Some("docx" | "xlsx" | "pptx") => ExtractKind::Ooxml,
+        Some("pdf") => ExtractKind::Pdf,
         _ => ExtractKind::Unsupported,
     }
 }
@@ -112,6 +119,36 @@ fn extract_ooxml(bytes: &[u8]) -> Option<String> {
         }
     }
     (!out.trim().is_empty()).then_some(out)
+}
+
+/// Max PDF pages to extract — a guard against pathological page counts bloating
+/// extraction time. Text past this is dropped (then `cap` bounds the bytes).
+const MAX_PDF_PAGES: usize = 500;
+
+/// Extract text from a PDF's content streams via `lopdf`. Returns `None` when the
+/// document can't be parsed or yields no text. Per-page extraction errors are
+/// skipped so a partly-corrupt PDF still indexes what it can.
+///
+/// `lopdf`'s parser operates on untrusted bytes and is not guaranteed
+/// panic-free, so the whole parse+extract is wrapped in `catch_unwind`: a panic
+/// degrades to `None` rather than killing the indexing task. The fuzz target
+/// (`fuzz_text_extract`) exercises this path against arbitrary input.
+fn extract_pdf(bytes: &[u8]) -> Option<String> {
+    let result = std::panic::catch_unwind(|| {
+        let doc = lopdf::Document::load_mem(bytes).ok()?;
+        let mut out = String::new();
+        for (&page_no, _) in doc.get_pages().iter().take(MAX_PDF_PAGES) {
+            if let Ok(text) = doc.extract_text(&[page_no]) {
+                out.push_str(&text);
+                out.push(' ');
+            }
+            if out.len() >= MAX_TEXT_BYTES {
+                break;
+            }
+        }
+        (!out.trim().is_empty()).then_some(out)
+    });
+    result.ok().flatten()
 }
 
 /// The OOXML parts that carry user-visible text (word body, slide text, shared
@@ -188,9 +225,68 @@ mod tests {
     }
 
     #[test]
-    fn pdf_is_not_extracted() {
-        // PDF is intentionally out of scope for this slice.
+    fn truncated_pdf_returns_none_not_panic() {
+        // A bare header with no body/xref → parse fails → None, never panics.
         assert!(extract(Some("application/pdf"), "doc.pdf", b"%PDF-1.7").is_none());
+    }
+
+    #[test]
+    fn garbage_pdf_mime_returns_none_not_panic() {
+        // Random bytes claiming to be a PDF must degrade to None.
+        let junk: Vec<u8> = (0..4096u32).map(|i| (i % 256) as u8).collect();
+        assert!(extract(Some("application/pdf"), "x.pdf", &junk).is_none());
+    }
+
+    #[test]
+    fn extracts_text_from_minimal_pdf() {
+        let pdf = minimal_pdf("Indexed PDF body");
+        let t =
+            extract(Some("application/pdf"), "doc.pdf", &pdf).expect("minimal pdf should extract");
+        assert!(t.contains("Indexed PDF body"), "got: {t}");
+    }
+
+    #[test]
+    fn pdf_detected_by_extension_when_mime_generic() {
+        let pdf = minimal_pdf("Body via extension");
+        let t = extract(Some("application/octet-stream"), "report.pdf", &pdf)
+            .expect("pdf by extension");
+        assert!(t.contains("Body via extension"), "got: {t}");
+    }
+
+    /// Build a single-page PDF whose content stream draws `text`, using a base-14
+    /// font (Helvetica) so no embedded font is required. Hand-assembled with a
+    /// correct xref table so `lopdf` parses it.
+    fn minimal_pdf(text: &str) -> Vec<u8> {
+        let content = format!("BT /F1 24 Tf 72 700 Td ({text}) Tj ET");
+        let objs = [
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] \
+              /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+                .to_string(),
+            format!(
+                "<< /Length {} >>\nstream\n{content}\nendstream",
+                content.len()
+            ),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+        ];
+        let mut pdf = String::from("%PDF-1.5\n");
+        let mut offsets = Vec::with_capacity(objs.len());
+        for (i, body) in objs.iter().enumerate() {
+            offsets.push(pdf.len());
+            pdf.push_str(&format!("{} 0 obj\n{body}\nendobj\n", i + 1));
+        }
+        let xref_pos = pdf.len();
+        pdf.push_str(&format!("xref\n0 {}\n", objs.len() + 1));
+        pdf.push_str("0000000000 65535 f \n");
+        for off in &offsets {
+            pdf.push_str(&format!("{off:010} 00000 n \n"));
+        }
+        pdf.push_str(&format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF",
+            objs.len() + 1
+        ));
+        pdf.into_bytes()
     }
 
     #[test]
