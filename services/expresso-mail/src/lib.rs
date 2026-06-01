@@ -64,6 +64,17 @@ fn resolve_multi_realm() -> (
     }
 }
 
+/// Build the PAT resolver when `AUTH__URL` (expresso-auth base URL) is set.
+/// Absent → None and the PAT auth path stays off (JWT-only), so this is opt-in.
+fn resolve_pat() -> Option<Arc<expresso_auth_client::PatResolver>> {
+    let auth_url = env_string("AUTH__URL")?;
+    tracing::info!(%auth_url, "PAT resolver enabled");
+    Some(Arc::new(expresso_auth_client::PatResolver::new(
+        auth_url,
+        reqwest::Client::new(),
+    )))
+}
+
 /// Library entry point: wire config, DB, and spawn all listeners.
 pub async fn run() -> anyhow::Result<()> {
     // ── Config ─────────────────────────────────────────────────────────────────
@@ -134,6 +145,7 @@ pub async fn run() -> anyhow::Result<()> {
     let http_addr: SocketAddr = format!("{}:{}", cfg.server.host, cfg.server.port).parse()?;
     let http_state = state.clone();
     let (multi, resolver) = resolve_multi_realm();
+    let pat = resolve_pat();
     set.spawn(async move {
         let mut router = api::router(http_state);
         if let Some(m) = multi {
@@ -141,6 +153,9 @@ pub async fn run() -> anyhow::Result<()> {
         }
         if let Some(r) = resolver {
             router = router.layer(axum::extract::Extension(r));
+        }
+        if let Some(p) = pat {
+            router = router.layer(axum::extract::Extension(p));
         }
         let listener = tokio::net::TcpListener::bind(http_addr).await?;
         info!(addr = %http_addr, "HTTP API listening");
