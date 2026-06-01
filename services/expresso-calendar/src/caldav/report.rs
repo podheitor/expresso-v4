@@ -119,6 +119,12 @@ async fn query(
     let range = xml::parse_time_range(body)
         .and_then(|(s, e)| Some((parse_caldav_dt(&s)?, parse_caldav_dt(&e)?)));
 
+    // RFC 4791 §9.7 comp-filter: a query scoped to VEVENT (or VTODO) returns only
+    // that component. No component filter → return both (events + tasks).
+    let comp = xml::parse_comp_filter(body);
+    let want_events = comp.as_deref().is_none_or(|c| c == "VEVENT");
+    let want_tasks = comp.as_deref().is_none_or(|c| c == "VTODO");
+
     let q = EventQuery {
         from: range.map(|(s, _)| s),
         to: range.map(|(_, e)| e),
@@ -126,14 +132,22 @@ async fn query(
     };
 
     let pool = state.db_or_unavailable()?;
-    let events = EventRepo::new(pool)
-        .list(principal.tenant_id, calendar_id, &q)
-        .await?;
+    let events = if want_events {
+        EventRepo::new(pool)
+            .list(principal.tenant_id, calendar_id, &q)
+            .await?
+    } else {
+        Vec::new()
+    };
     // VTODO has no required time-bound, so calendar-query returns all tasks on
     // the collection (clients drop components their comp-filter excludes).
-    let tasks = TaskRepo::new(pool)
-        .list(principal.tenant_id, calendar_id)
-        .await?;
+    let tasks = if want_tasks {
+        TaskRepo::new(pool)
+            .list(principal.tenant_id, calendar_id)
+            .await?
+    } else {
+        Vec::new()
+    };
 
     let mut out = String::with_capacity(4096);
     out.push_str(xml::XML_PROLOG);

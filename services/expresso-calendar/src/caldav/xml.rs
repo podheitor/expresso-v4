@@ -189,6 +189,44 @@ pub fn parse_time_range(body: &str) -> Option<(String, String)> {
     None
 }
 
+/// Extract the requested component type from a `calendar-query` comp-filter
+/// (RFC 4791 §9.7). The filter nests as
+/// `<comp-filter name="VCALENDAR"><comp-filter name="VEVENT|VTODO"/></comp-filter>`;
+/// we return the inner (non-VCALENDAR) component name, uppercased. `None` when
+/// the body has no component-scoped filter (caller returns all components).
+pub fn parse_comp_filter(body: &str) -> Option<String> {
+    let mut reader = Reader::from_str(body);
+    reader.config_mut().trim_text(true);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if local_name(e.name().as_ref()) == "comp-filter" =>
+            {
+                if let Some(name) = comp_filter_name(&e) {
+                    let upper = name.to_ascii_uppercase();
+                    if upper != "VCALENDAR" {
+                        return Some(upper);
+                    }
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Read the `name="…"` attribute of a `<comp-filter>` element.
+fn comp_filter_name(e: &quick_xml::events::BytesStart<'_>) -> Option<String> {
+    for attr in e.attributes().flatten() {
+        if attr.key.as_ref() == b"name" {
+            return attr.unescape_value().ok().map(|c| c.into_owned());
+        }
+    }
+    None
+}
+
 /// Detect which REPORT variant a body requests.
 /// Returns the local element name of the first recognized REPORT root
 /// (`calendar-query`, `calendar-multiget`, `free-busy-query`, `sync-collection`).
@@ -436,5 +474,36 @@ mod tests {
     #[test]
     fn xml_prolog_ends_with_closing_angle_bracket() {
         assert!(XML_PROLOG.ends_with('>'));
+    }
+
+    #[test]
+    fn comp_filter_extracts_vtodo() {
+        let body = r#"<C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav">
+            <C:filter><C:comp-filter name="VCALENDAR">
+              <C:comp-filter name="VTODO"/>
+            </C:comp-filter></C:filter></C:calendar-query>"#;
+        assert_eq!(parse_comp_filter(body).as_deref(), Some("VTODO"));
+    }
+
+    #[test]
+    fn comp_filter_extracts_vevent_lowercase_normalized() {
+        let body = r#"<C:filter xmlns:C="urn:ietf:params:xml:ns:caldav">
+            <C:comp-filter name="vcalendar">
+              <C:comp-filter name="vevent"/>
+            </C:comp-filter></C:filter>"#;
+        assert_eq!(parse_comp_filter(body).as_deref(), Some("VEVENT"));
+    }
+
+    #[test]
+    fn comp_filter_none_when_only_vcalendar() {
+        let body = r#"<C:filter xmlns:C="urn:ietf:params:xml:ns:caldav">
+            <C:comp-filter name="VCALENDAR"/></C:filter>"#;
+        assert_eq!(parse_comp_filter(body), None);
+    }
+
+    #[test]
+    fn comp_filter_none_when_absent() {
+        let body = r#"<C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav"/>"#;
+        assert_eq!(parse_comp_filter(body), None);
     }
 }
