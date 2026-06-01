@@ -30,6 +30,8 @@ pub struct Contact {
     pub organization: Option<String>,
     pub email_primary: Option<String>,
     pub phone_primary: Option<String>,
+    pub birthday: Option<String>,
+    pub nickname: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
@@ -61,9 +63,9 @@ impl<'a> ContactRepo<'a> {
             INSERT INTO contacts (
                 addressbook_id, tenant_id, uid, etag, vcard_raw,
                 full_name, family_name, given_name, organization,
-                email_primary, phone_primary
+                email_primary, phone_primary, birthday, nickname
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
             RETURNING *
             "#,
         )
@@ -78,6 +80,8 @@ impl<'a> ContactRepo<'a> {
         .bind(parsed.organization)
         .bind(parsed.email)
         .bind(parsed.phone)
+        .bind(parsed.birthday)
+        .bind(parsed.nickname)
         .fetch_one(&mut *tx)
         .await?;
         tx.commit().await?;
@@ -132,7 +136,8 @@ impl<'a> ContactRepo<'a> {
              WHERE tenant_id = $1
                AND (full_name    ILIKE $2 ESCAPE '\'
                  OR email_primary ILIKE $2 ESCAPE '\'
-                 OR organization  ILIKE $2 ESCAPE '\')
+                 OR organization  ILIKE $2 ESCAPE '\'
+                 OR nickname      ILIKE $2 ESCAPE '\')
              ORDER BY COALESCE(full_name, uid)
              LIMIT $3
             "#,
@@ -161,7 +166,9 @@ impl<'a> ContactRepo<'a> {
                 given_name    = $8,
                 organization  = $9,
                 email_primary = $10,
-                phone_primary = $11
+                phone_primary = $11,
+                birthday      = $12,
+                nickname      = $13
             WHERE tenant_id = $1 AND id = $2
             RETURNING *
             "#,
@@ -177,6 +184,8 @@ impl<'a> ContactRepo<'a> {
         .bind(parsed.organization)
         .bind(parsed.email)
         .bind(parsed.phone)
+        .bind(parsed.birthday)
+        .bind(parsed.nickname)
         .fetch_one(&mut *tx)
         .await?;
         tx.commit().await?;
@@ -323,6 +332,8 @@ mod tests {
             organization: Some("Acme Inc.".into()),
             email_primary: Some("alice@example.com".into()),
             phone_primary: Some("+55 11 9999-9999".into()),
+            birthday: Some("1990-05-15".into()),
+            nickname: Some("Ali".into()),
             created_at: datetime!(2026-05-22 08:00:00 UTC),
             updated_at: datetime!(2026-05-22 08:00:00 UTC),
         }

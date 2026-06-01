@@ -27,6 +27,11 @@ pub struct ParsedVCard {
     pub organization: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
+    /// BDAY value verbatim (RFC 6350 §6.2.5) — may be a full date or a partial
+    /// `--MMDD`. None when absent.
+    pub birthday: Option<String>,
+    /// First NICKNAME value (RFC 6350 §6.2.3), comma-list collapsed to its head.
+    pub nickname: Option<String>,
 }
 
 /// Parse a vCard (3.0 or 4.0). Returns `Err` if no UID or no BEGIN:VCARD.
@@ -63,6 +68,19 @@ pub fn parse(raw: &str) -> Result<ParsedVCard, String> {
             "ORG" if out.organization.is_none() => out.organization = Some(value.trim().to_owned()),
             "EMAIL" if out.email.is_none() => out.email = Some(value.trim().to_owned()),
             "TEL" if out.phone.is_none() => out.phone = Some(value.trim().to_owned()),
+            "BDAY" if out.birthday.is_none() => {
+                let b = value.trim();
+                if !b.is_empty() {
+                    out.birthday = Some(b.to_owned());
+                }
+            }
+            "NICKNAME" if out.nickname.is_none() => {
+                // NICKNAME is a comma-separated list; index the first entry.
+                let n = value.split(',').next().unwrap_or(value).trim();
+                if !n.is_empty() {
+                    out.nickname = Some(n.to_owned());
+                }
+            }
             "N" if out.family_name.is_none() => {
                 // N = Family;Given;Additional;Prefix;Suffix
                 let parts: Vec<&str> = value.split(';').collect();
@@ -449,6 +467,25 @@ mod tests {
     fn build_vcard_uid_present_in_output() {
         let v = build_vcard("test-uid-42", "Alice", None, None, None, None);
         assert!(v.contains("test-uid-42"));
+    }
+
+    // ---- BDAY / NICKNAME ----
+
+    #[test]
+    fn parses_bday_and_nickname() {
+        let raw = "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:b1\r\nFN:Ada\r\nBDAY:1990-05-15\r\nNICKNAME:Addie,Ace\r\nEND:VCARD\r\n";
+        let c = parse(raw).unwrap();
+        assert_eq!(c.birthday.as_deref(), Some("1990-05-15"));
+        // NICKNAME is a comma-list; we keep the first.
+        assert_eq!(c.nickname.as_deref(), Some("Addie"));
+    }
+
+    #[test]
+    fn bday_partial_date_preserved_verbatim() {
+        let raw = "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:b2\r\nFN:Y\r\nBDAY:--0515\r\nEND:VCARD\r\n";
+        let c = parse(raw).unwrap();
+        assert_eq!(c.birthday.as_deref(), Some("--0515"));
+        assert!(c.nickname.is_none());
     }
 
     // ---- PHOTO ----

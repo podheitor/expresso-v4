@@ -99,6 +99,8 @@ mod tests {
             organization: org.map(str::to_owned),
             email_primary: email.map(str::to_owned),
             phone_primary: phone.map(str::to_owned),
+            birthday: None,
+            nickname: None,
             created_at: datetime!(2026-05-22 08:00:00 UTC),
             updated_at: datetime!(2026-05-22 08:00:00 UTC),
         }
