@@ -47,6 +47,30 @@ impl<S: Send + Sync> FromRequestParts<S> for Authenticated {
             return Err(AuthRejection::from(AuthError::MissingBearer));
         };
 
+        // Personal access token path: an opaque `ept_…` token isn't a JWT, so it
+        // can't be validated locally. When a `PatResolver` is wired into request
+        // extensions, exchange it for a context via the auth service's
+        // introspection endpoint. Absent resolver → fall through (the PAT then
+        // fails JWT validation below), so enabling PATs is additive per service.
+        if crate::pat_resolver::PatResolver::is_pat(token) {
+            if let Some(resolver) = parts
+                .extensions
+                .get::<Arc<crate::pat_resolver::PatResolver>>()
+                .cloned()
+            {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .and_then(|d| i64::try_from(d.as_secs()).ok())
+                    .unwrap_or(0);
+                let ctx = resolver
+                    .resolve(token, now)
+                    .await
+                    .map_err(AuthRejection::from)?;
+                return Ok(Self(ctx));
+            }
+        }
+
         // Multi-realm path: se MultiRealmValidator + TenantResolver presentes
         // em extensions, resolve realm via Host header e valida. Fase2 do
         // realm-per-tenant. Caso host nao mapeado ou extensions ausentes,

@@ -12,6 +12,7 @@ mod error;
 mod keycloak_basic;
 pub mod metrics;
 mod multi_validator;
+mod pat_resolver;
 mod tenant_resolver;
 mod validator;
 
@@ -20,5 +21,6 @@ pub use claims::{AudClaim, AuthContext, RawClaims, RolesBlock};
 pub use error::{AuthError, Result};
 pub use keycloak_basic::{KcBasicAuthenticator, KcBasicConfig, KcBasicError};
 pub use multi_validator::MultiRealmValidator;
+pub use pat_resolver::PatResolver;
 pub use tenant_resolver::TenantResolver;
 pub use validator::{OidcConfig, OidcValidator};
