@@ -8,6 +8,7 @@ pub mod delegation;
 pub mod domains;
 pub mod drafts;
 pub mod flag_presets;
+pub mod flows;
 pub mod folders;
 pub mod health;
 pub mod messages;
@@ -74,6 +75,7 @@ fn api_routes(_state: AppState) -> Router<AppState> {
         .merge(sieve::routes())
         .merge(drafts::routes())
         .merge(flag_presets::routes())
+        .merge(flows::routes())
         .merge(snooze::routes())
         .merge(signatures::routes())
         .merge(threads::routes())

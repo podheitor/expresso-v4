@@ -568,13 +568,40 @@ async fn apply_flow_actions(
                     let url = url.to_owned();
                     let payload =
                         serde_json::json!({ "message_id": message_id, "tenant_id": tenant_id });
+                    let db = state.db().clone();
                     tokio::spawn(async move {
-                        let _ = reqwest::Client::new()
+                        // Capture the delivery outcome (was fire-and-forget) and
+                        // log it so a user can debug failing webhooks.
+                        let (status, ok, err) = match reqwest::Client::new()
                             .post(&url)
                             .json(&payload)
                             .timeout(std::time::Duration::from_secs(5))
                             .send()
-                            .await;
+                            .await
+                        {
+                            Ok(resp) => {
+                                let code = resp.status().as_u16() as i32;
+                                (Some(code), resp.status().is_success(), None)
+                            }
+                            Err(e) => (None, false, Some(e.to_string())),
+                        };
+                        let res = sqlx::query(
+                            "INSERT INTO flow_webhook_log \
+                                 (tenant_id, user_id, message_id, url, status_code, ok, error) \
+                             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                        )
+                        .bind(tenant_id)
+                        .bind(user_id)
+                        .bind(message_id)
+                        .bind(&url)
+                        .bind(status)
+                        .bind(ok)
+                        .bind(err)
+                        .execute(&db)
+                        .await;
+                        if let Err(e) = res {
+                            tracing::warn!(error = %e, "flows: webhook log insert failed");
+                        }
                     });
                 }
             }
