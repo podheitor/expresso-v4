@@ -70,9 +70,9 @@ async fn get_one(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Note>> {
     let pool = state.db_or_unavailable()?;
-    let note = NoteRepo::new(pool)
-        .get(ctx.tenant_id, ctx.user_id, id)
-        .await?;
+    let repo = NoteRepo::new(pool);
+    assert_can_read(&repo, ctx.tenant_id, id, ctx.user_id).await?;
+    let note = repo.get(ctx.tenant_id, id).await?;
     Ok(Json(note))
 }
 
@@ -83,9 +83,9 @@ async fn update(
     Json(body): Json<UpdateNote>,
 ) -> Result<Json<Note>> {
     let pool = state.db_or_unavailable()?;
-    let note = NoteRepo::new(pool)
-        .update(ctx.tenant_id, ctx.user_id, id, body)
-        .await?;
+    let repo = NoteRepo::new(pool);
+    assert_can_write(&repo, ctx.tenant_id, id, ctx.user_id).await?;
+    let note = repo.update(ctx.tenant_id, id, body).await?;
     index_note(&state, &note);
     Ok(Json(note))
 }
@@ -96,11 +96,44 @@ async fn delete(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
-    NoteRepo::new(pool)
-        .delete(ctx.tenant_id, ctx.user_id, id)
-        .await?;
+    let repo = NoteRepo::new(pool);
+    assert_can_write(&repo, ctx.tenant_id, id, ctx.user_id).await?;
+    repo.delete(ctx.tenant_id, id).await?;
     deindex_note(&state, id);
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Read gate: OWNER/READ/WRITE/ADMIN may view. Absence of any grant is a 404
+/// (the note isn't visible to this user — don't leak its existence).
+async fn assert_can_read(
+    repo: &NoteRepo<'_>,
+    tenant: Uuid,
+    note_id: Uuid,
+    user_id: Uuid,
+) -> Result<()> {
+    match repo.access_level(tenant, note_id, user_id).await? {
+        Some(_) => Ok(()),
+        None => Err(crate::error::NotesError::NoteNotFound(note_id)),
+    }
+}
+
+/// Write gate: OWNER/WRITE/ADMIN may edit/delete; a READ grant is 403; no grant
+/// is 404.
+async fn assert_can_write(
+    repo: &NoteRepo<'_>,
+    tenant: Uuid,
+    note_id: Uuid,
+    user_id: Uuid,
+) -> Result<()> {
+    match repo
+        .access_level(tenant, note_id, user_id)
+        .await?
+        .as_deref()
+    {
+        Some("OWNER" | "WRITE" | "ADMIN") => Ok(()),
+        Some(_) => Err(crate::error::NotesError::Forbidden),
+        None => Err(crate::error::NotesError::NoteNotFound(note_id)),
+    }
 }
 
 /// Fire-and-forget index of a note (`kind = "note"`). No-op without search.

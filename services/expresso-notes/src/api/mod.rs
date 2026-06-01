@@ -3,6 +3,7 @@
 pub mod context;
 mod health;
 mod notes;
+mod sharing;
 
 use std::sync::Arc;
 
@@ -22,6 +23,7 @@ pub fn router(
         .merge(health::routes())
         .merge(expresso_observability::metrics_router())
         .merge(notes::routes())
+        .merge(sharing::routes())
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
