@@ -208,6 +208,10 @@ async fn main() -> anyhow::Result<()> {
             post(handlers::tokens::create).get(handlers::tokens::list),
         )
         .route("/auth/tokens/:id", delete(handlers::tokens::revoke))
+        .route(
+            "/internal/tokens/introspect",
+            post(handlers::tokens::introspect),
+        )
         .route("/auth/impersonate/end", post(handlers::impersonate::end))
         .route(
             "/auth/impersonate/:target_user_id",

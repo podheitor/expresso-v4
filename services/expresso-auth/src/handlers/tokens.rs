@@ -159,6 +159,91 @@ pub async fn list(
     Ok(Json(rows))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct IntrospectBody {
+    pub token: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IntrospectResp {
+    /// True only when the token is known, not revoked, and not expired.
+    pub active: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+}
+
+/// POST /internal/tokens/introspect — resolve a PAT to its owner's context.
+///
+/// PHASE 2 of personal access tokens: a trusted LAN caller (gateway) exchanges a
+/// `ept_…` token for the owning user's identity. Validates hash + not-revoked +
+/// not-expired, joins `users` for email/role, and stamps `last_used_at`. This is
+/// an `/internal/*` endpoint (network-trusted, no user auth), matching the
+/// notify/process internal endpoints. An unknown/dead token returns
+/// `{"active": false}` (never 401, so the caller can branch cleanly).
+pub async fn introspect(
+    State(st): State<Arc<AppState>>,
+    Json(body): Json<IntrospectBody>,
+) -> Result<Json<IntrospectResp>, ApiError> {
+    let pool = pool(&st)?;
+    let token = body.token.trim();
+    if token.is_empty() {
+        return Ok(Json(inactive()));
+    }
+    let token_hash = format!("{:x}", Sha256::digest(token.as_bytes()));
+
+    // Resolve the live token to its owner, joining users for the full context.
+    let row: Option<(Uuid, Uuid, Uuid, String, String, String)> = sqlx::query_as(
+        "SELECT t.id, t.user_id, t.tenant_id, u.email, u.display_name, u.role \
+           FROM api_tokens t \
+           JOIN users u ON u.id = t.user_id AND u.tenant_id = t.tenant_id \
+          WHERE t.token_hash = $1 \
+            AND t.revoked_at IS NULL \
+            AND (t.expires_at IS NULL OR t.expires_at > now())",
+    )
+    .bind(&token_hash)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+
+    let Some((token_id, user_id, tenant_id, email, display_name, role)) = row else {
+        return Ok(Json(inactive()));
+    };
+
+    // Best-effort usage stamp; a failure here must not fail the introspection.
+    let _ = sqlx::query("UPDATE api_tokens SET last_used_at = now() WHERE id = $1")
+        .bind(token_id)
+        .execute(pool)
+        .await;
+
+    Ok(Json(IntrospectResp {
+        active: true,
+        user_id: Some(user_id),
+        tenant_id: Some(tenant_id),
+        email: Some(email),
+        display_name: Some(display_name),
+        role: Some(role),
+    }))
+}
+
+fn inactive() -> IntrospectResp {
+    IntrospectResp {
+        active: false,
+        user_id: None,
+        tenant_id: None,
+        email: None,
+        display_name: None,
+        role: None,
+    }
+}
+
 /// DELETE /auth/tokens/:id — revoke a token. Only the owner may revoke; a
 /// foreign/absent id is a 404 (no leak). Idempotent on an already-revoked token.
 pub async fn revoke(
