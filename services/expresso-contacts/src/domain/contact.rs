@@ -347,6 +347,54 @@ impl<'a> ContactRepo<'a> {
         Ok(rows)
     }
 
+    /// Record an FN (display name) rename. Caller passes old/new + the acting
+    /// user; only invoked when the names actually differ.
+    pub async fn record_rename(
+        &self,
+        tenant_id: Uuid,
+        contact_id: Uuid,
+        old_name: &str,
+        new_name: &str,
+        renamed_by: Uuid,
+    ) -> Result<()> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        sqlx::query(
+            "INSERT INTO contact_rename_history \
+                 (tenant_id, contact_id, old_name, new_name, renamed_by) \
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(tenant_id)
+        .bind(contact_id)
+        .bind(old_name)
+        .bind(new_name)
+        .bind(renamed_by)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// List a contact's FN rename history, newest first.
+    pub async fn list_rename_history(
+        &self,
+        tenant_id: Uuid,
+        contact_id: Uuid,
+    ) -> Result<Vec<ContactRenameEntry>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let rows = sqlx::query_as::<_, ContactRenameEntry>(
+            "SELECT id, contact_id, old_name, new_name, renamed_by, renamed_at \
+               FROM contact_rename_history \
+              WHERE tenant_id = $1 AND contact_id = $2 \
+              ORDER BY renamed_at DESC",
+        )
+        .bind(tenant_id)
+        .bind(contact_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     /// List a contact's indexed postal addresses, in document order.
     pub async fn list_addresses(
         &self,
@@ -419,6 +467,18 @@ pub struct ContactAddressRow {
     pub postal_code: Option<String>,
     pub country: Option<String>,
     pub position: i32,
+}
+
+/// A recorded FN (display name) rename of a contact.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct ContactRenameEntry {
+    pub id: Uuid,
+    pub contact_id: Uuid,
+    pub old_name: String,
+    pub new_name: String,
+    pub renamed_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    pub renamed_at: OffsetDateTime,
 }
 
 /// Replace a contact's address index: delete existing rows, then insert the

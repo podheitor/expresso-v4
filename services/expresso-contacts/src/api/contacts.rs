@@ -70,6 +70,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/addressbooks/:book_id/contacts/:id/addresses",
             get(list_addresses),
         )
+        .route(
+            "/api/v1/addressbooks/:book_id/contacts/:id/rename-history",
+            get(rename_history),
+        )
         .route("/api/v1/addressbooks/:book_id/export.vcf", get(export_vcf))
         .route("/api/v1/addressbooks/:book_id/import", post(import_vcf))
         .route("/api/v1/contacts/import", post(import_csv))
@@ -258,6 +262,22 @@ async fn list_emails(
     Ok(axum::Json(emails))
 }
 
+/// GET /api/v1/addressbooks/:book_id/contacts/:id/rename-history — past FN
+/// (display-name) renames recorded on the REST update path, newest first.
+/// Read-only: unlike drive/calendar there's no undo, since a contact is stored
+/// as an opaque vCard blob — reverting the name would mean rewriting the raw.
+async fn rename_history(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((_book_id, id)): Path<(Uuid, Uuid)>,
+) -> Result<axum::Json<Vec<crate::domain::ContactRenameEntry>>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = ContactRepo::new(pool);
+    repo.get(ctx.tenant_id, id).await?; // 404 guard
+    let rows = repo.list_rename_history(ctx.tenant_id, id).await?;
+    Ok(axum::Json(rows))
+}
+
 /// GET /api/v1/addressbooks/:book_id/contacts/:id/addresses — list the contact's
 /// indexed ADR entries (structured components + TYPE label), in document order.
 async fn list_addresses(
@@ -340,9 +360,20 @@ async fn update_inner(
     validate_vcard(&raw, MAX_CONTACT_VCARD_BYTES)?;
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, book_id, ctx.user_id).await?;
-    let c = ContactRepo::new(pool)
-        .update(ctx.tenant_id, id, &raw)
-        .await?;
+    let repo = ContactRepo::new(pool);
+    // Capture the prior display name so an FN change is logged as a rename.
+    let old_name = repo
+        .get(ctx.tenant_id, id)
+        .await
+        .ok()
+        .and_then(|c| c.full_name)
+        .unwrap_or_default();
+    let c = repo.update(ctx.tenant_id, id, &raw).await?;
+    let new_name = c.full_name.clone().unwrap_or_default();
+    if old_name != new_name {
+        repo.record_rename(ctx.tenant_id, id, &old_name, &new_name, ctx.user_id)
+            .await?;
+    }
     state.bus().publish(ContactsEvent::ContactUpserted {
         tenant_id: ctx.tenant_id,
         addressbook_id: book_id,
