@@ -130,6 +130,17 @@ fn resolve_multi_realm() -> (
     }
 }
 
+/// Build the PAT resolver from `AUTH__URL`. Absent → None (PAT path off, JWT
+/// only). Opt-in per deployment.
+fn resolve_pat() -> Option<Arc<expresso_auth_client::PatResolver>> {
+    let auth_url = env_string("AUTH__URL")?;
+    info!(%auth_url, "PAT resolver enabled");
+    Some(Arc::new(expresso_auth_client::PatResolver::new(
+        auth_url,
+        reqwest::Client::new(),
+    )))
+}
+
 /// Library entry point: wire config, DB, and serve the calendar API.
 pub async fn run() -> anyhow::Result<()> {
     let telemetry = resolve_telemetry();
@@ -238,6 +249,9 @@ pub async fn run() -> anyhow::Result<()> {
     }
     if let Some(r) = resolver {
         app = app.layer(axum::extract::Extension(r));
+    }
+    if let Some(p) = resolve_pat() {
+        app = app.layer(axum::extract::Extension(p));
     }
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 
