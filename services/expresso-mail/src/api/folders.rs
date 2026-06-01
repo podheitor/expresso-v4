@@ -106,18 +106,32 @@ pub struct RenameFolderRequest {
     pub name: String,
 }
 
-/// GET /api/v1/mail/folders
+/// GET /api/v1/mail/folders[?on_behalf_of=<owner>]
+///
+/// Lists the caller's subscribed folders, or a delegated owner's when
+/// `on_behalf_of` is set and the caller holds a grant (else 403).
 async fn list_folders(
     State(state): State<AppState>,
     ctx: RequestCtx,
+    Query(q): Query<crate::api::messages::OnBehalfQuery>,
     req_headers: HeaderMap,
 ) -> Result<Response> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    // Resolve self vs. a delegated owner's mailbox (READ/SEND grant required).
+    let effective_user_id = crate::api::messages::resolve_read_mailbox(
+        &mut tx,
+        ctx.tenant_id,
+        ctx.user_id,
+        q.on_behalf_of,
+    )
+    .await?;
+
     let max_ts: Option<OffsetDateTime> = sqlx::query_scalar(
         "SELECT MAX(updated_at) FROM mailboxes WHERE tenant_id = $1 AND user_id = $2 AND subscribed = true",
     )
     .bind(ctx.tenant_id)
-    .bind(ctx.user_id)
-    .fetch_one(state.db())
+    .bind(effective_user_id)
+    .fetch_one(&mut *tx)
     .await
     .unwrap_or(None);
 
@@ -128,6 +142,7 @@ async fn list_folders(
                     OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822)
                 {
                     if ts <= ims_dt {
+                        tx.commit().await?;
                         return Ok(StatusCode::NOT_MODIFIED.into_response());
                     }
                 }
@@ -135,12 +150,11 @@ async fn list_folders(
         }
     }
 
-    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let total: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM mailboxes WHERE tenant_id = $1 AND user_id = $2 AND subscribed = true",
     )
     .bind(ctx.tenant_id)
-    .bind(ctx.user_id)
+    .bind(effective_user_id)
     .fetch_one(&mut *tx)
     .await?;
     let rows: Vec<FolderDto> = sqlx::query_as(
@@ -169,7 +183,7 @@ async fn list_folders(
         "#,
     )
     .bind(ctx.tenant_id)
-    .bind(ctx.user_id)
+    .bind(effective_user_id)
     .fetch_all(&mut *tx)
     .await?;
     tx.commit().await?;

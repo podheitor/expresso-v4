@@ -638,8 +638,9 @@ pub struct OnBehalfQuery {
 /// `on_behalf_of` is absent or is the caller; otherwise requires a
 /// `mailbox_delegations` grant (READ or SEND) from `owner` to `caller`,
 /// returning the owner's id, or 403 if none. Runs inside the caller's tenant
-/// transaction so RLS scopes the lookup.
-async fn resolve_read_mailbox(
+/// transaction so RLS scopes the lookup. Shared with sibling read handlers
+/// (e.g. folders) that honor `on_behalf_of`.
+pub(crate) async fn resolve_read_mailbox(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     tenant_id: Uuid,
     caller: Uuid,
