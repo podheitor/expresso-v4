@@ -226,6 +226,10 @@ pub struct ListParams {
     pub size_min: Option<i32>,
     /// Return only messages with size_bytes <= this value.
     pub size_max: Option<i32>,
+    /// Act on another user's mailbox via a mailbox delegation. When set, the
+    /// caller must hold a READ (or SEND) grant from that owner; otherwise 403.
+    /// Absent = the caller's own mailbox (unchanged behaviour).
+    pub on_behalf_of: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -612,6 +616,44 @@ async fn search_messages(
 ///
 /// Optional filters: `flag=\Starred`, `unread=true`, `thread_id=UUID`, `from_addr=`, `subject=` (ILIKE).
 /// Optional sort for offset mode: `sort=asc` (default `desc`). Keyset direction is cursor-driven.
+///
+/// Optional `on_behalf_of=<owner-uuid>` reads a delegated mailbox when the
+/// caller holds a grant from that owner (see `mailbox_delegations`); otherwise
+/// 403. Absent reads the caller's own mailbox.
+///
+/// Resolve which user's mailbox a read should target. Returns `caller` when
+/// `on_behalf_of` is absent or is the caller; otherwise requires a
+/// `mailbox_delegations` grant (READ or SEND) from `owner` to `caller`,
+/// returning the owner's id, or 403 if none. Runs inside the caller's tenant
+/// transaction so RLS scopes the lookup.
+async fn resolve_read_mailbox(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: Uuid,
+    caller: Uuid,
+    on_behalf_of: Option<Uuid>,
+) -> Result<Uuid> {
+    let Some(owner) = on_behalf_of else {
+        return Ok(caller);
+    };
+    if owner == caller {
+        return Ok(caller);
+    }
+    let grant: Option<(String,)> = sqlx::query_as(
+        "SELECT access FROM mailbox_delegations \
+          WHERE tenant_id = $1 AND owner_id = $2 AND delegate_id = $3",
+    )
+    .bind(tenant_id)
+    .bind(owner)
+    .bind(caller)
+    .fetch_optional(&mut **tx)
+    .await?;
+    // Any grant (READ or SEND) confers read access.
+    match grant {
+        Some(_) => Ok(owner),
+        None => Err(MailError::Forbidden),
+    }
+}
+
 async fn list_messages(
     State(state): State<AppState>,
     ctx: RequestCtx,
@@ -685,13 +727,17 @@ async fn list_messages(
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
+    // Resolve whose mailbox to read: self, or a delegator the caller may read.
+    let effective_user_id =
+        resolve_read_mailbox(&mut tx, ctx.tenant_id, ctx.user_id, params.on_behalf_of).await?;
+
     let max_received: Option<OffsetDateTime> = sqlx::query_scalar(
         "SELECT MAX(m.received_at) FROM messages m \
          JOIN mailboxes mb ON mb.id = m.mailbox_id \
          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 AND mb.folder_name = $3",
     )
     .bind(ctx.tenant_id)
-    .bind(ctx.user_id)
+    .bind(effective_user_id)
     .bind(&folder)
     .fetch_one(&mut *tx)
     .await
@@ -734,7 +780,7 @@ async fn list_messages(
         )
         .bind(cursor_id)
         .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
+        .bind(effective_user_id)
         .fetch_optional(&mut *tx)
         .await?;
 
@@ -750,7 +796,7 @@ async fn list_messages(
             );
             sqlx::query_as(&sql)
                 .bind(ctx.tenant_id)
-                .bind(ctx.user_id)
+                .bind(effective_user_id)
                 .bind(&folder)
                 .bind(anchor_ts)
                 .bind(anchor_id)
@@ -767,7 +813,7 @@ async fn list_messages(
             );
             let mut rows: Vec<MessageListItem> = sqlx::query_as(&sql)
                 .bind(ctx.tenant_id)
-                .bind(ctx.user_id)
+                .bind(effective_user_id)
                 .bind(&folder)
                 .bind(anchor_ts)
                 .bind(anchor_id)
@@ -798,7 +844,7 @@ async fn list_messages(
         );
         sqlx::query_as(&sql)
             .bind(ctx.tenant_id)
-            .bind(ctx.user_id)
+            .bind(effective_user_id)
             .bind(&folder)
             .bind(limit)
             .bind(offset)
@@ -816,7 +862,7 @@ async fn list_messages(
     );
     let total: i64 = sqlx::query_scalar(&count_sql)
         .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
+        .bind(effective_user_id)
         .bind(&folder)
         .fetch_one(&mut *tx)
         .await
