@@ -54,6 +54,18 @@ pub struct EventQuery {
     pub limit: Option<i64>,
 }
 
+/// A recorded SUMMARY rename of an event.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct EventRenameEntry {
+    pub id: Uuid,
+    pub event_id: Uuid,
+    pub old_summary: String,
+    pub new_summary: String,
+    pub renamed_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    pub renamed_at: OffsetDateTime,
+}
+
 #[derive(Clone)]
 pub struct EventRepo<'a> {
     pool: &'a DbPool,
@@ -281,6 +293,7 @@ impl<'a> EventRepo<'a> {
     /// `etag` and `updated_at` are refreshed; `sequence` increments only when
     /// any of summary/location/dtstart/dtend/status changes.
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub async fn patch_fields(
         &self,
         tenant_id: Uuid,
@@ -291,8 +304,21 @@ impl<'a> EventRepo<'a> {
         dtstart: Option<Option<OffsetDateTime>>,
         dtend: Option<Option<OffsetDateTime>>,
         status: Option<Option<String>>,
+        renamed_by: Uuid,
     ) -> Result<Event> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+
+        // Whether the caller asked to change SUMMARY (captured before `summary`
+        // is moved into the bind below).
+        let summary_touched = summary.is_some();
+        // Capture the prior summary so a SUMMARY change can be logged as a rename.
+        let old_summary: Option<Option<String>> = sqlx::query_scalar(
+            "SELECT summary FROM calendar_events WHERE tenant_id = $1 AND id = $2",
+        )
+        .bind(tenant_id)
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
 
         let row = sqlx::query_as::<_, Event>(
             r#"
@@ -350,8 +376,67 @@ impl<'a> EventRepo<'a> {
         .execute(&mut *tx)
         .await?;
 
+        // Record a rename when SUMMARY actually changed (old vs. new differ).
+        let old = old_summary.flatten().unwrap_or_default();
+        let new = row.summary.clone().unwrap_or_default();
+        if summary_touched && old != new {
+            sqlx::query(
+                "INSERT INTO calendar_event_rename_history \
+                     (tenant_id, calendar_id, event_id, old_summary, new_summary, renamed_by) \
+                 VALUES ($1, $2, $3, $4, $5, $6)",
+            )
+            .bind(tenant_id)
+            .bind(row.calendar_id)
+            .bind(row.id)
+            .bind(&old)
+            .bind(&new)
+            .bind(renamed_by)
+            .execute(&mut *tx)
+            .await?;
+        }
+
         tx.commit().await?;
         Ok(row)
+    }
+
+    /// List an event's rename history (SUMMARY changes), newest first.
+    pub async fn list_rename_history(
+        &self,
+        tenant_id: Uuid,
+        event_id: Uuid,
+    ) -> Result<Vec<EventRenameEntry>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let rows = sqlx::query_as::<_, EventRenameEntry>(
+            "SELECT id, event_id, old_summary, new_summary, renamed_by, renamed_at \
+               FROM calendar_event_rename_history \
+              WHERE tenant_id = $1 AND event_id = $2 \
+              ORDER BY renamed_at DESC",
+        )
+        .bind(tenant_id)
+        .bind(event_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
+    /// Fetch one rename-history entry by id. 404 if absent in the tenant.
+    pub async fn get_rename_entry(
+        &self,
+        tenant_id: Uuid,
+        entry_id: Uuid,
+    ) -> Result<EventRenameEntry> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let row: Option<EventRenameEntry> = sqlx::query_as(
+            "SELECT id, event_id, old_summary, new_summary, renamed_by, renamed_at \
+               FROM calendar_event_rename_history WHERE id = $1 AND tenant_id = $2",
+        )
+        .bind(entry_id)
+        .bind(tenant_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        row.ok_or(CalendarError::EventNotFound(entry_id))
     }
 
     /// Delete event by id.

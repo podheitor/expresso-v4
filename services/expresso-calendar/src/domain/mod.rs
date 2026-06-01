@@ -15,6 +15,6 @@ pub mod tombstone_gc;
 
 pub use calendar::{Calendar, CalendarRepo, NewCalendar, UpdateCalendar};
 pub use dead_props::{DeadProp, DeadPropRepo};
-pub use event::{Event, EventQuery, EventRepo};
+pub use event::{Event, EventQuery, EventRenameEntry, EventRepo};
 pub use resource::{NewResource, ResourceRepo};
 pub use task::{NewTask, Task, TaskRepo, UpdateTask};

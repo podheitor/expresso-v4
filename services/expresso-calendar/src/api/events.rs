@@ -321,6 +321,16 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/history",
             get(event_history).delete(delete_event_history),
         )
+        // Static `rename-history/:entry/undo` before the `:id` event routes so
+        // matchit doesn't treat "rename-history" as an event id.
+        .route(
+            "/api/v1/calendars/:cal_id/events/rename-history/:entry_id/undo",
+            post(undo_event_rename),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/rename-history",
+            get(event_rename_history),
+        )
         .route(
             "/api/v1/calendars/:cal_id/events/:id/attachments",
             get(list_event_attachments),
@@ -4378,6 +4388,7 @@ async fn patch_event(
             dtstart,
             dtend,
             status,
+            ctx.user_id,
         )
         .await?;
 
@@ -4598,6 +4609,52 @@ async fn event_history(
 #[derive(Debug, serde::Deserialize)]
 struct HistoryParams {
     limit: Option<u32>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/rename-history — past SUMMARY
+/// renames, newest first. Read access to the event's calendar required.
+async fn event_rename_history(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((cal_id, event_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Vec<crate::domain::EventRenameEntry>>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = EventRepo::new(pool);
+    let ev = repo.get(ctx.tenant_id, event_id).await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(event_id));
+    }
+    let rows = repo.list_rename_history(ctx.tenant_id, event_id).await?;
+    Ok(Json(rows))
+}
+
+/// POST /api/v1/calendars/:cal_id/events/rename-history/:entry_id/undo — revert a
+/// recorded rename, restoring the event's `old_summary`. The undo is itself a
+/// rename (records a new entry → reversible). Write access required.
+async fn undo_event_rename(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((cal_id, entry_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Event>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+    let repo = EventRepo::new(pool);
+    let entry = repo.get_rename_entry(ctx.tenant_id, entry_id).await?;
+    // Restore the prior summary via a SUMMARY-only patch (re-logged as a rename).
+    let ev = repo
+        .patch_fields(
+            ctx.tenant_id,
+            entry.event_id,
+            Some(Some(entry.old_summary)),
+            None,
+            None,
+            None,
+            None,
+            None,
+            ctx.user_id,
+        )
+        .await?;
+    Ok(Json(ev))
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/attachments — list the indexed
