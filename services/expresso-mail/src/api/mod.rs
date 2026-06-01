@@ -4,6 +4,7 @@ pub mod aliases;
 pub mod attachments;
 pub mod compose;
 pub mod context;
+pub mod delegation;
 pub mod domains;
 pub mod drafts;
 pub mod flag_presets;
@@ -63,6 +64,7 @@ fn api_routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .merge(folders::routes())
         .merge(aliases::routes())
+        .merge(delegation::routes())
         .merge(domains::routes())
         .merge(messages::routes())
         .merge(compose::routes())
