@@ -10,6 +10,8 @@
 //!   DELETE /api/v1/notes/:id                → delete
 //!   GET    /api/v1/notes/:id/tags           → list the note's tags
 //!   PUT    /api/v1/notes/:id/tags           → replace the note's tag set
+//!   GET    /api/v1/notes/:id/versions       → list content history (newest first)
+//!   POST   /api/v1/notes/:id/versions/:n/restore → restore that version's content
 //!
 //! Notes are full-text indexed (`kind = "note"`) so they appear in unified
 //! search alongside mail/drive/calendar/contacts/tasks.
@@ -25,7 +27,10 @@ use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
 use crate::domain::note::NotebookFilter;
-use crate::domain::{NewNote, Note, NoteRepo, NoteTagRepo, NotebookRepo, SharedNote, UpdateNote};
+use crate::domain::{
+    NewNote, Note, NoteRepo, NoteSnapshot, NoteTagRepo, NoteVersion, NoteVersionRepo, NotebookRepo,
+    SharedNote, UpdateNote,
+};
 use crate::error::{NotesError, Result};
 use crate::state::AppState;
 
@@ -40,6 +45,11 @@ pub fn routes() -> Router<AppState> {
             patch(update).get(get_one).delete(delete),
         )
         .route("/api/v1/notes/:id/tags", get(get_tags).put(set_tags))
+        .route("/api/v1/notes/:id/versions", get(list_versions))
+        .route(
+            "/api/v1/notes/:id/versions/:version_no/restore",
+            axum::routing::post(restore_version),
+        )
 }
 
 #[derive(Debug, Deserialize)]
@@ -154,9 +164,31 @@ async fn update(
     // Only a present `notebook_id: <uuid>` needs a check; `null` (detach) and
     // absent both flatten to `None` here and are always allowed.
     assert_owns_notebook(pool, &ctx, body.notebook_id.flatten()).await?;
+    // Snapshot prior content before a content-touching edit, so it's restorable.
+    // View-only changes (pin/archive/notebook) don't create a version.
+    if touches_content(&body) {
+        let current = repo.get(ctx.tenant_id, id).await?;
+        NoteVersionRepo::new(pool)
+            .snapshot(ctx.tenant_id, id, &snapshot_of(&current), ctx.user_id)
+            .await?;
+    }
     let note = repo.update(ctx.tenant_id, id, body).await?;
     index_note(&state, &note);
     Ok(Json(note))
+}
+
+/// True when an update changes content (title/body/color) — the only edits worth
+/// versioning. `color` is doubly-optional, so any presence counts.
+fn touches_content(u: &UpdateNote) -> bool {
+    u.title.is_some() || u.body.is_some() || u.color.is_some()
+}
+
+fn snapshot_of(n: &Note) -> NoteSnapshot {
+    NoteSnapshot {
+        title: n.title.clone(),
+        body: n.body.clone(),
+        color: n.color.clone(),
+    }
 }
 
 async fn delete(
@@ -202,6 +234,48 @@ async fn set_tags(
         .set(ctx.tenant_id, id, &body.tags)
         .await?;
     Ok(Json(tags))
+}
+
+/// GET /api/v1/notes/:id/versions — the note's content history, newest first.
+/// Read-gated.
+async fn list_versions(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<NoteVersion>>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_read(&NoteRepo::new(pool), ctx.tenant_id, id, ctx.user_id).await?;
+    let versions = NoteVersionRepo::new(pool).list(ctx.tenant_id, id).await?;
+    Ok(Json(versions))
+}
+
+/// POST /api/v1/notes/:id/versions/:version_no/restore — restore a prior
+/// version's content onto the live note. Write-gated. The restore is itself a
+/// content edit, so the current content is snapshotted first (the undo is
+/// reversible). Returns the updated note.
+async fn restore_version(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((id, version_no)): Path<(Uuid, i32)>,
+) -> Result<Json<Note>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = NoteRepo::new(pool);
+    assert_can_write(&repo, ctx.tenant_id, id, ctx.user_id).await?;
+    let versions = NoteVersionRepo::new(pool);
+    let target = versions.get(ctx.tenant_id, id, version_no).await?;
+    let current = repo.get(ctx.tenant_id, id).await?;
+    versions
+        .snapshot(ctx.tenant_id, id, &snapshot_of(&current), ctx.user_id)
+        .await?;
+    let restore = UpdateNote {
+        title: Some(target.title),
+        body: Some(target.body),
+        color: Some(target.color),
+        ..Default::default()
+    };
+    let note = repo.update(ctx.tenant_id, id, restore).await?;
+    index_note(&state, &note);
+    Ok(Json(note))
 }
 
 /// Read gate: OWNER/READ/WRITE/ADMIN may view. Absence of any grant is a 404

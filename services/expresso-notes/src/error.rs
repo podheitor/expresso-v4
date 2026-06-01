@@ -28,6 +28,9 @@ pub enum NotesError {
     #[error("notebook not found: {0}")]
     NotebookNotFound(Uuid),
 
+    #[error("note version not found: {0}")]
+    VersionNotFound(i32),
+
     #[error("forbidden")]
     Forbidden,
 
@@ -44,6 +47,9 @@ impl IntoResponse for NotesError {
                 "notebook_not_found",
                 self.to_string(),
             ),
+            Self::VersionNotFound(_) => {
+                (StatusCode::NOT_FOUND, "version_not_found", self.to_string())
+            }
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", self.to_string()),
             Self::DatabaseUnavailable => (
