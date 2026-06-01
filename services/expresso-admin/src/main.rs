@@ -21,6 +21,7 @@ mod drive_quotas;
 mod govbr;
 mod handlers;
 mod kc;
+mod saml;
 mod templates;
 mod tenants;
 mod usage;
@@ -184,6 +185,12 @@ async fn main() -> anyhow::Result<()> {
             "/api/v1/govbr/mappings/:cpf_hash",
             get(govbr::get_one).delete(govbr::delete),
         )
+        .route("/api/v1/saml/idps", get(saml::list).post(saml::upsert))
+        .route(
+            "/api/v1/saml/idps/:id",
+            get(saml::get_one).delete(saml::delete),
+        )
+        .route("/api/v1/saml/mappings", get(saml::list_mappings))
         .route("/health", get(health))
         .route("/ready", get(ready))
         .nest_service("/static", ServeDir::new("static"))
