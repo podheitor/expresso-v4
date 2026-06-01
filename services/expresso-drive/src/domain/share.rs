@@ -90,6 +90,24 @@ pub struct ResolvedShare {
     /// password-less. Verified by the public endpoint, never returned to clients.
     pub password_hash: Option<String>,
     pub password_salt: Option<String>,
+    /// Cap on total downloads, or `None` for unlimited.
+    pub max_downloads: Option<i32>,
+    /// Downloads served so far.
+    pub download_count: i32,
+}
+
+/// Parameters for [`ShareRepo::insert`]. `password` is an optional `(hash, salt)`
+/// pair from [`hash_password`] (`None` = password-less); `max_downloads` caps
+/// total downloads (`None` = unlimited).
+#[derive(Debug, Clone, Copy)]
+pub struct NewShare<'a> {
+    pub tenant_id: Uuid,
+    pub file_id: Uuid,
+    pub token_hash: &'a str,
+    pub created_by: Uuid,
+    pub expires_at: OffsetDateTime,
+    pub password: Option<(&'a str, &'a str)>,
+    pub max_downloads: Option<i32>,
 }
 
 pub struct ShareRepo<'a> {
@@ -104,40 +122,45 @@ impl<'a> ShareRepo<'a> {
         Self { pool }
     }
 
-    /// Insert a share. `password` is an optional `(hash, salt)` pair from
-    /// [`hash_password`]; `None` creates a password-less link.
-    pub async fn insert(
-        &self,
-        tenant_id: Uuid,
-        file_id: Uuid,
-        token_hash: &str,
-        created_by: Uuid,
-        expires_at: OffsetDateTime,
-        password: Option<(&str, &str)>,
-    ) -> Result<Share> {
-        let (pw_hash, pw_salt) = match password {
+    /// Insert a share described by [`NewShare`].
+    pub async fn insert(&self, n: NewShare<'_>) -> Result<Share> {
+        let (pw_hash, pw_salt) = match n.password {
             Some((h, s)) => (Some(h), Some(s)),
             None => (None, None),
         };
-        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let mut tx = begin_tenant_tx(self.pool, n.tenant_id).await?;
         let sql = format!(
             "INSERT INTO drive_shares \
-                 (tenant_id, file_id, token_hash, created_by, expires_at, password_hash, password_salt) \
-             VALUES ($1,$2,$3,$4,$5,$6,$7) \
+                 (tenant_id, file_id, token_hash, created_by, expires_at, password_hash, password_salt, max_downloads) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) \
              RETURNING {SELECT_COLS}"
         );
         let row = sqlx::query_as(&sql)
-            .bind(tenant_id)
-            .bind(file_id)
-            .bind(token_hash)
-            .bind(created_by)
-            .bind(expires_at)
+            .bind(n.tenant_id)
+            .bind(n.file_id)
+            .bind(n.token_hash)
+            .bind(n.created_by)
+            .bind(n.expires_at)
             .bind(pw_hash)
             .bind(pw_salt)
+            .bind(n.max_downloads)
             .fetch_one(&mut *tx)
             .await?;
         tx.commit().await?;
         Ok(row)
+    }
+
+    /// Atomically consume one download against a share's cap. Returns the new
+    /// `download_count` when allowed, or `None` when the share is
+    /// exhausted/revoked/expired (the public endpoint then rejects). The check
+    /// and increment happen in one statement (`drive_share_consume`), so
+    /// concurrent downloads cannot exceed `max_downloads`.
+    pub async fn try_consume_download(&self, id: Uuid) -> Result<Option<i32>> {
+        let new_count: Option<i32> = sqlx::query_scalar("SELECT drive_share_consume($1)")
+            .bind(id)
+            .fetch_one(self.pool)
+            .await?;
+        Ok(new_count)
     }
 
     pub async fn list_for_file(&self, tenant_id: Uuid, file_id: Uuid) -> Result<Vec<Share>> {
@@ -173,7 +196,8 @@ impl<'a> ShareRepo<'a> {
     /// Resolve via SECURITY DEFINER fn — sem contexto de tenant.
     pub async fn resolve(&self, token_hash: &str) -> Result<Option<ResolvedShare>> {
         let row: Option<ResolvedShare> = sqlx::query_as(
-            "SELECT id, tenant_id, file_id, expires_at, revoked_at, password_hash, password_salt \
+            "SELECT id, tenant_id, file_id, expires_at, revoked_at, \
+                    password_hash, password_salt, max_downloads, download_count \
              FROM drive_share_resolve($1)",
         )
         .bind(token_hash)

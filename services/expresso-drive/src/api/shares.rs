@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 use crate::{
     api::context::RequestCtx,
-    domain::{share, FileRepo, Share, ShareRepo},
+    domain::{share, FileRepo, NewShare, Share, ShareRepo},
     error::{DriveError, Result},
     state::AppState,
 };
@@ -46,6 +46,9 @@ pub struct CreateBody {
     /// endpoint requires it alongside the token. Empty/whitespace is rejected.
     #[serde(default)]
     pub password: Option<String>,
+    /// Optional cap on total downloads. `None` = unlimited; must be ≥ 1.
+    #[serde(default)]
+    pub max_downloads: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -108,6 +111,13 @@ async fn create_inner(
     };
     let protected = password.is_some();
 
+    // Optional download cap: reject non-positive values.
+    if let Some(max) = body.max_downloads {
+        if max < 1 {
+            return Err(DriveError::BadRequest("max_downloads must be >= 1".into()));
+        }
+    }
+
     // Token = 32 bytes aleatórios base64url; somente sha256 persiste.
     let mut raw = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut raw);
@@ -116,21 +126,23 @@ async fn create_inner(
 
     let pw_ref = password.as_ref().map(|(h, s)| (h.as_str(), s.as_str()));
     let share = ShareRepo::new(pool)
-        .insert(
-            ctx.tenant_id,
+        .insert(NewShare {
+            tenant_id: ctx.tenant_id,
             file_id,
-            &token_hash,
-            ctx.user_id,
+            token_hash: &token_hash,
+            created_by: ctx.user_id,
             expires_at,
-            pw_ref,
-        )
+            password: pw_ref,
+            max_downloads: body.max_downloads,
+        })
         .await?;
 
     let url = format!("/api/v1/drive/share/{token}");
     tracing::info!(target: "audit",
         event = "drive.share.create",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
-        file_id = %file_id, share_id = %share.id, ttl_s = ttl, protected = protected);
+        file_id = %file_id, share_id = %share.id, ttl_s = ttl, protected = protected,
+        max_downloads = ?body.max_downloads);
     Ok((
         StatusCode::CREATED,
         Json(CreateResp {
@@ -237,6 +249,14 @@ async fn public_download(
         }
     }
 
+    // Download-limit gate: atomically consume one download. `None` means the
+    // cap is exhausted (or the link went revoked/expired between resolve and
+    // now) — reject with 403, same as other dead-link states. Consuming before
+    // serving means a failed blob read still counts; acceptable for a hard cap.
+    if resolved.max_downloads.is_some() && repo.try_consume_download(resolved.id).await?.is_none() {
+        return Err(DriveError::Forbidden);
+    }
+
     // Download via pool (bypass tenant — owner do blob é o tenant do share).
     // Usamos fetch direto por id + tenant já conhecidos.
     let file = FileRepo::new(pool)
@@ -283,6 +303,18 @@ mod tests {
     fn create_body_password_present() {
         let b: CreateBody = serde_json::from_str(r#"{"password":"hunter2"}"#).unwrap();
         assert_eq!(b.password.as_deref(), Some("hunter2"));
+    }
+
+    #[test]
+    fn create_body_max_downloads_absent_is_none() {
+        let b: CreateBody = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(b.max_downloads.is_none());
+    }
+
+    #[test]
+    fn create_body_max_downloads_present() {
+        let b: CreateBody = serde_json::from_str(r#"{"max_downloads":5}"#).unwrap();
+        assert_eq!(b.max_downloads, Some(5));
     }
 
     #[test]
