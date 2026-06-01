@@ -65,6 +65,65 @@ impl<'a> NoteTagRepo<'a> {
         tx.commit().await?;
         Ok(rows.into_iter().map(|(t,)| t).collect())
     }
+
+    /// Rename tag `old` to `new` across all of `user`'s notes. Doubles as merge:
+    /// if a note already carries `new`, the row collapses (ON CONFLICT) instead
+    /// of erroring. Scoped to the user's own notes via a join. Returns the number
+    /// of notes whose `old` tag was removed. No-op when `old == new`.
+    pub async fn rename_across_notes(
+        &self,
+        tenant: Uuid,
+        user: Uuid,
+        old: &str,
+        new: &str,
+    ) -> Result<u64> {
+        let new_clean = validate_one(new)?;
+        if old.trim() == new_clean {
+            return Ok(0);
+        }
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        // Add `new` to every owned note that has `old` (idempotent on conflict).
+        sqlx::query(
+            "INSERT INTO notes_tags (note_id, tenant_id, tag)
+             SELECT t.note_id, t.tenant_id, $4 FROM notes_tags t
+               JOIN notes n ON n.id = t.note_id AND n.tenant_id = t.tenant_id
+              WHERE t.tenant_id = $1 AND n.user_id = $2 AND t.tag = $3
+             ON CONFLICT (note_id, tag) DO NOTHING",
+        )
+        .bind(tenant)
+        .bind(user)
+        .bind(old.trim())
+        .bind(new_clean)
+        .execute(&mut *tx)
+        .await?;
+        // Drop `old` from those notes.
+        let removed = sqlx::query(
+            "DELETE FROM notes_tags t
+              USING notes n
+              WHERE t.note_id = n.id AND t.tenant_id = n.tenant_id
+                AND t.tenant_id = $1 AND n.user_id = $2 AND t.tag = $3",
+        )
+        .bind(tenant)
+        .bind(user)
+        .bind(old.trim())
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        tx.commit().await?;
+        Ok(removed)
+    }
+}
+
+/// Validate a single tag (trim, non-empty, bounded) → owned String.
+fn validate_one(raw: &str) -> Result<String> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return Err(NotesError::BadRequest("tag must not be empty".into()));
+    }
+    if t.len() > MAX_TAG_BYTES {
+        return Err(NotesError::BadRequest("tag too long".into()));
+    }
+    Ok(t.to_owned())
 }
 
 /// Trim, drop blanks, dedupe, and bound. Rejects an over-long tag or too many
@@ -90,6 +149,13 @@ fn normalize(tags: &[String]) -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_one_trims_and_bounds() {
+        assert_eq!(validate_one("  work ").unwrap(), "work");
+        assert!(validate_one("   ").is_err());
+        assert!(validate_one(&"x".repeat(MAX_TAG_BYTES + 1)).is_err());
+    }
 
     #[test]
     fn normalize_trims_dedupes_sorts() {

@@ -11,6 +11,8 @@
 //!   DELETE /api/v1/notes/:id                → delete
 //!   GET    /api/v1/notes/:id/tags           → list the note's tags
 //!   PUT    /api/v1/notes/:id/tags           → replace the note's tag set
+//!   PATCH  /api/v1/notes/tags/:tag          → rename a tag across own notes
+//!   POST   /api/v1/notes/tags/:tag/merge    → merge a tag into another
 //!   GET    /api/v1/notes/:id/versions       → list content history (newest first)
 //!   POST   /api/v1/notes/:id/versions/:n/restore → restore that version's content
 //!
@@ -43,6 +45,13 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/notes/shared", get(list_shared))
         // `search` static segment — also before `:id` (matchit static-first).
         .route("/api/v1/notes/search", get(search))
+        // Tag-wide ops (`tags` static, before `:id`): rename + merge across all
+        // of the caller's notes.
+        .route("/api/v1/notes/tags/:tag", patch(rename_tag))
+        .route(
+            "/api/v1/notes/tags/:tag/merge",
+            axum::routing::post(merge_tag),
+        )
         .route(
             "/api/v1/notes/:id",
             patch(update).get(get_one).delete(delete),
@@ -263,6 +272,49 @@ async fn set_tags(
         .set(ctx.tenant_id, id, &body.tags)
         .await?;
     Ok(Json(tags))
+}
+
+#[derive(Debug, Deserialize)]
+struct RenameTagBody {
+    /// New tag name to rename `:tag` to (across all the caller's notes).
+    new: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MergeTagBody {
+    /// Destination tag `:tag` is merged into (across all the caller's notes).
+    into: String,
+}
+
+/// PATCH /api/v1/notes/tags/:tag — rename a tag across all the caller's notes.
+/// Body `{"new": "..."}`. Returns how many notes had the old tag removed.
+async fn rename_tag(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(tag): Path<String>,
+    Json(body): Json<RenameTagBody>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let n = NoteTagRepo::new(pool)
+        .rename_across_notes(ctx.tenant_id, ctx.user_id, &tag, &body.new)
+        .await?;
+    Ok(Json(serde_json::json!({ "renamed_notes": n })))
+}
+
+/// POST /api/v1/notes/tags/:tag/merge — merge a tag into another across all the
+/// caller's notes. Body `{"into": "..."}`. Same operation as rename, but framed
+/// as consolidation (the destination usually already exists).
+async fn merge_tag(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(tag): Path<String>,
+    Json(body): Json<MergeTagBody>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let n = NoteTagRepo::new(pool)
+        .rename_across_notes(ctx.tenant_id, ctx.user_id, &tag, &body.into)
+        .await?;
+    Ok(Json(serde_json::json!({ "merged_notes": n })))
 }
 
 /// GET /api/v1/notes/:id/versions — the note's content history, newest first.
