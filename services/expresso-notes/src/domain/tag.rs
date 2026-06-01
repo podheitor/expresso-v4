@@ -8,6 +8,7 @@
 use std::collections::BTreeSet;
 
 use expresso_core::{begin_tenant_tx, DbPool};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::error::{NotesError, Result};
@@ -16,6 +17,13 @@ use crate::error::{NotesError, Result};
 const MAX_TAG_BYTES: usize = 64;
 /// Cap tags per note to keep a single PUT bounded.
 const MAX_TAGS_PER_NOTE: usize = 64;
+
+/// One tag and how many of the caller's notes carry it.
+#[derive(Debug, Serialize, PartialEq, Eq, sqlx::FromRow)]
+pub struct TagCount {
+    pub tag: String,
+    pub count: i64,
+}
 
 pub struct NoteTagRepo<'a> {
     pool: &'a DbPool,
@@ -64,6 +72,27 @@ impl<'a> NoteTagRepo<'a> {
         .await?;
         tx.commit().await?;
         Ok(rows.into_iter().map(|(t,)| t).collect())
+    }
+
+    /// Count how many of `user`'s notes carry each tag. Scoped to the user's own
+    /// notes via a join (`notes_tags` has no `user_id`). Ordered by descending
+    /// count, then tag — the natural "most-used first" view. Empty when the user
+    /// has no tagged notes.
+    pub async fn count_by_tag(&self, tenant: Uuid, user: Uuid) -> Result<Vec<TagCount>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let rows: Vec<TagCount> = sqlx::query_as(
+            "SELECT t.tag AS tag, COUNT(*) AS count FROM notes_tags t
+               JOIN notes n ON n.id = t.note_id AND n.tenant_id = t.tenant_id
+              WHERE t.tenant_id = $1 AND n.user_id = $2
+              GROUP BY t.tag
+              ORDER BY count DESC, t.tag",
+        )
+        .bind(tenant)
+        .bind(user)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
     }
 
     /// Rename tag `old` to `new` across all of `user`'s notes. Doubles as merge:

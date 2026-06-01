@@ -11,6 +11,7 @@
 //!   DELETE /api/v1/notes/:id                → delete
 //!   GET    /api/v1/notes/:id/tags           → list the note's tags
 //!   PUT    /api/v1/notes/:id/tags           → replace the note's tag set
+//!   GET    /api/v1/notes/tags/stats         → tag usage counts (most-used first)
 //!   PATCH  /api/v1/notes/tags/:tag          → rename a tag across own notes
 //!   POST   /api/v1/notes/tags/:tag/merge    → merge a tag into another
 //!   GET    /api/v1/notes/:id/versions       → list content history (newest first)
@@ -32,7 +33,7 @@ use crate::api::context::RequestCtx;
 use crate::domain::note::NotebookFilter;
 use crate::domain::{
     NewNote, Note, NoteRepo, NoteSnapshot, NoteTagRepo, NoteVersion, NoteVersionRepo, NotebookRepo,
-    SharedNote, UpdateNote,
+    SharedNote, TagCount, UpdateNote,
 };
 use crate::error::{NotesError, Result};
 use crate::state::AppState;
@@ -45,8 +46,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/notes/shared", get(list_shared))
         // `search` static segment — also before `:id` (matchit static-first).
         .route("/api/v1/notes/search", get(search))
-        // Tag-wide ops (`tags` static, before `:id`): rename + merge across all
-        // of the caller's notes.
+        // Tag-wide ops (`tags` static, before `:id`): stats, rename + merge
+        // across all of the caller's notes. `stats` is static so matchit prefers
+        // it over the `:tag` param on the same prefix.
+        .route("/api/v1/notes/tags/stats", get(tag_stats))
         .route("/api/v1/notes/tags/:tag", patch(rename_tag))
         .route(
             "/api/v1/notes/tags/:tag/merge",
@@ -284,6 +287,17 @@ struct RenameTagBody {
 struct MergeTagBody {
     /// Destination tag `:tag` is merged into (across all the caller's notes).
     into: String,
+}
+
+/// GET /api/v1/notes/tags/stats — usage count per tag across the caller's own
+/// notes, most-used first. No per-note gate: it only ever counts the caller's
+/// own notes via the repo join.
+async fn tag_stats(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<Vec<TagCount>>> {
+    let pool = state.db_or_unavailable()?;
+    let stats = NoteTagRepo::new(pool)
+        .count_by_tag(ctx.tenant_id, ctx.user_id)
+        .await?;
+    Ok(Json(stats))
 }
 
 /// PATCH /api/v1/notes/tags/:tag — rename a tag across all the caller's notes.

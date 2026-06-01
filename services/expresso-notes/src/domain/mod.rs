@@ -7,5 +7,5 @@ pub mod version;
 
 pub use note::{NewNote, Note, NoteRepo, SharedNote, UpdateNote};
 pub use notebook::{NewNotebook, Notebook, NotebookRepo, UpdateNotebook};
-pub use tag::NoteTagRepo;
+pub use tag::{NoteTagRepo, TagCount};
 pub use version::{NoteSnapshot, NoteVersion, NoteVersionRepo};
