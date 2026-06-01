@@ -40,7 +40,7 @@ jobs:
       # Still on Node 20 (latest is v2.3.3); upstream has no Node-24 release yet.
       # Harmless deprecation warning until 2026-09-16 — bump when one ships
       # rather than forcing FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 on an untested action.
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
