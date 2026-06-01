@@ -34,6 +34,25 @@ pub struct Note {
     pub updated_at: OffsetDateTime,
 }
 
+/// A note shared with the caller, plus the caller's granted privilege.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct SharedNote {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub user_id: Uuid,
+    pub title: String,
+    pub body: String,
+    pub color: Option<String>,
+    pub pinned: bool,
+    pub archived: bool,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub updated_at: OffsetDateTime,
+    /// The caller's grant: READ | WRITE | ADMIN.
+    pub privilege: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct NewNote {
     pub title: Option<String>,
@@ -96,6 +115,28 @@ impl<'a> NoteRepo<'a> {
         .bind(tenant)
         .bind(user)
         .bind(archived)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
+    /// List notes shared *with* `user` (a `notes_acl` grant exists), newest
+    /// first. Each carries the granted `privilege` so the UI can show read-only
+    /// vs editable. Own notes are excluded — those come from [`list`](Self::list).
+    pub async fn list_shared(&self, tenant: Uuid, user: Uuid) -> Result<Vec<SharedNote>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let rows = sqlx::query_as::<_, SharedNote>(
+            r#"SELECT n.id, n.tenant_id, n.user_id, n.title, n.body, n.color,
+                      n.pinned, n.archived, n.created_at, n.updated_at, a.privilege
+                 FROM notes n
+                 JOIN notes_acl a
+                   ON a.note_id = n.id AND a.tenant_id = n.tenant_id
+                WHERE n.tenant_id = $1 AND a.grantee_id = $2
+                ORDER BY n.updated_at DESC"#,
+        )
+        .bind(tenant)
+        .bind(user)
         .fetch_all(&mut *tx)
         .await?;
         tx.commit().await?;

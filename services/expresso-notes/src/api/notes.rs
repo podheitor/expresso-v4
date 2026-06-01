@@ -1,9 +1,10 @@
 //! Notes REST API.
 //!
 //! Routes (all scoped to the authenticated user):
-//!   GET    /api/v1/notes[?archived=true]   → list
+//!   GET    /api/v1/notes[?archived=true]   → list own notes
+//!   GET    /api/v1/notes/shared            → list notes shared with me
 //!   POST   /api/v1/notes                    → create
-//!   GET    /api/v1/notes/:id                → fetch one
+//!   GET    /api/v1/notes/:id                → fetch one (own or shared)
 //!   PATCH  /api/v1/notes/:id                → partial update
 //!   DELETE /api/v1/notes/:id                → delete
 //!
@@ -20,13 +21,16 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
-use crate::domain::{NewNote, Note, NoteRepo, UpdateNote};
+use crate::domain::{NewNote, Note, NoteRepo, SharedNote, UpdateNote};
 use crate::error::Result;
 use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/notes", get(list).post(create))
+        // `shared` is a static segment — must be registered before `:id` so it
+        // doesn't get captured as a note id (matchit prefers static over param).
+        .route("/api/v1/notes/shared", get(list_shared))
         .route(
             "/api/v1/notes/:id",
             patch(update).get(get_one).delete(delete),
@@ -47,6 +51,19 @@ async fn list(
     let pool = state.db_or_unavailable()?;
     let notes = NoteRepo::new(pool)
         .list(ctx.tenant_id, ctx.user_id, q.archived)
+        .await?;
+    Ok(Json(notes))
+}
+
+/// GET /api/v1/notes/shared — notes shared with the caller (a `notes_acl` grant
+/// exists), each tagged with the caller's privilege. Own notes come from `list`.
+async fn list_shared(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<Vec<SharedNote>>> {
+    let pool = state.db_or_unavailable()?;
+    let notes = NoteRepo::new(pool)
+        .list_shared(ctx.tenant_id, ctx.user_id)
         .await?;
     Ok(Json(notes))
 }

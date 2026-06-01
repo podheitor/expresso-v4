@@ -2,4 +2,4 @@
 
 pub mod note;
 
-pub use note::{NewNote, Note, NoteRepo, UpdateNote};
+pub use note::{NewNote, Note, NoteRepo, SharedNote, UpdateNote};
