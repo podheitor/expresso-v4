@@ -371,6 +371,7 @@ async fn digest(
         "SELECT kind, COUNT(*)::BIGINT \
          FROM notifications \
          WHERE tenant_id = $1 AND user_id = $2 AND is_read = false AND created_at >= $3 \
+           AND (snooze_until IS NULL OR snooze_until <= now()) \
          GROUP BY kind \
          ORDER BY COUNT(*) DESC",
     )
@@ -492,6 +493,51 @@ async fn mark_read(
             Json(json!({"error": "internal", "message": e.to_string()})),
         )
     })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+struct SnoozeBody {
+    /// Hours from now to suppress this notification from the digest. 1..=720
+    /// (30 days). The notification reappears once the window elapses.
+    hours: i64,
+}
+
+/// PATCH /api/v1/notifications/:id/snooze — hide a notification from the unread
+/// digest for `hours`, after which it resurfaces. Body: `{"hours": 4}`.
+async fn snooze(
+    State(st): State<AppState>,
+    MaybeAuthenticated(auth): MaybeAuthenticated,
+    Query(params): Query<IdentityParams>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<SnoozeBody>,
+) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+    let (user_id, tenant_id) = resolve_identity(&st, auth, params.user_id, params.tenant_id)?;
+    if body.hours < 1 || body.hours > 720 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "bad_request", "message": "hours must be 1..=720"})),
+        ));
+    }
+    let pool = st.db.as_ref().ok_or_else(db_unavailable)?;
+    let until = OffsetDateTime::now_utc() + time::Duration::hours(body.hours);
+    let res = sqlx::query(
+        "UPDATE notifications SET snooze_until = $4 \
+         WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(until)
+    .execute(pool.as_ref())
+    .await
+    .map_err(internal_err)?;
+    if res.rows_affected() == 0 {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "not_found", "message": "notification not found"})),
+        ));
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -3874,6 +3920,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/notifications/stream", get(notifications_stream))
         .route("/api/v1/notifications/digest", get(digest))
         .route("/api/v1/notifications/:id/read", patch(mark_read))
+        .route("/api/v1/notifications/:id/snooze", patch(snooze))
         .route("/api/v1/notifications/read-all", patch(mark_all_read))
         .route(
             "/api/v1/notifications/preferences",
