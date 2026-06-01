@@ -21,6 +21,7 @@ mod drive_quotas;
 mod govbr;
 mod handlers;
 mod kc;
+mod ldap;
 mod saml;
 mod templates;
 mod tenants;
@@ -191,6 +192,11 @@ async fn main() -> anyhow::Result<()> {
             get(saml::get_one).delete(saml::delete),
         )
         .route("/api/v1/saml/mappings", get(saml::list_mappings))
+        .route("/api/v1/ldap/configs", get(ldap::list).post(ldap::upsert))
+        .route(
+            "/api/v1/ldap/configs/:id",
+            get(ldap::get_one).delete(ldap::delete),
+        )
         .route("/health", get(health))
         .route("/ready", get(ready))
         .nest_service("/static", ServeDir::new("static"))
