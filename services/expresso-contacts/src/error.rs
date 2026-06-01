@@ -26,6 +26,9 @@ pub enum ContactsError {
     #[error("contact not found: {0}")]
     ContactNotFound(Uuid),
 
+    #[error("contact version not found: {0}")]
+    VersionNotFound(i32),
+
     #[error("addressbook not found: {0}")]
     AddressbookNotFound(String),
 
@@ -47,6 +50,9 @@ impl IntoResponse for ContactsError {
         let (status, code, msg) = match &self {
             Self::ContactNotFound(_) => {
                 (StatusCode::NOT_FOUND, "contact_not_found", self.to_string())
+            }
+            Self::VersionNotFound(_) => {
+                (StatusCode::NOT_FOUND, "version_not_found", self.to_string())
             }
             Self::AddressbookNotFound(_) => (
                 StatusCode::NOT_FOUND,
@@ -103,6 +109,16 @@ mod tests {
     #[test]
     fn contact_not_found_is_404() {
         assert_eq!(status(ContactsError::ContactNotFound(Uuid::new_v4())), 404);
+    }
+
+    #[test]
+    fn version_not_found_is_404() {
+        assert_eq!(status(ContactsError::VersionNotFound(3)), 404);
+    }
+
+    #[test]
+    fn version_not_found_message_contains_number() {
+        assert!(format!("{}", ContactsError::VersionNotFound(7)).contains('7'));
     }
 
     #[test]

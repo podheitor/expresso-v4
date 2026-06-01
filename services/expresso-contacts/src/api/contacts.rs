@@ -74,6 +74,14 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/addressbooks/:book_id/contacts/:id/rename-history",
             get(rename_history),
         )
+        .route(
+            "/api/v1/addressbooks/:book_id/contacts/:id/versions",
+            get(list_versions),
+        )
+        .route(
+            "/api/v1/addressbooks/:book_id/contacts/:id/versions/:version_no/restore",
+            post(restore_version),
+        )
         .route("/api/v1/addressbooks/:book_id/export.vcf", get(export_vcf))
         .route("/api/v1/addressbooks/:book_id/import", post(import_vcf))
         .route("/api/v1/contacts/import", post(import_csv))
@@ -278,6 +286,42 @@ async fn rename_history(
     Ok(axum::Json(rows))
 }
 
+/// GET /api/v1/addressbooks/:book_id/contacts/:id/versions — past vCard
+/// revisions of a contact, newest first. Each entry carries the full snapshot
+/// `vcard_raw`, so a client can preview or diff without a second request.
+async fn list_versions(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((_book_id, id)): Path<(Uuid, Uuid)>,
+) -> Result<axum::Json<Vec<crate::domain::ContactVersion>>> {
+    let pool = state.db_or_unavailable()?;
+    ContactRepo::new(pool).get(ctx.tenant_id, id).await?; // 404 guard
+    let rows = crate::domain::ContactVersionRepo::new(pool)
+        .list(ctx.tenant_id, id)
+        .await?;
+    Ok(axum::Json(rows))
+}
+
+/// POST /api/v1/addressbooks/:book_id/contacts/:id/versions/:version_no/restore
+/// — re-apply a past vCard revision as the contact's current state. Goes through
+/// the normal update path, so the pre-restore content is itself snapshotted
+/// (the restore is reversible) and search/events stay in sync. Write-gated.
+async fn restore_version(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    Path((book_id, id, version_no)): Path<(Uuid, Uuid, i32)>,
+    headers: HeaderMap,
+) -> Result<Response> {
+    let pool = state.db_or_unavailable()?;
+    let version = crate::domain::ContactVersionRepo::new(pool)
+        .get(ctx.tenant_id, id, version_no)
+        .await?;
+    let raw = version.vcard_raw;
+    let r = update_inner(state, ctx, Path((book_id, id)), headers, raw).await;
+    crate::metrics::record_result(crate::metrics::OP_CONTACT_UPDATE, &r);
+    r
+}
+
 /// GET /api/v1/addressbooks/:book_id/contacts/:id/addresses — list the contact's
 /// indexed ADR entries (structured components + TYPE label), in document order.
 async fn list_addresses(
@@ -361,13 +405,24 @@ async fn update_inner(
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, book_id, ctx.user_id).await?;
     let repo = ContactRepo::new(pool);
-    // Capture the prior display name so an FN change is logged as a rename.
-    let old_name = repo
-        .get(ctx.tenant_id, id)
-        .await
-        .ok()
-        .and_then(|c| c.full_name)
+    // Capture the prior contact: its vCard is snapshotted as a version, and its
+    // display name lets an FN change be logged as a rename.
+    let prior = repo.get(ctx.tenant_id, id).await.ok();
+    let old_name = prior
+        .as_ref()
+        .and_then(|c| c.full_name.clone())
         .unwrap_or_default();
+    if let Some(prev) = &prior {
+        crate::domain::ContactVersionRepo::new(pool)
+            .snapshot(
+                ctx.tenant_id,
+                id,
+                &prev.vcard_raw,
+                prev.full_name.as_deref(),
+                ctx.user_id,
+            )
+            .await?;
+    }
     let c = repo.update(ctx.tenant_id, id, &raw).await?;
     let new_name = c.full_name.clone().unwrap_or_default();
     if old_name != new_name {
