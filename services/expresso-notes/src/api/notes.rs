@@ -1,7 +1,8 @@
 //! Notes REST API.
 //!
 //! Routes (all scoped to the authenticated user):
-//!   GET    /api/v1/notes[?archived=true]   → list own notes
+//!   GET    /api/v1/notes[?archived=true][&notebook=:id|none]
+//!                                          → list own notes (optionally by notebook)
 //!   GET    /api/v1/notes/shared            → list notes shared with me
 //!   POST   /api/v1/notes                    → create
 //!   GET    /api/v1/notes/:id                → fetch one (own or shared)
@@ -21,8 +22,9 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
-use crate::domain::{NewNote, Note, NoteRepo, SharedNote, UpdateNote};
-use crate::error::Result;
+use crate::domain::note::NotebookFilter;
+use crate::domain::{NewNote, Note, NoteRepo, NotebookRepo, SharedNote, UpdateNote};
+use crate::error::{NotesError, Result};
 use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -41,6 +43,10 @@ pub fn routes() -> Router<AppState> {
 struct ListQuery {
     #[serde(default)]
     archived: bool,
+    /// Filter by notebook: a uuid scopes to that notebook, `none` returns only
+    /// loose notes, absent returns all. `notebook=none` is the "no notebook"
+    /// sentinel since query strings can't carry a typed null.
+    notebook: Option<String>,
 }
 
 async fn list(
@@ -49,8 +55,17 @@ async fn list(
     Query(q): Query<ListQuery>,
 ) -> Result<Json<Vec<Note>>> {
     let pool = state.db_or_unavailable()?;
+    let filter = match q.notebook.as_deref() {
+        None => NotebookFilter::Any,
+        Some("none") => NotebookFilter::Loose,
+        Some(s) => {
+            let nb = Uuid::parse_str(s)
+                .map_err(|_| NotesError::BadRequest("invalid notebook id".into()))?;
+            NotebookFilter::In(nb)
+        }
+    };
     let notes = NoteRepo::new(pool)
-        .list(ctx.tenant_id, ctx.user_id, q.archived)
+        .list(ctx.tenant_id, ctx.user_id, q.archived, filter)
         .await?;
     Ok(Json(notes))
 }
@@ -74,11 +89,31 @@ async fn create(
     Json(body): Json<NewNote>,
 ) -> Result<(StatusCode, Json<Note>)> {
     let pool = state.db_or_unavailable()?;
+    assert_owns_notebook(pool, &ctx, body.notebook_id).await?;
     let note = NoteRepo::new(pool)
         .create(ctx.tenant_id, ctx.user_id, body)
         .await?;
     index_note(&state, &note);
     Ok((StatusCode::CREATED, Json(note)))
+}
+
+/// Reject a note targeting a notebook the caller doesn't own — else the FK
+/// would dangle or leak another user's notebook id. `None`/detach is always
+/// allowed. The doubly-optional update value flattens to the inner target.
+async fn assert_owns_notebook(
+    pool: &expresso_core::DbPool,
+    ctx: &RequestCtx,
+    target: Option<Uuid>,
+) -> Result<()> {
+    let Some(nb) = target else { return Ok(()) };
+    if NotebookRepo::new(pool)
+        .owns(ctx.tenant_id, ctx.user_id, nb)
+        .await?
+    {
+        Ok(())
+    } else {
+        Err(NotesError::BadRequest(format!("unknown notebook: {nb}")))
+    }
 }
 
 async fn get_one(
@@ -102,6 +137,9 @@ async fn update(
     let pool = state.db_or_unavailable()?;
     let repo = NoteRepo::new(pool);
     assert_can_write(&repo, ctx.tenant_id, id, ctx.user_id).await?;
+    // Only a present `notebook_id: <uuid>` needs a check; `null` (detach) and
+    // absent both flatten to `None` here and are always allowed.
+    assert_owns_notebook(pool, &ctx, body.notebook_id.flatten()).await?;
     let note = repo.update(ctx.tenant_id, id, body).await?;
     index_note(&state, &note);
     Ok(Json(note))

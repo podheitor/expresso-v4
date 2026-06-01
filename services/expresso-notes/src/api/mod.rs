@@ -2,6 +2,7 @@
 
 pub mod context;
 mod health;
+mod notebooks;
 mod notes;
 mod sharing;
 
@@ -23,6 +24,7 @@ pub fn router(
         .merge(health::routes())
         .merge(expresso_observability::metrics_router())
         .merge(notes::routes())
+        .merge(notebooks::routes())
         .merge(sharing::routes())
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())

@@ -28,6 +28,8 @@ pub struct Note {
     pub color: Option<String>,
     pub pinned: bool,
     pub archived: bool,
+    /// Owning notebook (folder), or `None` for a loose note.
+    pub notebook_id: Option<Uuid>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
@@ -45,6 +47,7 @@ pub struct SharedNote {
     pub color: Option<String>,
     pub pinned: bool,
     pub archived: bool,
+    pub notebook_id: Option<Uuid>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
@@ -59,6 +62,9 @@ pub struct NewNote {
     pub body: Option<String>,
     pub color: Option<String>,
     pub pinned: Option<bool>,
+    /// Optional notebook to file the note under at creation. The handler
+    /// validates ownership before persisting.
+    pub notebook_id: Option<Uuid>,
 }
 
 /// Partial update — only present fields change. `color` is doubly-optional so a
@@ -71,6 +77,21 @@ pub struct UpdateNote {
     pub color: Option<Option<String>>,
     pub pinned: Option<bool>,
     pub archived: Option<bool>,
+    /// Doubly-optional: `null` detaches from any notebook, a uuid (re)files it,
+    /// absent leaves it. The handler validates ownership of a target notebook.
+    #[serde(default)]
+    pub notebook_id: Option<Option<Uuid>>,
+}
+
+/// How [`NoteRepo::list`] filters by notebook membership.
+#[derive(Debug, Clone, Copy)]
+pub enum NotebookFilter {
+    /// All notes regardless of notebook.
+    Any,
+    /// Only loose notes (no notebook).
+    Loose,
+    /// Only notes filed under this notebook.
+    In(Uuid),
 }
 
 pub struct NoteRepo<'a> {
@@ -87,8 +108,8 @@ impl<'a> NoteRepo<'a> {
         let body = validate_body(n.body.as_deref().unwrap_or(""))?;
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let row = sqlx::query_as::<_, Note>(
-            r#"INSERT INTO notes (tenant_id, user_id, title, body, color, pinned)
-               VALUES ($1, $2, $3, $4, $5, $6)
+            r#"INSERT INTO notes (tenant_id, user_id, title, body, color, pinned, notebook_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
                RETURNING *"#,
         )
         .bind(tenant)
@@ -97,6 +118,7 @@ impl<'a> NoteRepo<'a> {
         .bind(body)
         .bind(n.color.as_deref())
         .bind(n.pinned.unwrap_or(false))
+        .bind(n.notebook_id)
         .fetch_one(&mut *tx)
         .await?;
         tx.commit().await?;
@@ -104,19 +126,60 @@ impl<'a> NoteRepo<'a> {
     }
 
     /// List a user's notes. `archived = false` returns the live board; `true`
-    /// the archive. Pinned first, then newest-updated.
-    pub async fn list(&self, tenant: Uuid, user: Uuid, archived: bool) -> Result<Vec<Note>> {
+    /// the archive. `notebook` filters by notebook membership. Pinned first,
+    /// then newest-updated.
+    pub async fn list(
+        &self,
+        tenant: Uuid,
+        user: Uuid,
+        archived: bool,
+        notebook: NotebookFilter,
+    ) -> Result<Vec<Note>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
-        let rows = sqlx::query_as::<_, Note>(
-            r#"SELECT * FROM notes
-                WHERE tenant_id = $1 AND user_id = $2 AND archived = $3
-                ORDER BY pinned DESC, updated_at DESC"#,
-        )
-        .bind(tenant)
-        .bind(user)
-        .bind(archived)
-        .fetch_all(&mut *tx)
-        .await?;
+        // One query, branched by filter. The `$4 IS NULL` arm keeps "any
+        // notebook" and "this notebook" on the same prepared statement; the
+        // loose-only case ($4 = nil sentinel) needs its own predicate.
+        let rows = match notebook {
+            NotebookFilter::Any => {
+                sqlx::query_as::<_, Note>(
+                    r#"SELECT * FROM notes
+                        WHERE tenant_id = $1 AND user_id = $2 AND archived = $3
+                        ORDER BY pinned DESC, updated_at DESC"#,
+                )
+                .bind(tenant)
+                .bind(user)
+                .bind(archived)
+                .fetch_all(&mut *tx)
+                .await?
+            }
+            NotebookFilter::Loose => {
+                sqlx::query_as::<_, Note>(
+                    r#"SELECT * FROM notes
+                        WHERE tenant_id = $1 AND user_id = $2 AND archived = $3
+                          AND notebook_id IS NULL
+                        ORDER BY pinned DESC, updated_at DESC"#,
+                )
+                .bind(tenant)
+                .bind(user)
+                .bind(archived)
+                .fetch_all(&mut *tx)
+                .await?
+            }
+            NotebookFilter::In(nb) => {
+                sqlx::query_as::<_, Note>(
+                    r#"SELECT * FROM notes
+                        WHERE tenant_id = $1 AND user_id = $2 AND archived = $3
+                          AND notebook_id = $4
+                        ORDER BY pinned DESC, updated_at DESC"#,
+                )
+                .bind(tenant)
+                .bind(user)
+                .bind(archived)
+                .bind(nb)
+                .fetch_all(&mut *tx)
+                .await?
+            }
+        };
         tx.commit().await?;
         Ok(rows)
     }
@@ -128,7 +191,7 @@ impl<'a> NoteRepo<'a> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows = sqlx::query_as::<_, SharedNote>(
             r#"SELECT n.id, n.tenant_id, n.user_id, n.title, n.body, n.color,
-                      n.pinned, n.archived, n.created_at, n.updated_at, a.privilege
+                      n.pinned, n.archived, n.notebook_id, n.created_at, n.updated_at, a.privilege
                  FROM notes n
                  JOIN notes_acl a
                    ON a.note_id = n.id AND a.tenant_id = n.tenant_id
@@ -177,11 +240,16 @@ impl<'a> NoteRepo<'a> {
         };
         let pinned = u.pinned.unwrap_or(current.pinned);
         let archived = u.archived.unwrap_or(current.archived);
+        let notebook_id = match u.notebook_id {
+            Some(nb) => nb,
+            None => current.notebook_id,
+        };
 
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let row = sqlx::query_as::<_, Note>(
             r#"UPDATE notes
-                  SET title = $3, body = $4, color = $5, pinned = $6, archived = $7
+                  SET title = $3, body = $4, color = $5, pinned = $6, archived = $7,
+                      notebook_id = $8
                 WHERE tenant_id = $1 AND id = $2
                 RETURNING *"#,
         )
@@ -192,6 +260,7 @@ impl<'a> NoteRepo<'a> {
         .bind(color)
         .bind(pinned)
         .bind(archived)
+        .bind(notebook_id)
         .fetch_one(&mut *tx)
         .await?;
         tx.commit().await?;

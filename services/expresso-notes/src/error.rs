@@ -25,6 +25,9 @@ pub enum NotesError {
     #[error("note not found: {0}")]
     NoteNotFound(Uuid),
 
+    #[error("notebook not found: {0}")]
+    NotebookNotFound(Uuid),
+
     #[error("forbidden")]
     Forbidden,
 
@@ -36,6 +39,11 @@ impl IntoResponse for NotesError {
     fn into_response(self) -> Response {
         let (status, code, msg) = match &self {
             Self::NoteNotFound(_) => (StatusCode::NOT_FOUND, "note_not_found", self.to_string()),
+            Self::NotebookNotFound(_) => (
+                StatusCode::NOT_FOUND,
+                "notebook_not_found",
+                self.to_string(),
+            ),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", self.to_string()),
             Self::DatabaseUnavailable => (
