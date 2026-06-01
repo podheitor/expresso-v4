@@ -1533,9 +1533,12 @@ async fn get_message_flags(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(id): Path<Uuid>,
+    Query(q): Query<OnBehalfQuery>,
     req_headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let effective_user_id =
+        resolve_read_mailbox(&mut tx, ctx.tenant_id, ctx.user_id, q.on_behalf_of).await?;
     let row: Option<(Vec<String>, OffsetDateTime)> = sqlx::query_as(
         "SELECT m.flags, m.received_at \
          FROM messages m \
@@ -1545,7 +1548,7 @@ async fn get_message_flags(
     )
     .bind(id)
     .bind(ctx.tenant_id)
-    .bind(ctx.user_id)
+    .bind(effective_user_id)
     .fetch_optional(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -1587,9 +1590,14 @@ async fn update_flags(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(id): Path<Uuid>,
+    Query(q): Query<OnBehalfQuery>,
     Json(body): Json<FlagRequest>,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    // Managing flags on a delegated mailbox counts as read maintenance — any
+    // grant (READ or SEND) suffices, same gate as reading the mailbox.
+    let effective_user_id =
+        resolve_read_mailbox(&mut tx, ctx.tenant_id, ctx.user_id, q.on_behalf_of).await?;
 
     if !body.add.is_empty() {
         sqlx::query(
@@ -1601,7 +1609,7 @@ async fn update_flags(
         .bind(&body.add)
         .bind(id)
         .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
+        .bind(effective_user_id)
         .execute(&mut *tx)
         .await?;
     }
@@ -1615,7 +1623,7 @@ async fn update_flags(
         .bind(&body.remove)
         .bind(id)
         .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
+        .bind(effective_user_id)
         .execute(&mut *tx)
         .await?;
     }
@@ -1628,7 +1636,7 @@ async fn update_flags(
     )
     .bind(id)
     .bind(ctx.tenant_id)
-    .bind(ctx.user_id)
+    .bind(effective_user_id)
     .fetch_optional(&mut *tx)
     .await?
     .ok_or(MailError::MessageNotFound(id))?;
@@ -1673,6 +1681,9 @@ struct BulkFlagRequest {
     pub ids: Vec<Uuid>,
     pub add: Vec<String>,
     pub remove: Vec<String>,
+    /// Apply to a delegated mailbox (grant required, else 403). Absent = own.
+    #[serde(default)]
+    pub on_behalf_of: Option<Uuid>,
 }
 
 /// POST /api/v1/mail/messages/bulk
@@ -1815,6 +1826,8 @@ async fn bulk_update_flags(
     Json(body): Json<BulkFlagRequest>,
 ) -> Result<Json<BulkResult>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let effective_user_id =
+        resolve_read_mailbox(&mut tx, ctx.tenant_id, ctx.user_id, body.on_behalf_of).await?;
     let mut affected: u64 = 0;
 
     if !body.add.is_empty() {
@@ -1827,7 +1840,7 @@ async fn bulk_update_flags(
         .bind(&body.add)
         .bind(&body.ids)
         .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
+        .bind(effective_user_id)
         .execute(&mut *tx)
         .await?;
         affected += res.rows_affected();
@@ -1843,7 +1856,7 @@ async fn bulk_update_flags(
         .bind(&body.remove)
         .bind(&body.ids)
         .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
+        .bind(effective_user_id)
         .execute(&mut *tx)
         .await?;
         affected += res.rows_affected();
