@@ -113,6 +113,14 @@ impl<'a> EventRepo<'a> {
             &parsed.attachments,
         )
         .await?;
+        sync_categories(
+            &mut tx,
+            tenant_id,
+            row.calendar_id,
+            row.id,
+            &parsed.categories,
+        )
+        .await?;
         sync_resources(&mut tx, tenant_id, row.calendar_id, row.id, raw).await?;
         tx.commit().await?;
         Ok(row)
@@ -252,6 +260,14 @@ impl<'a> EventRepo<'a> {
             row.calendar_id,
             row.id,
             &parsed.attachments,
+        )
+        .await?;
+        sync_categories(
+            &mut tx,
+            tenant_id,
+            row.calendar_id,
+            row.id,
+            &parsed.categories,
         )
         .await?;
 
@@ -991,6 +1007,14 @@ impl<'a> EventRepo<'a> {
             &parsed.attachments,
         )
         .await?;
+        sync_categories(
+            &mut tx,
+            tenant_id,
+            row.calendar_id,
+            row.id,
+            &parsed.categories,
+        )
+        .await?;
         sync_resources(&mut tx, tenant_id, row.calendar_id, row.id, raw).await?;
         tx.commit().await?;
         Ok(row)
@@ -1113,6 +1137,28 @@ impl<'a> EventRepo<'a> {
         tx.commit().await?;
         Ok(rows)
     }
+
+    /// List an event's indexed categories (ordered by `position`). Empty when
+    /// the event has none. The caller guards the tenant/calendar 404.
+    pub async fn list_categories(
+        &self,
+        tenant_id: Uuid,
+        event_id: Uuid,
+    ) -> Result<Vec<EventCategory>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let rows = sqlx::query_as::<_, EventCategory>(
+            r#"SELECT category, position
+                 FROM calendar_event_categories
+                WHERE tenant_id = $1 AND event_id = $2
+                ORDER BY position, created_at"#,
+        )
+        .bind(tenant_id)
+        .bind(event_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
 }
 
 /// An indexed ATTACH entry returned to API callers.
@@ -1122,6 +1168,13 @@ pub struct EventAttachment {
     pub uri: Option<String>,
     pub fmttype: Option<String>,
     pub is_inline: bool,
+    pub position: i32,
+}
+
+/// An indexed CATEGORIES value returned to API callers.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct EventCategory {
+    pub category: String,
     pub position: i32,
 }
 
@@ -1153,6 +1206,39 @@ async fn sync_attachments(
         .bind(&a.uri)
         .bind(&a.fmttype)
         .bind(a.is_inline)
+        .bind(i as i32)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+/// Replace the category index for an event: delete existing rows, then insert
+/// the freshly parsed CATEGORIES values. Runs in the caller's tx so the index
+/// tracks `ical_raw`. Position preserves document order.
+async fn sync_categories(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: Uuid,
+    calendar_id: Uuid,
+    event_id: Uuid,
+    categories: &[String],
+) -> Result<()> {
+    sqlx::query("DELETE FROM calendar_event_categories WHERE tenant_id = $1 AND event_id = $2")
+        .bind(tenant_id)
+        .bind(event_id)
+        .execute(&mut **tx)
+        .await?;
+
+    for (i, c) in categories.iter().enumerate() {
+        sqlx::query(
+            r#"INSERT INTO calendar_event_categories
+                 (tenant_id, calendar_id, event_id, category, position)
+               VALUES ($1, $2, $3, $4, $5)"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(event_id)
+        .bind(c)
         .bind(i as i32)
         .execute(&mut **tx)
         .await?;

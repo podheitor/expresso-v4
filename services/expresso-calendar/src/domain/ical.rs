@@ -45,6 +45,9 @@ pub struct ParsedEvent {
     pub organizer_email: Option<String>,
     pub sequence: i32,
     pub attachments: Vec<ParsedAttachment>,
+    /// CATEGORIES values (RFC 5545 §3.8.1.2), flattened across all CATEGORIES
+    /// lines and their comma-separated values, in document order.
+    pub categories: Vec<String>,
 }
 
 /// Parse minimal VEVENT properties from raw VCALENDAR text.
@@ -98,6 +101,7 @@ pub fn parse_vevent(raw: &str) -> Result<ParsedEvent> {
             "DTEND" => ev.dtend = parse_dt(params, value),
             "DTSTAMP" => ev.dtstamp = parse_dt(params, value),
             "ATTACH" => ev.attachments.push(parse_attach(params, value)),
+            "CATEGORIES" => ev.categories.extend(parse_categories(value)),
             _ => {}
         }
     }
@@ -329,6 +333,17 @@ fn parse_attach(params: Option<&str>, value: &str) -> ParsedAttachment {
         fmttype,
         is_inline,
     }
+}
+
+/// Split a CATEGORIES value into individual category strings. RFC 5545 lists
+/// them comma-separated on one line; each is text-unescaped, trimmed, and blanks
+/// dropped.
+fn parse_categories(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(|c| unescape_text(c).trim().to_owned())
+        .filter(|c| !c.is_empty())
+        .collect()
 }
 
 /// Find a `KEY=value` parameter (case-insensitive key) in a `;`-joined param
@@ -644,6 +659,22 @@ END:VCALENDAR\r\n";
         let raw = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:seq@x\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         let ev = parse_vevent(raw).unwrap();
         assert_eq!(ev.sequence, 0);
+    }
+
+    // ---- CATEGORIES ----
+
+    #[test]
+    fn parses_comma_separated_categories() {
+        let raw = "BEGIN:VEVENT\r\nUID:c1\r\nCATEGORIES:work,urgent, personal \r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert_eq!(ev.categories, vec!["work", "urgent", "personal"]);
+    }
+
+    #[test]
+    fn merges_multiple_categories_lines_and_drops_blanks() {
+        let raw = "BEGIN:VEVENT\r\nUID:c2\r\nCATEGORIES:a,,b\r\nCATEGORIES:c\r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert_eq!(ev.categories, vec!["a", "b", "c"]);
     }
 
     // ---- ATTACH ----

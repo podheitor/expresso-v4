@@ -326,6 +326,10 @@ pub fn routes() -> Router<AppState> {
             get(list_event_attachments),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events/:id/categories",
+            get(list_event_categories),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id/history/stats",
             get(event_history_stats),
         )
@@ -4620,6 +4624,31 @@ async fn list_event_attachments(
         "event_id":    event_id,
         "calendar_id": cal_id,
         "attachments": attachments,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/categories — list the indexed
+/// CATEGORIES (RFC 5545) for an event, in document order. 404 if the event
+/// doesn't belong to this tenant/calendar.
+async fn list_event_categories(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((cal_id, event_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>> {
+    use serde_json::json;
+    let pool = state.db_or_unavailable()?;
+    let repo = EventRepo::new(pool);
+
+    let ev = repo.get(ctx.tenant_id, event_id).await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(event_id));
+    }
+
+    let categories = repo.list_categories(ctx.tenant_id, event_id).await?;
+    Ok(Json(json!({
+        "event_id":    event_id,
+        "calendar_id": cal_id,
+        "categories":  categories,
     })))
 }
 
