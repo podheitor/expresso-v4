@@ -4,7 +4,9 @@
 //! submetiam direto ao relay SMTP — qualquer usuário autenticado podia
 //! enviar mail como qualquer outro (inclusive cross-tenant). Agora
 //! `assert_from_is_authenticated_user` verifica que `req.from` bate com o
-//! email do usuário autenticado (case-insensitive) antes de enviar.
+//! email do usuário autenticado (case-insensitive) — ou, para "send as", que o
+//! dono daquele endereço concedeu ao caller uma delegação `SEND`
+//! (`mailbox_delegations`) — antes de enviar.
 
 use axum::{
     extract::{Path, State},
@@ -124,13 +126,17 @@ async fn group_member_emails(
 /// autenticado (case-insensitive, trim). A consulta usa `begin_tenant_tx`
 /// e `WHERE tenant_id = $1 AND id = $2` — defense-in-depth contra RLS
 /// NULL-bypass em `users`.
+/// Authorize the `From` address. Allowed when it's the caller's own address, or
+/// when it belongs to another tenant user who granted the caller a `SEND`
+/// mailbox delegation ("send as"). Anything else is 403.
 async fn assert_from_is_authenticated_user(
     state: &AppState,
     ctx: &RequestCtx,
     claimed_from: &str,
 ) -> Result<()> {
+    let claimed = claimed_from.trim();
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
-    let row: Option<String> = sqlx::query_scalar(
+    let own: Option<String> = sqlx::query_scalar(
         r#"SELECT email FROM users
             WHERE tenant_id = $1 AND id = $2
             LIMIT 1"#,
@@ -139,10 +145,34 @@ async fn assert_from_is_authenticated_user(
     .bind(ctx.user_id)
     .fetch_optional(&mut *tx)
     .await?;
+
+    if own
+        .as_deref()
+        .is_some_and(|e| e.trim().eq_ignore_ascii_case(claimed))
+    {
+        tx.commit().await?;
+        return Ok(());
+    }
+
+    // "Send as": the From owner granted this caller a SEND delegation.
+    let send_as: Option<(Uuid,)> = sqlx::query_as(
+        r#"SELECT u.id FROM users u
+             JOIN mailbox_delegations d
+               ON d.tenant_id = u.tenant_id AND d.owner_id = u.id
+            WHERE u.tenant_id = $1
+              AND lower(u.email) = lower($2)
+              AND d.delegate_id = $3
+              AND d.access = 'SEND'
+            LIMIT 1"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(claimed)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
     tx.commit().await?;
 
-    let actual = row.ok_or(MailError::Forbidden)?;
-    if actual.trim().eq_ignore_ascii_case(claimed_from.trim()) {
+    if send_as.is_some() {
         Ok(())
     } else {
         Err(MailError::Forbidden)
