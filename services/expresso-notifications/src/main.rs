@@ -127,6 +127,14 @@ async fn internal_notify(
 ) -> Json<serde_json::Value> {
     let started = std::time::Instant::now();
 
+    // Honor the recipient's preferences: a kind the user has disabled is dropped
+    // before any fan-out (SSE / Redis / webhook / persistence). Absent row or no
+    // DB → default-on.
+    if !kind_enabled(&st, notif.tenant_id, notif.user_id, &notif.kind).await {
+        metrics::record_dispatch(&notif.kind);
+        return Json(json!({"ok": true, "suppressed": true}));
+    }
+
     // Broadcast to local SSE streams on this pod.
     let _ = st.tx.send(notif.clone());
 
@@ -385,6 +393,43 @@ async fn digest(
 }
 
 /// Helper: resolve (user_id, tenant_id) from auth or query params (dev mode).
+/// Whether `kind` is enabled for this recipient. A row in
+/// `notification_preferences` with `enabled = false` suppresses it; absent row,
+/// or no DB configured, means enabled (default-on). Failures fail-open (enabled)
+/// so a preferences-store hiccup never silently swallows notifications.
+async fn kind_enabled(st: &AppState, tenant: Uuid, user: Uuid, kind: &str) -> bool {
+    let Some(pool) = &st.db else {
+        return true;
+    };
+    let row: Option<(bool,)> = sqlx::query_as(
+        "SELECT enabled FROM notification_preferences \
+          WHERE tenant_id = $1 AND user_id = $2 AND kind = $3",
+    )
+    .bind(tenant)
+    .bind(user)
+    .bind(kind)
+    .fetch_optional(pool.as_ref())
+    .await
+    .unwrap_or(None);
+    row.is_none_or(|(enabled,)| enabled)
+}
+
+/// 503 error tuple for a missing DB pool.
+fn db_unavailable() -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable", "message": "database not configured"})),
+    )
+}
+
+/// 500 error tuple from any error implementing `Display`.
+fn internal_err<E: std::fmt::Display>(e: E) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"error": "internal", "message": e.to_string()})),
+    )
+}
+
 fn resolve_identity(
     st: &AppState,
     auth: Option<AuthContext>,
@@ -576,6 +621,73 @@ async fn mark_all_read(
         )
     })?;
     Ok(Json(json!({ "marked_read": r.rows_affected() })))
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+struct PreferenceRow {
+    kind: String,
+    enabled: bool,
+}
+
+/// GET /api/v1/notifications/preferences — the caller's per-kind overrides.
+/// Only kinds the user has explicitly set appear; any kind absent here is
+/// enabled by default.
+async fn get_preferences(
+    State(st): State<AppState>,
+    MaybeAuthenticated(auth): MaybeAuthenticated,
+    Query(params): Query<IdentityParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let (user_id, tenant_id) = resolve_identity(&st, auth, params.user_id, params.tenant_id)?;
+    let pool = st.db.as_ref().ok_or_else(db_unavailable)?;
+    let rows: Vec<PreferenceRow> = sqlx::query_as(
+        "SELECT kind, enabled FROM notification_preferences \
+          WHERE tenant_id = $1 AND user_id = $2 ORDER BY kind",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(internal_err)?;
+    Ok(Json(json!({ "preferences": rows })))
+}
+
+#[derive(Debug, Deserialize)]
+struct SetPreferenceBody {
+    kind: String,
+    enabled: bool,
+}
+
+/// PUT /api/v1/notifications/preferences — set one kind's enabled flag
+/// (upsert). Body: `{"kind": "...", "enabled": false}`.
+async fn set_preference(
+    State(st): State<AppState>,
+    MaybeAuthenticated(auth): MaybeAuthenticated,
+    Query(params): Query<IdentityParams>,
+    Json(body): Json<SetPreferenceBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let (user_id, tenant_id) = resolve_identity(&st, auth, params.user_id, params.tenant_id)?;
+    let kind = body.kind.trim();
+    if kind.is_empty() || kind.len() > 64 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "bad_request", "message": "kind must be 1..64 chars"})),
+        ));
+    }
+    let pool = st.db.as_ref().ok_or_else(db_unavailable)?;
+    sqlx::query(
+        "INSERT INTO notification_preferences (tenant_id, user_id, kind, enabled, updated_at) \
+         VALUES ($1, $2, $3, $4, now()) \
+         ON CONFLICT (tenant_id, user_id, kind) \
+         DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(kind)
+    .bind(body.enabled)
+    .execute(pool.as_ref())
+    .await
+    .map_err(internal_err)?;
+    Ok(Json(json!({ "kind": kind, "enabled": body.enabled })))
 }
 
 /// GET /api/v1/notifications/dlq/stats — contagem agregada por kind + tenant na DLQ.
@@ -3763,6 +3875,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/digest", get(digest))
         .route("/api/v1/notifications/:id/read", patch(mark_read))
         .route("/api/v1/notifications/read-all", patch(mark_all_read))
+        .route(
+            "/api/v1/notifications/preferences",
+            get(get_preferences).put(set_preference),
+        )
         .route(
             "/api/v1/notifications/push",
             post(push_subscribe).delete(push_unsubscribe),
