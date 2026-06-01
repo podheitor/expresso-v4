@@ -23,6 +23,7 @@ mod handlers;
 mod kc;
 mod templates;
 mod tenants;
+mod usage;
 
 use auth::AuthConfig;
 use kc::KcClient;
@@ -163,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
             get(tenants::config_form).post(tenants::config_action),
         )
         .route("/tenants/:id/delete", post(tenants::delete_action))
+        .route("/api/v1/admin/tenants/:id/usage", get(usage::tenant_usage))
         .route("/audit.json", get(audit::list))
         .route("/audit.csv", get(audit::csv))
         .route("/audit.html", get(audit::page))
