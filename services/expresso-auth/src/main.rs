@@ -217,6 +217,10 @@ async fn main() -> anyhow::Result<()> {
             "/internal/saml/idp-delete",
             post(handlers::saml_sync::remove),
         )
+        .route(
+            "/auth/saml/idp-template/:alias/metadata",
+            get(handlers::saml_sync::idp_metadata),
+        )
         .route("/auth/impersonate/end", post(handlers::impersonate::end))
         .route(
             "/auth/impersonate/:target_user_id",

@@ -13,10 +13,16 @@
 
 use std::sync::Arc;
 
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::{Path, State},
+    http::{header::HOST, HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::kc_admin::{KcAdmin, KcAdminConfig, SamlIdpSpec};
+use crate::oidc::saml_metadata::{build_sp_metadata, kc_base_from_issuer};
 use crate::state::AppState;
 
 const DEFAULT_NAME_ID_FORMAT: &str = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
@@ -106,6 +112,43 @@ pub async fn remove(
         ok: true,
         alias: body.alias,
     }))
+}
+
+/// GET /auth/saml/idp-template/:alias/metadata — serve the SP-side SAML
+/// metadata XML a customer's IdP admin pastes into their IdP. Keycloak is the
+/// SP, so the ACS + entityID point at KC's broker endpoint for this tenant's
+/// realm. Realm comes from the Host header (multi-tenant) or the configured
+/// issuer (single-realm); KC base comes from the issuer_template/issuer.
+pub async fn idp_metadata(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(alias): Path<String>,
+) -> Result<Response, StatusCode> {
+    let host = headers
+        .get(HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    // Realm: per-Host in multi mode, else parsed from the static issuer.
+    let realm = st
+        .realm_for_host(host)
+        .or_else(|| {
+            crate::oidc::saml_metadata::realm_from_issuer(&st.cfg.issuer).map(str::to_string)
+        })
+        .ok_or(StatusCode::NOT_FOUND)?;
+    // KC base: from the issuer_template (multi) or the issuer (single).
+    let source = st.cfg.issuer_template.as_deref().unwrap_or(&st.cfg.issuer);
+    let kc_base = kc_base_from_issuer(source).ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+
+    let xml = build_sp_metadata(kc_base, &realm, alias.trim());
+    Ok((
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "application/samlmetadata+xml",
+        )],
+        xml,
+    )
+        .into_response())
 }
 
 #[cfg(test)]
