@@ -621,6 +621,13 @@ async fn search_messages(
 /// caller holds a grant from that owner (see `mailbox_delegations`); otherwise
 /// 403. Absent reads the caller's own mailbox.
 ///
+/// Query carrying just `on_behalf_of` for single-resource reads that otherwise
+/// take no query params (e.g. `GET /mail/messages/:id`).
+#[derive(Debug, Default, Deserialize)]
+pub struct OnBehalfQuery {
+    pub on_behalf_of: Option<Uuid>,
+}
+
 /// Resolve which user's mailbox a read should target. Returns `caller` when
 /// `on_behalf_of` is absent or is the caller; otherwise requires a
 /// `mailbox_delegations` grant (READ or SEND) from `owner` to `caller`,
@@ -896,9 +903,12 @@ async fn get_message(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(id): Path<Uuid>,
+    Query(q): Query<OnBehalfQuery>,
     req_headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let effective_user_id =
+        resolve_read_mailbox(&mut tx, ctx.tenant_id, ctx.user_id, q.on_behalf_of).await?;
     let msg: Option<MessageDetail> = sqlx::query_as(
         r#"
         SELECT m.id, m.mailbox_id, m.subject, m.from_addr, m.from_name,
@@ -917,7 +927,7 @@ async fn get_message(
     )
     .bind(id)
     .bind(ctx.tenant_id)
-    .bind(ctx.user_id)
+    .bind(effective_user_id)
     .fetch_optional(&mut *tx)
     .await?;
 
