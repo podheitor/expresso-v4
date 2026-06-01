@@ -120,6 +120,7 @@ pub struct ParsedTask {
     pub dtstart: Option<OffsetDateTime>,
     pub due: Option<OffsetDateTime>,
     pub completed: Option<OffsetDateTime>,
+    pub rrule: Option<String>,
 }
 
 /// Parse the first VTODO's indexed properties from raw VCALENDAR text. Mirrors
@@ -159,6 +160,7 @@ pub fn parse_vtodo(raw: &str) -> Result<ParsedTask> {
             "DTSTART" => t.dtstart = parse_dt(params, value),
             "DUE" => t.due = parse_dt(params, value),
             "COMPLETED" => t.completed = parse_dt(params, value),
+            "RRULE" => t.rrule = Some(value.to_owned()),
             _ => {}
         }
     }
@@ -182,6 +184,7 @@ pub struct Vtodo<'a> {
     pub dtstart: Option<OffsetDateTime>,
     pub due: Option<OffsetDateTime>,
     pub completed: Option<OffsetDateTime>,
+    pub rrule: Option<&'a str>,
 }
 
 /// Serialize a task's structured fields into a minimal VCALENDAR/VTODO body.
@@ -211,6 +214,9 @@ pub fn serialize_vtodo(t: &Vtodo) -> String {
     }
     if let Some(dt) = t.completed {
         push_prop(&mut out, "COMPLETED", &format_utc(dt));
+    }
+    if let Some(rrule) = t.rrule {
+        push_prop(&mut out, "RRULE", rrule);
     }
     out.push_str("END:VTODO\r\nEND:VCALENDAR\r\n");
     out
@@ -731,6 +737,7 @@ END:VCALENDAR\r\n";
             dtstart: None,
             due: None,
             completed: None,
+            rrule: None,
         });
         assert!(ics.contains("BEGIN:VTODO"));
         let t = parse_vtodo(&ics).unwrap();
@@ -753,6 +760,7 @@ END:VCALENDAR\r\n";
             dtstart: None,
             due: Some(due),
             completed: None,
+            rrule: None,
         });
         assert!(ics.contains("DUE:20260601T120000Z"), "got: {ics}");
     }

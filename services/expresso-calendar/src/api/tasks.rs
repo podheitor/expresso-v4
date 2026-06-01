@@ -7,21 +7,23 @@
 //!   GET    /api/v1/calendars/:cal_id/tasks/:id      → fetch one
 //!   PATCH  /api/v1/calendars/:cal_id/tasks/:id      → partial update
 //!   DELETE /api/v1/calendars/:cal_id/tasks/:id      → delete
+//!   GET    /api/v1/calendars/:cal_id/tasks/:id/instances?from=&to= → expand recurrence
 //!
 //! Tasks are full-text indexed (`kind = "task"`) so they surface in unified
 //! search alongside events/mail/drive/contacts.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, patch},
     Json, Router,
 };
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
 use crate::domain::{NewTask, Task, TaskRepo, UpdateTask};
-use crate::error::Result;
+use crate::error::{CalendarError, Result};
 use crate::state::AppState;
 
 use super::events::assert_can_write;
@@ -36,6 +38,52 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/tasks/:id",
             patch(update_task).get(get_task).delete(delete_task),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/tasks/:id/instances",
+            get(task_instances),
+        )
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct InstancesParams {
+    #[serde(with = "time::serde::rfc3339")]
+    from: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    to: OffsetDateTime,
+}
+
+/// GET /api/v1/calendars/:cal_id/tasks/:id/instances?from=&to= — expand a
+/// recurring task's occurrences within `[from, to)` via the shared rrule
+/// expander (mirrors events/:id/instances). A one-off task yields its single
+/// anchor when in range; a task without dtstart/due yields none. `from < to`
+/// required. Returns `{task_id, summary, rrule, count, instances: [rfc3339…]}`.
+async fn task_instances(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(params): Query<InstancesParams>,
+) -> Result<Json<serde_json::Value>> {
+    if params.from >= params.to {
+        return Err(CalendarError::BadRequest("from must be < to".into()));
+    }
+    let pool = state.db_or_unavailable()?;
+    assert_can_read(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+    let task = TaskRepo::new(pool).get(ctx.tenant_id, cal_id, id).await?;
+    let instances = task.expand_instances(params.from, params.to);
+    let formatted: Vec<String> = instances
+        .iter()
+        .filter_map(|dt| {
+            dt.format(&time::format_description::well_known::Rfc3339)
+                .ok()
+        })
+        .collect();
+    Ok(Json(serde_json::json!({
+        "task_id":   task.id,
+        "summary":   task.summary,
+        "rrule":     task.rrule,
+        "count":     formatted.len(),
+        "instances": formatted,
+    })))
 }
 
 async fn list_tasks(

@@ -39,6 +39,9 @@ pub struct Task {
     pub due: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option")]
     pub completed_at: Option<OffsetDateTime>,
+    /// RFC 5545 recurrence rule (e.g. "FREQ=WEEKLY;BYDAY=MO"), or None for a
+    /// one-off task. Expanded virtually via [`expand_instances`](Self::expand_instances).
+    pub rrule: Option<String>,
     /// Verbatim VCALENDAR body when created over CalDAV; None for REST-created
     /// tasks (CalDAV GET serializes those from the columns on the fly).
     #[serde(skip)]
@@ -79,7 +82,47 @@ impl Task {
             dtstart: self.dtstart,
             due: self.due,
             completed: self.completed_at,
+            rrule: self.rrule.as_deref(),
         })
+    }
+
+    /// Expand the task's recurrence into concrete due-dates within `[from, to)`.
+    /// The anchor is `dtstart` when present, else `due`; with no anchor the task
+    /// has no timeline and expansion is empty. A one-off (no/invalid rrule)
+    /// yields its single anchor when it falls in the window. Returns each
+    /// occurrence's anchor instant (VTODO has no duration, unlike VEVENT).
+    pub fn expand_instances(
+        &self,
+        from: OffsetDateTime,
+        to: OffsetDateTime,
+    ) -> Vec<OffsetDateTime> {
+        let Some(anchor) = self.dtstart.or(self.due) else {
+            return Vec::new();
+        };
+        match self.rrule.as_deref().filter(|r| !r.trim().is_empty()) {
+            Some(raw) => match crate::domain::rrule::Rrule::parse(raw) {
+                Some(rule) => rule
+                    .expand(anchor, time::Duration::ZERO, from, to)
+                    .into_iter()
+                    .map(|(s, _)| s)
+                    .collect(),
+                None => single_anchor(anchor, from, to),
+            },
+            None => single_anchor(anchor, from, to),
+        }
+    }
+}
+
+/// A non-recurring task's single occurrence: the anchor if it lies in `[from, to)`.
+fn single_anchor(
+    anchor: OffsetDateTime,
+    from: OffsetDateTime,
+    to: OffsetDateTime,
+) -> Vec<OffsetDateTime> {
+    if anchor >= from && anchor < to {
+        vec![anchor]
+    } else {
+        Vec::new()
     }
 }
 
@@ -96,6 +139,9 @@ pub struct NewTask {
     pub dtstart: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub due: Option<OffsetDateTime>,
+    /// Optional RFC 5545 recurrence rule. Stored verbatim; validated lazily at
+    /// expansion (an unparseable rule degrades to a one-off).
+    pub rrule: Option<String>,
 }
 
 /// Partial update — only present fields change. `status` flipping to/from
@@ -112,6 +158,10 @@ pub struct UpdateTask {
     pub dtstart: Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub due: Option<OffsetDateTime>,
+    /// Doubly-optional: `null` clears the rule (make one-off), a string sets it,
+    /// absent leaves it.
+    #[serde(default)]
+    pub rrule: Option<Option<String>>,
 }
 
 pub struct TaskRepo<'a> {
@@ -138,11 +188,12 @@ impl<'a> TaskRepo<'a> {
         let completed_at = completed_now(status, percent);
 
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let rrule = clean_rrule(n.rrule.as_deref());
         let row = sqlx::query_as::<_, Task>(
             r#"INSERT INTO calendar_tasks
                    (tenant_id, calendar_id, uid, summary, description, status,
-                    priority, percent_complete, dtstart, due, completed_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                    priority, percent_complete, dtstart, due, completed_at, rrule)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
                RETURNING *"#,
         )
         .bind(tenant)
@@ -156,6 +207,7 @@ impl<'a> TaskRepo<'a> {
         .bind(n.dtstart)
         .bind(n.due)
         .bind(completed_at)
+        .bind(rrule)
         .fetch_one(&mut *tx)
         .await
         .map_err(dup_to_conflict)?;
@@ -225,12 +277,17 @@ impl<'a> TaskRepo<'a> {
         let completed_at = completed_now(status, percent);
         let dtstart = u.dtstart.or(current.dtstart);
         let due = u.due.or(current.due);
+        let rrule = match u.rrule {
+            Some(r) => clean_rrule(r.as_deref()),
+            None => current.rrule,
+        };
 
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let row = sqlx::query_as::<_, Task>(
             r#"UPDATE calendar_tasks
                   SET summary = $4, description = $5, status = $6, priority = $7,
-                      percent_complete = $8, dtstart = $9, due = $10, completed_at = $11
+                      percent_complete = $8, dtstart = $9, due = $10, completed_at = $11,
+                      rrule = $12
                 WHERE tenant_id = $1 AND calendar_id = $2 AND id = $3
                 RETURNING *"#,
         )
@@ -245,6 +302,7 @@ impl<'a> TaskRepo<'a> {
         .bind(dtstart)
         .bind(due)
         .bind(completed_at)
+        .bind(rrule)
         .fetch_one(&mut *tx)
         .await?;
         tx.commit().await?;
@@ -264,18 +322,19 @@ impl<'a> TaskRepo<'a> {
             .or_else(|| completed_now(status, parsed.percent_complete));
 
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let rrule = clean_rrule(parsed.rrule.as_deref());
         let row = sqlx::query_as::<_, Task>(
             r#"INSERT INTO calendar_tasks
                    (tenant_id, calendar_id, uid, summary, description, status,
                     priority, percent_complete, dtstart, due, completed_at,
-                    ical_raw, etag)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                    rrule, ical_raw, etag)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
                ON CONFLICT (calendar_id, uid) DO UPDATE SET
                    summary = EXCLUDED.summary, description = EXCLUDED.description,
                    status = EXCLUDED.status, priority = EXCLUDED.priority,
                    percent_complete = EXCLUDED.percent_complete,
                    dtstart = EXCLUDED.dtstart, due = EXCLUDED.due,
-                   completed_at = EXCLUDED.completed_at,
+                   completed_at = EXCLUDED.completed_at, rrule = EXCLUDED.rrule,
                    ical_raw = EXCLUDED.ical_raw, etag = EXCLUDED.etag
                RETURNING *"#,
         )
@@ -290,6 +349,7 @@ impl<'a> TaskRepo<'a> {
         .bind(parsed.dtstart)
         .bind(parsed.due)
         .bind(completed_at)
+        .bind(rrule)
         .bind(raw)
         .bind(&etag)
         .fetch_one(&mut *tx)
@@ -386,6 +446,14 @@ fn completed_now(status: &str, percent: i16) -> Option<OffsetDateTime> {
     } else {
         None
     }
+}
+
+/// Normalize an optional rrule: trim and treat blank as None, so an empty
+/// string never persists as a "recurring" marker.
+fn clean_rrule(raw: Option<&str>) -> Option<String> {
+    raw.map(str::trim)
+        .filter(|r| !r.is_empty())
+        .map(str::to_owned)
 }
 
 /// Map a unique-violation on `(calendar_id, uid)` to a 409.
@@ -493,5 +561,67 @@ mod tests {
     fn leak_status_roundtrips_known() {
         assert_eq!(leak_status("completed"), "COMPLETED");
         assert_eq!(leak_status("bogus"), "NEEDS-ACTION");
+    }
+
+    #[test]
+    fn clean_rrule_blanks_to_none() {
+        assert_eq!(clean_rrule(None), None);
+        assert_eq!(clean_rrule(Some("   ")), None);
+        assert_eq!(
+            clean_rrule(Some(" FREQ=DAILY ")).as_deref(),
+            Some("FREQ=DAILY")
+        );
+    }
+
+    fn task_with(rrule: Option<&str>, dtstart: Option<OffsetDateTime>) -> Task {
+        Task {
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            calendar_id: Uuid::nil(),
+            uid: "u".into(),
+            summary: "s".into(),
+            description: None,
+            status: "NEEDS-ACTION".into(),
+            priority: 0,
+            percent_complete: 0,
+            dtstart,
+            due: None,
+            completed_at: None,
+            rrule: rrule.map(str::to_owned),
+            ical_raw: None,
+            etag: None,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
+        }
+    }
+
+    #[test]
+    fn expand_one_off_yields_anchor_in_window() {
+        let anchor = time::macros::datetime!(2026-06-01 09:00 UTC);
+        let t = task_with(None, Some(anchor));
+        let from = time::macros::datetime!(2026-06-01 00:00 UTC);
+        let to = time::macros::datetime!(2026-06-02 00:00 UTC);
+        assert_eq!(t.expand_instances(from, to), vec![anchor]);
+        // Outside the window → empty.
+        let later = time::macros::datetime!(2026-07-01 00:00 UTC);
+        let to2 = time::macros::datetime!(2026-07-02 00:00 UTC);
+        assert!(t.expand_instances(later, to2).is_empty());
+    }
+
+    #[test]
+    fn expand_without_anchor_is_empty() {
+        let t = task_with(Some("FREQ=DAILY"), None);
+        let from = time::macros::datetime!(2026-06-01 00:00 UTC);
+        let to = time::macros::datetime!(2026-06-10 00:00 UTC);
+        assert!(t.expand_instances(from, to).is_empty());
+    }
+
+    #[test]
+    fn expand_daily_recurrence_counts_days() {
+        let anchor = time::macros::datetime!(2026-06-01 09:00 UTC);
+        let t = task_with(Some("FREQ=DAILY"), Some(anchor));
+        let from = time::macros::datetime!(2026-06-01 00:00 UTC);
+        let to = time::macros::datetime!(2026-06-04 00:00 UTC); // 3-day window
+        assert_eq!(t.expand_instances(from, to).len(), 3);
     }
 }
