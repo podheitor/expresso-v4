@@ -150,6 +150,8 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/drive/files", get(list).post(upload))
         .route("/api/v1/drive/files/mkdir", post(mkdir))
+        // Static `shared` before `:id` so matchit doesn't capture it as a file id.
+        .route("/api/v1/drive/files/shared", get(list_shared))
         .route(
             "/api/v1/drive/files/:id",
             get(download).delete(delete_file).head(head_file),
@@ -479,6 +481,23 @@ async fn list_inner(
             .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
+}
+
+/// GET /api/v1/drive/files/shared — files/folders shared *with* the caller via a
+/// direct ACL grant (excluding ones they own). The dedicated "Shared with me"
+/// view; mirrors notes' `/notes/shared`. Honors `limit`/`offset` from ListQuery.
+async fn list_shared(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Query(q): Query<ListQuery>,
+) -> Result<Json<Vec<DriveFile>>> {
+    let pool = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(200).clamp(1, 500);
+    let offset = q.offset.unwrap_or(0).max(0);
+    let rows = FileRepo::new(pool)
+        .list_shared_with_user(ctx.tenant_id, ctx.user_id, limit, offset)
+        .await?;
+    Ok(Json(rows))
 }
 
 async fn mkdir(

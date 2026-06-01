@@ -260,6 +260,38 @@ impl<'a> FileRepo<'a> {
         Ok(rows)
     }
 
+    /// List files/folders shared *with* `user_id` via a direct `drive_file_acl`
+    /// grant, excluding ones they own — the dedicated "Shared with me" view
+    /// (mirrors notes' `list_shared`). Newest-updated first.
+    pub async fn list_shared_with_user(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<DriveFile>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "SELECT {SELECT_COLS} FROM drive_files f \
+             JOIN drive_file_acl a ON a.file_id = f.id AND a.tenant_id = f.tenant_id \
+             WHERE f.tenant_id = $1 \
+               AND f.deleted_at IS NULL \
+               AND a.grantee_id = $2 \
+               AND f.owner_user_id <> $2 \
+             ORDER BY f.updated_at DESC \
+             LIMIT $3 OFFSET $4"
+        );
+        let rows: Vec<DriveFile> = sqlx::query_as(&sql)
+            .bind(tenant_id)
+            .bind(user_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     pub async fn list_trash(&self, tenant_id: Uuid) -> Result<Vec<DriveFile>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
