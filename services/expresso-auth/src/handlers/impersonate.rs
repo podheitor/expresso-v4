@@ -192,6 +192,7 @@ mod tests {
             amr: vec![],
             govbr_cpf_hash: None,
             govbr_confiabilidades: vec![],
+            identity_provider: None,
         }
     }
 

@@ -56,6 +56,11 @@ pub struct RawClaims {
     /// gov.br "Selos de Confiabilidade" list (e.g. ["cadastro-basico","biometria"]).
     #[serde(default)]
     pub govbr_confiabilidades: Option<Vec<String>>,
+    /// Broker alias when the login was federated through a Keycloak external IdP
+    /// (set by the `identity_provider` session-note protocol-mapper). Present for
+    /// SAML and other brokered logins; absent for direct realm logins.
+    #[serde(default)]
+    pub identity_provider: Option<String>,
 }
 
 /// `aud` can be a single string or an array per RFC 7519 §4.1.3.
@@ -106,6 +111,8 @@ pub struct AuthContext {
     pub govbr_cpf_hash: Option<String>,
     /// gov.br confiabilidades list (empty when not federated via gov.br).
     pub govbr_confiabilidades: Vec<String>,
+    /// Keycloak broker alias when federated through an external IdP (SAML etc.).
+    pub identity_provider: Option<String>,
 }
 
 impl AuthContext {
@@ -162,6 +169,7 @@ impl AuthContext {
             amr: raw.amr.unwrap_or_default(),
             govbr_cpf_hash: raw.govbr_cpf_hash,
             govbr_confiabilidades: raw.govbr_confiabilidades.unwrap_or_default(),
+            identity_provider: raw.identity_provider,
         })
     }
 }
@@ -182,6 +190,7 @@ mod tests {
             amr: Vec::new(),
             govbr_cpf_hash: None,
             govbr_confiabilidades: Vec::new(),
+            identity_provider: None,
         }
     }
 
@@ -256,6 +265,7 @@ mod tests {
             amr: None,
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
+            identity_provider: None,
         };
         let c = AuthContext::from_raw(raw, "expresso-web").unwrap();
         assert_eq!(c.tenant_id, tid);
@@ -280,6 +290,7 @@ mod tests {
             amr: None,
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
+            identity_provider: None,
         };
         let c = AuthContext::from_raw(raw, "expresso-web").unwrap();
         assert_eq!(c.tenant_id, tid);
@@ -303,6 +314,7 @@ mod tests {
             amr: None,
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
+            identity_provider: None,
         };
         let r = AuthContext::from_raw(raw, "expresso-web");
         assert!(matches!(r, Err(AuthError::MissingClaim("tenant_id"))));
@@ -336,6 +348,7 @@ mod tests {
             amr: None,
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
+            identity_provider: None,
         };
         let c = AuthContext::from_raw(raw, "expresso-web").unwrap();
         // "user" from realm_access; "editor" from resource_access; "user" deduped.
@@ -435,6 +448,7 @@ mod tests {
             amr: None,
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
+            identity_provider: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert_eq!(c.display_name, "Full Name");
@@ -459,6 +473,7 @@ mod tests {
             amr: None,
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
+            identity_provider: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert_eq!(c.display_name, "alice_u");
@@ -490,6 +505,7 @@ mod tests {
             amr: None,
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
+            identity_provider: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert!(c.amr.is_empty());
@@ -500,6 +516,56 @@ mod tests {
         let aud = AudClaim::Many(vec!["Web".into(), "api".into()]);
         assert!(!aud.contains("web"));
         assert!(aud.contains("api"));
+    }
+
+    #[test]
+    fn from_raw_identity_provider_preserved_when_set() {
+        let uid = uuid::Uuid::new_v4();
+        let tid = uuid::Uuid::new_v4();
+        let raw = RawClaims {
+            sub: uid.to_string(),
+            iss: format!("https://kc/realms/{tid}"),
+            aud: AudClaim::Empty,
+            exp: 0,
+            email: None,
+            preferred_username: None,
+            name: None,
+            tenant_id: None,
+            realm_access: None,
+            resource_access: HashMap::new(),
+            acr: None,
+            amr: None,
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: None,
+            identity_provider: Some("okta".into()),
+        };
+        let c = AuthContext::from_raw(raw, "aud").unwrap();
+        assert_eq!(c.identity_provider.as_deref(), Some("okta"));
+    }
+
+    #[test]
+    fn from_raw_identity_provider_none_for_direct_login() {
+        let uid = uuid::Uuid::new_v4();
+        let tid = uuid::Uuid::new_v4();
+        let raw = RawClaims {
+            sub: uid.to_string(),
+            iss: format!("https://kc/realms/{tid}"),
+            aud: AudClaim::Empty,
+            exp: 0,
+            email: None,
+            preferred_username: None,
+            name: None,
+            tenant_id: None,
+            realm_access: None,
+            resource_access: HashMap::new(),
+            acr: None,
+            amr: None,
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: None,
+            identity_provider: None,
+        };
+        let c = AuthContext::from_raw(raw, "aud").unwrap();
+        assert!(c.identity_provider.is_none());
     }
 
     #[test]
@@ -521,6 +587,7 @@ mod tests {
             amr: None,
             govbr_cpf_hash: None,
             govbr_confiabilidades: Some(vec!["biometria".into(), "cadastro-basico".into()]),
+            identity_provider: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert_eq!(c.govbr_confiabilidades.len(), 2);

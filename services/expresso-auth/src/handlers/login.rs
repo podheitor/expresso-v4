@@ -19,6 +19,9 @@ use crate::state::{AppState, PendingLogin};
 #[derive(Debug, Deserialize)]
 pub struct LoginQuery {
     pub redirect_uri: Option<String>,
+    /// Keycloak IdP alias to jump straight to (skips the KC IdP-picker). Used
+    /// to send a user to their org's SAML IdP via `?idp=<alias>`.
+    pub idp: Option<String>,
 }
 
 pub async fn login(
@@ -98,6 +101,13 @@ async fn login_inner(
         .append_pair("code_challenge", &challenge)
         .append_pair("code_challenge_method", "S256");
 
+    // kc_idp_hint sends the user straight to the named external IdP (e.g. a
+    // tenant's SAML provider), bypassing Keycloak's IdP-picker screen. The alias
+    // is validated by Keycloak; an unknown hint simply falls back to the picker.
+    if let Some(idp) = q.idp.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        url.query_pairs_mut().append_pair("kc_idp_hint", idp);
+    }
+
     tracing::info!(
         target: "audit",
         event = "auth.login.start",
@@ -117,6 +127,21 @@ mod tests {
     fn login_query_redirect_uri_optional() {
         let q: LoginQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.redirect_uri.is_none());
+        assert!(q.idp.is_none());
+    }
+
+    #[test]
+    fn login_query_idp_parsed() {
+        let q: LoginQuery = serde_json::from_str(r#"{"idp":"okta"}"#).unwrap();
+        assert_eq!(q.idp.as_deref(), Some("okta"));
+    }
+
+    #[test]
+    fn login_query_idp_and_redirect_together() {
+        let q: LoginQuery =
+            serde_json::from_str(r#"{"idp":"azure","redirect_uri":"/mail"}"#).unwrap();
+        assert_eq!(q.idp.as_deref(), Some("azure"));
+        assert_eq!(q.redirect_uri.as_deref(), Some("/mail"));
     }
 
     #[test]

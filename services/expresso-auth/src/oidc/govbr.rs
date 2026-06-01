@@ -114,6 +114,7 @@ mod tests {
             amr: vec!["govbr".into()],
             govbr_cpf_hash: cpf.map(String::from),
             govbr_confiabilidades: conf,
+            identity_provider: None,
         }
     }
 

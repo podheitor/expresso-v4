@@ -132,18 +132,7 @@ async fn callback_inner(
         audit::record_async(pool.clone(), entry);
     }
 
-    if let Some(fed) = crate::oidc::govbr::GovbrFederation::from_ctx(&ctx) {
-        tracing::info!(
-            target: "audit",
-            event = "auth.federation.govbr",
-            user_id = %ctx.user_id,
-            tenant_id = %ctx.tenant_id,
-            cpf_hash_prefix = %fed.cpf_hash_short(),
-            assurance = ?fed.assurance.map(|a| a.as_str()),
-            confiabilidades_count = fed.confiabilidades.len(),
-            "user federated via gov.br"
-        );
-    }
+    log_and_provision_federation(&app, &ctx).await;
 
     let json_mode = q.mode.as_deref() == Some("json")
         || headers
@@ -209,6 +198,92 @@ async fn callback_inner(
         *resp.status_mut() = StatusCode::SEE_OTHER;
         Ok(resp)
     }
+}
+
+/// Log the federation source and, for SAML, JIT-provision the local user.
+/// gov.br is matched first (by its cpf_hash) so the SAML branch only fires for
+/// true SAML IdPs. Extracted from `callback_inner` to keep that handler's
+/// complexity down.
+async fn log_and_provision_federation(app: &AppState, ctx: &expresso_auth_client::AuthContext) {
+    if let Some(fed) = crate::oidc::govbr::GovbrFederation::from_ctx(ctx) {
+        tracing::info!(
+            target: "audit",
+            event = "auth.federation.govbr",
+            user_id = %ctx.user_id,
+            tenant_id = %ctx.tenant_id,
+            cpf_hash_prefix = %fed.cpf_hash_short(),
+            assurance = ?fed.assurance.map(|a| a.as_str()),
+            confiabilidades_count = fed.confiabilidades.len(),
+            "user federated via gov.br"
+        );
+        return;
+    }
+    let Some(fed) = crate::oidc::saml::SamlFederation::from_ctx(ctx) else {
+        return;
+    };
+    // Best-effort JIT: a provisioning failure must not block a successful
+    // authentication — the token is already valid; the row reconciles next login.
+    if let Some(pool) = app.pool.as_ref() {
+        if let Err(e) = jit_provision_saml(pool, ctx, &fed).await {
+            warn!(error = %e, idp = %fed.idp_alias, user_id = %ctx.user_id, "SAML JIT provisioning failed");
+        }
+    }
+    tracing::info!(
+        target: "audit",
+        event = "auth.federation.saml",
+        user_id = %ctx.user_id,
+        tenant_id = %ctx.tenant_id,
+        idp_alias = %fed.idp_alias,
+        "user federated via SAML"
+    );
+}
+
+/// JIT-provision a SAML-federated user: upsert the local `users` row (keyed by
+/// the Keycloak `sub` = `ctx.user_id`) and record the `saml_user_map` binding.
+/// Both writes run in one tenant-scoped tx so RLS on `users` is satisfied and
+/// the pair is atomic. Idempotent: repeat logins refresh display/email and the
+/// mapping's `last_login_at` without duplicating rows.
+async fn jit_provision_saml(
+    pool: &expresso_core::DbPool,
+    ctx: &expresso_auth_client::AuthContext,
+    fed: &crate::oidc::saml::SamlFederation,
+) -> anyhow::Result<()> {
+    let mut tx = expresso_core::begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    // Upsert the user. On a returning user (same KC sub) refresh the mutable
+    // profile fields but never downgrade an existing role or deactivate them.
+    sqlx::query(
+        "INSERT INTO users (id, tenant_id, email, display_name, role, is_active) \
+         VALUES ($1, $2, $3, $4, 'user', true) \
+         ON CONFLICT (id) DO UPDATE SET \
+             email = EXCLUDED.email, \
+             display_name = EXCLUDED.display_name, \
+             last_login_at = now(), \
+             updated_at = now()",
+    )
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .bind(&ctx.email)
+    .bind(&ctx.display_name)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO saml_user_map (tenant_id, idp_alias, saml_subject, user_id, last_login_at) \
+         VALUES ($1, $2, $3, $4, now()) \
+         ON CONFLICT (tenant_id, idp_alias, saml_subject) DO UPDATE SET \
+             user_id = EXCLUDED.user_id, \
+             last_login_at = now()",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&fed.idp_alias)
+    .bind(&fed.subject)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(())
 }
 
 /// True quando `s` é um caminho relativo seguro (mesma origem) — i.e.

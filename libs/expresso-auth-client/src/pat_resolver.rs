@@ -97,6 +97,7 @@ impl PatResolver {
             amr: vec!["pat".into()],
             govbr_cpf_hash: None,
             govbr_confiabilidades: Vec::new(),
+            identity_provider: None,
         })
     }
 }
