@@ -59,6 +59,9 @@ pub const MAX_INVITE_LEN: usize = 100;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/meetings", post(create).get(list))
+        // Static `by-slug` segment before `:id` so matchit doesn't treat the
+        // slug path as a meeting UUID.
+        .route("/api/v1/meetings/by-slug/:slug", get(get_by_slug))
         .route(
             "/api/v1/meetings/:id",
             get(get_one).patch(update).delete(archive),
@@ -181,6 +184,9 @@ pub struct CreateBody {
     pub rrule: Option<String>,
     pub lobby_enabled: Option<bool>,
     pub password: Option<String>,
+    /// Optional vanity slug for a readable join URL (e.g. "project-kickoff").
+    /// Lowercased; must match `[a-z0-9-]{1,64}`. Unique per tenant (409 on clash).
+    pub slug: Option<String>,
     /// Extra participants (beyond the creator) to pre-add as participants.
     #[serde(default)]
     pub invite: Vec<Uuid>,
@@ -231,6 +237,7 @@ async fn create(
         )));
     }
     validate_rrule(body.rrule.as_deref())?;
+    let slug = normalize_slug(body.slug.as_deref())?;
     let pool = state.db_or_unavailable()?;
     let jitsi = state.jitsi_or_unavailable()?;
 
@@ -261,9 +268,11 @@ async fn create(
                 rrule: body.rrule,
                 lobby_enabled: body.lobby_enabled,
                 password: body.password,
+                slug,
             },
         )
-        .await?;
+        .await
+        .map_err(slug_conflict)?;
 
     for u in body.invite {
         repo.add_participant(ctx.tenant_id, meeting.id, u, ParticipantRole::Participant)
@@ -410,6 +419,52 @@ async fn get_one(
     resp.headers_mut()
         .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
+}
+
+/// GET /api/v1/meetings/by-slug/:slug — resolve a meeting by its vanity slug.
+/// Membership-gated like `get_one` (caller must be a participant). 404 if no
+/// meeting has that slug in the tenant.
+async fn get_by_slug(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(slug): Path<String>,
+) -> Result<Json<Meeting>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    let m = repo.get_by_slug(ctx.tenant_id, &slug).await?;
+    if repo
+        .participant_role(ctx.tenant_id, m.id, ctx.user_id)
+        .await?
+        .is_none()
+    {
+        return Err(MeetError::NotParticipant);
+    }
+    Ok(Json(m))
+}
+
+/// Validate + normalize an optional vanity slug: trim, lowercase, enforce
+/// `[a-z0-9-]{1,64}`. `None`/empty → `None` (no slug). Invalid → 400.
+fn normalize_slug(raw: Option<&str>) -> Result<Option<String>> {
+    let Some(s) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    let lower = s.to_ascii_lowercase();
+    if lower.len() > 64 || !lower.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(MeetError::BadRequest(
+            "slug must be 1..64 chars of [a-z0-9-]".into(),
+        ));
+    }
+    Ok(Some(lower))
+}
+
+/// Map a unique-violation on the tenant+slug index to a 409 conflict.
+fn slug_conflict(e: MeetError) -> MeetError {
+    match e {
+        MeetError::Database(sqlx::Error::Database(db)) if db.is_unique_violation() => {
+            MeetError::Conflict("slug already in use".into())
+        }
+        other => other,
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -1689,6 +1744,33 @@ async fn cast_vote(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_slug_lowercases_and_accepts_valid() {
+        assert_eq!(
+            normalize_slug(Some(" Project-Kickoff "))
+                .unwrap()
+                .as_deref(),
+            Some("project-kickoff")
+        );
+        assert_eq!(
+            normalize_slug(Some("a1-b2")).unwrap().as_deref(),
+            Some("a1-b2")
+        );
+    }
+
+    #[test]
+    fn normalize_slug_none_or_blank_is_none() {
+        assert_eq!(normalize_slug(None).unwrap(), None);
+        assert_eq!(normalize_slug(Some("   ")).unwrap(), None);
+    }
+
+    #[test]
+    fn normalize_slug_rejects_bad_chars_and_length() {
+        assert!(normalize_slug(Some("has spaces")).is_err());
+        assert!(normalize_slug(Some("emoji😀")).is_err());
+        assert!(normalize_slug(Some(&"x".repeat(65))).is_err());
+    }
 
     #[test]
     fn room_name_accepts_ascii_alphanum() {

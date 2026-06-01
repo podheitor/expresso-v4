@@ -14,7 +14,7 @@ use uuid::Uuid;
 use expresso_core::{begin_tenant_tx, DbPool};
 use expresso_rrule::{single_instance, Rrule};
 
-use crate::error::Result;
+use crate::error::{MeetError, Result};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, sqlx::Type)]
 #[sqlx(type_name = "text", rename_all = "lowercase")]
@@ -44,6 +44,9 @@ pub struct Meeting {
     pub password: Option<String>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub recording_started_at: Option<OffsetDateTime>,
+    /// Optional human-readable join slug (vanity URL), unique per tenant. None
+    /// falls back to addressing the meeting by its UUID.
+    pub slug: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
@@ -123,6 +126,8 @@ pub struct NewMeeting {
     pub rrule: Option<String>,
     pub lobby_enabled: Option<bool>,
     pub password: Option<String>,
+    /// Optional vanity slug; validated + uniqueness-checked on create.
+    pub slug: Option<String>,
 }
 
 pub struct MeetingRepo<'a> {
@@ -139,11 +144,11 @@ impl<'a> MeetingRepo<'a> {
         let row: Meeting = sqlx::query_as(
             r#"INSERT INTO meetings
                  (tenant_id, room_name, title, channel_id, created_by,
-                  scheduled_for, ends_at, is_recurring, rrule, lobby_enabled, password)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                  scheduled_for, ends_at, is_recurring, rrule, lobby_enabled, password, slug)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, rrule, is_archived,
-                         lobby_enabled, password, recording_started_at, created_at, updated_at"#,
+                         lobby_enabled, password, recording_started_at, slug, created_at, updated_at"#,
         )
         .bind(tenant)
         .bind(&n.room_name)
@@ -156,6 +161,7 @@ impl<'a> MeetingRepo<'a> {
         .bind(&n.rrule)
         .bind(n.lobby_enabled.unwrap_or(true))
         .bind(&n.password)
+        .bind(&n.slug)
         .fetch_one(&mut *tx)
         .await?;
         // Creator is an automatic moderator.
@@ -177,7 +183,7 @@ impl<'a> MeetingRepo<'a> {
         let row: Meeting = sqlx::query_as(
             r#"SELECT id, tenant_id, room_name, title, channel_id, created_by,
                       scheduled_for, ends_at, is_recurring, rrule, is_archived,
-                      lobby_enabled, password, recording_started_at, created_at, updated_at
+                      lobby_enabled, password, recording_started_at, slug, created_at, updated_at
                FROM meetings WHERE tenant_id=$1 AND id=$2"#,
         )
         .bind(tenant)
@@ -186,6 +192,24 @@ impl<'a> MeetingRepo<'a> {
         .await?;
         tx.commit().await?;
         Ok(row)
+    }
+
+    /// Resolve a meeting by its vanity slug within the tenant. 404 if no meeting
+    /// carries that slug.
+    pub async fn get_by_slug(&self, tenant: Uuid, slug: &str) -> Result<Meeting> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let row: Option<Meeting> = sqlx::query_as(
+            r#"SELECT id, tenant_id, room_name, title, channel_id, created_by,
+                      scheduled_for, ends_at, is_recurring, rrule, is_archived,
+                      lobby_enabled, password, recording_started_at, slug, created_at, updated_at
+               FROM meetings WHERE tenant_id=$1 AND slug=$2"#,
+        )
+        .bind(tenant)
+        .bind(slug)
+        .fetch_optional(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        row.ok_or(MeetError::NotFound)
     }
 
     pub async fn list_for_user(&self, tenant: Uuid, user: Uuid) -> Result<Vec<Meeting>> {
@@ -430,7 +454,7 @@ impl<'a> MeetingRepo<'a> {
                WHERE tenant_id=$1 AND id=$2 AND is_archived = TRUE
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, rrule, is_archived,
-                         lobby_enabled, password, recording_started_at, created_at, updated_at"#,
+                         lobby_enabled, password, recording_started_at, slug, created_at, updated_at"#,
         )
         .bind(tenant)
         .bind(id)
@@ -467,7 +491,7 @@ impl<'a> MeetingRepo<'a> {
                WHERE tenant_id = $1 AND id = $2 AND is_archived = FALSE
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, rrule, is_archived,
-                         lobby_enabled, password, recording_started_at, created_at, updated_at"#,
+                         lobby_enabled, password, recording_started_at, slug, created_at, updated_at"#,
         )
         .bind(tenant)
         .bind(id)
@@ -497,7 +521,7 @@ impl<'a> MeetingRepo<'a> {
                  AND recording_started_at IS NULL
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, rrule, is_archived,
-                         lobby_enabled, password, recording_started_at, created_at, updated_at"#,
+                         lobby_enabled, password, recording_started_at, slug, created_at, updated_at"#,
         )
         .bind(tenant)
         .bind(id)
@@ -516,7 +540,7 @@ impl<'a> MeetingRepo<'a> {
                  AND recording_started_at IS NOT NULL
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, rrule, is_archived,
-                         lobby_enabled, password, recording_started_at, created_at, updated_at"#,
+                         lobby_enabled, password, recording_started_at, slug, created_at, updated_at"#,
         )
         .bind(tenant)
         .bind(id)
@@ -732,6 +756,7 @@ mod tests {
             lobby_enabled: true,
             password: None,
             recording_started_at: None,
+            slug: None,
             created_at: start,
             updated_at: start,
         }
