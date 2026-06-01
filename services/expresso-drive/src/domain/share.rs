@@ -12,12 +12,57 @@
 //! público não tem contexto de tenant (usa SECURITY DEFINER fn).
 
 use expresso_core::{begin_tenant_tx, DbPool};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::FromRow;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::error::Result;
+
+/// Hash a share password with a fresh random salt. Returns `(hex_hash, hex_salt)`
+/// to persist. Mirrors the token_hash scheme (salted SHA-256) — no new crypto
+/// dependency. The link token is the primary secret; this guards casual
+/// forwarding of the link.
+#[must_use]
+pub fn hash_password(password: &str) -> (String, String) {
+    let mut salt = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut salt);
+    let salt_hex = hex_lower(&salt);
+    let hash = derive_hash(password, &salt_hex);
+    (hash, salt_hex)
+}
+
+/// Verify a candidate password against a stored `(hash, salt)`.
+#[must_use]
+pub fn verify_password(candidate: &str, hash: &str, salt: &str) -> bool {
+    // Constant-time-ish: compare derived bytes via subtle-free eq on equal-length
+    // hex strings. Both are SHA-256 hex (64 chars), so length is constant.
+    let got = derive_hash(candidate, salt);
+    got.len() == hash.len()
+        && got
+            .bytes()
+            .zip(hash.bytes())
+            .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+            == 0
+}
+
+fn derive_hash(password: &str, salt_hex: &str) -> String {
+    let mut h = Sha256::new();
+    h.update(salt_hex.as_bytes());
+    h.update(b":");
+    h.update(password.as_bytes());
+    hex_lower(&h.finalize())
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Share {
@@ -41,6 +86,10 @@ pub struct ResolvedShare {
     pub file_id: Uuid,
     pub expires_at: OffsetDateTime,
     pub revoked_at: Option<OffsetDateTime>,
+    /// Salted SHA-256 of the link password, or `None` when the link is
+    /// password-less. Verified by the public endpoint, never returned to clients.
+    pub password_hash: Option<String>,
+    pub password_salt: Option<String>,
 }
 
 pub struct ShareRepo<'a> {
@@ -55,6 +104,8 @@ impl<'a> ShareRepo<'a> {
         Self { pool }
     }
 
+    /// Insert a share. `password` is an optional `(hash, salt)` pair from
+    /// [`hash_password`]; `None` creates a password-less link.
     pub async fn insert(
         &self,
         tenant_id: Uuid,
@@ -62,11 +113,17 @@ impl<'a> ShareRepo<'a> {
         token_hash: &str,
         created_by: Uuid,
         expires_at: OffsetDateTime,
+        password: Option<(&str, &str)>,
     ) -> Result<Share> {
+        let (pw_hash, pw_salt) = match password {
+            Some((h, s)) => (Some(h), Some(s)),
+            None => (None, None),
+        };
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
-            "INSERT INTO drive_shares (tenant_id, file_id, token_hash, created_by, expires_at) \
-             VALUES ($1,$2,$3,$4,$5) \
+            "INSERT INTO drive_shares \
+                 (tenant_id, file_id, token_hash, created_by, expires_at, password_hash, password_salt) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7) \
              RETURNING {SELECT_COLS}"
         );
         let row = sqlx::query_as(&sql)
@@ -75,6 +132,8 @@ impl<'a> ShareRepo<'a> {
             .bind(token_hash)
             .bind(created_by)
             .bind(expires_at)
+            .bind(pw_hash)
+            .bind(pw_salt)
             .fetch_one(&mut *tx)
             .await?;
         tx.commit().await?;
@@ -114,7 +173,7 @@ impl<'a> ShareRepo<'a> {
     /// Resolve via SECURITY DEFINER fn — sem contexto de tenant.
     pub async fn resolve(&self, token_hash: &str) -> Result<Option<ResolvedShare>> {
         let row: Option<ResolvedShare> = sqlx::query_as(
-            "SELECT id, tenant_id, file_id, expires_at, revoked_at \
+            "SELECT id, tenant_id, file_id, expires_at, revoked_at, password_hash, password_salt \
              FROM drive_share_resolve($1)",
         )
         .bind(token_hash)
@@ -478,5 +537,49 @@ mod tests {
         let write = "write".to_string();
         let read = "read".to_string();
         assert_ne!(write, read);
+    }
+
+    #[test]
+    fn password_hash_then_verify_roundtrips() {
+        let (hash, salt) = hash_password("s3cret");
+        assert!(verify_password("s3cret", &hash, &salt));
+        assert!(!verify_password("wrong", &hash, &salt));
+    }
+
+    #[test]
+    fn password_hash_uses_random_salt() {
+        let (h1, s1) = hash_password("same");
+        let (h2, s2) = hash_password("same");
+        // Distinct salts → distinct hashes for the same password.
+        assert_ne!(s1, s2);
+        assert_ne!(h1, h2);
+        // Each still verifies against its own salt.
+        assert!(verify_password("same", &h1, &s1));
+        assert!(verify_password("same", &h2, &s2));
+    }
+
+    #[test]
+    fn password_hash_is_sha256_hex() {
+        let (hash, salt) = hash_password("x");
+        assert_eq!(hash.len(), 64);
+        assert_eq!(salt.len(), 32);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn verify_rejects_wrong_salt() {
+        let (hash, _salt) = hash_password("pw");
+        assert!(!verify_password(
+            "pw",
+            &hash,
+            "00000000000000000000000000000000"
+        ));
+    }
+
+    #[test]
+    fn empty_password_is_hashable_and_verifiable() {
+        let (hash, salt) = hash_password("");
+        assert!(verify_password("", &hash, &salt));
+        assert!(!verify_password(" ", &hash, &salt));
     }
 }

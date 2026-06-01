@@ -1,4 +1,8 @@
 //! Drive shared links API — criar/listar/revogar link + download público.
+//!
+//! Links may be password-protected: `POST …/shares {"password": "..."}` stores a
+//! salted SHA-256 of the password, and `GET …/share/:token?password=...` verifies
+//! it (401 on missing/wrong). Password-less links keep their original behaviour.
 
 use axum::{
     extract::{Path, State},
@@ -17,7 +21,7 @@ use uuid::Uuid;
 
 use crate::{
     api::context::RequestCtx,
-    domain::{FileRepo, Share, ShareRepo},
+    domain::{share, FileRepo, Share, ShareRepo},
     error::{DriveError, Result},
     state::AppState,
 };
@@ -38,6 +42,17 @@ pub fn routes() -> Router<AppState> {
 pub struct CreateBody {
     #[serde(default)]
     pub expires_in_seconds: Option<i64>,
+    /// Optional password protecting the link. When set, the public download
+    /// endpoint requires it alongside the token. Empty/whitespace is rejected.
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct DownloadQuery {
+    /// Password for a protected link. Ignored for password-less links.
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -48,6 +63,9 @@ pub struct CreateResp {
     pub token: String,
     /// URL relativa pronta p/ compartilhamento via gateway.
     pub url: String,
+    /// True when the link is password-protected (the password itself is never
+    /// echoed back).
+    pub protected: bool,
 }
 
 async fn create(
@@ -82,22 +100,46 @@ async fn create_inner(
     }
     let expires_at = OffsetDateTime::now_utc() + time::Duration::seconds(ttl);
 
+    // Optional password: reject blank, else hash with a fresh salt.
+    let password = match body.password.as_deref().map(str::trim) {
+        Some("") => return Err(DriveError::BadRequest("password must not be blank".into())),
+        Some(p) => Some(share::hash_password(p)),
+        None => None,
+    };
+    let protected = password.is_some();
+
     // Token = 32 bytes aleatórios base64url; somente sha256 persiste.
     let mut raw = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut raw);
     let token = URL_SAFE_NO_PAD.encode(raw);
     let token_hash = format!("{:x}", Sha256::digest(token.as_bytes()));
 
+    let pw_ref = password.as_ref().map(|(h, s)| (h.as_str(), s.as_str()));
     let share = ShareRepo::new(pool)
-        .insert(ctx.tenant_id, file_id, &token_hash, ctx.user_id, expires_at)
+        .insert(
+            ctx.tenant_id,
+            file_id,
+            &token_hash,
+            ctx.user_id,
+            expires_at,
+            pw_ref,
+        )
         .await?;
 
     let url = format!("/api/v1/drive/share/{token}");
     tracing::info!(target: "audit",
         event = "drive.share.create",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
-        file_id = %file_id, share_id = %share.id, ttl_s = ttl);
-    Ok((StatusCode::CREATED, Json(CreateResp { share, token, url })))
+        file_id = %file_id, share_id = %share.id, ttl_s = ttl, protected = protected);
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateResp {
+            share,
+            token,
+            url,
+            protected,
+        }),
+    ))
 }
 
 async fn list(
@@ -168,6 +210,7 @@ async fn revoke_inner(
 async fn public_download(
     State(state): State<AppState>,
     Path(token): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<DownloadQuery>,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let token_hash = format!("{:x}", Sha256::digest(token.as_bytes()));
@@ -180,6 +223,18 @@ async fn public_download(
     let now = OffsetDateTime::now_utc();
     if resolved.revoked_at.is_some() || resolved.expires_at < now {
         return Err(DriveError::Forbidden);
+    }
+
+    // Password gate: when the link is protected, require a matching `?password=`.
+    // Missing or wrong password is 401 (distinct from 403 for revoked/expired).
+    if let (Some(hash), Some(salt)) = (&resolved.password_hash, &resolved.password_salt) {
+        let ok = q
+            .password
+            .as_deref()
+            .is_some_and(|cand| share::verify_password(cand, hash, salt));
+        if !ok {
+            return Err(DriveError::Unauthorized);
+        }
     }
 
     // Download via pool (bypass tenant — owner do blob é o tenant do share).
@@ -216,6 +271,30 @@ mod tests {
         let json = r#"{}"#;
         let b: CreateBody = serde_json::from_str(json).unwrap();
         assert!(b.expires_in_seconds.is_none());
+    }
+
+    #[test]
+    fn create_body_password_absent_is_none() {
+        let b: CreateBody = serde_json::from_str(r#"{"expires_in_seconds":60}"#).unwrap();
+        assert!(b.password.is_none());
+    }
+
+    #[test]
+    fn create_body_password_present() {
+        let b: CreateBody = serde_json::from_str(r#"{"password":"hunter2"}"#).unwrap();
+        assert_eq!(b.password.as_deref(), Some("hunter2"));
+    }
+
+    #[test]
+    fn download_query_password_parses() {
+        let q: DownloadQuery = serde_json::from_str(r#"{"password":"abc"}"#).unwrap();
+        assert_eq!(q.password.as_deref(), Some("abc"));
+    }
+
+    #[test]
+    fn download_query_empty_is_none() {
+        let q: DownloadQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.password.is_none());
     }
 
     #[test]
