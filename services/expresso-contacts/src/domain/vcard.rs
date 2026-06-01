@@ -26,6 +26,21 @@ pub struct ContactEmail {
     pub label: Option<String>,
 }
 
+/// One parsed ADR property (RFC 6350 §6.3.1). The structured value is 7
+/// `;`-separated components: po-box, ext, street, locality, region, postal,
+/// country. Empty components stay `None`. `label` is the lowercased TYPE.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ContactAddress {
+    pub label: Option<String>,
+    pub po_box: Option<String>,
+    pub ext: Option<String>,
+    pub street: Option<String>,
+    pub locality: Option<String>,
+    pub region: Option<String>,
+    pub postal_code: Option<String>,
+    pub country: Option<String>,
+}
+
 #[derive(Debug, Default)]
 pub struct ParsedVCard {
     pub uid: String,
@@ -37,6 +52,8 @@ pub struct ParsedVCard {
     pub phone: Option<String>,
     /// Every EMAIL in the vCard (incl. the primary), in document order.
     pub emails: Vec<ContactEmail>,
+    /// Every ADR in the vCard, in document order.
+    pub addresses: Vec<ContactAddress>,
     /// BDAY value verbatim (RFC 6350 §6.2.5) — may be a full date or a partial
     /// `--MMDD`. None when absent.
     pub birthday: Option<String>,
@@ -90,6 +107,11 @@ pub fn parse(raw: &str) -> Result<ParsedVCard, String> {
                 }
             }
             "TEL" if out.phone.is_none() => out.phone = Some(value.trim().to_owned()),
+            "ADR" => {
+                if let Some(adr) = parse_adr(head, value) {
+                    out.addresses.push(adr);
+                }
+            }
             "BDAY" if out.birthday.is_none() => {
                 let b = value.trim();
                 if !b.is_empty() {
@@ -163,6 +185,47 @@ fn email_type_label(head: &str) -> Option<String> {
             Some(t)
         }
     })
+}
+
+/// Parse an ADR property (`head` = `ADR[;params]`, `value` = the 7 `;`-separated
+/// structured components). Returns `None` when every component is empty. Each
+/// component is text-unescaped, trimmed; empties become `None`.
+fn parse_adr(head: &str, value: &str) -> Option<ContactAddress> {
+    let parts: Vec<Option<String>> = value
+        .split(';')
+        .map(|c| {
+            let t = c.trim();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t.to_owned())
+            }
+        })
+        .collect();
+    let get = |i: usize| parts.get(i).cloned().flatten();
+    let adr = ContactAddress {
+        label: email_type_label(head), // same TYPE extraction as EMAIL
+        po_box: get(0),
+        ext: get(1),
+        street: get(2),
+        locality: get(3),
+        region: get(4),
+        postal_code: get(5),
+        country: get(6),
+    };
+    // Skip an ADR with no usable component (e.g. a bare "ADR:;;;;;;").
+    let empty = adr.po_box.is_none()
+        && adr.ext.is_none()
+        && adr.street.is_none()
+        && adr.locality.is_none()
+        && adr.region.is_none()
+        && adr.postal_code.is_none()
+        && adr.country.is_none();
+    if empty {
+        None
+    } else {
+        Some(adr)
+    }
 }
 
 /// Resolve a PHOTO `head` (property + params) and `value` into a [`Photo`].
@@ -507,6 +570,39 @@ mod tests {
     fn build_vcard_uid_present_in_output() {
         let v = build_vcard("test-uid-42", "Alice", None, None, None, None);
         assert!(v.contains("test-uid-42"));
+    }
+
+    // ---- ADR ----
+
+    #[test]
+    fn parses_adr_structured_components() {
+        let raw = "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:a1\r\nFN:A\r\nADR;TYPE=WORK:;;123 Main St;Springfield;IL;62704;USA\r\nEND:VCARD\r\n";
+        let c = parse(raw).unwrap();
+        assert_eq!(c.addresses.len(), 1);
+        let a = &c.addresses[0];
+        assert_eq!(a.label.as_deref(), Some("work"));
+        assert_eq!(a.po_box, None);
+        assert_eq!(a.street.as_deref(), Some("123 Main St"));
+        assert_eq!(a.locality.as_deref(), Some("Springfield"));
+        assert_eq!(a.region.as_deref(), Some("IL"));
+        assert_eq!(a.postal_code.as_deref(), Some("62704"));
+        assert_eq!(a.country.as_deref(), Some("USA"));
+    }
+
+    #[test]
+    fn skips_fully_empty_adr() {
+        let raw = "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:a2\r\nFN:B\r\nADR:;;;;;;\r\nEND:VCARD\r\n";
+        let c = parse(raw).unwrap();
+        assert!(c.addresses.is_empty());
+    }
+
+    #[test]
+    fn parses_multiple_adr_in_order() {
+        let raw = "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:a3\r\nFN:C\r\nADR;TYPE=HOME:;;1 First Ave;;;;\r\nADR;TYPE=WORK:;;2 Second St;;;;\r\nEND:VCARD\r\n";
+        let c = parse(raw).unwrap();
+        assert_eq!(c.addresses.len(), 2);
+        assert_eq!(c.addresses[0].label.as_deref(), Some("home"));
+        assert_eq!(c.addresses[1].street.as_deref(), Some("2 Second St"));
     }
 
     // ---- BDAY / NICKNAME ----

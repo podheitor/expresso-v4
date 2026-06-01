@@ -58,6 +58,7 @@ impl<'a> ContactRepo<'a> {
         let parsed = vcard::parse(raw).map_err(ContactsError::InvalidVCard)?;
         let etag = vcard::compute_etag(raw);
         let emails = parsed.emails.clone();
+        let addresses = parsed.addresses.clone();
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
             r#"
@@ -86,6 +87,7 @@ impl<'a> ContactRepo<'a> {
         .fetch_one(&mut *tx)
         .await?;
         sync_emails(&mut tx, tenant_id, row.id, &emails).await?;
+        sync_addresses(&mut tx, tenant_id, row.id, &addresses).await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -162,6 +164,7 @@ impl<'a> ContactRepo<'a> {
         let parsed = vcard::parse(raw).map_err(ContactsError::InvalidVCard)?;
         let etag = vcard::compute_etag(raw);
         let emails = parsed.emails.clone();
+        let addresses = parsed.addresses.clone();
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
             r#"
@@ -197,6 +200,7 @@ impl<'a> ContactRepo<'a> {
         .fetch_one(&mut *tx)
         .await?;
         sync_emails(&mut tx, tenant_id, id, &emails).await?;
+        sync_addresses(&mut tx, tenant_id, id, &addresses).await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -342,6 +346,28 @@ impl<'a> ContactRepo<'a> {
         tx.commit().await?;
         Ok(rows)
     }
+
+    /// List a contact's indexed postal addresses, in document order.
+    pub async fn list_addresses(
+        &self,
+        tenant_id: Uuid,
+        contact_id: Uuid,
+    ) -> Result<Vec<ContactAddressRow>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let rows = sqlx::query_as::<_, ContactAddressRow>(
+            r#"SELECT label, po_box, ext, street, locality, region, postal_code,
+                      country, position
+                 FROM contact_addresses
+                WHERE tenant_id = $1 AND contact_id = $2
+                ORDER BY position, created_at"#,
+        )
+        .bind(tenant_id)
+        .bind(contact_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
 }
 
 /// An indexed EMAIL entry returned to API callers.
@@ -374,6 +400,57 @@ async fn sync_emails(
         .bind(contact_id)
         .bind(&e.address)
         .bind(&e.label)
+        .bind(i as i32)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+/// An indexed ADR entry returned to API callers.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct ContactAddressRow {
+    pub label: Option<String>,
+    pub po_box: Option<String>,
+    pub ext: Option<String>,
+    pub street: Option<String>,
+    pub locality: Option<String>,
+    pub region: Option<String>,
+    pub postal_code: Option<String>,
+    pub country: Option<String>,
+    pub position: i32,
+}
+
+/// Replace a contact's address index: delete existing rows, then insert the
+/// parsed ADR entries. Runs in the caller's tx so the index tracks `vcard_raw`.
+async fn sync_addresses(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: Uuid,
+    contact_id: Uuid,
+    addresses: &[vcard::ContactAddress],
+) -> Result<()> {
+    sqlx::query("DELETE FROM contact_addresses WHERE tenant_id = $1 AND contact_id = $2")
+        .bind(tenant_id)
+        .bind(contact_id)
+        .execute(&mut **tx)
+        .await?;
+    for (i, a) in addresses.iter().enumerate() {
+        sqlx::query(
+            r#"INSERT INTO contact_addresses
+                 (tenant_id, contact_id, label, po_box, ext, street, locality,
+                  region, postal_code, country, position)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)"#,
+        )
+        .bind(tenant_id)
+        .bind(contact_id)
+        .bind(&a.label)
+        .bind(&a.po_box)
+        .bind(&a.ext)
+        .bind(&a.street)
+        .bind(&a.locality)
+        .bind(&a.region)
+        .bind(&a.postal_code)
+        .bind(&a.country)
         .bind(i as i32)
         .execute(&mut **tx)
         .await?;
