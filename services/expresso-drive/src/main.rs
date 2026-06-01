@@ -92,6 +92,18 @@ fn resolve_multi_realm() -> (
     }
 }
 
+/// Build the personal-access-token resolver when `AUTH__URL` (expresso-auth base
+/// URL) is configured. Absent → returns None and the PAT auth path stays off
+/// (only JWTs accepted), so this is opt-in per deployment.
+fn resolve_pat() -> Option<Arc<expresso_auth_client::PatResolver>> {
+    let auth_url = env_string("AUTH__URL")?;
+    info!(%auth_url, "PAT resolver enabled");
+    Some(Arc::new(expresso_auth_client::PatResolver::new(
+        auth_url,
+        reqwest::Client::new(),
+    )))
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let tel = resolve_telemetry();
@@ -259,6 +271,9 @@ async fn main() -> anyhow::Result<()> {
     }
     if let Some(r) = resolver {
         app = app.layer(axum::extract::Extension(r));
+    }
+    if let Some(pat) = resolve_pat() {
+        app = app.layer(axum::extract::Extension(pat));
     }
     let lst = tokio::net::TcpListener::bind(addr).await?;
 
