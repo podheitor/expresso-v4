@@ -19,6 +19,7 @@ mod imap;
 mod imip;
 mod ingest;
 mod lmtp;
+mod pop3;
 mod scanner;
 mod sieve;
 mod smtp;
@@ -224,6 +225,20 @@ pub async fn run() -> anyhow::Result<()> {
         set.spawn(async move { imap::serve_tls(imaps_state, imaps_addr).await });
     } else {
         info!("IMAPS (993) disabled — mail_server.tls_cert/tls_key not set");
+    }
+
+    // POP3 (plain, port 110, RFC 1939)
+    let pop3_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.pop3_port).parse()?;
+    let pop3_state = state.clone();
+    set.spawn(async move { pop3::serve(pop3_state, pop3_addr).await });
+
+    // POP3S — implicit TLS (port 995, RFC 8314) — only when TLS configured
+    if cfg.mail_server.tls_cert.is_some() && cfg.mail_server.tls_key.is_some() {
+        let pop3s_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.pop3s_port).parse()?;
+        let pop3s_state = state.clone();
+        set.spawn(async move { pop3::serve_tls(pop3s_state, pop3s_addr).await });
+    } else {
+        info!("POP3S (995) disabled — mail_server.tls_cert/tls_key not set");
     }
 
     // ── Wait for any task to finish (usually shutdown signal) ──────────────────

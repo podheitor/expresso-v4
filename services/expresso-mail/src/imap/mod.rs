@@ -4,7 +4,7 @@
 //!  TcpListener → per-connection task → ImapSession state machine
 //!  imap-codec handles framing / serialization; imap-types handles data structures.
 
-mod lockout;
+pub(crate) mod lockout;
 mod metrics;
 mod session;
 
@@ -15,7 +15,9 @@ use tracing::{error, info, warn};
 
 use crate::state::AppState;
 
-fn load_tls(cert: &str, key: &str) -> anyhow::Result<rustls::ServerConfig> {
+/// Load a rustls `ServerConfig` from PEM cert + key paths. Shared by the
+/// IMAPS and POP3S listeners so the PEM-parsing logic lives in one place.
+pub(crate) fn load_tls(cert: &str, key: &str) -> anyhow::Result<rustls::ServerConfig> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let cert_pem = std::fs::read(cert)?;
     let key_pem = std::fs::read(key)?;

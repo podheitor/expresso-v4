@@ -126,6 +126,12 @@ pub struct MailServerConfig {
     /// SMTPS port (implicit TLS, RFC 8314)
     #[serde(default = "default_smtps_port")]
     pub smtps_port: u16,
+    /// POP3 listen port (RFC 1939)
+    #[serde(default = "default_pop3_port")]
+    pub pop3_port: u16,
+    /// POP3S port (implicit TLS, RFC 8314)
+    #[serde(default = "default_pop3s_port")]
+    pub pop3s_port: u16,
     /// Outbound relay host (submission)
     #[serde(default = "default_relay_host")]
     pub relay_host: String,
@@ -195,6 +201,12 @@ fn default_imaps_port() -> u16 {
 fn default_smtps_port() -> u16 {
     465
 }
+fn default_pop3_port() -> u16 {
+    110
+}
+fn default_pop3s_port() -> u16 {
+    995
+}
 fn default_relay_host() -> String {
     "127.0.0.1".into()
 }
@@ -241,6 +253,8 @@ mod tests {
         assert_eq!(default_imap_port(), 143);
         assert_eq!(default_imaps_port(), 993);
         assert_eq!(default_smtps_port(), 465);
+        assert_eq!(default_pop3_port(), 110);
+        assert_eq!(default_pop3s_port(), 995);
     }
 
     #[test]
