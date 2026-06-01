@@ -211,6 +211,40 @@ impl<'a> NoteRepo<'a> {
         Ok(rows)
     }
 
+    /// Case-insensitive substring search over a user's own notes (title + body),
+    /// pinned first then newest-updated. `%`/`_`/`\` in `query` are escaped so a
+    /// literal search works. `limit` is clamped by the caller. Mirrors the REST
+    /// search other services expose (contacts/calendar/drive).
+    pub async fn search(
+        &self,
+        tenant: Uuid,
+        user: Uuid,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<Note>> {
+        let escaped = query
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let pattern = format!("%{escaped}%");
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let rows = sqlx::query_as::<_, Note>(
+            r#"SELECT * FROM notes
+                WHERE tenant_id = $1 AND user_id = $2
+                  AND (title ILIKE $3 ESCAPE '\' OR body ILIKE $3 ESCAPE '\')
+                ORDER BY pinned DESC, updated_at DESC
+                LIMIT $4"#,
+        )
+        .bind(tenant)
+        .bind(user)
+        .bind(&pattern)
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     /// List notes shared *with* `user` (a `notes_acl` grant exists), newest
     /// first. Each carries the granted `privilege` so the UI can show read-only
     /// vs editable. Own notes are excluded — those come from [`list`](Self::list).

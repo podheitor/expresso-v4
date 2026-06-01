@@ -4,6 +4,7 @@
 //!   GET    /api/v1/notes[?archived=true][&notebook=:id|none][&tag=:tag]
 //!                                          → list own notes (by notebook or tag)
 //!   GET    /api/v1/notes/shared            → list notes shared with me
+//!   GET    /api/v1/notes/search?q=&limit=  → substring search own notes
 //!   POST   /api/v1/notes                    → create
 //!   GET    /api/v1/notes/:id                → fetch one (own or shared)
 //!   PATCH  /api/v1/notes/:id                → partial update
@@ -40,6 +41,8 @@ pub fn routes() -> Router<AppState> {
         // `shared` is a static segment — must be registered before `:id` so it
         // doesn't get captured as a note id (matchit prefers static over param).
         .route("/api/v1/notes/shared", get(list_shared))
+        // `search` static segment — also before `:id` (matchit static-first).
+        .route("/api/v1/notes/search", get(search))
         .route(
             "/api/v1/notes/:id",
             patch(update).get(get_one).delete(delete),
@@ -90,6 +93,32 @@ async fn list(
     };
     let notes = repo
         .list(ctx.tenant_id, ctx.user_id, q.archived, filter)
+        .await?;
+    Ok(Json(notes))
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchQuery {
+    q: String,
+    limit: Option<i64>,
+}
+
+/// GET /api/v1/notes/search?q=&limit= — substring search over the caller's own
+/// notes (title + body). Mirrors the REST search in contacts/calendar/drive.
+/// `q` empty → 400. `limit` clamped 1..200 (default 50).
+async fn search(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Query(q): Query<SearchQuery>,
+) -> Result<Json<Vec<Note>>> {
+    let query = q.q.trim();
+    if query.is_empty() {
+        return Err(NotesError::BadRequest("q must not be empty".into()));
+    }
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+    let pool = state.db_or_unavailable()?;
+    let notes = NoteRepo::new(pool)
+        .search(ctx.tenant_id, ctx.user_id, query, limit)
         .await?;
     Ok(Json(notes))
 }
