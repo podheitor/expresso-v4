@@ -263,6 +263,8 @@ pub struct SearchParams {
     pub size_min: Option<i32>,
     /// Return only messages with size_bytes <= this value.
     pub size_max: Option<i32>,
+    /// Search a delegated mailbox: requires a grant from that owner, else 403.
+    pub on_behalf_of: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -321,7 +323,8 @@ pub struct FlagRequest {
 
 /// GET /api/v1/mail/search?q=text&folder=INBOX&from=addr&subject=text&since=date&before=date
 ///
-/// Full-text and envelope search across the user's mailbox.
+/// Full-text and envelope search across the user's mailbox. `on_behalf_of=<owner>`
+/// searches a delegated mailbox when the caller holds a grant (else 403).
 /// `q` searches subject + from_addr + preview_text (ILIKE).
 /// `since`/`before` are ISO-8601 date prefixes (YYYY-MM-DD).
 /// `size_min`/`size_max` filter by `size_bytes` (inclusive range, bytes).
@@ -392,6 +395,9 @@ async fn search_messages(
     };
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let effective_user_id =
+        resolve_read_mailbox(&mut tx, ctx.tenant_id, ctx.user_id, params.on_behalf_of).await?;
 
     let folder_filter = params
         .folder
@@ -484,7 +490,7 @@ async fn search_messages(
     );
     let max_received: Option<OffsetDateTime> = sqlx::query_scalar(&max_sql)
         .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
+        .bind(effective_user_id)
         .fetch_one(&mut *tx)
         .await
         .unwrap_or(None);
@@ -516,7 +522,7 @@ async fn search_messages(
         )
         .bind(cursor_id)
         .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
+        .bind(effective_user_id)
         .fetch_optional(&mut *tx)
         .await?;
 
@@ -530,7 +536,7 @@ async fn search_messages(
             );
             sqlx::query_as(&sql)
                 .bind(ctx.tenant_id)
-                .bind(ctx.user_id)
+                .bind(effective_user_id)
                 .bind(anchor_ts)
                 .bind(anchor_id)
                 .fetch_all(&mut *tx)
@@ -543,7 +549,7 @@ async fn search_messages(
             );
             let mut rows: Vec<MessageListItem> = sqlx::query_as(&sql)
                 .bind(ctx.tenant_id)
-                .bind(ctx.user_id)
+                .bind(effective_user_id)
                 .bind(anchor_ts)
                 .bind(anchor_id)
                 .fetch_all(&mut *tx)
@@ -569,7 +575,7 @@ async fn search_messages(
         );
         sqlx::query_as(&sql)
             .bind(ctx.tenant_id)
-            .bind(ctx.user_id)
+            .bind(effective_user_id)
             .fetch_all(&mut *tx)
             .await?
     };
@@ -583,7 +589,7 @@ async fn search_messages(
     );
     let total: i64 = sqlx::query_scalar(&count_sql)
         .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
+        .bind(effective_user_id)
         .fetch_one(&mut *tx)
         .await
         .unwrap_or(0);
