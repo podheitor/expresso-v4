@@ -116,6 +116,17 @@ async fn resolve_oidc() -> Option<Arc<OidcValidator>> {
     }
 }
 
+/// Build the PAT resolver from `AUTH__URL`. Absent → None (PAT path off, JWT
+/// only). Opt-in per deployment.
+fn resolve_pat() -> Option<Arc<expresso_auth_client::PatResolver>> {
+    let auth_url = env_string("AUTH__URL")?;
+    info!(%auth_url, "PAT resolver enabled");
+    Some(Arc::new(expresso_auth_client::PatResolver::new(
+        auth_url,
+        reqwest::Client::new(),
+    )))
+}
+
 fn resolve_multi_realm() -> (
     Option<Arc<MultiRealmValidator>>,
     Option<Arc<TenantResolver>>,
@@ -189,7 +200,7 @@ async fn main() -> anyhow::Result<()> {
         info!("invite mailer enabled (MEET__SMTP_HOST)");
     }
     let state = AppState::new(db, jitsi, webhook, invite_mailer);
-    let app = api::router(state, oidc, multi, resolver);
+    let app = api::router(state, oidc, multi, resolver, resolve_pat());
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 
     info!(addr = %http_addr, "HTTP API listening");

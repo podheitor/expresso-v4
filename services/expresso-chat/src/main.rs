@@ -109,6 +109,17 @@ async fn resolve_oidc() -> Option<Arc<OidcValidator>> {
     }
 }
 
+/// Build the PAT resolver from `AUTH__URL`. Absent → None (PAT path off, JWT
+/// only). Opt-in per deployment.
+fn resolve_pat() -> Option<Arc<expresso_auth_client::PatResolver>> {
+    let auth_url = env_string("AUTH__URL")?;
+    info!(%auth_url, "PAT resolver enabled");
+    Some(Arc::new(expresso_auth_client::PatResolver::new(
+        auth_url,
+        reqwest::Client::new(),
+    )))
+}
+
 /// Build multi-realm auth (fase 2 do realm-per-tenant). Retorna (Some, Some)
 /// quando AUTH__OIDC_ISSUER_TEMPLATE (com placeholder `{realm}`) +
 /// AUTH__TENANT_HOSTS estão setados. Caso contrário retorna (None, None) e
@@ -182,7 +193,7 @@ async fn main() -> anyhow::Result<()> {
     let http_addr = resolve_addr()?;
     let state = AppState::new(db, matrix);
     spawn_presence_sweeper(state.clone());
-    let app = api::router(state, oidc, multi, resolver);
+    let app = api::router(state, oidc, multi, resolver, resolve_pat());
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 
     info!(addr = %http_addr, "HTTP API listening");
