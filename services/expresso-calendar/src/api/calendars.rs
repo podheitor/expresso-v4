@@ -24,6 +24,8 @@ pub fn routes() -> Router<AppState> {
             get(stats_event_density),
         )
         .route("/api/v1/calendars", post(create).get(list))
+        // Static `shared` before `:id` so matchit doesn't capture it as a cal id.
+        .route("/api/v1/calendars/shared", get(list_shared))
         .route(
             "/api/v1/calendars/:id",
             get(get_one).delete(delete).patch(update),
@@ -94,6 +96,20 @@ async fn list_inner(
             .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
+}
+
+/// GET /api/v1/calendars/shared — calendars shared *with* the caller via
+/// `calendar_acl` (excluding owned). The dedicated "shared with me" view;
+/// mirrors notes/drive shared endpoints.
+async fn list_shared(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<Vec<Calendar>>> {
+    let pool = state.db_or_unavailable()?;
+    let cals = CalendarRepo::new(pool)
+        .list_shared(ctx.tenant_id, ctx.user_id)
+        .await?;
+    Ok(Json(cals))
 }
 
 async fn get_one(

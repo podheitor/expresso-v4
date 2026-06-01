@@ -283,6 +283,33 @@ impl<'a> CalendarRepo<'a> {
         Ok(rows)
     }
 
+    /// List calendars shared *with* user via `calendar_acl`, excluding ones they
+    /// own — the dedicated "shared with me" view (mirrors notes/drive). Name-sorted.
+    pub async fn list_shared(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<Calendar>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id)
+            .await
+            .map_err(CalendarError::from)?;
+        let rows = sqlx::query_as::<_, Calendar>(
+            r#"
+            SELECT id, tenant_id, owner_user_id, name, description, color,
+                   timezone, ctag, is_default, created_at, updated_at
+              FROM calendars
+             WHERE tenant_id = $1
+               AND owner_user_id <> $2
+               AND id IN (SELECT calendar_id FROM calendar_acl
+                           WHERE tenant_id = $1 AND grantee_id = $2)
+             ORDER BY name ASC
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(user_id)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(CalendarError::from)?;
+        tx.commit().await.map_err(CalendarError::from)?;
+        Ok(rows)
+    }
+
     /// Effective access level for user on calendar:
     /// returns "OWNER" | "READ" | "WRITE" | "ADMIN" | None.
     ///
