@@ -2,6 +2,7 @@
 //!
 //! POST   /api/v1/channels/:id/messages                    → send m.room.message (text)
 //! GET    /api/v1/channels/:id/messages                    → list recent events (raw chunk JSON)
+//! GET    /api/v1/channels/:id/messages/search?q=&limit=   → substring-search recent messages
 //! PUT    /api/v1/channels/:id/messages/:event_id          → edit (m.replace)
 //! DELETE /api/v1/channels/:id/messages/:event_id          → delete (redact)
 //! POST   /api/v1/channels/:id/messages/:event_id/replies  → reply in thread (m.thread)
@@ -10,7 +11,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::post,
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -38,6 +39,9 @@ pub const DEFAULT_LIST_LIMIT: u32 = 50;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/channels/:id/messages", post(send).get(list))
+        // `search` is a static segment — register before `:event_id` so matchit
+        // doesn't capture it as an event id.
+        .route("/api/v1/channels/:id/messages/search", get(search))
         .route(
             "/api/v1/channels/:id/messages/:event_id",
             axum::routing::put(edit).delete(remove),
@@ -61,6 +65,60 @@ pub struct ListQuery {
 
 fn default_limit() -> u32 {
     DEFAULT_LIST_LIMIT
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    /// Case-insensitive substring to match against message bodies.
+    pub q: String,
+    /// How many recent messages to scan (the search window). Clamped like list.
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+}
+
+/// GET /api/v1/channels/:id/messages/search?q=&limit= — substring-search the
+/// channel's recent messages (membership required). Scans the latest `limit`
+/// events and returns the matches; deep history beyond the window isn't
+/// searched (see `MatrixClient::search_messages`).
+async fn search(
+    state: State<AppState>,
+    ctx: RequestCtx,
+    id: Path<Uuid>,
+    q: Query<SearchQuery>,
+) -> Result<Json<Value>> {
+    let r = search_inner(state, ctx, id, q).await;
+    crate::metrics::record_result(crate::metrics::OP_MESSAGE_LIST, &r);
+    r
+}
+
+async fn search_inner(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Query(mut q): Query<SearchQuery>,
+) -> Result<Json<Value>> {
+    if q.q.trim().is_empty() {
+        return Err(ChatError::BadRequest("q must not be empty".into()));
+    }
+    if q.limit == 0 || q.limit > MAX_LIST_LIMIT {
+        q.limit = q.limit.clamp(1, MAX_LIST_LIMIT);
+    }
+    let pool = state.db_or_unavailable()?;
+    let matrix = state.matrix_or_unavailable()?;
+    let repo = ChannelRepo::new(pool);
+    if !repo.is_member(ctx.tenant_id, id, ctx.user_id).await? {
+        return Err(ChatError::NotMember);
+    }
+    let ch = repo
+        .get(ctx.tenant_id, id)
+        .await
+        .map_err(|_| ChatError::ChannelNotFound(id))?;
+
+    let acting_as = matrix.mxid_for(ctx.user_id);
+    let value = matrix
+        .search_messages(&acting_as, &ch.matrix_room_id, q.q.trim(), q.limit)
+        .await?;
+    Ok(Json(value))
 }
 
 async fn send(

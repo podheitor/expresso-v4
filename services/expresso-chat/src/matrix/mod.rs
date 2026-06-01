@@ -564,6 +564,44 @@ impl MatrixClient {
             .await
             .map_err(|e| ChatError::Matrix(format!("decode list: {e}")))
     }
+
+    /// Substring-search a room's recent messages. Scans the latest `scan_limit`
+    /// events (capped at 100 by the HS) and returns the `m.room.message` events
+    /// whose `content.body` contains `query` (case-insensitive). This is a
+    /// pragmatic search over the recent window — it does NOT use the HS
+    /// full-text `/search` (which requires server-side indexing that may be
+    /// disabled); deep history beyond the scan window is not searched.
+    pub async fn search_messages(
+        &self,
+        acting_as: &str,
+        room_id: &str,
+        query: &str,
+        scan_limit: u32,
+    ) -> Result<Value> {
+        let raw = self.list_messages(acting_as, room_id, scan_limit).await?;
+        let needle = query.to_lowercase();
+        let matches: Vec<Value> = raw
+            .get("chunk")
+            .and_then(Value::as_array)
+            .map(|chunk| {
+                chunk
+                    .iter()
+                    .filter(|ev| event_body_contains(ev, &needle))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(serde_json::json!({ "chunk": matches, "count": matches.len() }))
+    }
+}
+
+/// True when a Matrix event is a message whose `content.body` contains `needle`
+/// (which the caller has already lowercased).
+fn event_body_contains(ev: &Value, needle: &str) -> bool {
+    ev.get("content")
+        .and_then(|c| c.get("body"))
+        .and_then(Value::as_str)
+        .is_some_and(|b| b.to_lowercase().contains(needle))
 }
 
 fn urlencode(s: &str) -> String {
@@ -585,6 +623,22 @@ fn localpart_from_mxid(mxid: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn event_body_contains_matches_case_insensitive() {
+        let ev = serde_json::json!({"content": {"body": "Hello World"}});
+        assert!(event_body_contains(&ev, "hello"));
+        assert!(event_body_contains(&ev, "world"));
+        assert!(!event_body_contains(&ev, "bye"));
+    }
+
+    #[test]
+    fn event_body_contains_false_without_body() {
+        let ev = serde_json::json!({"content": {"membership": "join"}});
+        assert!(!event_body_contains(&ev, "anything"));
+        let ev2 = serde_json::json!({"type": "m.reaction"});
+        assert!(!event_body_contains(&ev2, "x"));
+    }
 
     #[test]
     fn mxid_format() {
