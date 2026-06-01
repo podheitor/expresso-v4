@@ -158,6 +158,68 @@ else
   echo "SKIP: gov.br IdP (set GOVBR_CLIENT_ID/GOVBR_CLIENT_SECRET to enable)"
 fi
 
+# 12. Generic SAML 2.0 external IdP — only when SAML_IDP_SSO_URL + SAML_IDP_CERT
+# provided. Registers a per-realm SAML broker (Okta/Azure AD/ADFS/etc). Keycloak
+# parses + signature-verifies the assertion; the Rust side never touches XML.
+# SAML_IDP_ALIAS lets one realm host several IdPs; it is the kc_idp_hint value
+# the login flow forwards (sprint C). Attribute mappers copy the IdP's email +
+# display name into KC user attributes, and a session-note mapper stamps the
+# broker alias as the `identity_provider` access-token claim so JIT provisioning
+# (sprint C) can tell a SAML login from a local one.
+if [[ -n "${SAML_IDP_SSO_URL:-}" && -n "${SAML_IDP_CERT:-}" ]]; then
+  SAML_ALIAS="${SAML_IDP_ALIAS:-saml}"
+  SAML_ENTITY="${SAML_IDP_ENTITY_ID:-$SAML_IDP_SSO_URL}"
+  SAML_NAMEID="${SAML_IDP_NAMEID_FORMAT:-urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress}"
+  SAML_ATTR_EMAIL="${SAML_IDP_ATTR_EMAIL:-email}"
+  SAML_ATTR_NAME="${SAML_IDP_ATTR_NAME:-displayName}"
+  SAML_IDP=$(cat <<JSON
+{"alias":"$SAML_ALIAS","displayName":"${SAML_IDP_DISPLAY:-SAML SSO}","providerId":"saml","enabled":true,
+ "trustEmail":true,"storeToken":false,"addReadTokenRoleOnCreate":false,"firstBrokerLoginFlowAlias":"first broker login",
+ "config":{
+   "singleSignOnServiceUrl":"$SAML_IDP_SSO_URL",
+   "singleLogoutServiceUrl":"${SAML_IDP_SLO_URL:-}",
+   "idpEntityId":"$SAML_ENTITY",
+   "signingCertificate":"$SAML_IDP_CERT",
+   "nameIDPolicyFormat":"$SAML_NAMEID",
+   "validateSignature":"true","wantAssertionsSigned":"true","wantAuthnRequestsSigned":"false",
+   "postBindingResponse":"true","postBindingAuthnRequest":"true","syncMode":"FORCE"}}
+JSON
+  )
+  curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/identity-provider/instances" -d "$SAML_IDP" || \
+    curl -sf "${H[@]}" -X PUT "$KC_URL/admin/realms/$REALM/identity-provider/instances/$SAML_ALIAS" -d "$SAML_IDP" || true
+
+  # Mapper: SAML email attribute → KC email attribute.
+  SAML_EMAIL_MAPPER=$(cat <<JSON
+{"name":"saml-email","identityProviderAlias":"$SAML_ALIAS","identityProviderMapper":"saml-user-attribute-idp-mapper",
+ "config":{"attribute.name":"$SAML_ATTR_EMAIL","user.attribute":"email","syncMode":"FORCE"}}
+JSON
+  )
+  curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/identity-provider/instances/$SAML_ALIAS/mappers" -d "$SAML_EMAIL_MAPPER" || true
+
+  # Mapper: SAML display-name attribute → KC firstName (best-effort full name).
+  SAML_NAME_MAPPER=$(cat <<JSON
+{"name":"saml-display-name","identityProviderAlias":"$SAML_ALIAS","identityProviderMapper":"saml-user-attribute-idp-mapper",
+ "config":{"attribute.name":"$SAML_ATTR_NAME","user.attribute":"firstName","syncMode":"FORCE"}}
+JSON
+  )
+  curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/identity-provider/instances/$SAML_ALIAS/mappers" -d "$SAML_NAME_MAPPER" || true
+
+  # Client protocol mapper: expose the broker alias as `identity_provider` claim
+  # (session note set by KC on every brokered login) so sprint C's JIT flow can
+  # detect a SAML login and pick the right saml_idp_config row.
+  IDP_CLAIM=$(cat <<JSON
+{"name":"claim-identity-provider","protocol":"openid-connect","protocolMapper":"oidc-usersessionmodel-note-mapper",
+ "config":{"user.session.note":"identity_provider","claim.name":"identity_provider","jsonType.label":"String",
+           "access.token.claim":"true","id.token.claim":"false","userinfo.token.claim":"true"}}
+JSON
+  )
+  curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/clients/$CUID/protocol-mappers/models" -d "$IDP_CLAIM" || true
+
+  echo "OK: SAML IdP seeded (alias=$SAML_ALIAS sso=$SAML_IDP_SSO_URL)"
+else
+  echo "SKIP: SAML IdP (set SAML_IDP_SSO_URL/SAML_IDP_CERT to enable)"
+fi
+
 echo "OK: realm=$REALM client=$CLIENT_ID alice/alice2026! tenant=$ALICE_TENANT"
 
 # 11. SuperAdmin bootstrap (opt-in via SA_PASS). Idempotent; syncs KC + DB when

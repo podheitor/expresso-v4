@@ -212,6 +212,11 @@ async fn main() -> anyhow::Result<()> {
             "/internal/tokens/introspect",
             post(handlers::tokens::introspect),
         )
+        .route("/internal/saml/idp-sync", post(handlers::saml_sync::sync))
+        .route(
+            "/internal/saml/idp-delete",
+            post(handlers::saml_sync::remove),
+        )
         .route("/auth/impersonate/end", post(handlers::impersonate::end))
         .route(
             "/auth/impersonate/:target_user_id",

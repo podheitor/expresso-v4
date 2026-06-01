@@ -6,4 +6,5 @@ pub mod logout;
 pub mod me;
 pub mod mfa;
 pub mod refresh;
+pub mod saml_sync;
 pub mod tokens;

@@ -236,6 +236,68 @@ impl KcAdmin {
         Ok(creds)
     }
 
+    /// Create-or-update a SAML 2.0 identity-provider instance in `realm`
+    /// (realm-per-tenant, so the caller passes the tenant's realm explicitly
+    /// rather than using the admin client's default realm). Mirrors the
+    /// seed-realm.sh §12 block: KC owns assertion parsing + signature
+    /// verification, so the Rust side only pushes the broker registration.
+    /// Idempotent — POST first, fall back to PUT when the alias already exists.
+    pub async fn upsert_saml_idp(&self, realm: &str, spec: &SamlIdpSpec) -> Result<()> {
+        let tok = self.token().await?;
+        let body = spec.to_kc_json();
+        let base = format!(
+            "{}/admin/realms/{}/identity-provider/instances",
+            self.cfg.base_url, realm
+        );
+        let post = self
+            .http
+            .post(&base)
+            .bearer_auth(&tok)
+            .json(&body)
+            .send()
+            .await
+            .context("kc saml-idp post req")?;
+        if post.status().is_success() {
+            return Ok(());
+        }
+        // 409 (already exists) → update via PUT on the alias.
+        let put = self
+            .http
+            .put(format!("{base}/{}", spec.alias))
+            .bearer_auth(&tok)
+            .json(&body)
+            .send()
+            .await
+            .context("kc saml-idp put req")?;
+        if put.status().is_success() {
+            return Ok(());
+        }
+        let status = put.status();
+        let txt = put.text().await.unwrap_or_default();
+        anyhow::bail!("kc saml-idp upsert failed: {status} body={txt}");
+    }
+
+    /// Remove a SAML identity-provider instance from `realm` by alias.
+    /// Idempotent from the caller's view: a 404 is treated as success.
+    pub async fn delete_saml_idp(&self, realm: &str, alias: &str) -> Result<()> {
+        let tok = self.token().await?;
+        let url = format!(
+            "{}/admin/realms/{}/identity-provider/instances/{}",
+            self.cfg.base_url, realm, alias
+        );
+        let resp = self
+            .http
+            .delete(&url)
+            .bearer_auth(&tok)
+            .send()
+            .await
+            .context("kc saml-idp delete req")?;
+        if resp.status().is_success() || resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(());
+        }
+        anyhow::bail!("kc saml-idp delete failed: {}", resp.status());
+    }
+
     /// Remove a single credential by id (Keycloak admin `DELETE
     /// /users/{id}/credentials/{credentialId}`). Resets an MFA factor — the
     /// user must re-enroll. Idempotent from the caller's view: KC returns 404
@@ -270,6 +332,52 @@ pub struct KcCredential {
     pub user_label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_date: Option<i64>,
+}
+
+/// Minimal description of a SAML IdP to register in Keycloak. Maps to the
+/// `saml_idp_config` row managed by the admin service. Only the common
+/// signed-assertion knobs are exposed; exotic options stay at KC defaults.
+#[derive(Debug, Clone)]
+pub struct SamlIdpSpec {
+    pub alias: String,
+    pub display_name: String,
+    pub entity_id: String,
+    pub sso_url: String,
+    pub slo_url: Option<String>,
+    pub signing_cert: String,
+    pub name_id_format: String,
+    pub enabled: bool,
+}
+
+impl SamlIdpSpec {
+    /// Build the Keycloak identity-provider-instance JSON (same shape as the
+    /// seed-realm.sh §12 SAML block). `validateSignature`/`wantAssertionsSigned`
+    /// are forced on so KC rejects unsigned assertions.
+    fn to_kc_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "alias": self.alias,
+            "displayName": self.display_name,
+            "providerId": "saml",
+            "enabled": self.enabled,
+            "trustEmail": true,
+            "storeToken": false,
+            "addReadTokenRoleOnCreate": false,
+            "firstBrokerLoginFlowAlias": "first broker login",
+            "config": {
+                "singleSignOnServiceUrl": self.sso_url,
+                "singleLogoutServiceUrl": self.slo_url.clone().unwrap_or_default(),
+                "idpEntityId": self.entity_id,
+                "signingCertificate": self.signing_cert,
+                "nameIDPolicyFormat": self.name_id_format,
+                "validateSignature": "true",
+                "wantAssertionsSigned": "true",
+                "wantAuthnRequestsSigned": "false",
+                "postBindingResponse": "true",
+                "postBindingAuthnRequest": "true",
+                "syncMode": "FORCE"
+            }
+        })
+    }
 }
 
 #[cfg(test)]
@@ -501,5 +609,54 @@ mod tests {
         let json = r#"{"access_token":"tok"}"#;
         let t: ImpersonationTokens = serde_json::from_str(json).unwrap();
         assert!(t.token_type.is_none());
+    }
+
+    fn saml_spec() -> SamlIdpSpec {
+        SamlIdpSpec {
+            alias: "okta".into(),
+            display_name: "Okta".into(),
+            entity_id: "https://idp/meta".into(),
+            sso_url: "https://idp/sso".into(),
+            slo_url: None,
+            signing_cert: "MIIC...".into(),
+            name_id_format: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress".into(),
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn saml_spec_json_has_provider_id_saml() {
+        let j = saml_spec().to_kc_json();
+        assert_eq!(j["providerId"], "saml");
+        assert_eq!(j["alias"], "okta");
+    }
+
+    #[test]
+    fn saml_spec_json_forces_signature_validation() {
+        let j = saml_spec().to_kc_json();
+        assert_eq!(j["config"]["validateSignature"], "true");
+        assert_eq!(j["config"]["wantAssertionsSigned"], "true");
+    }
+
+    #[test]
+    fn saml_spec_json_maps_urls_and_cert() {
+        let j = saml_spec().to_kc_json();
+        assert_eq!(j["config"]["singleSignOnServiceUrl"], "https://idp/sso");
+        assert_eq!(j["config"]["idpEntityId"], "https://idp/meta");
+        assert_eq!(j["config"]["signingCertificate"], "MIIC...");
+    }
+
+    #[test]
+    fn saml_spec_json_slo_empty_when_none() {
+        let j = saml_spec().to_kc_json();
+        assert_eq!(j["config"]["singleLogoutServiceUrl"], "");
+    }
+
+    #[test]
+    fn saml_spec_json_disabled_reflected() {
+        let mut s = saml_spec();
+        s.enabled = false;
+        let j = s.to_kc_json();
+        assert_eq!(j["enabled"], false);
     }
 }
