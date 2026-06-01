@@ -8,7 +8,7 @@ pub mod version;
 pub mod wopi_lock;
 
 pub use acl::{AclRepo, FileAcl};
-pub use file::{DriveFile, FileRepo, NewFile};
+pub use file::{DriveFile, FileRepo, NewFile, RenameEntry};
 pub use quota::{FolderQuota, FolderQuotaRepo, QuotaRepo};
 pub use share::{NewShare, Share, ShareRepo};
 pub use upload::{NewUpload, UploadRepo, UploadSession};

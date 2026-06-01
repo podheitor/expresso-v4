@@ -43,6 +43,19 @@ pub struct DriveFile {
     pub starred_at: Option<OffsetDateTime>,
 }
 
+/// A recorded rename of a file/folder.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct RenameEntry {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub file_id: Uuid,
+    pub old_name: String,
+    pub new_name: String,
+    pub renamed_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    pub renamed_at: OffsetDateTime,
+}
+
 #[derive(Debug, Clone)]
 pub struct NewFile {
     pub tenant_id: Uuid,
@@ -469,22 +482,95 @@ impl<'a> FileRepo<'a> {
     }
 
     /// Rename file/folder. name must already be validated by the caller.
-    pub async fn rename(&self, tenant_id: Uuid, id: Uuid, new_name: String) -> Result<DriveFile> {
+    /// Rename a file/folder and record the change in `drive_file_rename_history`
+    /// within the same transaction. A no-op rename (same name) still succeeds but
+    /// records nothing.
+    pub async fn rename(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        new_name: String,
+        renamed_by: Uuid,
+    ) -> Result<DriveFile> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        // Capture the prior name before mutating, scoped to a live row.
+        let old_name: Option<String> = sqlx::query_scalar(
+            "SELECT name FROM drive_files \
+             WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(tenant_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(old_name) = old_name else {
+            return Err(DriveError::NotFound(id));
+        };
+
         let sql = format!(
             "UPDATE drive_files SET name = $3, updated_at = now() \
              WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL \
              RETURNING {SELECT_COLS}"
         );
-        let row: Option<DriveFile> = sqlx::query_as(&sql)
+        let row: DriveFile = sqlx::query_as(&sql)
             .bind(id)
             .bind(tenant_id)
-            .bind(new_name)
-            .fetch_optional(&mut *tx)
+            .bind(&new_name)
+            .fetch_one(&mut *tx)
             .await
             .map_err(map_conflict)?;
+
+        if old_name != new_name {
+            sqlx::query(
+                "INSERT INTO drive_file_rename_history \
+                     (tenant_id, file_id, old_name, new_name, renamed_by) \
+                 VALUES ($1, $2, $3, $4, $5)",
+            )
+            .bind(tenant_id)
+            .bind(id)
+            .bind(&old_name)
+            .bind(&new_name)
+            .bind(renamed_by)
+            .execute(&mut *tx)
+            .await?;
+        }
         tx.commit().await?;
-        row.ok_or(DriveError::NotFound(id))
+        Ok(row)
+    }
+
+    /// List a file's rename history, newest first.
+    pub async fn list_rename_history(
+        &self,
+        tenant_id: Uuid,
+        file_id: Uuid,
+    ) -> Result<Vec<RenameEntry>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let rows = sqlx::query_as::<_, RenameEntry>(
+            "SELECT id, tenant_id, file_id, old_name, new_name, renamed_by, renamed_at \
+               FROM drive_file_rename_history \
+              WHERE tenant_id = $1 AND file_id = $2 \
+              ORDER BY renamed_at DESC",
+        )
+        .bind(tenant_id)
+        .bind(file_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
+    /// Fetch a single rename-history entry by id. 404 if absent in the tenant.
+    pub async fn get_rename_entry(&self, tenant_id: Uuid, entry_id: Uuid) -> Result<RenameEntry> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let row: Option<RenameEntry> = sqlx::query_as(
+            "SELECT id, tenant_id, file_id, old_name, new_name, renamed_by, renamed_at \
+               FROM drive_file_rename_history WHERE id = $1 AND tenant_id = $2",
+        )
+        .bind(entry_id)
+        .bind(tenant_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        row.ok_or(DriveError::NotFound(entry_id))
     }
 
     /// Bulk shallow-copy: one new row per source id sharing the same blob.

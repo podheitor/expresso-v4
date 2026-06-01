@@ -165,6 +165,16 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/bulk-move", post(bulk_move))
         .route("/api/v1/drive/files/bulk-copy", post(bulk_copy))
         .route("/api/v1/drive/files/bulk-restore", post(bulk_restore))
+        // Static `rename-history` segment registered before the `:id` routes so
+        // matchit prefers it (mirrors search/bulk-* above).
+        .route(
+            "/api/v1/drive/files/rename-history/:entry_id/undo",
+            post(undo_rename),
+        )
+        .route(
+            "/api/v1/drive/files/:id/rename-history",
+            get(rename_history),
+        )
         .route("/api/v1/drive/files/:id/copy", post(copy_file))
         .route("/api/v1/drive/files/:id/move", post(move_file))
         .route("/api/v1/drive/files/:id/restore", post(restore))
@@ -998,7 +1008,43 @@ async fn rename(
     let name = sanitize_name(&body.name)?;
     let pool = state.db_or_unavailable()?;
     require_write(pool, ctx.tenant_id, id, ctx.user_id).await?;
-    let f = FileRepo::new(pool).rename(ctx.tenant_id, id, name).await?;
+    let f = FileRepo::new(pool)
+        .rename(ctx.tenant_id, id, name, ctx.user_id)
+        .await?;
+    Ok(Json(f))
+}
+
+/// GET /api/v1/drive/files/:id/rename-history — past renames, newest first.
+/// Read access to the file is required.
+async fn rename_history(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<crate::domain::RenameEntry>>> {
+    let pool = state.db_or_unavailable()?;
+    require_read(pool, ctx.tenant_id, id, ctx.user_id).await?;
+    let rows = FileRepo::new(pool)
+        .list_rename_history(ctx.tenant_id, id)
+        .await?;
+    Ok(Json(rows))
+}
+
+/// POST /api/v1/drive/files/rename-history/:entry_id/undo — revert a recorded
+/// rename, restoring the file's `old_name`. The undo is itself a rename, so it
+/// records a new history entry (an undo is reversible). Write access required.
+async fn undo_rename(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(entry_id): Path<Uuid>,
+) -> Result<Json<DriveFile>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = FileRepo::new(pool);
+    let entry = repo.get_rename_entry(ctx.tenant_id, entry_id).await?;
+    require_write(pool, ctx.tenant_id, entry.file_id, ctx.user_id).await?;
+    let name = sanitize_name(&entry.old_name)?;
+    let f = repo
+        .rename(ctx.tenant_id, entry.file_id, name, ctx.user_id)
+        .await?;
     Ok(Json(f))
 }
 
