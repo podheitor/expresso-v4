@@ -57,6 +57,7 @@ impl<'a> ContactRepo<'a> {
     ) -> Result<Contact> {
         let parsed = vcard::parse(raw).map_err(ContactsError::InvalidVCard)?;
         let etag = vcard::compute_etag(raw);
+        let emails = parsed.emails.clone();
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
             r#"
@@ -84,6 +85,7 @@ impl<'a> ContactRepo<'a> {
         .bind(parsed.nickname)
         .fetch_one(&mut *tx)
         .await?;
+        sync_emails(&mut tx, tenant_id, row.id, &emails).await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -137,7 +139,12 @@ impl<'a> ContactRepo<'a> {
                AND (full_name    ILIKE $2 ESCAPE '\'
                  OR email_primary ILIKE $2 ESCAPE '\'
                  OR organization  ILIKE $2 ESCAPE '\'
-                 OR nickname      ILIKE $2 ESCAPE '\')
+                 OR nickname      ILIKE $2 ESCAPE '\'
+                 OR EXISTS (
+                      SELECT 1 FROM contact_emails ce
+                       WHERE ce.contact_id = contacts.id
+                         AND ce.tenant_id = contacts.tenant_id
+                         AND ce.address ILIKE $2 ESCAPE '\'))
              ORDER BY COALESCE(full_name, uid)
              LIMIT $3
             "#,
@@ -154,6 +161,7 @@ impl<'a> ContactRepo<'a> {
     pub async fn update(&self, tenant_id: Uuid, id: Uuid, raw: &str) -> Result<Contact> {
         let parsed = vcard::parse(raw).map_err(ContactsError::InvalidVCard)?;
         let etag = vcard::compute_etag(raw);
+        let emails = parsed.emails.clone();
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
             r#"
@@ -188,6 +196,7 @@ impl<'a> ContactRepo<'a> {
         .bind(parsed.nickname)
         .fetch_one(&mut *tx)
         .await?;
+        sync_emails(&mut tx, tenant_id, id, &emails).await?;
         tx.commit().await?;
         Ok(row)
     }
@@ -311,6 +320,65 @@ impl<'a> ContactRepo<'a> {
         tx.commit().await?;
         Ok(())
     }
+
+    /// List a contact's indexed emails (all EMAIL entries with their labels), in
+    /// document order. Empty when the contact has none.
+    pub async fn list_emails(
+        &self,
+        tenant_id: Uuid,
+        contact_id: Uuid,
+    ) -> Result<Vec<ContactEmailRow>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let rows = sqlx::query_as::<_, ContactEmailRow>(
+            r#"SELECT address, label, position
+                 FROM contact_emails
+                WHERE tenant_id = $1 AND contact_id = $2
+                ORDER BY position, created_at"#,
+        )
+        .bind(tenant_id)
+        .bind(contact_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+}
+
+/// An indexed EMAIL entry returned to API callers.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct ContactEmailRow {
+    pub address: String,
+    pub label: Option<String>,
+    pub position: i32,
+}
+
+/// Replace a contact's email index: delete existing rows, then insert the parsed
+/// EMAIL entries. Runs in the caller's tx so the index tracks `vcard_raw`.
+async fn sync_emails(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: Uuid,
+    contact_id: Uuid,
+    emails: &[vcard::ContactEmail],
+) -> Result<()> {
+    sqlx::query("DELETE FROM contact_emails WHERE tenant_id = $1 AND contact_id = $2")
+        .bind(tenant_id)
+        .bind(contact_id)
+        .execute(&mut **tx)
+        .await?;
+    for (i, e) in emails.iter().enumerate() {
+        sqlx::query(
+            r#"INSERT INTO contact_emails (tenant_id, contact_id, address, label, position)
+               VALUES ($1, $2, $3, $4, $5)"#,
+        )
+        .bind(tenant_id)
+        .bind(contact_id)
+        .bind(&e.address)
+        .bind(&e.label)
+        .bind(i as i32)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

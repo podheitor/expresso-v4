@@ -62,6 +62,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/addressbooks/:book_id/contacts/:id/photo",
             get(get_photo),
         )
+        .route(
+            "/api/v1/addressbooks/:book_id/contacts/:id/emails",
+            get(list_emails),
+        )
         .route("/api/v1/addressbooks/:book_id/export.vcf", get(export_vcf))
         .route("/api/v1/addressbooks/:book_id/import", post(import_vcf))
         .route("/api/v1/contacts/import", post(import_csv))
@@ -233,6 +237,21 @@ async fn get_one(
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(serde_json::to_vec(&c).unwrap()))
         .unwrap())
+}
+
+/// GET /api/v1/addressbooks/:book_id/contacts/:id/emails — list the contact's
+/// indexed EMAIL entries (all addresses + TYPE labels), in document order.
+async fn list_emails(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((_book_id, id)): Path<(Uuid, Uuid)>,
+) -> Result<axum::Json<Vec<crate::domain::ContactEmailRow>>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = ContactRepo::new(pool);
+    // 404 guard: contact must exist in this tenant.
+    repo.get(ctx.tenant_id, id).await?;
+    let emails = repo.list_emails(ctx.tenant_id, id).await?;
+    Ok(axum::Json(emails))
 }
 
 /// GET /api/v1/addressbooks/:book_id/contacts/:id/photo

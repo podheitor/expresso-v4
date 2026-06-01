@@ -18,6 +18,14 @@ pub enum Photo {
     Inline { media_type: String, bytes: Vec<u8> },
 }
 
+/// One parsed EMAIL property: the address plus its TYPE label (e.g. "WORK",
+/// "HOME"), lowercased; `None` when the vCard gives no TYPE.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContactEmail {
+    pub address: String,
+    pub label: Option<String>,
+}
+
 #[derive(Debug, Default)]
 pub struct ParsedVCard {
     pub uid: String,
@@ -27,6 +35,8 @@ pub struct ParsedVCard {
     pub organization: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
+    /// Every EMAIL in the vCard (incl. the primary), in document order.
+    pub emails: Vec<ContactEmail>,
     /// BDAY value verbatim (RFC 6350 §6.2.5) — may be a full date or a partial
     /// `--MMDD`. None when absent.
     pub birthday: Option<String>,
@@ -66,7 +76,19 @@ pub fn parse(raw: &str) -> Result<ParsedVCard, String> {
             "UID" if out.uid.is_empty() => out.uid = value.trim().to_owned(),
             "FN" if out.full_name.is_none() => out.full_name = Some(value.trim().to_owned()),
             "ORG" if out.organization.is_none() => out.organization = Some(value.trim().to_owned()),
-            "EMAIL" if out.email.is_none() => out.email = Some(value.trim().to_owned()),
+            "EMAIL" => {
+                let addr = value.trim();
+                if !addr.is_empty() {
+                    // First EMAIL also fills the denormalized primary column.
+                    if out.email.is_none() {
+                        out.email = Some(addr.to_owned());
+                    }
+                    out.emails.push(ContactEmail {
+                        address: addr.to_owned(),
+                        label: email_type_label(head),
+                    });
+                }
+            }
             "TEL" if out.phone.is_none() => out.phone = Some(value.trim().to_owned()),
             "BDAY" if out.birthday.is_none() => {
                 let b = value.trim();
@@ -123,6 +145,24 @@ pub fn parse_photo(raw: &str) -> Option<Photo> {
         return interpret_photo(head, value.trim());
     }
     None
+}
+
+/// Extract a lowercased TYPE label from an EMAIL property head
+/// (`EMAIL;TYPE=WORK` → `Some("work")`). Handles `TYPE=` and bare type tokens
+/// (vCard 3.0 `EMAIL;INTERNET`). None when no usable label is present.
+fn email_type_label(head: &str) -> Option<String> {
+    head.split(';').skip(1).find_map(|p| {
+        let p = p.trim();
+        let val = p.strip_prefix("TYPE=").or_else(|| p.strip_prefix("type="));
+        let token = val.unwrap_or(p);
+        // Skip empty and the ubiquitous "INTERNET"/"PREF" noise.
+        let t = token.trim().to_ascii_lowercase();
+        if t.is_empty() || t == "internet" || t == "pref" {
+            None
+        } else {
+            Some(t)
+        }
+    })
 }
 
 /// Resolve a PHOTO `head` (property + params) and `value` into a [`Photo`].
@@ -470,6 +510,29 @@ mod tests {
     }
 
     // ---- BDAY / NICKNAME ----
+
+    #[test]
+    fn parses_all_emails_with_labels() {
+        let raw = "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:e1\r\nFN:Multi\r\nEMAIL;TYPE=WORK:w@x.com\r\nEMAIL;TYPE=HOME:h@x.com\r\nEMAIL;TYPE=INTERNET:plain@x.com\r\nEND:VCARD\r\n";
+        let c = parse(raw).unwrap();
+        // Primary column = first address.
+        assert_eq!(c.email.as_deref(), Some("w@x.com"));
+        assert_eq!(c.emails.len(), 3);
+        assert_eq!(c.emails[0].address, "w@x.com");
+        assert_eq!(c.emails[0].label.as_deref(), Some("work"));
+        assert_eq!(c.emails[1].label.as_deref(), Some("home"));
+        // INTERNET is noise → no label.
+        assert_eq!(c.emails[2].label, None);
+    }
+
+    #[test]
+    fn email_label_skips_noise_tokens() {
+        assert_eq!(email_type_label("EMAIL;TYPE=WORK"), Some("work".into()));
+        assert_eq!(email_type_label("EMAIL;TYPE=INTERNET"), None);
+        assert_eq!(email_type_label("EMAIL;PREF"), None);
+        assert_eq!(email_type_label("EMAIL"), None);
+        assert_eq!(email_type_label("EMAIL;HOME"), Some("home".into()));
+    }
 
     #[test]
     fn parses_bday_and_nickname() {
