@@ -1,13 +1,15 @@
 //! Notes REST API.
 //!
 //! Routes (all scoped to the authenticated user):
-//!   GET    /api/v1/notes[?archived=true][&notebook=:id|none]
-//!                                          → list own notes (optionally by notebook)
+//!   GET    /api/v1/notes[?archived=true][&notebook=:id|none][&tag=:tag]
+//!                                          → list own notes (by notebook or tag)
 //!   GET    /api/v1/notes/shared            → list notes shared with me
 //!   POST   /api/v1/notes                    → create
 //!   GET    /api/v1/notes/:id                → fetch one (own or shared)
 //!   PATCH  /api/v1/notes/:id                → partial update
 //!   DELETE /api/v1/notes/:id                → delete
+//!   GET    /api/v1/notes/:id/tags           → list the note's tags
+//!   PUT    /api/v1/notes/:id/tags           → replace the note's tag set
 //!
 //! Notes are full-text indexed (`kind = "note"`) so they appear in unified
 //! search alongside mail/drive/calendar/contacts/tasks.
@@ -23,7 +25,7 @@ use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
 use crate::domain::note::NotebookFilter;
-use crate::domain::{NewNote, Note, NoteRepo, NotebookRepo, SharedNote, UpdateNote};
+use crate::domain::{NewNote, Note, NoteRepo, NoteTagRepo, NotebookRepo, SharedNote, UpdateNote};
 use crate::error::{NotesError, Result};
 use crate::state::AppState;
 
@@ -37,6 +39,7 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/notes/:id",
             patch(update).get(get_one).delete(delete),
         )
+        .route("/api/v1/notes/:id/tags", get(get_tags).put(set_tags))
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,6 +50,9 @@ struct ListQuery {
     /// loose notes, absent returns all. `notebook=none` is the "no notebook"
     /// sentinel since query strings can't carry a typed null.
     notebook: Option<String>,
+    /// Filter by tag (exact match). Takes precedence over `notebook` when both
+    /// are present.
+    tag: Option<String>,
 }
 
 async fn list(
@@ -55,6 +61,14 @@ async fn list(
     Query(q): Query<ListQuery>,
 ) -> Result<Json<Vec<Note>>> {
     let pool = state.db_or_unavailable()?;
+    let repo = NoteRepo::new(pool);
+    // Tag filter wins when set — it's the narrower, explicit selection.
+    if let Some(tag) = q.tag.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        let notes = repo
+            .list_by_tag(ctx.tenant_id, ctx.user_id, q.archived, tag)
+            .await?;
+        return Ok(Json(notes));
+    }
     let filter = match q.notebook.as_deref() {
         None => NotebookFilter::Any,
         Some("none") => NotebookFilter::Loose,
@@ -64,7 +78,7 @@ async fn list(
             NotebookFilter::In(nb)
         }
     };
-    let notes = NoteRepo::new(pool)
+    let notes = repo
         .list(ctx.tenant_id, ctx.user_id, q.archived, filter)
         .await?;
     Ok(Json(notes))
@@ -156,6 +170,38 @@ async fn delete(
     repo.delete(ctx.tenant_id, id).await?;
     deindex_note(&state, id);
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+struct SetTagsBody {
+    tags: Vec<String>,
+}
+
+/// GET /api/v1/notes/:id/tags — the note's tags. Read-gated like `get_one`.
+async fn get_tags(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<String>>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_read(&NoteRepo::new(pool), ctx.tenant_id, id, ctx.user_id).await?;
+    let tags = NoteTagRepo::new(pool).list(ctx.tenant_id, id).await?;
+    Ok(Json(tags))
+}
+
+/// PUT /api/v1/notes/:id/tags — replace the note's whole tag set. Write-gated.
+async fn set_tags(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<SetTagsBody>,
+) -> Result<Json<Vec<String>>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(&NoteRepo::new(pool), ctx.tenant_id, id, ctx.user_id).await?;
+    let tags = NoteTagRepo::new(pool)
+        .set(ctx.tenant_id, id, &body.tags)
+        .await?;
+    Ok(Json(tags))
 }
 
 /// Read gate: OWNER/READ/WRITE/ADMIN may view. Absence of any grant is a 404

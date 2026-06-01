@@ -184,6 +184,33 @@ impl<'a> NoteRepo<'a> {
         Ok(rows)
     }
 
+    /// List a user's notes carrying `tag`, pinned first then newest-updated.
+    /// `archived` selects the live board vs. the archive, matching [`list`].
+    pub async fn list_by_tag(
+        &self,
+        tenant: Uuid,
+        user: Uuid,
+        archived: bool,
+        tag: &str,
+    ) -> Result<Vec<Note>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let rows = sqlx::query_as::<_, Note>(
+            r#"SELECT n.* FROM notes n
+                 JOIN notes_tags t ON t.note_id = n.id AND t.tenant_id = n.tenant_id
+                WHERE n.tenant_id = $1 AND n.user_id = $2 AND n.archived = $3
+                  AND t.tag = $4
+                ORDER BY n.pinned DESC, n.updated_at DESC"#,
+        )
+        .bind(tenant)
+        .bind(user)
+        .bind(archived)
+        .bind(tag)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     /// List notes shared *with* `user` (a `notes_acl` grant exists), newest
     /// first. Each carries the granted `privilege` so the UI can show read-only
     /// vs editable. Own notes are excluded — those come from [`list`](Self::list).
