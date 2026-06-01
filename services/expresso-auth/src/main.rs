@@ -203,6 +203,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/refresh", post(handlers::refresh::refresh))
         .route("/auth/logout", get(handlers::logout::logout))
         .route("/auth/me", get(handlers::me::me))
+        .route(
+            "/auth/tokens",
+            post(handlers::tokens::create).get(handlers::tokens::list),
+        )
+        .route("/auth/tokens/:id", delete(handlers::tokens::revoke))
         .route("/auth/impersonate/end", post(handlers::impersonate::end))
         .route(
             "/auth/impersonate/:target_user_id",
