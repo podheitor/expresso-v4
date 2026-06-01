@@ -19,6 +19,8 @@
 //! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped; ?since=&before= date filters; ?subject=&from_addr=&to_addr= ILIKE; keyset pagination via before_id/after_id; ?size_min=&size_max=)
 //! GET             /api/v1/compliance/archive/:id         (JWT auth, tenant-scoped)
 //! DELETE          /api/v1/compliance/archive/:id         (JWT auth, tenant-scoped; GDPR/legal hold removal)
+//! POST            /api/v1/compliance/archive/bulk-hold   (JWT auth; apply a hold tag to many entries)
+//! POST            /api/v1/compliance/archive/bulk-unhold (JWT auth; remove a hold tag from many entries)
 //!
 //! Port: :8009
 
@@ -2618,6 +2620,94 @@ async fn add_archive_tag(
     ))
 }
 
+#[derive(serde::Deserialize)]
+struct BulkHoldBody {
+    /// Archive entries to (un)hold. Foreign/missing ids are silently skipped —
+    /// only the caller's own entries in the tenant are affected.
+    archive_ids: Vec<Uuid>,
+    /// The hold tag to apply/remove (e.g. "hold-litigation"). 1-64 chars.
+    hold_tag: String,
+}
+
+fn validate_hold(body: &BulkHoldBody) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
+    let tag = body.hold_tag.trim().to_lowercase();
+    if tag.is_empty() || tag.chars().count() > 64 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "hold_tag must be 1-64 characters"})),
+        ));
+    }
+    if body.archive_ids.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "archive_ids must not be empty"})),
+        ));
+    }
+    Ok(tag)
+}
+
+/// POST /api/v1/compliance/archive/bulk-hold — apply a hold `tag` to many archive
+/// entries at once (e-discovery: place a litigation hold on a whole result set).
+/// Only the caller's own entries are tagged; unknown ids are skipped. Idempotent
+/// per (archive_id, tag). Returns how many tag rows were created.
+async fn bulk_hold(
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Json(body): Json<BulkHoldBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let tag = validate_hold(&body)?;
+    // Insert one tag row per owned archive entry in the id list. The subquery
+    // restricts to the caller's entries, so foreign ids never get tagged.
+    let res = sqlx::query(
+        "INSERT INTO compliance_archive_tags (archive_id, tenant_id, tag, created_by) \
+         SELECT a.id, $2, $3, $4 \
+           FROM compliance_archive a \
+          WHERE a.tenant_id = $2 AND a.user_id = $4 AND a.id = ANY($1) \
+         ON CONFLICT (archive_id, tenant_id, tag) DO NOTHING",
+    )
+    .bind(&body.archive_ids)
+    .bind(ctx.tenant_id)
+    .bind(&tag)
+    .bind(ctx.user_id)
+    .execute(&st.db)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
+    Ok(Json(json!({ "tag": tag, "held": res.rows_affected() })))
+}
+
+/// POST /api/v1/compliance/archive/bulk-unhold — remove a hold `tag` from many
+/// archive entries at once. Mirrors bulk-hold; returns how many were released.
+async fn bulk_unhold(
+    State(st): State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Json(body): Json<BulkHoldBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let tag = validate_hold(&body)?;
+    let res = sqlx::query(
+        "DELETE FROM compliance_archive_tags \
+          WHERE tenant_id = $2 AND created_by = $4 AND tag = $3 \
+            AND archive_id = ANY($1)",
+    )
+    .bind(&body.archive_ids)
+    .bind(ctx.tenant_id)
+    .bind(&tag)
+    .bind(ctx.user_id)
+    .execute(&st.db)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+    })?;
+    Ok(Json(json!({ "tag": tag, "released": res.rows_affected() })))
+}
+
 /// GET /api/v1/compliance/archive/:id/tags — lista tags de um entry do archive
 /// (sprint #460). Retorna `{tags: ["...", ...]}` ordenado alfabeticamente. 404
 /// se o entry não existe ou não pertence ao user.
@@ -2982,6 +3072,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/v1/compliance/archive", get(list_archive))
         .route("/api/v1/compliance/archive/count", get(count_archive))
+        // Static bulk-hold/unhold before the `:id` routes (matchit static-first).
+        .route("/api/v1/compliance/archive/bulk-hold", post(bulk_hold))
+        .route("/api/v1/compliance/archive/bulk-unhold", post(bulk_unhold))
         .route(
             "/api/v1/compliance/archive/histogram",
             get(histogram_archive),
