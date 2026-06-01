@@ -213,6 +213,26 @@ impl<'a> AddressbookRepo<'a> {
         Ok(rows)
     }
 
+    /// Addressbooks shared *with* user via `addressbook_acl`, excluding ones
+    /// they own — the dedicated "shared with me" view (mirrors notes/drive/cal).
+    pub async fn list_shared(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<Addressbook>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let rows = sqlx::query_as::<_, Addressbook>(
+            r#"SELECT * FROM addressbooks
+               WHERE tenant_id = $1
+                 AND owner_user_id <> $2
+                 AND id IN (SELECT addressbook_id FROM addressbook_acl
+                             WHERE tenant_id = $1 AND grantee_id = $2)
+               ORDER BY name"#,
+        )
+        .bind(tenant_id)
+        .bind(user_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     /// "OWNER" | "READ" | "WRITE" | "ADMIN" | None.
     ///
     /// Os dois SELECTs (owner em `addressbooks` + privilege em `addressbook_acl`)

@@ -19,6 +19,8 @@ use crate::state::AppState;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/addressbooks", post(create).get(list))
+        // Static `shared` before `:id` so matchit doesn't capture it as an id.
+        .route("/api/v1/addressbooks/shared", get(list_shared))
         .route(
             "/api/v1/addressbooks/:id",
             get(get_one).delete(delete).patch(update),
@@ -88,6 +90,20 @@ async fn list(
             .insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
+}
+
+/// GET /api/v1/addressbooks/shared — addressbooks shared *with* the caller via
+/// `addressbook_acl` (excluding owned). The dedicated "shared with me" view;
+/// mirrors notes/drive/calendar shared endpoints.
+async fn list_shared(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<Vec<Addressbook>>> {
+    let pool = state.db_or_unavailable()?;
+    let abs = AddressbookRepo::new(pool)
+        .list_shared(ctx.tenant_id, ctx.user_id)
+        .await?;
+    Ok(Json(abs))
 }
 
 async fn get_one(
