@@ -1,5 +1,6 @@
 //! Axum HTTP router for expresso-contacts
 
+mod activity;
 mod addressbooks;
 mod contacts;
 pub mod context;
@@ -23,6 +24,7 @@ pub fn router(state: AppState) -> Router {
         .merge(expresso_observability::metrics_router())
         .merge(addressbooks::routes())
         .merge(contacts::routes())
+        .merge(activity::routes())
         .merge(internal::routes())
         .merge(gal::routes())
         .merge(groups::routes())

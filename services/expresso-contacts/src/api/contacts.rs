@@ -150,6 +150,7 @@ async fn create_inner(
         contact_id: c.id,
     });
     super::search_index::index_contact(&state, &c);
+    super::activity::record(pool, ctx.tenant_id, c.id, ctx.user_id, "create", None).await;
     let loc = format!("/api/v1/addressbooks/{}/contacts/{}", book_id, c.id);
     Ok(Response::builder()
         .status(StatusCode::CREATED)
@@ -435,6 +436,7 @@ async fn update_inner(
         contact_id: c.id,
     });
     super::search_index::index_contact(&state, &c);
+    super::activity::record(pool, ctx.tenant_id, c.id, ctx.user_id, "update", None).await;
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::ETAG, format!("\"{}\"", c.etag))
@@ -467,6 +469,7 @@ async fn delete_inner(
         contact_id: id,
     });
     super::search_index::deindex_contact(&state, id);
+    super::activity::record(pool, ctx.tenant_id, id, ctx.user_id, "delete", None).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
