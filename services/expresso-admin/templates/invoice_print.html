@@ -44,15 +44,27 @@
 </p>
 
 <table>
-  <thead><tr><th>Descrição</th><th>Plano</th><th class="amount">Valor</th></tr></thead>
+  <thead><tr><th>Descrição</th><th class="amount">Qtd</th><th class="amount">Unit.</th><th class="amount">Valor</th></tr></thead>
   <tbody>
+    {% if lines.is_empty() %}
     <tr>
-      <td>Assinatura mensal Expresso — período {{ period }}</td>
-      <td><code>{{ plan }}</code></td>
+      <td>Assinatura mensal Expresso — plano {{ plan }} — período {{ period }}</td>
+      <td class="amount">1</td>
+      <td class="amount">{{ currency }} {{ amount }}</td>
       <td class="amount">{{ currency }} {{ amount }}</td>
     </tr>
+    {% else %}
+    {% for ln in lines %}
+    <tr>
+      <td>{{ ln.description }}</td>
+      <td class="amount">{{ ln.quantity }}</td>
+      <td class="amount">{{ currency }} {{ ln.unit }}</td>
+      <td class="amount">{{ currency }} {{ ln.amount }}</td>
+    </tr>
+    {% endfor %}
+    {% endif %}
     <tr class="total">
-      <td colspan="2">Total</td>
+      <td colspan="3">Total ({{ plan }})</td>
       <td class="amount">{{ currency }} {{ amount }}</td>
     </tr>
   </tbody>

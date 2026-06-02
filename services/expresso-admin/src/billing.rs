@@ -21,6 +21,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
+use crate::overage::{self, PlanTerms, Usage};
 use crate::{auth, AdminError, AppState};
 
 #[derive(Debug, Serialize, FromRow)]
@@ -29,6 +30,14 @@ pub struct BillingPlan {
     pub display_name: String,
     pub monthly_price_cents: i64,
     pub currency: String,
+    #[serde(default)]
+    pub included_seats: i64,
+    #[serde(default)]
+    pub seat_overage_cents: i64,
+    #[serde(default)]
+    pub included_storage_gb: i64,
+    #[serde(default)]
+    pub storage_overage_cents_per_gb: i64,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -49,10 +58,131 @@ fn pool(st: &AppState) -> Result<&sqlx::PgPool, AdminError> {
         .ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))
 }
 
+// ─── Invoice generation with usage-based overage ─────────────────────────────
+
+/// Resolve a tenant's plan terms (base price + allowances + overage prices) and
+/// currency. `None` if the tenant or its plan-price row is missing.
+async fn plan_terms_for(
+    p: &sqlx::PgPool,
+    tenant: uuid::Uuid,
+) -> Result<Option<(PlanTerms, String, String)>, sqlx::Error> {
+    let row: Option<(String, i64, i64, i64, i64, i64, String)> = sqlx::query_as(
+        "SELECT t.plan, bp.monthly_price_cents, bp.included_seats, bp.seat_overage_cents, \
+                bp.included_storage_gb, bp.storage_overage_cents_per_gb, bp.currency \
+           FROM tenants t JOIN billing_plans bp ON bp.plan = t.plan \
+          WHERE t.id = $1",
+    )
+    .bind(tenant)
+    .fetch_optional(p)
+    .await?;
+    Ok(
+        row.map(|(plan, base, seats, seat_over, gb, gb_over, currency)| {
+            (
+                PlanTerms {
+                    base_cents: base,
+                    included_seats: seats,
+                    seat_overage_cents: seat_over,
+                    included_storage_gb: gb,
+                    storage_overage_cents_per_gb: gb_over,
+                },
+                plan,
+                currency,
+            )
+        }),
+    )
+}
+
+/// Measure the tenant's billable usage now: seats (users) and total stored bytes
+/// (mailbox + live drive files). Best-effort — a missing table counts as 0.
+async fn measure_usage(p: &sqlx::PgPool, tenant: uuid::Uuid) -> Usage {
+    let seats = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE tenant_id = $1")
+        .bind(tenant)
+        .fetch_one(p)
+        .await
+        .unwrap_or(0);
+    let mail = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(SUM(size_bytes), 0) FROM messages WHERE tenant_id = $1",
+    )
+    .bind(tenant)
+    .fetch_one(p)
+    .await
+    .unwrap_or(0);
+    let files = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(SUM(size_bytes), 0) FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(tenant)
+    .fetch_one(p)
+    .await
+    .unwrap_or(0);
+    Usage {
+        seats,
+        storage_bytes: mail.saturating_add(files),
+    }
+}
+
+/// Generate (or refresh) one tenant's invoice for `period_date` (YYYY-MM-DD,
+/// first-of-month) including usage-based overage lines. Returns the invoice's
+/// total in cents, or `None` if the tenant has no priced plan.
+///
+/// Idempotent on the header (`ON CONFLICT (tenant, period)`); the lines are
+/// rewritten to reflect current usage so re-running a period re-meters it.
+async fn generate_one(
+    p: &sqlx::PgPool,
+    tenant: uuid::Uuid,
+    period_date: &str,
+) -> Result<Option<i64>, sqlx::Error> {
+    let Some((terms, plan, currency)) = plan_terms_for(p, tenant).await? else {
+        return Ok(None);
+    };
+    let usage = measure_usage(p, tenant).await;
+    let lines = overage::compute_lines(terms, usage);
+    let total = overage::total_cents(&lines);
+
+    let mut tx = p.begin().await?;
+    let invoice_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO billing_invoices (tenant_id, period, plan, amount_cents, currency) \
+         VALUES ($1, $2::date, $3, $4, $5) \
+         ON CONFLICT (tenant_id, period) \
+         DO UPDATE SET amount_cents = EXCLUDED.amount_cents, plan = EXCLUDED.plan, \
+                       currency = EXCLUDED.currency \
+         RETURNING id",
+    )
+    .bind(tenant)
+    .bind(period_date)
+    .bind(&plan)
+    .bind(total)
+    .bind(&currency)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    for line in &lines {
+        sqlx::query(
+            "INSERT INTO billing_invoice_lines \
+                (invoice_id, tenant_id, kind, description, quantity, unit_cents, amount_cents) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+             ON CONFLICT (invoice_id, kind) \
+             DO UPDATE SET description = EXCLUDED.description, quantity = EXCLUDED.quantity, \
+                           unit_cents = EXCLUDED.unit_cents, amount_cents = EXCLUDED.amount_cents",
+        )
+        .bind(invoice_id)
+        .bind(tenant)
+        .bind(line.kind)
+        .bind(&line.description)
+        .bind(line.quantity)
+        .bind(line.unit_cents)
+        .bind(line.amount_cents)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(Some(total))
+}
+
 /// GET /api/v1/admin/billing/plans — the plan catalogue with prices.
 pub async fn list_plans(State(st): State<Arc<AppState>>) -> Result<Response, AdminError> {
     let plans: Vec<BillingPlan> = sqlx::query_as(
-        "SELECT plan, display_name, monthly_price_cents, currency \
+        "SELECT plan, display_name, monthly_price_cents, currency, included_seats, seat_overage_cents, included_storage_gb, storage_overage_cents_per_gb \
          FROM billing_plans ORDER BY monthly_price_cents",
     )
     .fetch_all(pool(&st)?)
@@ -82,7 +212,7 @@ pub async fn set_plan_price(
     let row: Option<BillingPlan> = sqlx::query_as(
         "UPDATE billing_plans SET monthly_price_cents = $2, updated_at = now() \
          WHERE plan = $1 \
-         RETURNING plan, display_name, monthly_price_cents, currency",
+         RETURNING plan, display_name, monthly_price_cents, currency, included_seats, seat_overage_cents, included_storage_gb, storage_overage_cents_per_gb",
     )
     .bind(&plan)
     .bind(body.monthly_price_cents)
@@ -137,37 +267,31 @@ pub async fn generate_invoice(
     let period =
         time::OffsetDateTime::parse(&body.period, &time::format_description::well_known::Rfc3339)
             .map_err(|_| AdminError(anyhow::anyhow!("period must be RFC3339")))?;
+    let period_date = period
+        .format(&time::format_description::well_known::Rfc3339)
+        .map(|s| s.get(0..10).unwrap_or("").to_string())
+        .unwrap_or_default();
     let p = pool(&st)?;
 
-    // Resolve the tenant's current plan + its price in one go.
-    let priced: Option<(String, i64, String)> = sqlx::query_as(
-        "SELECT t.plan, bp.monthly_price_cents, bp.currency \
-         FROM tenants t JOIN billing_plans bp ON bp.plan = t.plan \
-         WHERE t.id = $1",
-    )
-    .bind(id)
-    .fetch_optional(p)
-    .await
-    .map_err(|e| AdminError(e.into()))?;
-    let Some((plan, price, currency)) = priced else {
+    if generate_one(p, id, &period_date)
+        .await
+        .map_err(|e| AdminError(e.into()))?
+        .is_none()
+    {
         return Ok((
             axum::http::StatusCode::NOT_FOUND,
             "tenant or plan not found",
         )
             .into_response());
-    };
+    }
 
+    // Return the resulting invoice header.
     let invoice: Invoice = sqlx::query_as(
-        "INSERT INTO billing_invoices (tenant_id, period, plan, amount_cents, currency) \
-         VALUES ($1, $2::date, $3, $4, $5) \
-         ON CONFLICT (tenant_id, period) DO UPDATE SET tenant_id = billing_invoices.tenant_id \
-         RETURNING id, tenant_id, period, plan, amount_cents, currency, status",
+        "SELECT id, tenant_id, period, plan, amount_cents, currency, status \
+         FROM billing_invoices WHERE tenant_id = $1 AND period = $2::date",
     )
     .bind(id)
-    .bind(period)
-    .bind(&plan)
-    .bind(price)
-    .bind(&currency)
+    .bind(&period_date)
     .fetch_one(p)
     .await
     .map_err(|e| AdminError(e.into()))?;
@@ -225,6 +349,10 @@ pub struct PlanRow {
     pub display_name: String,
     pub price: String,
     pub currency: String,
+    pub included_seats: i64,
+    pub seat_overage: String,
+    pub included_storage_gb: i64,
+    pub storage_overage: String,
 }
 
 /// A tenant option in the invoice-section picker.
@@ -284,7 +412,7 @@ pub async fn page(
     };
 
     let plans: Vec<PlanRow> = sqlx::query_as::<_, BillingPlan>(
-        "SELECT plan, display_name, monthly_price_cents, currency \
+        "SELECT plan, display_name, monthly_price_cents, currency, included_seats, seat_overage_cents, included_storage_gb, storage_overage_cents_per_gb \
          FROM billing_plans ORDER BY monthly_price_cents",
     )
     .fetch_all(p)
@@ -296,6 +424,10 @@ pub async fn page(
         display_name: b.display_name,
         price: money(b.monthly_price_cents),
         currency: b.currency,
+        included_seats: b.included_seats,
+        seat_overage: money(b.seat_overage_cents),
+        included_storage_gb: b.included_storage_gb,
+        storage_overage: money(b.storage_overage_cents_per_gb),
     })
     .collect();
 
@@ -360,11 +492,20 @@ pub async fn page(
 #[derive(Debug, Deserialize)]
 pub struct SetPriceForm {
     pub plan: String,
-    /// Price in whole currency units (e.g. "49.90"); converted to cents.
+    /// Base price in whole currency units (e.g. "49.90"); converted to cents.
     pub price: String,
+    /// Included seats before seat-overage applies.
+    pub included_seats: i64,
+    /// Seat-overage price per extra seat, in whole currency units.
+    pub seat_overage: String,
+    /// Included storage GB before storage-overage applies.
+    pub included_storage_gb: i64,
+    /// Storage-overage price per extra GB, in whole currency units.
+    pub storage_overage: String,
 }
 
-/// POST /billing/price — set a plan's price from the HTML form.
+/// POST /billing/price — set a plan's base price, allowances, and overage
+/// prices from the HTML form.
 pub async fn set_price_action(
     State(st): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -373,10 +514,16 @@ pub async fn set_price_action(
     if let Some(r) = auth::require_super_admin(&st, &headers).await {
         return r;
     }
-    let cents = parse_price_to_cents(&f.price);
-    let Some(cents) = cents else {
+    let (Some(price), Some(seat_over), Some(gb_over)) = (
+        parse_price_to_cents(&f.price),
+        parse_price_to_cents(&f.seat_overage),
+        parse_price_to_cents(&f.storage_overage),
+    ) else {
         return Redirect::to("/billing.html?flash=preço inválido").into_response();
     };
+    if f.included_seats < 0 || f.included_storage_gb < 0 {
+        return Redirect::to("/billing.html?flash=allowance inválida").into_response();
+    }
     let Some(p) = st.db.as_ref() else {
         return (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
@@ -385,13 +532,19 @@ pub async fn set_price_action(
             .into_response();
     };
     let _ = sqlx::query(
-        "UPDATE billing_plans SET monthly_price_cents = $2, updated_at = now() WHERE plan = $1",
+        "UPDATE billing_plans SET monthly_price_cents = $2, included_seats = $3, \
+            seat_overage_cents = $4, included_storage_gb = $5, \
+            storage_overage_cents_per_gb = $6, updated_at = now() WHERE plan = $1",
     )
     .bind(&f.plan)
-    .bind(cents)
+    .bind(price)
+    .bind(f.included_seats)
+    .bind(seat_over)
+    .bind(f.included_storage_gb)
+    .bind(gb_over)
     .execute(p)
     .await;
-    Redirect::to("/billing.html?flash=preço atualizado").into_response()
+    Redirect::to("/billing.html?flash=plano atualizado").into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -417,31 +570,13 @@ pub async fn generate_action(
     let Some(period_date) = period_first_of_month(&f.period) else {
         return Redirect::to("/billing.html?flash=período inválido").into_response();
     };
-    let priced: Option<(String, i64, String)> = sqlx::query_as(
-        "SELECT t.plan, bp.monthly_price_cents, bp.currency \
-         FROM tenants t JOIN billing_plans bp ON bp.plan = t.plan WHERE t.id = $1",
-    )
-    .bind(tid)
-    .fetch_optional(p)
-    .await
-    .ok()
-    .flatten();
-    let Some((plan, price, currency)) = priced else {
-        return Redirect::to("/billing.html?flash=tenant sem plano").into_response();
-    };
-    let _ = sqlx::query(
-        "INSERT INTO billing_invoices (tenant_id, period, plan, amount_cents, currency) \
-         VALUES ($1, $2::date, $3, $4, $5) \
-         ON CONFLICT (tenant_id, period) DO NOTHING",
-    )
-    .bind(tid)
-    .bind(&period_date)
-    .bind(&plan)
-    .bind(price)
-    .bind(&currency)
-    .execute(p)
-    .await;
-    Redirect::to(&format!("/billing.html?tenant={tid}&flash=fatura gerada")).into_response()
+    match generate_one(p, tid, &period_date).await {
+        Ok(Some(_)) => {
+            Redirect::to(&format!("/billing.html?tenant={tid}&flash=fatura gerada")).into_response()
+        }
+        Ok(None) => Redirect::to("/billing.html?flash=tenant sem plano").into_response(),
+        Err(_) => Redirect::to("/billing.html?flash=erro ao gerar").into_response(),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -647,6 +782,14 @@ pub async fn my_invoices_csv(State(st): State<Arc<AppState>>, headers: HeaderMap
 
 // ─── Printable single invoice ────────────────────────────────────────────────
 
+/// One invoice line for the printable document (amounts pre-formatted).
+pub struct LineRow {
+    pub description: String,
+    pub quantity: i64,
+    pub unit: String,
+    pub amount: String,
+}
+
 /// A printable invoice document (one invoice, browser print-to-PDF friendly).
 #[derive(Template)]
 #[template(path = "invoice_print.html")]
@@ -660,6 +803,7 @@ pub struct InvoicePrintTpl {
     pub status: String,
     pub issued_at: String,
     pub paid_at: Option<String>,
+    pub lines: Vec<LineRow>,
 }
 
 /// A row joining an invoice to its tenant name, for the printable document.
@@ -726,6 +870,28 @@ pub async fn invoice_print(
         return (axum::http::StatusCode::NOT_FOUND, "invoice not found").into_response();
     };
 
+    // Line items, ordered base-first then overage. A legacy invoice with no
+    // lines renders the header amount as a single implicit line in the template.
+    let lines: Vec<LineRow> = sqlx::query_as::<_, (String, i64, i64, i64)>(
+        "SELECT description, quantity, unit_cents, amount_cents \
+         FROM billing_invoice_lines WHERE invoice_id = $1 \
+         ORDER BY (kind = 'base') DESC, kind",
+    )
+    .bind(d.id)
+    .fetch_all(p)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(
+        |(description, quantity, unit_cents, amount_cents)| LineRow {
+            description,
+            quantity,
+            unit: money(unit_cents),
+            amount: money(amount_cents),
+        },
+    )
+    .collect();
+
     let period = d
         .period
         .format(&time::format_description::parse("[year]-[month]").unwrap_or_else(|_| Vec::new()))
@@ -740,6 +906,7 @@ pub async fn invoice_print(
         status: d.status,
         issued_at: fmt_date(d.issued_at),
         paid_at: d.paid_at.map(fmt_date),
+        lines,
     })
     .render()
     {
@@ -759,21 +926,22 @@ pub async fn invoice_print(
 
 // ─── Batch generation (all tenants, one period) ──────────────────────────────
 
-/// Generate the invoice for `period_date` (YYYY-MM-DD, first-of-month) for
-/// every tenant whose plan has a price, at that plan's current price. Idempotent
-/// per (tenant, period) via `ON CONFLICT DO NOTHING`, so re-running a period is
-/// safe and only fills gaps. Returns the count of rows actually inserted.
+/// Generate (or refresh) the invoice for `period_date` (YYYY-MM-DD,
+/// first-of-month) for every tenant with a priced plan, metering usage-based
+/// overage per tenant via [`generate_one`]. Idempotent per (tenant, period):
+/// re-running re-meters each invoice. Returns how many invoices were processed.
 async fn generate_all_for_period(p: &sqlx::PgPool, period_date: &str) -> Result<u64, sqlx::Error> {
-    let res = sqlx::query(
-        "INSERT INTO billing_invoices (tenant_id, period, plan, amount_cents, currency) \
-         SELECT t.id, $1::date, t.plan, bp.monthly_price_cents, bp.currency \
-           FROM tenants t JOIN billing_plans bp ON bp.plan = t.plan \
-         ON CONFLICT (tenant_id, period) DO NOTHING",
-    )
-    .bind(period_date)
-    .execute(p)
-    .await?;
-    Ok(res.rows_affected())
+    let tenants: Vec<uuid::Uuid> =
+        sqlx::query_scalar("SELECT t.id FROM tenants t JOIN billing_plans bp ON bp.plan = t.plan")
+            .fetch_all(p)
+            .await?;
+    let mut processed = 0u64;
+    for tenant in tenants {
+        if generate_one(p, tenant, period_date).await?.is_some() {
+            processed += 1;
+        }
+    }
+    Ok(processed)
 }
 
 /// Normalize a "YYYY-MM" (browser month input) or "YYYY-MM-DD" into the

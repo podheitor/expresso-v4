@@ -9,21 +9,31 @@
   {% if flash.is_some() %}<p class="flash">{{ flash.as_ref().unwrap() }}</p>{% endif %}
 
   <h2>Planos</h2>
+  <p class="hint">
+    Cada plano tem um preço-base + uma franquia (usuários e armazenamento
+    incluídos). Uso acima da franquia é cobrado por unidade ao preço de excedente
+    (deixe o excedente em 0 para não cobrar essa dimensão).
+  </p>
   <table class="grid">
-    <thead><tr><th>Plano</th><th>Nome</th><th>Preço mensal</th><th>Ajustar</th></tr></thead>
+    <thead><tr>
+      <th>Plano</th><th>Preço-base</th>
+      <th>Usuários incl.</th><th>Excedente/usuário</th>
+      <th>GB incl.</th><th>Excedente/GB</th><th></th>
+    </tr></thead>
     <tbody>
       {% for p in plans %}
       <tr>
-        <td><code>{{ p.plan }}</code></td>
-        <td>{{ p.display_name }}</td>
-        <td>{{ p.currency }} {{ p.price }}</td>
-        <td>
-          <form method="post" action="/billing/price" style="display:flex;gap:4px">
+        <td><code>{{ p.plan }}</code> ({{ p.display_name }})
+          <form id="plan-{{ p.plan }}" method="post" action="/billing/price">
             <input type="hidden" name="plan" value="{{ p.plan }}">
-            <input type="text" name="price" value="{{ p.price }}" style="width:7em" placeholder="49.90">
-            <button type="submit">Salvar</button>
           </form>
         </td>
+        <td>{{ p.currency }} <input form="plan-{{ p.plan }}" type="text" name="price" value="{{ p.price }}" style="width:6em"></td>
+        <td><input form="plan-{{ p.plan }}" type="number" name="included_seats" value="{{ p.included_seats }}" min="0" style="width:5em"></td>
+        <td>{{ p.currency }} <input form="plan-{{ p.plan }}" type="text" name="seat_overage" value="{{ p.seat_overage }}" style="width:5em"></td>
+        <td><input form="plan-{{ p.plan }}" type="number" name="included_storage_gb" value="{{ p.included_storage_gb }}" min="0" style="width:5em"></td>
+        <td>{{ p.currency }} <input form="plan-{{ p.plan }}" type="text" name="storage_overage" value="{{ p.storage_overage }}" style="width:5em"></td>
+        <td><button form="plan-{{ p.plan }}" type="submit">Salvar</button></td>
       </tr>
       {% endfor %}
     </tbody>

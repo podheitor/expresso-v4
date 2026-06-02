@@ -23,6 +23,7 @@ mod govbr;
 mod handlers;
 mod kc;
 mod ldap;
+mod overage;
 mod saml;
 mod templates;
 mod tenants;
