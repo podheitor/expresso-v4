@@ -4,12 +4,13 @@
 //! <CollectionId>id</CollectionId>…`. On K="0" we reset the collection's state
 //! and return an empty Add set with a fresh key (EAS priming round); on a
 //! non-zero key we emit an Add per message newer than the high-water UID we last
-//! sent that device, then advance the stored key + UID. Read direction only —
-//! client→server changes (\Seen, delete, move) land in sprint 5.
+//! sent that device, then advance the stored key + UID. Client→server changes
+//! (\Seen toggle, delete) are applied from the request `<Commands>` first.
 //!
-//! Envelope fields come from the `messages` row; the body uses `preview_text`
-//! (cheap, no object-store fetch) as a truncated plain-text body. Full-body
-//! fetch honoring the client TruncationSize is a later refinement.
+//! Envelope fields come from the `messages` row; the body is fetched from
+//! storage and truncated to the client's `BodyPreference/TruncationSize` (see
+//! `resolve_bodies`), falling back to `preview_text` when the raw body is
+//! unavailable. MIME multipart decoding of the body is a later refinement.
 
 use expresso_wbxml::{
     decode, encode,
@@ -38,7 +39,13 @@ pub struct SyncRequest {
     pub sync_key: String,
     pub collection_id: String,
     pub changes: Vec<ClientChange>,
+    /// Client `BodyPreference/TruncationSize` (bytes). `None` → server default.
+    pub truncation_size: Option<usize>,
 }
+
+/// Default body truncation when the client doesn't specify one — keeps the
+/// preview cheap while real clients negotiate a larger size.
+const DEFAULT_TRUNCATION: usize = 32 * 1024;
 
 /// Parse the first `<Collection>`'s SyncKey + CollectionId from a Sync request.
 /// Missing fields default to empty; the caller treats an empty/zero key as the
@@ -48,19 +55,24 @@ pub fn parse_sync_request(body: &[u8]) -> SyncRequest {
         return SyncRequest::default();
     };
     let mut req = SyncRequest::default();
-    let mut field: Option<u8> = None;
-    // Header fields (SyncKey, CollectionId) live before <Commands>; capturing
-    // the first occurrence of each is enough.
+    // `field` carries (page, token) of the leaf whose Text we're capturing, so
+    // TruncationSize (AirSyncBase page) is told apart from AirSync fields.
+    let mut field: Option<(u8, u8)> = None;
     for ev in events {
         match ev {
-            Event::StartElement { page: p, token, .. } if p == page::AIR_SYNC => {
-                field = Some(token)
-            }
+            Event::StartElement { page: p, token, .. } => field = Some((p, token)),
             Event::Text(t) => {
                 match field {
-                    Some(air_sync::SYNC_KEY) if req.sync_key.is_empty() => req.sync_key = t,
-                    Some(air_sync::COLLECTION_ID) if req.collection_id.is_empty() => {
+                    Some((page::AIR_SYNC, air_sync::SYNC_KEY)) if req.sync_key.is_empty() => {
+                        req.sync_key = t;
+                    }
+                    Some((page::AIR_SYNC, air_sync::COLLECTION_ID))
+                        if req.collection_id.is_empty() =>
+                    {
                         req.collection_id = t;
+                    }
+                    Some((page::AIR_SYNC_BASE, air_sync_base::TRUNCATION_SIZE)) => {
+                        req.truncation_size = t.parse().ok();
                     }
                     _ => {}
                 }
@@ -148,7 +160,12 @@ struct MailItem {
     to_addrs: serde_json::Value,
     date: Option<time::OffsetDateTime>,
     preview: Option<String>,
+    body_path: Option<String>,
     flags: Vec<String>,
+    /// Resolved plain-text body for the EAS response, filled in by
+    /// `resolve_bodies` honoring the client's TruncationSize.
+    body_text: String,
+    body_truncated: bool,
 }
 
 /// Build the Sync response for a collection. `device_id` scopes the per-device
@@ -175,7 +192,13 @@ pub async fn sync_response(
     apply_client_changes(state, tenant_id, collection_id, &req.changes).await;
 
     let (key, last_uid) = load_state(state, tenant_id, user_id, device_id, collection_id).await;
-    let items = load_new_items(state, tenant_id, collection_id, last_uid).await;
+    let mut items = load_new_items(state, tenant_id, collection_id, last_uid).await;
+    resolve_bodies(
+        state,
+        &mut items,
+        req.truncation_size.unwrap_or(DEFAULT_TRUNCATION),
+    )
+    .await;
     let new_key = key + 1;
     let new_high = items.iter().map(|i| i.uid).max().unwrap_or(last_uid);
     let _ = save_state(
@@ -261,18 +284,22 @@ fn push_add(doc: &mut Vec<Event>, it: &MailItem) {
     };
     push_text(doc, e, email::READ, read);
 
-    // Body (AirSyncBase): plain-text preview, marked truncated.
-    let body = it.preview.clone().unwrap_or_default();
+    // Body (AirSyncBase): plain text, fetched + truncated by resolve_bodies.
     doc.push(Event::start(b, air_sync_base::BODY));
     push_text(doc, b, air_sync_base::TYPE, "1"); // 1 = plain text
     push_text(
         doc,
         b,
         air_sync_base::ESTIMATED_DATA_SIZE,
-        &body.len().to_string(),
+        &it.body_text.len().to_string(),
     );
-    push_text(doc, b, air_sync_base::TRUNCATED, "1");
-    push_text(doc, b, air_sync_base::DATA, &body);
+    push_text(
+        doc,
+        b,
+        air_sync_base::TRUNCATED,
+        if it.body_truncated { "1" } else { "0" },
+    );
+    push_text(doc, b, air_sync_base::DATA, &it.body_text);
     doc.push(Event::EndElement); // Body
 
     doc.push(Event::EndElement); // ApplicationData
@@ -320,6 +347,7 @@ type MailRow = (
     serde_json::Value,
     Option<time::OffsetDateTime>,
     Option<String>,
+    Option<String>,
     Vec<String>,
 );
 
@@ -330,7 +358,7 @@ async fn load_new_items(
     last_uid: i64,
 ) -> Vec<MailItem> {
     let rows: Vec<MailRow> = sqlx::query_as(
-        "SELECT uid, id, subject, from_addr, to_addrs, date, preview_text, flags \
+        "SELECT uid, id, subject, from_addr, to_addrs, date, preview_text, body_path, flags \
              FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND uid > $3 \
              ORDER BY uid ASC LIMIT $4",
     )
@@ -343,18 +371,61 @@ async fn load_new_items(
     .unwrap_or_default();
     rows.into_iter()
         .map(
-            |(uid, server_id, subject, from_addr, to_addrs, date, preview, flags)| MailItem {
-                uid,
-                server_id,
-                subject,
-                from_addr,
-                to_addrs,
-                date,
-                preview,
-                flags,
+            |(uid, server_id, subject, from_addr, to_addrs, date, preview, body_path, flags)| {
+                MailItem {
+                    uid,
+                    server_id,
+                    subject,
+                    from_addr,
+                    to_addrs,
+                    date,
+                    preview,
+                    body_path,
+                    flags,
+                    body_text: String::new(),
+                    body_truncated: false,
+                }
             },
         )
         .collect()
+}
+
+/// Fill each item's `body_text`/`body_truncated`: fetch the raw message from
+/// storage, take the text after the header separator, and truncate to
+/// `max_bytes`. Falls back to `preview_text` when the body can't be fetched.
+async fn resolve_bodies(state: &AppState, items: &mut [MailItem], max_bytes: usize) {
+    for it in items.iter_mut() {
+        let full = match &it.body_path {
+            Some(path) => crate::pop3::store::fetch_body(state, path)
+                .await
+                .map(|raw| body_text_after_headers(&raw)),
+            None => None,
+        };
+        let text = full.or_else(|| it.preview.clone()).unwrap_or_default();
+        if text.len() > max_bytes {
+            // Truncate on a char boundary at or below max_bytes.
+            let mut end = max_bytes;
+            while end > 0 && !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            it.body_text = text[..end].to_string();
+            it.body_truncated = true;
+        } else {
+            it.body_text = text;
+            it.body_truncated = false;
+        }
+    }
+}
+
+/// Extract the plain-text body section (after the `\r\n\r\n` header separator)
+/// from a raw RFC822 message as a lossy UTF-8 string. MIME multipart decoding is
+/// a later refinement; for now we hand back the raw body bytes as text.
+fn body_text_after_headers(raw: &[u8]) -> String {
+    let body = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map_or(raw, |pos| &raw[pos + 4..]);
+    String::from_utf8_lossy(body).into_owned()
 }
 
 async fn load_state(
@@ -605,6 +676,39 @@ mod tests {
                 read: true
             }]
         );
+    }
+
+    #[test]
+    fn parse_sync_request_reads_truncation_size() {
+        let a = page::AIR_SYNC;
+        let b = page::AIR_SYNC_BASE;
+        let body = encode(&[
+            Event::start(a, air_sync::SYNC),
+            Event::start(a, air_sync::COLLECTION_ID),
+            Event::Text("m-1".into()),
+            Event::EndElement,
+            Event::start(b, air_sync_base::BODY_PREFERENCE),
+            Event::start(b, air_sync_base::TRUNCATION_SIZE),
+            Event::Text("5120".into()),
+            Event::EndElement,
+            Event::EndElement,
+            Event::EndElement,
+        ]);
+        let req = parse_sync_request(&body);
+        assert_eq!(req.truncation_size, Some(5120));
+        assert_eq!(req.collection_id, "m-1");
+    }
+
+    #[test]
+    fn body_text_after_headers_strips_headers() {
+        let raw = b"Subject: hi\r\nFrom: a@x\r\n\r\nthe body here";
+        assert_eq!(body_text_after_headers(raw), "the body here");
+    }
+
+    #[test]
+    fn body_text_after_headers_whole_when_no_separator() {
+        let raw = b"no separator at all";
+        assert_eq!(body_text_after_headers(raw), "no separator at all");
     }
 
     #[test]

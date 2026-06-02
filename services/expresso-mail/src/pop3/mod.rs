@@ -12,7 +12,7 @@
 mod command;
 mod metrics;
 mod session;
-mod store;
+pub(crate) mod store;
 
 use std::{net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;

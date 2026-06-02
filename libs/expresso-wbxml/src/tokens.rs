@@ -122,11 +122,13 @@ pub mod email {
 
 /// AirSyncBase (page 17) tokens — body container for mail Sync (subset).
 pub mod air_sync_base {
-    pub const BODY: u8 = 0x0A;
+    pub const BODY_PREFERENCE: u8 = 0x05;
     pub const TYPE: u8 = 0x06;
+    pub const TRUNCATION_SIZE: u8 = 0x07;
+    pub const BODY: u8 = 0x0A;
+    pub const DATA: u8 = 0x0B;
     pub const ESTIMATED_DATA_SIZE: u8 = 0x0C;
     pub const TRUNCATED: u8 = 0x0D;
-    pub const DATA: u8 = 0x0B;
     pub const NATIVE_BODY_TYPE: u8 = 0x16;
 }
 
