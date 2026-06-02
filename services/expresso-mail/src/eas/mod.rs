@@ -121,7 +121,7 @@ async fn handle_command(
             // Route by the collection-kind prefix FolderSync assigned: `cal:` →
             // calendar, `con:` → contacts (later), else the bare-UUID mail path.
             let resp = if req.collection_id.starts_with("cal:") {
-                calsync::calendar_sync_response(&state, principal.tenant_id, &req).await
+                calsync::calendar_sync_response(&state, principal.tenant_id, &req, &body).await
             } else if req.collection_id.starts_with("con:") {
                 consync::contacts_sync_response(&state, principal.tenant_id, &req).await
             } else {
