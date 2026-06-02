@@ -220,6 +220,44 @@ else
   echo "SKIP: SAML IdP (set SAML_IDP_SSO_URL/SAML_IDP_CERT to enable)"
 fi
 
+# 13. LDAP / AD user federation — only when LDAP_CONNECTION_URL + LDAP_BIND_DN
+# provided. Registers a UserStorageProvider component (KC components API); KC
+# does the bind/search/sync, the Rust side never speaks LDAP. The component is
+# keyed by name within the realm; re-running updates the existing one in place.
+if [[ -n "${LDAP_CONNECTION_URL:-}" && -n "${LDAP_BIND_DN:-}" ]]; then
+  LDAP_NAME="${LDAP_NAME:-ldap}"
+  LDAP_VENDOR="${LDAP_VENDOR:-other}"
+  LDAP_USERS_DN="${LDAP_USERS_DN:-ou=People,dc=example,dc=org}"
+  LDAP_USERNAME_ATTR="${LDAP_USERNAME_ATTR:-uid}"
+  LDAP_RDN_ATTR="${LDAP_RDN_ATTR:-uid}"
+  LDAP_UUID_ATTR="${LDAP_UUID_ATTR:-entryUUID}"
+  LDAP_OBJECT_CLASSES="${LDAP_OBJECT_CLASSES:-inetOrgPerson, organizationalPerson}"
+  LDAP_COMP=$(cat <<JSON
+{"name":"$LDAP_NAME","providerId":"ldap","providerType":"org.keycloak.storage.UserStorageProvider",
+ "parentId":"$REALM",
+ "config":{
+   "enabled":["true"],"vendor":["$LDAP_VENDOR"],
+   "connectionUrl":["$LDAP_CONNECTION_URL"],"usersDn":["$LDAP_USERS_DN"],
+   "bindDn":["$LDAP_BIND_DN"],"bindCredential":["${LDAP_BIND_CREDENTIAL:-}"],
+   "usernameLDAPAttribute":["$LDAP_USERNAME_ATTR"],"rdnLDAPAttribute":["$LDAP_RDN_ATTR"],
+   "uuidLDAPAttribute":["$LDAP_UUID_ATTR"],"userObjectClasses":["$LDAP_OBJECT_CLASSES"],
+   "searchScope":["2"],"editMode":["READ_ONLY"],"importEnabled":["true"],
+   "syncRegistrations":["false"]}}
+JSON
+  )
+  # Find an existing component by name; POST to create, PUT to update.
+  LDAP_CID=$(curl -sf "${H[@]}" "$KC_URL/admin/realms/$REALM/components?parent=$REALM&type=org.keycloak.storage.UserStorageProvider" \
+    | python3 -c "import sys,json; cs=[c for c in json.load(sys.stdin) if c['name']=='$LDAP_NAME']; print(cs[0]['id'] if cs else '')" 2>/dev/null || echo "")
+  if [[ -n "$LDAP_CID" ]]; then
+    curl -sf "${H[@]}" -X PUT "$KC_URL/admin/realms/$REALM/components/$LDAP_CID" -d "$LDAP_COMP" || true
+  else
+    curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/components" -d "$LDAP_COMP" || true
+  fi
+  echo "OK: LDAP federation seeded (name=$LDAP_NAME url=$LDAP_CONNECTION_URL)"
+else
+  echo "SKIP: LDAP federation (set LDAP_CONNECTION_URL/LDAP_BIND_DN to enable)"
+fi
+
 echo "OK: realm=$REALM client=$CLIENT_ID alice/alice2026! tenant=$ALICE_TENANT"
 
 # 11. SuperAdmin bootstrap (opt-in via SA_PASS). Idempotent; syncs KC + DB when

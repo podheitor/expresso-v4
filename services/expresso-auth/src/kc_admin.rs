@@ -298,6 +298,92 @@ impl KcAdmin {
         anyhow::bail!("kc saml-idp delete failed: {}", resp.status());
     }
 
+    /// Find an LDAP UserStorageProvider component's id by name in `realm`.
+    /// Components are keyed by a server-assigned id (not the name), so create vs.
+    /// update + delete all need this lookup first. Returns `None` when absent.
+    async fn ldap_component_id(&self, realm: &str, name: &str) -> Result<Option<String>> {
+        let tok = self.token().await?;
+        let url = format!("{}/admin/realms/{}/components", self.cfg.base_url, realm);
+        let comps: Vec<KcComponentLite> = self
+            .http
+            .get(&url)
+            .bearer_auth(&tok)
+            .query(&[
+                ("parent", realm),
+                ("type", "org.keycloak.storage.UserStorageProvider"),
+            ])
+            .send()
+            .await
+            .context("kc components list req")?
+            .error_for_status()
+            .context("kc components list status")?
+            .json()
+            .await
+            .context("kc components list json")?;
+        Ok(comps
+            .into_iter()
+            .find(|c| c.name == name && c.provider_id == "ldap")
+            .map(|c| c.id))
+    }
+
+    /// Create-or-update an LDAP/AD user-federation component in `realm`. KC owns
+    /// the directory bind/search/sync; the Rust side only pushes the registration
+    /// (including the bind credential, which lives only in KC). Idempotent:
+    /// PUTs an existing component (looked up by name) else POSTs a new one.
+    pub async fn upsert_ldap_component(&self, realm: &str, spec: &LdapComponentSpec) -> Result<()> {
+        let tok = self.token().await?;
+        let existing = self.ldap_component_id(realm, &spec.name).await?;
+        let body = spec.to_kc_json(realm, existing.as_deref());
+        let base = format!("{}/admin/realms/{}/components", self.cfg.base_url, realm);
+        let resp = if let Some(id) = existing {
+            self.http
+                .put(format!("{base}/{id}"))
+                .bearer_auth(&tok)
+                .json(&body)
+                .send()
+                .await
+                .context("kc ldap component put req")?
+        } else {
+            self.http
+                .post(&base)
+                .bearer_auth(&tok)
+                .json(&body)
+                .send()
+                .await
+                .context("kc ldap component post req")?
+        };
+        if resp.status().is_success() {
+            return Ok(());
+        }
+        let status = resp.status();
+        let txt = resp.text().await.unwrap_or_default();
+        anyhow::bail!("kc ldap component upsert failed: {status} body={txt}");
+    }
+
+    /// Remove an LDAP component from `realm` by name. Idempotent: an absent
+    /// component (or a 404 on delete) is treated as success.
+    pub async fn delete_ldap_component(&self, realm: &str, name: &str) -> Result<()> {
+        let Some(id) = self.ldap_component_id(realm, name).await? else {
+            return Ok(());
+        };
+        let tok = self.token().await?;
+        let url = format!(
+            "{}/admin/realms/{}/components/{}",
+            self.cfg.base_url, realm, id
+        );
+        let resp = self
+            .http
+            .delete(&url)
+            .bearer_auth(&tok)
+            .send()
+            .await
+            .context("kc ldap component delete req")?;
+        if resp.status().is_success() || resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(());
+        }
+        anyhow::bail!("kc ldap component delete failed: {}", resp.status());
+    }
+
     /// Remove a single credential by id (Keycloak admin `DELETE
     /// /users/{id}/credentials/{credentialId}`). Resets an MFA factor — the
     /// user must re-enroll. Idempotent from the caller's view: KC returns 404
@@ -377,6 +463,69 @@ impl SamlIdpSpec {
                 "syncMode": "FORCE"
             }
         })
+    }
+}
+
+/// Keycloak component as returned by the admin components list — only the
+/// fields we match on are deserialized.
+#[derive(Debug, Clone, serde::Deserialize)]
+struct KcComponentLite {
+    id: String,
+    name: String,
+    #[serde(rename = "providerId")]
+    provider_id: String,
+}
+
+/// Minimal description of an LDAP/AD user-federation provider to register in
+/// Keycloak. Maps to the `ldap_config` row managed by the admin service, plus
+/// the bind credential (write-through to KC; never stored in our DB).
+#[derive(Debug, Clone)]
+pub struct LdapComponentSpec {
+    pub name: String,
+    pub vendor: String,
+    pub connection_url: String,
+    pub users_dn: String,
+    pub bind_dn: String,
+    pub bind_credential: String,
+    pub username_attr: String,
+    pub rdn_attr: String,
+    pub uuid_attr: String,
+    pub user_object_classes: String,
+    pub search_scope: i32,
+    pub enabled: bool,
+}
+
+impl LdapComponentSpec {
+    /// Build the Keycloak component JSON for the components API. `parent_id` is
+    /// the realm; `id` is set only when updating an existing component. The
+    /// `config` map uses string-array values as Keycloak requires.
+    fn to_kc_json(&self, realm: &str, id: Option<&str>) -> serde_json::Value {
+        let mut v = serde_json::json!({
+            "name": self.name,
+            "providerId": "ldap",
+            "providerType": "org.keycloak.storage.UserStorageProvider",
+            "parentId": realm,
+            "config": {
+                "enabled": [self.enabled.to_string()],
+                "vendor": [self.vendor],
+                "connectionUrl": [self.connection_url],
+                "usersDn": [self.users_dn],
+                "bindDn": [self.bind_dn],
+                "bindCredential": [self.bind_credential],
+                "usernameLDAPAttribute": [self.username_attr],
+                "rdnLDAPAttribute": [self.rdn_attr],
+                "uuidLDAPAttribute": [self.uuid_attr],
+                "userObjectClasses": [self.user_object_classes],
+                "searchScope": [self.search_scope.to_string()],
+                "editMode": ["READ_ONLY"],
+                "importEnabled": ["true"],
+                "syncRegistrations": ["false"]
+            }
+        });
+        if let Some(id) = id {
+            v["id"] = serde_json::Value::String(id.to_string());
+        }
+        v
     }
 }
 
@@ -658,5 +807,60 @@ mod tests {
         s.enabled = false;
         let j = s.to_kc_json();
         assert_eq!(j["enabled"], false);
+    }
+
+    fn ldap_spec() -> LdapComponentSpec {
+        LdapComponentSpec {
+            name: "corp-ad".into(),
+            vendor: "ad".into(),
+            connection_url: "ldaps://ad:636".into(),
+            users_dn: "CN=Users,DC=corp".into(),
+            bind_dn: "CN=svc,DC=corp".into(),
+            bind_credential: "s3cret".into(),
+            username_attr: "sAMAccountName".into(),
+            rdn_attr: "cn".into(),
+            uuid_attr: "objectGUID".into(),
+            user_object_classes: "person, organizationalPerson, user".into(),
+            search_scope: 2,
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn ldap_spec_json_is_user_storage_provider() {
+        let j = ldap_spec().to_kc_json("realm-uuid", None);
+        assert_eq!(j["providerId"], "ldap");
+        assert_eq!(
+            j["providerType"],
+            "org.keycloak.storage.UserStorageProvider"
+        );
+        assert_eq!(j["parentId"], "realm-uuid");
+    }
+
+    #[test]
+    fn ldap_spec_json_config_uses_string_arrays() {
+        let j = ldap_spec().to_kc_json("r", None);
+        assert_eq!(j["config"]["connectionUrl"][0], "ldaps://ad:636");
+        assert_eq!(j["config"]["bindCredential"][0], "s3cret");
+        assert_eq!(j["config"]["enabled"][0], "true");
+        assert_eq!(j["config"]["searchScope"][0], "2");
+    }
+
+    #[test]
+    fn ldap_spec_json_omits_id_on_create() {
+        let j = ldap_spec().to_kc_json("r", None);
+        assert!(j.get("id").is_none());
+    }
+
+    #[test]
+    fn ldap_spec_json_sets_id_on_update() {
+        let j = ldap_spec().to_kc_json("r", Some("comp-123"));
+        assert_eq!(j["id"], "comp-123");
+    }
+
+    #[test]
+    fn ldap_spec_json_read_only_edit_mode() {
+        let j = ldap_spec().to_kc_json("r", None);
+        assert_eq!(j["config"]["editMode"][0], "READ_ONLY");
     }
 }

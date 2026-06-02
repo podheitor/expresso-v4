@@ -1,6 +1,7 @@
 pub mod callback;
 pub mod forgot;
 pub mod impersonate;
+pub mod ldap_sync;
 pub mod login;
 pub mod logout;
 pub mod me;

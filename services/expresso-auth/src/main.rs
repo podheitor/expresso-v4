@@ -217,6 +217,8 @@ async fn main() -> anyhow::Result<()> {
             "/internal/saml/idp-delete",
             post(handlers::saml_sync::remove),
         )
+        .route("/internal/ldap/sync", post(handlers::ldap_sync::sync))
+        .route("/internal/ldap/remove", post(handlers::ldap_sync::remove))
         .route(
             "/auth/saml/idp-template/:alias/metadata",
             get(handlers::saml_sync::idp_metadata),
