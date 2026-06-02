@@ -14,6 +14,7 @@ use tracing::info;
 
 mod audit;
 mod auth;
+mod billing;
 mod counter;
 mod dav_admin;
 mod dead_props;
@@ -167,6 +168,19 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/tenants/:id/delete", post(tenants::delete_action))
         .route("/api/v1/admin/tenants/:id/usage", get(usage::tenant_usage))
+        .route("/api/v1/admin/billing/plans", get(billing::list_plans))
+        .route(
+            "/api/v1/admin/billing/plans/:plan",
+            axum::routing::put(billing::set_plan_price),
+        )
+        .route(
+            "/api/v1/admin/tenants/:id/invoices",
+            get(billing::list_invoices).post(billing::generate_invoice),
+        )
+        .route(
+            "/api/v1/admin/invoices/:invoice_id",
+            axum::routing::patch(billing::set_invoice_status),
+        )
         .route("/audit.json", get(audit::list))
         .route("/audit.csv", get(audit::csv))
         .route("/audit.html", get(audit::page))
