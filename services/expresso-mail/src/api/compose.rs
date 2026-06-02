@@ -735,18 +735,32 @@ async fn save_to_sent(
     raw: &[u8],
     special_use: &str,
 ) -> anyhow::Result<()> {
+    save_raw_to_folder(state, ctx.user_id, ctx.tenant_id, raw, special_use).await
+}
+
+/// Persist a raw RFC822 message into the user's `special_use` folder (creating
+/// the mailbox if absent), flagged `\Seen`. Shared by the REST send path and the
+/// ActiveSync SendMail handler — callers pass user/tenant directly so it doesn't
+/// depend on the HTTP `RequestCtx`.
+pub(crate) async fn save_raw_to_folder(
+    state: &AppState,
+    user_id: Uuid,
+    tenant_id: Uuid,
+    raw: &[u8],
+    special_use: &str,
+) -> anyhow::Result<()> {
     let body_path = ingest::write_raw_message(state, raw).await?;
     let size_bytes = raw.len().min(i32::MAX as usize) as i32;
     let msg_id = Uuid::now_v7();
 
-    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let mut tx = begin_tenant_tx(state.db(), tenant_id).await?;
 
     let row: Option<(Uuid, i64)> = sqlx::query_as(
         "SELECT id, next_uid FROM mailboxes \
          WHERE user_id = $1 AND tenant_id = $2 AND special_use = $3 FOR UPDATE",
     )
-    .bind(ctx.user_id)
-    .bind(ctx.tenant_id)
+    .bind(user_id)
+    .bind(tenant_id)
     .bind(special_use)
     .fetch_optional(&mut *tx)
     .await?;
@@ -765,8 +779,8 @@ async fn save_to_sent(
              VALUES ($1, $2, $3, $4, EXTRACT(EPOCH FROM now())::BIGINT, 1, true) \
              RETURNING id",
         )
-        .bind(ctx.user_id)
-        .bind(ctx.tenant_id)
+        .bind(user_id)
+        .bind(tenant_id)
         .bind(folder_name)
         .bind(special_use)
         .fetch_one(&mut *tx)
@@ -785,7 +799,7 @@ async fn save_to_sent(
     )
     .bind(msg_id)
     .bind(mbox_id)
-    .bind(ctx.tenant_id)
+    .bind(tenant_id)
     .bind(uid)
     .bind(r"\Seen")
     .bind(size_bytes)

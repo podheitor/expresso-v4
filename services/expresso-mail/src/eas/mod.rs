@@ -15,6 +15,7 @@ mod auth;
 mod foldersync;
 mod ping;
 mod provision;
+mod sendmail;
 mod sync;
 
 use axum::{
@@ -122,9 +123,24 @@ async fn handle_command(
             let resp = ping::ping_response(&state, principal.tenant_id, &req).await;
             wbxml_ok(resp)
         }
+        "SendMail" => {
+            use sendmail::SendOutcome;
+            match sendmail::send_raw_mime(&state, principal.user_id, principal.tenant_id, &body)
+                .await
+            {
+                // EAS SendMail success = empty 200, no body.
+                SendOutcome::Sent => StatusCode::OK.into_response(),
+                SendOutcome::InvalidMessage => {
+                    (StatusCode::BAD_REQUEST, "invalid message").into_response()
+                }
+                SendOutcome::RelayFailed => {
+                    (StatusCode::BAD_GATEWAY, "relay failed").into_response()
+                }
+            }
+        }
         // Implemented in later sprints; return 501 with a clear status so a
         // client doesn't treat an empty 200 as a malformed response.
-        "GetItemEstimate" | "ItemOperations" | "SendMail" => {
+        "GetItemEstimate" | "ItemOperations" => {
             warn!(cmd = %cmd, "EAS command not yet implemented");
             (
                 StatusCode::NOT_IMPLEMENTED,
