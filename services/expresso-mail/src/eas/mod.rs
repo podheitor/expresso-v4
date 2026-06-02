@@ -12,6 +12,7 @@
 //! Mounted only when `mail_server.activesync_enabled` is set — default off.
 
 mod auth;
+mod foldersync;
 mod provision;
 
 use axum::{
@@ -75,7 +76,7 @@ async fn handle_command(
     State(state): State<AppState>,
     Query(q): Query<EasQuery>,
     headers: HeaderMap,
-    _body: Bytes,
+    body: Bytes,
 ) -> Response {
     let authz = headers
         .get(header::AUTHORIZATION)
@@ -95,9 +96,20 @@ async fn handle_command(
 
     match cmd {
         "Provision" => wbxml_ok(provision::provision_response()),
+        "FolderSync" => {
+            let key = foldersync::parse_sync_key(&body);
+            let resp = foldersync::foldersync_response(
+                &state,
+                principal.user_id,
+                principal.tenant_id,
+                &key,
+            )
+            .await;
+            wbxml_ok(resp)
+        }
         // Implemented in later sprints; return 501 with a clear status so a
         // client doesn't treat an empty 200 as a malformed response.
-        "FolderSync" | "Sync" | "Ping" | "GetItemEstimate" | "ItemOperations" | "SendMail" => {
+        "Sync" | "Ping" | "GetItemEstimate" | "ItemOperations" | "SendMail" => {
             warn!(cmd = %cmd, "EAS command not yet implemented");
             (
                 StatusCode::NOT_IMPLEMENTED,
