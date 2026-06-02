@@ -32,6 +32,7 @@ members = [
     "libs/expresso-observability",
     "libs/expresso-imip",
     "libs/expresso-rrule",
+    "libs/expresso-wbxml",
 ]
 
 [workspace.dependencies]

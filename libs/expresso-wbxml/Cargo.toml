@@ -1,0 +1,16 @@
+[package]
+name = "expresso-wbxml"
+publish = false
+version = "0.1.0"
+edition = "2021"
+description = "WAP Binary XML (WBXML) codec + Exchange ActiveSync token tables, for the EAS server"
+
+[lib]
+name = "expresso_wbxml"
+path = "src/lib.rs"
+
+[dependencies]
+
+# NOTE: pure logic crate (operates on byte slices); no runtime dependencies.
+# Deliberately not inheriting `[workspace.lints]` (pedantic) — consistent with
+# the other extracted pure libs (see expresso-rrule).
