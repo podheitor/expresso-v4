@@ -18,6 +18,19 @@ pub mod page {
     pub const PROVISION: u8 = 14;
     pub const SEARCH: u8 = 15;
     pub const AIR_SYNC_BASE: u8 = 17;
+    pub const ITEM_OPERATIONS: u8 = 20;
+}
+
+/// ItemOperations (page 20) tokens — Fetch a specific item (subset).
+pub mod item_operations {
+    pub const ITEM_OPERATIONS: u8 = 0x05;
+    pub const FETCH: u8 = 0x07;
+    pub const STORE: u8 = 0x08;
+    pub const STATUS: u8 = 0x0E;
+    pub const RESPONSE: u8 = 0x0F;
+    pub const PROPERTIES: u8 = 0x14;
+    pub const COLLECTION_ID: u8 = 0x12;
+    pub const SERVER_ID: u8 = 0x13;
 }
 
 /// Search (page 15) tokens — Search command (subset).
@@ -189,6 +202,7 @@ mod tests {
         assert_eq!(page::FOLDER_HIERARCHY, 7);
         assert_eq!(page::PING, 13);
         assert_eq!(page::SEARCH, 15);
+        assert_eq!(page::ITEM_OPERATIONS, 20);
         assert_eq!(page::PROVISION, 14);
         assert_eq!(page::AIR_SYNC_BASE, 17);
     }

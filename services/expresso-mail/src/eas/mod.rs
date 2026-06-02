@@ -16,6 +16,7 @@ mod calsync;
 mod consync;
 mod foldersync;
 mod itemestimate;
+mod itemops;
 mod ping;
 mod provision;
 mod searchmail;
@@ -31,7 +32,7 @@ use axum::{
     Router,
 };
 use serde::Deserialize;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::state::AppState;
 
@@ -169,15 +170,11 @@ async fn handle_command(
                     .await;
             wbxml_ok(resp)
         }
-        // Implemented in later sprints; return 501 with a clear status so a
-        // client doesn't treat an empty 200 as a malformed response.
         "ItemOperations" => {
-            warn!(cmd = %cmd, "EAS command not yet implemented");
-            (
-                StatusCode::NOT_IMPLEMENTED,
-                format!("{cmd} not implemented"),
-            )
-                .into_response()
+            let fetches = itemops::parse_fetches(&body);
+            let resp =
+                itemops::item_operations_response(&state, principal.tenant_id, &fetches).await;
+            wbxml_ok(resp)
         }
         _ => (StatusCode::BAD_REQUEST, "unknown or missing Cmd").into_response(),
     }
