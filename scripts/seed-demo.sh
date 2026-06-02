@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# Seed demo data for Expresso v4 — alice@expresso.local
+# Seed demo data for Expresso v4 — patricia@expresso.local
+# tenant_id MUST match the Keycloak demo user (seed-realm.sh DEMO_TENANT).
+# HOST defaults to localhost; set HOST=<ip> to target a remote demo host.
 set -euo pipefail
-UID_A="c3a1459f-3c3f-4ff5-bee4-8e7958bbb698"
-TID_A="40894092-7ec5-4693-94f0-afb1c7fb51c4"
+HOST="${HOST:-localhost}"
+UID_A="${DEMO_USER_ID:-c3a1459f-3c3f-4ff5-bee4-8e7958bbb698}"
+TID_A="${DEMO_TENANT:-40894092-7ec5-4693-94f0-afb1c7fb51c4}"
 H=(-H "x-user-id: $UID_A" -H "x-tenant-id: $TID_A")
 
-CAL=http://localhost:8002
-CON=http://localhost:8003
-DRV=http://localhost:8004
-MAI=http://localhost:8001
+CAL=http://$HOST:8002
+CON=http://$HOST:8003
+DRV=http://$HOST:8004
+MAI=http://$HOST:8001
 
 echo "=== Calendar: create 'Pessoal' + 2 events ==="
 CAL_ID=$(curl -sS "${H[@]}" -H 'content-type: application/json' \

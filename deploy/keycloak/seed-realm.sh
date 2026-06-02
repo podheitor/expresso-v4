@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 # Seed Keycloak realm `expresso` for dev/lab.
 # → creates realm, `expresso-web` public client, tenant_id + audience mappers,
-#   declarative user profile (tenant_id), user `alice` with tenant_id attribute.
+#   declarative user profile (tenant_id), demo user `patricia` with tenant_id.
 # Prereqs: Keycloak 25+ reachable at $KC_URL, admin creds.
 set -euo pipefail
 
-KC_URL="${KC_URL:-http://192.168.15.125:8080}"
+KC_URL="${KC_URL:-http://localhost:8080}"
 KC_ADMIN="${KC_ADMIN:-admin}"
 KC_ADMIN_PASS="${KC_ADMIN_PASS:?set KC_ADMIN_PASS}"
 REALM="${REALM:-expresso}"
 CLIENT_ID="${CLIENT_ID:-expresso-web}"
-ALICE_TENANT="${ALICE_TENANT:-40894092-7ec5-4693-94f0-afb1c7fb51c4}"
-ALICE_PASS="${ALICE_PASS:-alice2026!}"
+# Demo user. tenant_id MUST match the data seed (scripts/seed-demo.sh DEMO_TENANT).
+DEMO_USER="${DEMO_USER:-patricia}"
+DEMO_PASS="${DEMO_PASS:-patricia}"
+DEMO_TENANT="${DEMO_TENANT:-40894092-7ec5-4693-94f0-afb1c7fb51c4}"
 
 _token() {
   curl -sf -X POST "$KC_URL/realms/master/protocol/openid-connect/token" \
@@ -68,15 +70,15 @@ JSON
 )
 curl -sf "${H[@]}" -X PUT "$KC_URL/admin/realms/$REALM/users/profile" -d "$PROFILE"
 
-# 5. user alice
-ALICE_JSON=$(cat <<JSON
-{"username":"alice","enabled":true,"email":"alice@expresso.local","emailVerified":true,
- "firstName":"Alice","lastName":"Test",
- "attributes":{"tenant_id":["$ALICE_TENANT"]},
- "credentials":[{"type":"password","value":"$ALICE_PASS","temporary":false}]}
+# 5. demo user
+DEMO_JSON=$(cat <<JSON
+{"username":"$DEMO_USER","enabled":true,"email":"$DEMO_USER@expresso.local","emailVerified":true,
+ "firstName":"Patrícia","lastName":"Demo",
+ "attributes":{"tenant_id":["$DEMO_TENANT"]},
+ "credentials":[{"type":"password","value":"$DEMO_PASS","temporary":false}]}
 JSON
 )
-curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/users" -d "$ALICE_JSON" || true
+curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/users" -d "$DEMO_JSON" || true
 
 
 # 6. realm roles for RBAC
@@ -85,10 +87,10 @@ for role in SuperAdmin TenantAdmin User Readonly; do
     -d "{\"name\":\"$role\",\"description\":\"Expresso $role role\"}" || true
 done
 
-# 7. assign User role to alice
-ALICE_ID=$(curl -sf "${H[@]}" "$KC_URL/admin/realms/$REALM/users?username=alice" | python3 -c 'import sys,json;print(json.load(sys.stdin)[0]["id"])')
+# 7. assign User role to the demo user
+DEMO_ID=$(curl -sf "${H[@]}" "$KC_URL/admin/realms/$REALM/users?username=$DEMO_USER" | python3 -c 'import sys,json;print(json.load(sys.stdin)[0]["id"])')
 USER_ROLE=$(curl -sf "${H[@]}" "$KC_URL/admin/realms/$REALM/roles/User")
-curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/users/$ALICE_ID/role-mappings/realm" \
+curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/users/$DEMO_ID/role-mappings/realm" \
   -d "[$USER_ROLE]" || true
 
 # 8. enable MFA required actions (operator-driven, ≠ default) — TOTP + WebAuthn
@@ -270,7 +272,7 @@ else
   echo "SKIP: LDAP federation (set LDAP_CONNECTION_URL/LDAP_BIND_DN to enable)"
 fi
 
-echo "OK: realm=$REALM client=$CLIENT_ID alice/alice2026! tenant=$ALICE_TENANT"
+echo "OK: realm=$REALM client=$CLIENT_ID login=$DEMO_USER/$DEMO_PASS tenant=$DEMO_TENANT"
 
 # 11. SuperAdmin bootstrap (opt-in via SA_PASS). Idempotent; syncs KC + DB when
 # DB_HOST is set. See deploy/keycloak/seed-super-admin.sh.
