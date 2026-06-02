@@ -336,7 +336,7 @@ async fn search_messages(
     Query(params): Query<SearchParams>,
     req_headers: HeaderMap,
 ) -> Result<Response> {
-    let limit = params.limit.unwrap_or(50).min(200);
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
 
     // When a full-text query is provided and the search service is configured,
     // call Tantivy to get matching document_ids (mailbox_id/uid pairs) and
@@ -558,7 +558,7 @@ async fn search_messages(
             rows
         }
     } else {
-        let offset = params.page.unwrap_or(0) * limit;
+        let offset = params.page.unwrap_or(0).max(0).saturating_mul(limit);
         let order = if params
             .sort
             .as_deref()
@@ -675,7 +675,7 @@ async fn list_messages(
     req_headers: HeaderMap,
 ) -> Result<Response> {
     let folder = params.folder.unwrap_or_else(|| "INBOX".into());
-    let limit = params.limit.unwrap_or(50).min(200);
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
 
     // Build optional flag filters (no user-provided SQL, only escaped literals).
     let flag_filter = params
@@ -839,7 +839,7 @@ async fn list_messages(
         }
     } else {
         // Legacy offset pagination.
-        let offset = params.page.unwrap_or(0) * limit;
+        let offset = params.page.unwrap_or(0).max(0).saturating_mul(limit);
         let order = if params
             .sort
             .as_deref()

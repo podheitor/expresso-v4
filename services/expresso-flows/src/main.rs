@@ -179,8 +179,8 @@ async fn list_rules(
     Query(params): Query<ListRulesParams>,
     req_headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    let limit = params.limit.unwrap_or(100).min(500);
-    let offset = params.page.unwrap_or(0) * limit;
+    let limit = params.limit.unwrap_or(100).clamp(1, 500);
+    let offset = params.page.unwrap_or(0).max(0).saturating_mul(limit);
 
     let enabled_filter = match params.enabled {
         Some(true) => "AND enabled = TRUE",
