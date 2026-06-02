@@ -18,6 +18,12 @@ use std::io::Read;
 /// Cap on extracted text shipped to the index (256 KiB of characters).
 const MAX_TEXT_BYTES: usize = 256 * 1024;
 
+/// Cap on decompressed bytes read from a single OOXML/ZIP content part. Far
+/// above any real document part, but bounds a zip-bomb entry (tiny compressed,
+/// gigabytes uncompressed) so decompression can't exhaust memory during the
+/// background indexing task.
+const MAX_PART_BYTES: u64 = 8 * 1024 * 1024;
+
 /// Extract indexable text from `bytes` given the file's `mime` and `name`
 /// (the name's extension is the fallback when the MIME type is absent/generic).
 /// Returns `None` when the format isn't text-extractable.
@@ -103,16 +109,22 @@ fn extract_ooxml(bytes: &[u8]) -> Option<String> {
     let mut zip = zip::ZipArchive::new(reader).ok()?;
     let mut out = String::new();
     for i in 0..zip.len() {
-        let Ok(mut entry) = zip.by_index(i) else {
+        let Ok(entry) = zip.by_index(i) else {
             continue;
         };
         if !is_content_part(entry.name()) {
             continue;
         }
-        let mut xml = String::new();
-        if entry.read_to_string(&mut xml).is_err() {
+        // Bound the decompressed bytes pulled per part: a malicious OOXML can
+        // declare a tiny compressed entry that expands to gigabytes (zip bomb).
+        // We only need up to MAX_PART_BYTES of XML to fill the MAX_TEXT_BYTES
+        // output, so cap the read via `take` regardless of the entry's size.
+        // Decode lossily so a cap landing mid-codepoint doesn't drop the part.
+        let mut raw = Vec::new();
+        if entry.take(MAX_PART_BYTES).read_to_end(&mut raw).is_err() {
             continue;
         }
+        let xml = String::from_utf8_lossy(&raw);
         strip_xml_tags(&xml, &mut out);
         if out.len() >= MAX_TEXT_BYTES {
             break;
@@ -342,5 +354,33 @@ mod tests {
         )
         .unwrap();
         assert!(t.contains("Indexed body text"), "got: {t}");
+    }
+
+    #[test]
+    fn ooxml_oversized_part_is_bounded_not_oom() {
+        // A content part whose uncompressed size exceeds MAX_PART_BYTES (the
+        // zip-bomb shape) must extract without unbounded memory and stay within
+        // the output cap. Highly compressible payload keeps the test archive tiny.
+        let huge = format!(
+            "<w:t>{}</w:t>",
+            "A".repeat((MAX_PART_BYTES as usize) + 1024)
+        );
+        let mut buf = Vec::new();
+        {
+            let mut zw = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let opts: zip::write::FileOptions<()> = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            use std::io::Write as _;
+            zw.start_file("word/document.xml", opts).unwrap();
+            zw.write_all(huge.as_bytes()).unwrap();
+            zw.finish().unwrap();
+        }
+        let t = extract(
+            Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            "x.docx",
+            &buf,
+        )
+        .unwrap();
+        assert!(t.len() <= MAX_TEXT_BYTES, "output not capped: {}", t.len());
     }
 }

@@ -2,7 +2,7 @@
 
 use axum::{
     body::Bytes,
-    extract::{Multipart, Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, patch, post},
@@ -25,6 +25,13 @@ use crate::{
     error::{DriveError, Result},
     state::AppState,
 };
+
+/// Body-size cap for the single-shot multipart upload (`POST /api/v1/drive/files`),
+/// which buffers the whole field in memory. Larger files must use the chunked
+/// tus.io endpoint (`/api/v1/drive/uploads`). Without this, the route relied on
+/// axum's small undocumented default; an explicit cap makes the limit intentional
+/// and bounds a multipart memory-DoS.
+const MAX_MULTIPART_UPLOAD_BYTES: usize = 100 * 1024 * 1024;
 
 /// Fire-and-forget: extract text from an uploaded file and push it to the
 /// expresso-search index (`kind = "drive"`). No-op when search is unconfigured
@@ -176,7 +183,12 @@ async fn require_read_all(
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/drive/files", get(list).post(upload))
+        .route(
+            "/api/v1/drive/files",
+            get(list)
+                .post(upload)
+                .layer(DefaultBodyLimit::max(MAX_MULTIPART_UPLOAD_BYTES)),
+        )
         .route("/api/v1/drive/files/mkdir", post(mkdir))
         // Static `shared` before `:id` so matchit doesn't capture it as a file id.
         .route("/api/v1/drive/files/shared", get(list_shared))
