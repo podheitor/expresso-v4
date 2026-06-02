@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Notas · Expresso{% endblock %}
+{% block nav %}{% let current = "notes" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page" style="display:flex;max-width:none;padding:0;margin:0;height:calc(100vh - var(--topbar-h));overflow:hidden">
+  <aside class="contacts-books" style="width:300px;display:flex;flex-direction:column">
+    <div class="page-header" style="padding:.75rem">
+      <h2 style="margin:0">Notas</h2>
+      <a class="btn btn-primary btn-sm" href="/notes">+ Nova</a>
+    </div>
+    <ul style="flex:1;overflow:auto;list-style:none;margin:0;padding:0">
+      {% if notes.is_empty() %}
+        <li class="muted small" style="padding:1rem">Nenhuma nota ainda.</li>
+      {% else %}
+        {% for n in notes %}
+        <li>
+          <a class="folder-item {% match selected %}{% when Some with (s) %}{% if s.id.as_str() == n.id.as_str() %}active{% endif %}{% when None %}{% endmatch %}"
+             href="/notes?id={{ n.id }}"
+             style="display:block;padding:.6rem .75rem;border-bottom:1px solid var(--border)">
+            {% if n.pinned %}📌 {% endif %}<strong>{% if n.title.is_empty() %}(sem título){% else %}{{ n.title }}{% endif %}</strong>
+            <span class="muted small" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.body }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      {% endif %}
+    </ul>
+  </aside>
+
+  <main class="contacts-main" style="flex:1;padding:1rem;overflow:auto">
+    {% match selected %}
+    {% when Some with (s) %}
+      <form action="/notes/{{ s.id }}" method="post" class="stack" style="max-width:720px">
+        <div class="page-header">
+          <h1 style="margin:0">Editar nota</h1>
+          <div style="display:flex;gap:.5rem">
+            <button class="btn btn-primary" type="submit">Salvar</button>
+          </div>
+        </div>
+        <input class="input" type="text" name="title" placeholder="Título" value="{{ s.title }}">
+        <textarea class="input" name="body" rows="18" placeholder="Escreva sua nota…">{{ s.body }}</textarea>
+      </form>
+      <form action="/notes/{{ s.id }}/delete" method="post" style="margin-top:.75rem"
+            onsubmit="return confirm('Excluir esta nota?')">
+        <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--danger)">🗑 Excluir nota</button>
+      </form>
+    {% when None %}
+      <form action="/notes" method="post" class="stack" style="max-width:720px">
+        <div class="page-header"><h1 style="margin:0">Nova nota</h1>
+          <button class="btn btn-primary" type="submit">Criar</button>
+        </div>
+        <input class="input" type="text" name="title" placeholder="Título" autofocus>
+        <textarea class="input" name="body" rows="18" placeholder="Escreva sua nota…"></textarea>
+      </form>
+    {% endmatch %}
+  </main>
+</section>
+{% endblock %}

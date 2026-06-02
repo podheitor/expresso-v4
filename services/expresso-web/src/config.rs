@@ -15,6 +15,7 @@ pub struct Backends {
     pub drive: String,
     pub meet: String,
     pub chat: String,
+    pub notes: String,
 }
 
 impl Backends {
@@ -27,6 +28,7 @@ impl Backends {
             drive: envs("BACKEND__DRIVE").unwrap_or_else(|| "http://localhost:8004".into()),
             meet: envs("BACKEND__MEET").unwrap_or_else(|| "http://localhost:8011".into()),
             chat: envs("BACKEND__CHAT").unwrap_or_else(|| "http://localhost:8010".into()),
+            notes: envs("BACKEND__NOTES").unwrap_or_else(|| "http://localhost:8012".into()),
         }
     }
 }
@@ -161,6 +163,7 @@ mod tests {
             drive: "http://localhost:8004".into(),
             meet: "http://localhost:8011".into(),
             chat: "http://localhost:8010".into(),
+            notes: "http://localhost:8012".into(),
         };
         assert_eq!(_b.auth, "http://localhost:8012");
     }
@@ -207,6 +210,7 @@ mod tests {
             drive: "http://drive:8004".into(),
             meet: "http://meet:8011".into(),
             chat: "http://chat:8010".into(),
+            notes: "http://notes:8012".into(),
         }
     }
 

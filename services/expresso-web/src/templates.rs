@@ -146,6 +146,29 @@ pub struct SearchGroup {
     pub hits: Vec<SearchHit>,
 }
 
+/// A note as shown in the webmail Notes screen (subset of the notes service's model).
+#[derive(serde::Deserialize)]
+pub struct Note {
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub pinned: bool,
+}
+
+#[derive(Template)]
+#[template(path = "notes.html")]
+pub struct NotesTpl {
+    pub me: Me,
+    pub notes: Vec<Note>,
+    /// The note open in the editor pane (when one is selected), else None.
+    pub selected: Option<Note>,
+}
+
 #[derive(Template)]
 #[template(path = "search.html")]
 pub struct SearchTpl {

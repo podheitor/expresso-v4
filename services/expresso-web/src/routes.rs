@@ -22,8 +22,8 @@ use crate::{
         DriveQuota, DriveShareTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl,
         Folder, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailComposeTpl,
         MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
-        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell,
-        SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TasksTpl,
+        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note,
+        NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TasksTpl,
         VersionRow,
     },
     upstream::{
@@ -169,6 +169,9 @@ pub fn router(state: AppState) -> Router {
         .route("/meet/:id/recordings", get(meet_recordings_api))
         // tasks
         .route("/tasks", get(tasks_page))
+        .route("/notes", get(notes_page).post(notes_create_action))
+        .route("/notes/:id", post(notes_edit_action))
+        .route("/notes/:id/delete", post(notes_delete_action))
         // settings
         .route("/settings", get(settings_page))
         .route("/settings/profile", post(settings_profile_save))
@@ -4570,6 +4573,138 @@ async fn tasks_page(
         return Ok(login_redirect(&uri).into_response());
     };
     Ok(askama_axum::IntoResponse::into_response(TasksTpl { me }))
+}
+
+// ─── /notes ──────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct NotesQuery {
+    id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct NoteForm {
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    body: String,
+}
+
+/// GET /notes[?id=] — list the caller's notes; when `id` is given, open it in the
+/// editor pane. Backed by the expresso-notes service.
+async fn notes_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<NotesQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let notes = get_json::<Vec<Note>>(
+        &st,
+        &st.backends.notes,
+        "/api/v1/notes",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let selected =
+        q.id.as_ref()
+            .and_then(|id| notes.iter().find(|n| &n.id == id))
+            .map(|n| Note {
+                id: n.id.clone(),
+                title: n.title.clone(),
+                body: n.body.clone(),
+                color: n.color.clone(),
+                pinned: n.pinned,
+            });
+    Ok(askama_axum::IntoResponse::into_response(NotesTpl {
+        me,
+        notes,
+        selected,
+    }))
+}
+
+/// POST /notes — create a note, then redirect to it.
+async fn notes_create_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<NoteForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let body = serde_json::json!({ "title": f.title, "body": f.body });
+    let status = post_json(
+        &st,
+        &st.backends.notes,
+        "/api/v1/notes",
+        &headers,
+        Some((&t, &u)),
+        &body,
+    )
+    .await?;
+    if !(200..300).contains(&status) {
+        return Ok((StatusCode::BAD_GATEWAY, format!("upstream {status}")).into_response());
+    }
+    Ok(Redirect::to("/notes").into_response())
+}
+
+/// POST /notes/:id — update a note's title/body, then reopen it.
+async fn notes_edit_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<NoteForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let body = serde_json::json!({ "title": f.title, "body": f.body });
+    let status = patch_json(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/{enc}"),
+        &headers,
+        Some((&t, &u)),
+        &body,
+    )
+    .await?;
+    if !(200..300).contains(&status) {
+        return Ok((StatusCode::BAD_GATEWAY, format!("upstream {status}")).into_response());
+    }
+    Ok(Redirect::to(&format!("/notes?id={enc}")).into_response())
+}
+
+/// POST /notes/:id/delete — delete a note, then back to the list.
+async fn notes_delete_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let _ = delete_at(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/notes").into_response())
 }
 
 // ─── /settings ───────────────────────────────────────────────────────────────
