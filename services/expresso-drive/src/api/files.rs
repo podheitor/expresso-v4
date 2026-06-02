@@ -130,7 +130,7 @@ async fn require_read(
 
 /// Require WRITE-or-stronger (OWNER / ADMIN / WRITE — not bare READ) on
 /// `file_id`; 403 otherwise. The write gate for mutating handlers.
-async fn require_write(
+pub(crate) async fn require_write(
     pool: &expresso_core::DbPool,
     tenant_id: Uuid,
     file_id: Uuid,
@@ -144,6 +144,34 @@ async fn require_write(
         Some("OWNER") | Some("ADMIN") | Some("WRITE") => Ok(()),
         _ => Err(DriveError::Forbidden),
     }
+}
+
+/// Require WRITE on every id in `ids` (bulk gate). Fails closed on the first id
+/// the caller cannot write, so a bulk op never touches an item the caller lacks
+/// permission for. `ids` is already length-capped by the caller.
+async fn require_write_all(
+    pool: &expresso_core::DbPool,
+    tenant_id: Uuid,
+    ids: &[Uuid],
+    user_id: Uuid,
+) -> Result<()> {
+    for id in ids {
+        require_write(pool, tenant_id, *id, user_id).await?;
+    }
+    Ok(())
+}
+
+/// Require READ on every id in `ids` (bulk read gate, e.g. copy sources).
+async fn require_read_all(
+    pool: &expresso_core::DbPool,
+    tenant_id: Uuid,
+    ids: &[Uuid],
+    user_id: Uuid,
+) -> Result<()> {
+    for id in ids {
+        require_read(pool, tenant_id, *id, user_id).await?;
+    }
+    Ok(())
 }
 
 pub fn routes() -> Router<AppState> {
@@ -826,6 +854,7 @@ async fn bulk_trash(
         )));
     }
     let pool = state.db_or_unavailable()?;
+    require_write_all(pool, ctx.tenant_id, &body.ids, ctx.user_id).await?;
     let trashed = FileRepo::new(pool)
         .bulk_trash(ctx.tenant_id, &body.ids)
         .await?;
@@ -857,6 +886,7 @@ async fn bulk_restore(
         )));
     }
     let pool = state.db_or_unavailable()?;
+    require_write_all(pool, ctx.tenant_id, &body.ids, ctx.user_id).await?;
     let restored = FileRepo::new(pool)
         .bulk_restore(ctx.tenant_id, &body.ids)
         .await?;
@@ -890,11 +920,15 @@ async fn bulk_move(
         )));
     }
     let pool = state.db_or_unavailable()?;
+    // Caller must be able to write every moved item …
+    require_write_all(pool, ctx.tenant_id, &body.ids, ctx.user_id).await?;
     if let Some(parent) = body.parent_id {
         let target = FileRepo::new(pool).get(ctx.tenant_id, parent).await?;
         if target.kind != "folder" {
             return Err(DriveError::BadRequest("parent_id must be a folder".into()));
         }
+        // … and to write into the destination folder.
+        require_write(pool, ctx.tenant_id, parent, ctx.user_id).await?;
         // Prevent moving any of the selected items into themselves.
         if body.ids.contains(&target.id) {
             return Err(DriveError::BadRequest(
@@ -934,11 +968,15 @@ async fn bulk_copy(
         )));
     }
     let pool = state.db_or_unavailable()?;
+    // Caller must be able to read every source item …
+    require_read_all(pool, ctx.tenant_id, &body.ids, ctx.user_id).await?;
     if let Some(parent) = body.parent_id {
         let target = FileRepo::new(pool).get(ctx.tenant_id, parent).await?;
         if target.kind != "folder" {
             return Err(DriveError::BadRequest("parent_id must be a folder".into()));
         }
+        // … and write into the destination folder.
+        require_write(pool, ctx.tenant_id, parent, ctx.user_id).await?;
     }
     let rows = FileRepo::new(pool)
         .bulk_copy_files(ctx.tenant_id, ctx.user_id, &body.ids, body.parent_id)
@@ -2549,18 +2587,28 @@ async fn search(
     let offset = q.offset.max(0);
     let pool = state.db_or_unavailable()?;
     let pattern = format!("%{}%", q.q.replace('%', "\\%").replace('_', "\\_"));
+    // Restrict to files the caller owns or has a direct ACL grant on — search must
+    // not enumerate other users' files (it was the discovery primitive for the
+    // bulk-op IDORs). Mirrors list_shared_with_user's owner-or-grant predicate.
     let rows: Vec<DriveFile> = sqlx::query_as(
-        "SELECT id, tenant_id, owner_user_id, parent_id, name, kind, \
-                mime_type, size_bytes, sha256, storage_key, created_at, updated_at, deleted_at \
-         FROM drive_files \
-         WHERE tenant_id = $1 AND deleted_at IS NULL AND name ILIKE $2 ESCAPE '\\' \
-         ORDER BY lower(name) \
+        "SELECT f.id, f.tenant_id, f.owner_user_id, f.parent_id, f.name, f.kind, \
+                f.mime_type, f.size_bytes, f.sha256, f.storage_key, f.created_at, \
+                f.updated_at, f.deleted_at \
+         FROM drive_files f \
+         WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+           AND f.name ILIKE $2 ESCAPE '\\' \
+           AND (f.owner_user_id = $5 \
+                OR EXISTS (SELECT 1 FROM drive_file_acl a \
+                            WHERE a.file_id = f.id AND a.tenant_id = f.tenant_id \
+                              AND a.grantee_id = $5)) \
+         ORDER BY lower(f.name) \
          LIMIT $3 OFFSET $4",
     )
     .bind(ctx.tenant_id)
     .bind(&pattern)
     .bind(limit)
     .bind(offset)
+    .bind(ctx.user_id)
     .fetch_all(pool)
     .await?;
     Ok(Json(rows))
@@ -2917,6 +2965,8 @@ async fn download_folder(
     if folder.kind != "folder" {
         return Err(DriveError::BadRequest("target is not a folder".into()));
     }
+    // Reading a whole folder requires read access to it (owner or grant).
+    require_read(pool, ctx.tenant_id, id, ctx.user_id).await?;
 
     let entries = repo.collect_files_recursive(ctx.tenant_id, id, "").await?;
 
@@ -3026,6 +3076,8 @@ async fn set_folder_quota(
     if f.kind != "folder" {
         return Err(DriveError::BadRequest("id is not a folder".into()));
     }
+    // Setting a quota mutates the folder's policy — write access required.
+    require_write(pool, ctx.tenant_id, id, ctx.user_id).await?;
     if body.max_bytes <= 0 {
         return Err(DriveError::BadRequest("max_bytes must be > 0".into()));
     }

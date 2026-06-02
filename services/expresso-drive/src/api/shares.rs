@@ -94,6 +94,9 @@ async fn create_inner(
     if file.kind != "file" {
         return Err(DriveError::BadRequest("can only share files".into()));
     }
+    // Only someone who can write the file may publish a share link for it —
+    // otherwise any tenant member could mint public links for others' files.
+    super::files::require_write(pool, ctx.tenant_id, file_id, ctx.user_id).await?;
 
     let ttl = body.expires_in_seconds.unwrap_or(DEFAULT_TTL_SECONDS);
     if ttl <= 0 || ttl > MAX_TTL_SECONDS {
