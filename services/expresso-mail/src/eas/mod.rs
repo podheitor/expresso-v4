@@ -14,6 +14,7 @@
 mod auth;
 mod foldersync;
 mod provision;
+mod sync;
 
 use axum::{
     body::Bytes,
@@ -107,9 +108,17 @@ async fn handle_command(
             .await;
             wbxml_ok(resp)
         }
+        "Sync" => {
+            let req = sync::parse_sync_request(&body);
+            let device = q.device_id.as_deref().unwrap_or("default");
+            let resp =
+                sync::sync_response(&state, principal.user_id, principal.tenant_id, device, &req)
+                    .await;
+            wbxml_ok(resp)
+        }
         // Implemented in later sprints; return 501 with a clear status so a
         // client doesn't treat an empty 200 as a malformed response.
-        "Sync" | "Ping" | "GetItemEstimate" | "ItemOperations" | "SendMail" => {
+        "Ping" | "GetItemEstimate" | "ItemOperations" | "SendMail" => {
             warn!(cmd = %cmd, "EAS command not yet implemented");
             (
                 StatusCode::NOT_IMPLEMENTED,
