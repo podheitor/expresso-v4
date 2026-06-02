@@ -181,6 +181,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/v1/admin/invoices/:invoice_id",
             axum::routing::patch(billing::set_invoice_status),
         )
+        .route("/billing.html", get(billing::page))
+        .route("/billing/price", post(billing::set_price_action))
+        .route("/billing/generate", post(billing::generate_action))
+        .route("/billing/mark", post(billing::mark_action))
         .route("/audit.json", get(audit::list))
         .route("/audit.csv", get(audit::csv))
         .route("/audit.html", get(audit::page))

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>Billing — Planos e Faturas</h1>
+  <p class="hint">
+    Cada tenant tem um plano (<code>tenants.plan</code>); a fatura usa o preço fixo
+    do plano. Pagamento é registrado manualmente (sem gateway externo).
+  </p>
+  {% if flash.is_some() %}<p class="flash">{{ flash.as_ref().unwrap() }}</p>{% endif %}
+
+  <h2>Planos</h2>
+  <table class="grid">
+    <thead><tr><th>Plano</th><th>Nome</th><th>Preço mensal</th><th>Ajustar</th></tr></thead>
+    <tbody>
+      {% for p in plans %}
+      <tr>
+        <td><code>{{ p.plan }}</code></td>
+        <td>{{ p.display_name }}</td>
+        <td>{{ p.currency }} {{ p.price }}</td>
+        <td>
+          <form method="post" action="/billing/price" style="display:flex;gap:4px">
+            <input type="hidden" name="plan" value="{{ p.plan }}">
+            <input type="text" name="price" value="{{ p.price }}" style="width:7em" placeholder="49.90">
+            <button type="submit">Salvar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>Faturas por tenant</h2>
+
+  <form method="get" action="/billing.html" style="display:flex;gap:6px;align-items:center;margin-bottom:1rem">
+    <label>Tenant:</label>
+    <select name="tenant" onchange="this.form.submit()">
+      <option value="">— selecione —</option>
+      {% for t in tenants %}
+      <option value="{{ t.id }}"
+        {% match selected_tenant %}{% when Some with (s) %}{% if s.as_str() == t.id.as_str() %}selected{% endif %}{% when None %}{% endmatch %}>
+        {{ t.name }} ({{ t.plan }})
+      </option>
+      {% endfor %}
+    </select>
+    <noscript><button type="submit">Ver</button></noscript>
+  </form>
+
+  {% match selected_tenant %}
+  {% when Some with (tid) %}
+    <form method="post" action="/billing/generate" style="display:flex;gap:6px;align-items:center;margin-bottom:1rem">
+      <input type="hidden" name="tenant" value="{{ tid }}">
+      <label>Gerar fatura do mês:</label>
+      <input type="month" name="period" required>
+      <button type="submit">Gerar</button>
+    </form>
+
+    <table class="grid">
+      <thead><tr><th>Período</th><th>Plano</th><th>Valor</th><th>Status</th><th>Ação</th></tr></thead>
+      <tbody>
+        {% if invoices.is_empty() %}
+          <tr><td colspan="5" class="hint">Nenhuma fatura para este tenant.</td></tr>
+        {% else %}
+          {% for inv in invoices %}
+          <tr>
+            <td>{{ inv.period }}</td>
+            <td><code>{{ inv.plan }}</code></td>
+            <td>{{ inv.currency }} {{ inv.amount }}</td>
+            <td>{{ inv.status }}</td>
+            <td style="display:flex;gap:4px">
+              {% if inv.status != "paid" %}
+              <form method="post" action="/billing/mark">
+                <input type="hidden" name="invoice_id" value="{{ inv.id }}">
+                <input type="hidden" name="tenant" value="{{ tid }}">
+                <input type="hidden" name="status" value="paid">
+                <button type="submit">Marcar paga</button>
+              </form>
+              {% endif %}
+              {% if inv.status != "void" %}
+              <form method="post" action="/billing/mark">
+                <input type="hidden" name="invoice_id" value="{{ inv.id }}">
+                <input type="hidden" name="tenant" value="{{ tid }}">
+                <input type="hidden" name="status" value="void">
+                <button type="submit">Anular</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% endif %}
+      </tbody>
+    </table>
+  {% when None %}
+    <p class="hint">Selecione um tenant para ver e gerar faturas.</p>
+  {% endmatch %}
+</section>
+{% endblock %}
