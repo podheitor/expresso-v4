@@ -129,6 +129,7 @@ pub fn router(state: AppState) -> Router {
         .route("/contacts/:book_id/import", post(contacts_import_vcf))
         // mail extras
         .route("/search", get(unified_search_page))
+        .route("/api/search", get(unified_search_api))
         .route("/mail/search", get(mail_search_page))
         .route("/mail/:id/attachments/:idx", get(mail_attachment_proxy))
         .route("/mail/quick-reply", post(mail_quick_reply_action))
@@ -1219,30 +1220,16 @@ fn str_field(r: &serde_json::Value, key: &str) -> String {
 /// GET /search?q= — federated results across Mail, Drive, Agenda, Contatos, Chat.
 /// Each source is queried via its own authenticated REST search; results are
 /// grouped by app. The topbar's Enter action points here.
-async fn unified_search_page(
-    State(st): State<AppState>,
-    headers: HeaderMap,
-    uri: Uri,
-    Query(uq): Query<UnifiedSearchQuery>,
-) -> WebResult<Response> {
-    let Some(me) = require_me(&st, &headers).await? else {
-        return Ok(login_redirect(&uri).into_response());
-    };
-    let (t, u) = ctx_of(&me);
-    let query = uq.q.unwrap_or_default();
-    let qt = query.trim();
-
-    if qt.is_empty() {
-        return Ok(askama_axum::IntoResponse::into_response(SearchTpl {
-            me,
-            query: String::new(),
-            groups: Vec::new(),
-            total: 0,
-        }));
-    }
+/// Federate the per-app searches into grouped results. `qt` is the trimmed,
+/// non-empty query. Shared by the server-rendered `/search` page and the JSON
+/// `/api/search` endpoint (the topbar dropdown). Returns groups in a fixed order.
+async fn federate_search(
+    st: &AppState,
+    headers: &HeaderMap,
+    ctx: (&str, &str),
+    qt: &str,
+) -> Vec<SearchGroup> {
     let enc = utf8_percent_encode(qt, NON_ALPHANUMERIC).to_string();
-    let ctx = (t.as_str(), u.as_str());
-
     // Bind each path so the borrowed &str outlives the federated futures.
     let p_mail = format!("/api/v1/mail/search?q={enc}&limit=6");
     let p_drive = format!("/api/v1/drive/search?q={enc}&limit=6");
@@ -1252,49 +1239,49 @@ async fn unified_search_page(
     let p_notes = format!("/api/v1/notes/search?q={enc}&limit=6");
 
     let mail = search_source(
-        &st,
+        st,
         &st.backends.mail,
         &p_mail,
-        &headers,
+        headers,
         ctx,
         &["subject", "preview_text", "from_addr"],
         |r| Some(format!("/mail/{}", str_field(r, "id"))),
     );
     let drive = search_source(
-        &st,
+        st,
         &st.backends.drive,
         &p_drive,
-        &headers,
+        headers,
         ctx,
         &["name"],
         |_| Some("/drive".to_string()),
     );
     let cal = search_source(
-        &st,
+        st,
         &st.backends.calendar,
         &p_cal,
-        &headers,
+        headers,
         ctx,
         &["summary", "title"],
         |r| {
-            let cal = str_field(r, "calendar_id");
-            (!cal.is_empty()).then(|| format!("/calendar/{cal}"))
+            let c = str_field(r, "calendar_id");
+            (!c.is_empty()).then(|| format!("/calendar/{c}"))
         },
     );
     let contacts = search_source(
-        &st,
+        st,
         &st.backends.contacts,
         &p_con,
-        &headers,
+        headers,
         ctx,
         &["full_name", "email", "uid"],
         |_| Some("/contacts".to_string()),
     );
     let chat = search_source(
-        &st,
+        st,
         &st.backends.chat,
         &p_chat,
-        &headers,
+        headers,
         ctx,
         &["body"],
         |r| {
@@ -1303,10 +1290,10 @@ async fn unified_search_page(
         },
     );
     let notes = search_source(
-        &st,
+        st,
         &st.backends.notes,
         &p_notes,
-        &headers,
+        headers,
         ctx,
         &["title", "body"],
         |r| Some(format!("/notes?id={}", str_field(r, "id"))),
@@ -1315,7 +1302,7 @@ async fn unified_search_page(
     let (mail, drive, cal, contacts, chat, notes) =
         tokio::join!(mail, drive, cal, contacts, chat, notes);
 
-    let groups = vec![
+    vec![
         SearchGroup {
             label: "Mail".into(),
             icon: "✉".into(),
@@ -1346,7 +1333,60 @@ async fn unified_search_page(
             icon: "📝".into(),
             hits: notes,
         },
-    ];
+    ]
+}
+
+/// GET /api/search?q= — JSON for the topbar dropdown: a flat list of
+/// `{cat, icon, text, href}` across all apps. Same federation as the /search
+/// page; served by the web itself (unlike the dead /api/v1/* browser calls).
+async fn unified_search_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    Query(uq): Query<UnifiedSearchQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(axum::Json(serde_json::json!([])).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let query = uq.q.unwrap_or_default();
+    let qt = query.trim();
+    if qt.is_empty() {
+        return Ok(axum::Json(serde_json::json!([])).into_response());
+    }
+    let groups = federate_search(&st, &headers, (t.as_str(), u.as_str()), qt).await;
+    let items: Vec<serde_json::Value> = groups
+        .iter()
+        .flat_map(|g| {
+            g.hits.iter().map(move |h| {
+                serde_json::json!({ "cat": g.label, "icon": g.icon, "text": h.text, "href": h.href })
+            })
+        })
+        .collect();
+    Ok(axum::Json(items).into_response())
+}
+
+async fn unified_search_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(uq): Query<UnifiedSearchQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let query = uq.q.unwrap_or_default();
+    let qt = query.trim();
+
+    if qt.is_empty() {
+        return Ok(askama_axum::IntoResponse::into_response(SearchTpl {
+            me,
+            query: String::new(),
+            groups: Vec::new(),
+            total: 0,
+        }));
+    }
+    let groups = federate_search(&st, &headers, (t.as_str(), u.as_str()), qt).await;
     let total: usize = groups.iter().map(|g| g.hits.len()).sum();
 
     Ok(askama_axum::IntoResponse::into_response(SearchTpl {

@@ -65,35 +65,21 @@ function topbarSearchInput(q) {
   var res = document.getElementById('topbar-search-results');
   if (!q || q.length < 2) { res.style.display = 'none'; return; }
   _tbTimer = setTimeout(function() {
-    // Federate across endpoints
-    var searches = [
-      { label: 'Mail', url: '/api/v1/mail/search?q=' + encodeURIComponent(q) + '&limit=3', icon: '✉', path: function(r){ return '/mail/' + r.id; }, text: function(r){ return r.subject || r.preview_text || r.from_addr; } },
-      { label: 'Chat', url: '/api/v1/messages/search?q=' + encodeURIComponent(q) + '&limit=3', icon: '💬', path: function(r){ return '/chat/channels/' + r.channel_id; }, text: function(r){ return r.body; } },
-      { label: 'Drive', url: '/api/v1/drive/search?q=' + encodeURIComponent(q) + '&limit=3', icon: '📄', path: function(r){ return '/drive'; }, text: function(r){ return r.name; } },
-    ];
-    var items = [];
-    var done = 0;
-    function render() {
-      if (!items.length) { res.style.display = 'none'; return; }
-      res.innerHTML = items.slice(0, 9).map(function(i) {
-        return '<li><a class="topbar-search-item" href="' + i.href + '">' +
-          '<span class="topbar-search-icon">' + i.icon + '</span>' +
-          '<span class="topbar-search-text">' + escHtml(i.text) + '</span>' +
-          '<span class="topbar-search-cat muted small">' + i.cat + '</span>' +
-          '</a></li>';
-      }).join('');
-      res.style.display = '';
-    }
-    searches.forEach(function(s) {
-      fetch(s.url, {credentials:'include'})
-        .then(function(r){ return r.ok ? r.json() : []; })
-        .then(function(rows) {
-          (rows || []).forEach(function(r) {
-            items.push({ icon: s.icon, cat: s.label, text: (s.text(r) || '').slice(0,60), href: s.path(r) });
-          });
-        }).catch(function(){})
-        .then(function() { done++; if (done === searches.length) render(); });
-    });
+    // Single call to the web's own /api/search (federates all apps server-side).
+    fetch('/api/search?q=' + encodeURIComponent(q), {credentials:'include'})
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .then(function(items) {
+        items = items || [];
+        if (!items.length) { res.style.display = 'none'; return; }
+        res.innerHTML = items.slice(0, 9).map(function(i) {
+          return '<li><a class="topbar-search-item" href="' + i.href + '">' +
+            '<span class="topbar-search-icon">' + i.icon + '</span>' +
+            '<span class="topbar-search-text">' + escHtml(i.text) + '</span>' +
+            '<span class="topbar-search-cat muted small">' + i.cat + '</span>' +
+            '</a></li>';
+        }).join('');
+        res.style.display = '';
+      }).catch(function(){ res.style.display = 'none'; });
   }, 250);
 }
 function topbarSearch(q) {
