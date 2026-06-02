@@ -54,6 +54,9 @@ struct FreeBusyParams {
     to: OffsetDateTime,
     #[serde(default)]
     include_transparent: bool,
+    /// When true, overlay each attendee's out-of-working-hours windows as busy.
+    #[serde(default)]
+    working_hours: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -97,7 +100,8 @@ async fn freebusy(
     }
 
     let pool = state.db_or_unavailable()?;
-    let map = FreeBusyRepo::new(pool)
+    let repo = FreeBusyRepo::new(pool);
+    let mut map = repo
         .lookup(
             ctx.tenant_id,
             &attendees,
@@ -106,6 +110,20 @@ async fn freebusy(
             p.include_transparent,
         )
         .await?;
+
+    // Overlay each attendee's out-of-working-hours windows as busy, so the
+    // scheduler prefers in-hours slots. Attendees without working hours are
+    // unaffected. Off by default — only applies when ?working_hours=true.
+    if p.working_hours {
+        let off = repo
+            .working_hours_busy(ctx.tenant_id, &attendees, p.from, p.to)
+            .await?;
+        for (email, intervals) in off {
+            let bucket = map.entry(email).or_default();
+            bucket.extend(intervals);
+            bucket.sort_by_key(|b| b.start);
+        }
+    }
 
     Ok(Json(FreeBusyResp {
         from: p.from,

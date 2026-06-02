@@ -155,4 +155,174 @@ impl<'a> FreeBusyRepo<'a> {
         }
         Ok(out)
     }
+
+    /// Out-of-working-hours busy intervals per attendee email within [from, to].
+    /// For each attendee that has working hours configured, every gap *outside*
+    /// their windows is returned as a busy interval (so the scheduler avoids
+    /// off-hours slots). Attendees with no working-hours rows are omitted (no
+    /// constraint). Computed in UTC — per-user timezone conversion is a
+    /// documented follow-up; the minute offsets are treated as UTC for now.
+    pub async fn working_hours_busy(
+        &self,
+        tenant_id: Uuid,
+        attendees: &[String],
+        from: OffsetDateTime,
+        to: OffsetDateTime,
+    ) -> Result<BTreeMap<String, Vec<BusyInterval>>> {
+        let lowered: Vec<String> = attendees
+            .iter()
+            .map(|a| a.trim().to_ascii_lowercase())
+            .filter(|a| !a.is_empty())
+            .collect();
+        let mut out: BTreeMap<String, Vec<BusyInterval>> = BTreeMap::new();
+        if lowered.is_empty() {
+            return Ok(out);
+        }
+
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let rows: Vec<WorkingHourRow> = sqlx::query_as(
+            "SELECT lower(u.email) AS email, w.weekday, w.start_minute, w.end_minute \
+               FROM user_working_hours w \
+               JOIN users u ON u.id = w.user_id AND u.tenant_id = w.tenant_id \
+              WHERE w.tenant_id = $1 AND lower(u.email) = ANY($2)",
+        )
+        .bind(tenant_id)
+        .bind(&lowered)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        // Group windows per email per weekday.
+        let mut windows: BTreeMap<String, [Vec<(i32, i32)>; 7]> = BTreeMap::new();
+        for r in rows {
+            let entry = windows.entry(r.email).or_default();
+            let wd = (r.weekday.clamp(0, 6)) as usize;
+            entry[wd].push((r.start_minute, r.end_minute));
+        }
+
+        for (email, by_day) in windows {
+            let busy = off_hours_intervals(&by_day, from, to);
+            if !busy.is_empty() {
+                out.insert(email, busy);
+            }
+        }
+        Ok(out)
+    }
+}
+
+#[derive(Debug, FromRow)]
+struct WorkingHourRow {
+    email: String,
+    weekday: i16,
+    start_minute: i32,
+    end_minute: i32,
+}
+
+/// Given per-weekday working windows (minutes from midnight, UTC), return the
+/// busy intervals covering every off-hours gap within [from, to]. A weekday with
+/// no windows is fully busy; a weekday with windows is busy in the gaps before /
+/// between / after them. Bounded: iterates whole days across the (≤370-day)
+/// freebusy window.
+fn off_hours_intervals(
+    by_day: &[Vec<(i32, i32)>; 7],
+    from: OffsetDateTime,
+    to: OffsetDateTime,
+) -> Vec<BusyInterval> {
+    use time::Duration;
+    let mut out = Vec::new();
+    // Walk day-by-day from the UTC midnight on/just before `from`.
+    let mut day = from.replace_time(time::Time::MIDNIGHT);
+    while day < to {
+        let next_day = day + Duration::days(1);
+        // Sunday=0..Saturday=6 to match the stored weekday convention.
+        let wd = day.weekday().number_days_from_sunday() as usize;
+        let mut windows = by_day[wd].clone();
+        windows.sort_unstable();
+        // Build busy gaps = day minus the union of windows.
+        let mut cursor = 0i32; // minutes from midnight
+        for (ws, we) in windows {
+            if ws > cursor {
+                push_clamped(&mut out, day, cursor, ws, from, to);
+            }
+            cursor = cursor.max(we);
+        }
+        if cursor < 1440 {
+            push_clamped(&mut out, day, cursor, 1440, from, to);
+        }
+        day = next_day;
+    }
+    out
+}
+
+/// Push a busy interval for `day + [start_min, end_min)` clamped to [from, to].
+fn push_clamped(
+    out: &mut Vec<BusyInterval>,
+    day: OffsetDateTime,
+    start_min: i32,
+    end_min: i32,
+    from: OffsetDateTime,
+    to: OffsetDateTime,
+) {
+    use time::Duration;
+    let s = (day + Duration::minutes(i64::from(start_min))).max(from);
+    let e = (day + Duration::minutes(i64::from(end_min))).min(to);
+    if e > s {
+        out.push(BusyInterval { start: s, end: e });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    fn empty_week() -> [Vec<(i32, i32)>; 7] {
+        Default::default()
+    }
+
+    #[test]
+    fn no_windows_means_whole_span_busy() {
+        // 2026-06-01 is a Monday; one full UTC day, no windows → fully busy.
+        let from = datetime!(2026-06-01 00:00:00 UTC);
+        let to = datetime!(2026-06-02 00:00:00 UTC);
+        let busy = off_hours_intervals(&empty_week(), from, to);
+        assert_eq!(busy.len(), 1);
+        assert_eq!(busy[0].start, from);
+        assert_eq!(busy[0].end, to);
+    }
+
+    #[test]
+    fn window_splits_day_into_before_and_after() {
+        // Monday 09:00-17:00 working → busy [00:00,09:00) and [17:00,24:00).
+        let mut wk = empty_week();
+        wk[1] = vec![(9 * 60, 17 * 60)]; // Monday=1
+        let from = datetime!(2026-06-01 00:00:00 UTC);
+        let to = datetime!(2026-06-02 00:00:00 UTC);
+        let busy = off_hours_intervals(&wk, from, to);
+        assert_eq!(busy.len(), 2);
+        assert_eq!(busy[0].start, from);
+        assert_eq!(busy[0].end, datetime!(2026-06-01 09:00:00 UTC));
+        assert_eq!(busy[1].start, datetime!(2026-06-01 17:00:00 UTC));
+        assert_eq!(busy[1].end, to);
+    }
+
+    #[test]
+    fn full_day_window_yields_no_busy() {
+        let mut wk = empty_week();
+        wk[1] = vec![(0, 1440)];
+        let from = datetime!(2026-06-01 00:00:00 UTC);
+        let to = datetime!(2026-06-02 00:00:00 UTC);
+        assert!(off_hours_intervals(&wk, from, to).is_empty());
+    }
+
+    #[test]
+    fn clamps_to_query_window() {
+        // Query starts mid-morning; the pre-window busy gap is clamped to `from`.
+        let mut wk = empty_week();
+        wk[1] = vec![(9 * 60, 17 * 60)];
+        let from = datetime!(2026-06-01 10:00:00 UTC);
+        let to = datetime!(2026-06-01 12:00:00 UTC);
+        // Whole query window is inside working hours → no busy.
+        assert!(off_hours_intervals(&wk, from, to).is_empty());
+    }
 }
