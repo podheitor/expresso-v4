@@ -413,6 +413,44 @@ impl MatrixClient {
             .map_err(|e| ChatError::Matrix(format!("decode thread list: {e}")))
     }
 
+    /// List a message's edit history via `GET /rooms/{room}/relations/{event}/
+    /// m.replace` (MSC2676). Matrix stores each edit as a separate event with an
+    /// `m.replace` relation to the original, so this is the message's prior
+    /// versions (chronological `chunk`); no local snapshot table is needed.
+    /// `limit` is capped at 100 by the HS.
+    pub async fn list_edits(
+        &self,
+        acting_as: &str,
+        room_id: &str,
+        event_id: &str,
+        limit: u32,
+    ) -> Result<Value> {
+        self.ensure_registered(acting_as).await?;
+        let path = format!(
+            "/rooms/{}/relations/{}/m.replace",
+            urlencode(room_id),
+            urlencode(event_id),
+        );
+        let mut url = self.cs_url(&path, acting_as)?;
+        url.query_pairs_mut()
+            .append_pair("limit", &limit.min(100).to_string());
+        let resp = self
+            .http
+            .get(url)
+            .bearer_auth(self.as_token()?)
+            .send()
+            .await
+            .map_err(|e| ChatError::Matrix(format!("edit list failed: {e}")))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ChatError::Matrix(format!("edit list HS {status}: {body}")));
+        }
+        resp.json::<Value>()
+            .await
+            .map_err(|e| ChatError::Matrix(format!("decode edit list: {e}")))
+    }
+
     /// Read a room's pinned event ids from the `m.room.pinned_events` state
     /// event. Returns an empty list when no pins are set (the HS answers 404
     /// `M_NOT_FOUND` for an absent state event — treated as "no pins").

@@ -50,6 +50,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/channels/:id/messages/:event_id/replies",
             post(reply).get(list_thread),
         )
+        .route(
+            "/api/v1/channels/:id/messages/:event_id/edits",
+            get(list_edits),
+        )
 }
 
 #[derive(Debug, Deserialize)]
@@ -399,6 +403,37 @@ async fn list_thread(
     let acting_as = matrix.mxid_for(ctx.user_id);
     let value = matrix
         .list_thread(&acting_as, &ch.matrix_room_id, &event_id, q.limit)
+        .await?;
+    Ok(Json(value))
+}
+
+/// GET /api/v1/channels/:id/messages/:event_id/edits — the message's edit
+/// history (prior versions). Matrix stores each edit as an `m.replace`-related
+/// event, so this lists those relations (membership required). Chronological;
+/// empty when the message was never edited.
+async fn list_edits(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((id, event_id)): Path<(Uuid, String)>,
+    Query(mut q): Query<ListQuery>,
+) -> Result<Json<Value>> {
+    if q.limit == 0 || q.limit > MAX_LIST_LIMIT {
+        q.limit = q.limit.clamp(1, MAX_LIST_LIMIT);
+    }
+    let pool = state.db_or_unavailable()?;
+    let matrix = state.matrix_or_unavailable()?;
+    let repo = ChannelRepo::new(pool);
+    if !repo.is_member(ctx.tenant_id, id, ctx.user_id).await? {
+        return Err(ChatError::NotMember);
+    }
+    let ch = repo
+        .get(ctx.tenant_id, id)
+        .await
+        .map_err(|_| ChatError::ChannelNotFound(id))?;
+
+    let acting_as = matrix.mxid_for(ctx.user_id);
+    let value = matrix
+        .list_edits(&acting_as, &ch.matrix_room_id, &event_id, q.limit)
         .await?;
     Ok(Json(value))
 }
