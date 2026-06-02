@@ -149,6 +149,34 @@ async fn get_one(
     Ok(resp)
 }
 
+/// Authorize a calendar mutation. `delete` allows OWNER only (you cannot delete
+/// a calendar merely shared to you — that would destroy the owner's events);
+/// `update` (rename/recolor/set-default) allows OWNER or ADMIN. A non-grantee
+/// gets 404 (hide existence); a grantee without enough privilege gets 403.
+async fn assert_owns(
+    repo: &CalendarRepo<'_>,
+    tenant_id: Uuid,
+    id: Uuid,
+    user_id: Uuid,
+    allow_admin: bool,
+) -> Result<()> {
+    let level = repo.access_level(tenant_id, id, user_id).await?;
+    owner_decision(level.as_deref(), allow_admin, id)
+}
+
+/// Pure privilege decision for a calendar mutation. OWNER always passes; ADMIN
+/// passes only when `allow_admin`; any other grant → 403; no grant → 404.
+fn owner_decision(level: Option<&str>, allow_admin: bool, id: Uuid) -> Result<()> {
+    match level {
+        Some("OWNER") => Ok(()),
+        Some("ADMIN") if allow_admin => Ok(()),
+        Some(_) => Err(crate::error::CalendarError::Forbidden),
+        None => Err(crate::error::CalendarError::CalendarNotFound(
+            id.to_string(),
+        )),
+    }
+}
+
 async fn update(
     State(state): State<AppState>,
     ctx: RequestCtx,
@@ -156,9 +184,9 @@ async fn update(
     Json(body): Json<UpdateCalendar>,
 ) -> Result<Json<Calendar>> {
     let pool = state.db_or_unavailable()?;
-    let cal = CalendarRepo::new(pool)
-        .update(ctx.tenant_id, id, &body)
-        .await?;
+    let repo = CalendarRepo::new(pool);
+    assert_owns(&repo, ctx.tenant_id, id, ctx.user_id, true).await?;
+    let cal = repo.update(ctx.tenant_id, id, &body).await?;
     Ok(Json(cal))
 }
 
@@ -168,7 +196,9 @@ async fn delete(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
-    CalendarRepo::new(pool).delete(ctx.tenant_id, id).await?;
+    let repo = CalendarRepo::new(pool);
+    assert_owns(&repo, ctx.tenant_id, id, ctx.user_id, false).await?;
+    repo.delete(ctx.tenant_id, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -428,5 +458,41 @@ mod tests {
     fn stats_by_tenant_query_limit_negative_clamped_to_min() {
         let q: StatsByTenantQuery = serde_json::from_str(r#"{"limit":-5}"#).unwrap();
         assert_eq!(q.limit.unwrap_or(20).clamp(1, 200), 1);
+    }
+
+    #[test]
+    fn owner_decision_owner_passes_both() {
+        let id = Uuid::nil();
+        assert!(owner_decision(Some("OWNER"), true, id).is_ok());
+        assert!(owner_decision(Some("OWNER"), false, id).is_ok());
+    }
+
+    #[test]
+    fn owner_decision_admin_update_only() {
+        let id = Uuid::nil();
+        assert!(owner_decision(Some("ADMIN"), true, id).is_ok());
+        assert!(matches!(
+            owner_decision(Some("ADMIN"), false, id),
+            Err(crate::error::CalendarError::Forbidden)
+        ));
+    }
+
+    #[test]
+    fn owner_decision_lower_grants_forbidden() {
+        let id = Uuid::nil();
+        for lvl in ["WRITE", "READ"] {
+            assert!(matches!(
+                owner_decision(Some(lvl), true, id),
+                Err(crate::error::CalendarError::Forbidden)
+            ));
+        }
+    }
+
+    #[test]
+    fn owner_decision_no_grant_not_found() {
+        assert!(matches!(
+            owner_decision(None, true, Uuid::nil()),
+            Err(crate::error::CalendarError::CalendarNotFound(_))
+        ));
     }
 }
