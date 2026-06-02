@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio_rustls::server::TlsStream;
 use tracing::{debug, warn};
@@ -92,26 +92,33 @@ where
 
     let mut auth_user: Option<String> = None;
     let mut drop: Option<Maildrop> = None;
-    let mut line = String::new();
+    let mut buf = Vec::with_capacity(MAX_LINE);
 
     loop {
-        line.clear();
-        let read = tokio::time::timeout(IDLE_TIMEOUT, reader.read_line(&mut line)).await;
-        let n = match read {
+        buf.clear();
+        let read =
+            tokio::time::timeout(IDLE_TIMEOUT, read_line_bounded(&mut reader, &mut buf)).await;
+        let outcome = match read {
             Err(_) => {
                 let _ = writer
                     .write_all(b"-ERR autologout; idle too long\r\n")
                     .await;
                 break;
             }
-            Ok(Ok(0)) => break, // client closed
-            Ok(Ok(n)) => n,
+            Ok(Ok(o)) => o,
             Ok(Err(e)) => return Err(e.into()),
         };
-        if n > MAX_LINE {
-            writer.write_all(b"-ERR line too long\r\n").await?;
-            continue;
+        match outcome {
+            LineOutcome::Eof => break, // client closed
+            LineOutcome::TooLong => {
+                writer.write_all(b"-ERR line too long\r\n").await?;
+                continue;
+            }
+            LineOutcome::Ok => {}
         }
+        // The bounded reader caps bytes, so this is at most MAX_LINE octets; an
+        // invalid-UTF-8 command line is treated as unparseable (lossy).
+        let line = String::from_utf8_lossy(&buf);
         debug!(line = %line.trim_end(), "pop3 ←");
         let cmd = parse(&line);
 
@@ -131,6 +138,71 @@ where
         for chunk in replies {
             writer.write_all(&chunk).await?;
         }
+    }
+    Ok(())
+}
+
+/// Result of reading one command line with a hard size cap.
+enum LineOutcome {
+    /// A complete line (up to and including its terminator) is in the buffer.
+    Ok,
+    /// The peer closed before any byte of a new line arrived.
+    Eof,
+    /// The line exceeded `MAX_LINE`; the buffer holds the truncated prefix and
+    /// the remainder of the offending line has been drained from the reader.
+    TooLong,
+}
+
+/// Read a single line into `buf`, enforcing the `MAX_LINE` cap **during** the
+/// read so a peer cannot exhaust memory by streaming a line with no terminator
+/// (RFC 1939 caps command lines well under this). Stops at the first `\n`. On
+/// overflow it drains the rest of the line (itself bounded) so the next read
+/// starts at a fresh command, and returns `TooLong`.
+async fn read_line_bounded<R>(
+    reader: &mut BufReader<R>,
+    buf: &mut Vec<u8>,
+) -> std::io::Result<LineOutcome>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut byte = [0u8; 1];
+    loop {
+        let n = reader.read(&mut byte).await?;
+        if n == 0 {
+            return Ok(if buf.is_empty() {
+                LineOutcome::Eof
+            } else {
+                // EOF mid-line: treat the partial as a complete command.
+                LineOutcome::Ok
+            });
+        }
+        buf.push(byte[0]);
+        if byte[0] == b'\n' {
+            return Ok(LineOutcome::Ok);
+        }
+        if buf.len() >= MAX_LINE {
+            drain_to_newline(reader).await?;
+            return Ok(LineOutcome::TooLong);
+        }
+    }
+}
+
+/// Discard bytes until the next `\n` (or EOF), bounded so a never-terminated
+/// flood can't spin forever: after `MAX_DRAIN` bytes we give up and let the
+/// connection resync on the next read.
+async fn drain_to_newline<R>(reader: &mut BufReader<R>) -> std::io::Result<()>
+where
+    R: AsyncRead + Unpin,
+{
+    const MAX_DRAIN: usize = 64 * 1024;
+    let mut byte = [0u8; 1];
+    let mut drained = 0;
+    while drained < MAX_DRAIN {
+        let n = reader.read(&mut byte).await?;
+        if n == 0 || byte[0] == b'\n' {
+            break;
+        }
+        drained += 1;
     }
     Ok(())
 }
@@ -525,5 +597,54 @@ mod tests {
         let s = slot(42);
         assert_eq!(scan_value(&s, false), "42");
         assert_eq!(scan_value(&s, true), "00000000000000000000000000000000");
+    }
+
+    #[tokio::test]
+    async fn bounded_reader_reads_a_normal_line() {
+        let mut r = BufReader::new(&b"USER alice\r\nPASS x\r\n"[..]);
+        let mut buf = Vec::new();
+        let o = read_line_bounded(&mut r, &mut buf).await.unwrap();
+        assert!(matches!(o, LineOutcome::Ok));
+        assert_eq!(&buf, b"USER alice\r\n");
+    }
+
+    #[tokio::test]
+    async fn bounded_reader_eof_on_empty() {
+        let mut r = BufReader::new(&b""[..]);
+        let mut buf = Vec::new();
+        let o = read_line_bounded(&mut r, &mut buf).await.unwrap();
+        assert!(matches!(o, LineOutcome::Eof));
+    }
+
+    #[tokio::test]
+    async fn bounded_reader_caps_overlong_line() {
+        // A line far longer than MAX_LINE with no terminator must not be buffered
+        // whole: the prefix is capped and the rest drained, yielding TooLong.
+        let flood = vec![b'A'; MAX_LINE * 4];
+        let mut r = BufReader::new(&flood[..]);
+        let mut buf = Vec::new();
+        let o = read_line_bounded(&mut r, &mut buf).await.unwrap();
+        assert!(matches!(o, LineOutcome::TooLong));
+        assert!(buf.len() <= MAX_LINE);
+    }
+
+    #[tokio::test]
+    async fn bounded_reader_resyncs_after_overlong_line() {
+        // After an over-long line is drained at its newline, the next read sees
+        // the following command intact.
+        let mut data = vec![b'A'; MAX_LINE * 2];
+        data.extend_from_slice(b"\r\nNOOP\r\n");
+        let mut r = BufReader::new(&data[..]);
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_line_bounded(&mut r, &mut buf).await.unwrap(),
+            LineOutcome::TooLong
+        ));
+        buf.clear();
+        assert!(matches!(
+            read_line_bounded(&mut r, &mut buf).await.unwrap(),
+            LineOutcome::Ok
+        ));
+        assert_eq!(&buf, b"NOOP\r\n");
     }
 }
