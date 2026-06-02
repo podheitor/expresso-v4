@@ -40,9 +40,26 @@ pub type RecipientStatus = (String, &'static str, &'static str);
 /// Core iTIP dispatcher — parses body, sends per attendee, returns statuses.
 /// Errors map to HTTP status codes so both CalDAV POST and JSON API can
 /// consume this.
-pub async fn dispatch_itip(body: &str) -> std::result::Result<Vec<RecipientStatus>, StatusCode> {
+///
+/// `organizer_email` is the **authenticated** caller's verified address. The
+/// outgoing SMTP `From` is always set to it — never to a value taken from the
+/// request body — so the relay cannot be used to spoof another user as the
+/// meeting organizer. If the body carries an `ORGANIZER` that disagrees with the
+/// authenticated identity, the request is rejected (403) rather than silently
+/// sent under the caller's name.
+pub async fn dispatch_itip(
+    organizer_email: &str,
+    body: &str,
+) -> std::result::Result<Vec<RecipientStatus>, StatusCode> {
     if body.trim().is_empty() {
         return Err(StatusCode::BAD_REQUEST);
+    }
+    let from_mbox: Mailbox = organizer_email
+        .parse()
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    // Reject a body ORGANIZER that claims a different identity than the caller.
+    if !body_organizer_allowed(organizer_email, body) {
+        return Err(StatusCode::FORBIDDEN);
     }
     let method = extract_method(body).unwrap_or_else(|| "REQUEST".to_string());
     let attendees = itip::parse_attendees(body);
@@ -53,9 +70,6 @@ pub async fn dispatch_itip(body: &str) -> std::result::Result<Vec<RecipientStatu
     let transport = cfg
         .build_transport()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    let from_mbox: Mailbox = extract_organizer_email(body)
-        .and_then(|e| e.parse().ok())
-        .unwrap_or_else(|| cfg.from.clone());
 
     let mut responses: Vec<RecipientStatus> = Vec::with_capacity(attendees.len());
     for att in &attendees {
@@ -106,9 +120,27 @@ pub async fn dispatch_itip(body: &str) -> std::result::Result<Vec<RecipientStatu
     Ok(responses)
 }
 
+/// The authenticated caller's verified email, used as the iTIP `From`. Returns
+/// `None` when the user has no row/email in the tenant (caller maps to an error).
+pub async fn organizer_email_for(
+    state: &AppState,
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+) -> Option<String> {
+    let pool = state.db()?;
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT email FROM users WHERE tenant_id = $1 AND id = $2 LIMIT 1")
+            .bind(tenant_id)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .ok()?;
+    row.map(|(e,)| e)
+}
+
 /// POST on schedule-outbox — send iTIP to listed ATTENDEEs.
 pub async fn post(
-    _state: AppState,
+    state: AppState,
     principal: CalDavPrincipal,
     path: &str,
     body: &str,
@@ -119,7 +151,11 @@ pub async fn post(
         _ => return Ok(simple(StatusCode::NOT_FOUND)),
     };
 
-    let responses = match dispatch_itip(body).await {
+    let Some(organizer) = organizer_email_for(&state, principal.tenant_id, principal.user_id).await
+    else {
+        return Ok(simple(StatusCode::FORBIDDEN));
+    };
+    let responses = match dispatch_itip(&organizer, body).await {
         Ok(r) => r,
         Err(s) => return Ok(simple(s)),
     };
@@ -142,6 +178,16 @@ fn extract_method(raw: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Whether the body's ORGANIZER (if any) is consistent with the authenticated
+/// caller. Absent ORGANIZER is allowed (the From is set to the caller anyway);
+/// a present ORGANIZER must match the caller's address case-insensitively.
+fn body_organizer_allowed(authenticated: &str, body: &str) -> bool {
+    match extract_organizer_email(body) {
+        None => true,
+        Some(org) => org.trim().eq_ignore_ascii_case(authenticated.trim()),
+    }
 }
 
 /// Extract the ORGANIZER email (`mailto:` param stripped).
@@ -189,7 +235,6 @@ struct SmtpCfg {
     port: u16,
     username: Option<String>,
     password: Option<String>,
-    from: Mailbox,
     starttls: bool,
 }
 
@@ -202,8 +247,9 @@ impl SmtpCfg {
             .unwrap_or(25u16);
         let username = std::env::var("SMTP_USERNAME").ok();
         let password = std::env::var("SMTP_PASSWORD").ok();
-        let from_str = std::env::var("SMTP_FROM").ok()?;
-        let from: Mailbox = from_str.parse().ok()?;
+        // The message From is the authenticated organizer (set by the caller),
+        // not a static SMTP_FROM — so no envelope-from env is read here. lettre
+        // derives the envelope sender from the From header.
         let starttls = std::env::var("SMTP_STARTTLS")
             .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
             .unwrap_or(false);
@@ -212,7 +258,6 @@ impl SmtpCfg {
             port,
             username,
             password,
-            from,
             starttls,
         })
     }
@@ -243,6 +288,26 @@ fn simple(status: StatusCode) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn organizer_allowed_when_absent() {
+        assert!(body_organizer_allowed(
+            "me@ex.com",
+            "BEGIN:VCALENDAR\r\nEND:VCALENDAR"
+        ));
+    }
+
+    #[test]
+    fn organizer_allowed_when_matches_case_insensitive() {
+        let ics = "BEGIN:VCALENDAR\r\nORGANIZER:mailto:Me@EX.com\r\nEND:VCALENDAR";
+        assert!(body_organizer_allowed("me@ex.com", ics));
+    }
+
+    #[test]
+    fn organizer_rejected_when_spoofed() {
+        let ics = "BEGIN:VCALENDAR\r\nORGANIZER:mailto:boss@ex.com\r\nEND:VCALENDAR";
+        assert!(!body_organizer_allowed("me@ex.com", ics));
+    }
 
     #[test]
     fn extracts_method() {

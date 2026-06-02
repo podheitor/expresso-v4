@@ -146,9 +146,17 @@ struct SendResp {
 
 /// POST /api/v1/scheduling/send — relay iTIP to attendees via iMIP (SMTP).
 /// Body: VCALENDAR (text/calendar) with METHOD + ATTENDEE lines. Auth via
-/// x-tenant-id / x-user-id (`RequestCtx`).
-async fn send(_ctx: RequestCtx, body: String) -> std::result::Result<Json<SendResp>, StatusCode> {
-    let statuses = schedule::dispatch_itip(&body).await?;
+/// x-tenant-id / x-user-id (`RequestCtx`). The outgoing From is the caller's
+/// verified address — a body ORGANIZER claiming a different identity is rejected.
+async fn send(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    body: String,
+) -> std::result::Result<Json<SendResp>, StatusCode> {
+    let organizer = schedule::organizer_email_for(&state, ctx.tenant_id, ctx.user_id)
+        .await
+        .ok_or(StatusCode::FORBIDDEN)?;
+    let statuses = schedule::dispatch_itip(&organizer, &body).await?;
     Ok(Json(SendResp {
         recipients: statuses
             .into_iter()
