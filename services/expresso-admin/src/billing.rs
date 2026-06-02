@@ -414,8 +414,9 @@ pub async fn generate_action(
         return Redirect::to("/billing.html?flash=dados inválidos").into_response();
     };
     // Accept "YYYY-MM" (browser month input) → first-of-month for the ::date cast.
-    let ym = f.period.get(0..7).unwrap_or(&f.period);
-    let period_date = format!("{ym}-01");
+    let Some(period_date) = period_first_of_month(&f.period) else {
+        return Redirect::to("/billing.html?flash=período inválido").into_response();
+    };
     let priced: Option<(String, i64, String)> = sqlx::query_as(
         "SELECT t.plan, bp.monthly_price_cents, bp.currency \
          FROM tenants t JOIN billing_plans bp ON bp.plan = t.plan WHERE t.id = $1",
@@ -756,6 +757,148 @@ pub async fn invoice_print(
     }
 }
 
+// ─── Batch generation (all tenants, one period) ──────────────────────────────
+
+/// Generate the invoice for `period_date` (YYYY-MM-DD, first-of-month) for
+/// every tenant whose plan has a price, at that plan's current price. Idempotent
+/// per (tenant, period) via `ON CONFLICT DO NOTHING`, so re-running a period is
+/// safe and only fills gaps. Returns the count of rows actually inserted.
+async fn generate_all_for_period(p: &sqlx::PgPool, period_date: &str) -> Result<u64, sqlx::Error> {
+    let res = sqlx::query(
+        "INSERT INTO billing_invoices (tenant_id, period, plan, amount_cents, currency) \
+         SELECT t.id, $1::date, t.plan, bp.monthly_price_cents, bp.currency \
+           FROM tenants t JOIN billing_plans bp ON bp.plan = t.plan \
+         ON CONFLICT (tenant_id, period) DO NOTHING",
+    )
+    .bind(period_date)
+    .execute(p)
+    .await?;
+    Ok(res.rows_affected())
+}
+
+/// Normalize a "YYYY-MM" (browser month input) or "YYYY-MM-DD" into the
+/// first-of-month "YYYY-MM-DD" used for the `::date` cast. `None` if it does not
+/// start with a plausible `YYYY-MM`.
+fn period_first_of_month(raw: &str) -> Option<String> {
+    let ym = raw.get(0..7)?;
+    let bytes = ym.as_bytes();
+    let shaped = bytes.len() == 7
+        && bytes[4] == b'-'
+        && bytes[..4].iter().all(u8::is_ascii_digit)
+        && bytes[5..].iter().all(u8::is_ascii_digit);
+    shaped.then(|| format!("{ym}-01"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GenerateAllForm {
+    /// Period as YYYY-MM (the screen sends a month input).
+    pub period: String,
+}
+
+/// POST /billing/generate-all — super-admin: generate the period's invoice for
+/// every priced tenant in one shot (idempotent).
+pub async fn generate_all_action(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Form(f): Form<GenerateAllForm>,
+) -> Response {
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return r;
+    }
+    let (Some(period_date), Some(p)) = (period_first_of_month(&f.period), st.db.as_ref()) else {
+        return Redirect::to("/billing.html?flash=período inválido").into_response();
+    };
+    match generate_all_for_period(p, &period_date).await {
+        Ok(n) => {
+            Redirect::to(&format!("/billing.html?flash={n} fatura(s) gerada(s)")).into_response()
+        }
+        Err(_) => Redirect::to("/billing.html?flash=erro ao gerar").into_response(),
+    }
+}
+
+const RUN_TOKEN_ENV: &str = "BILLING__RUN_TOKEN";
+const RUN_TOKEN_HEADER: &str = "x-billing-token";
+
+/// Constant-time equality so a wrong token can't be recovered by timing.
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RunQuery {
+    /// Period as YYYY-MM (or YYYY-MM-DD); first-of-month is used.
+    pub period: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RunResult {
+    pub period: String,
+    pub generated: u64,
+}
+
+/// POST /api/v1/admin/billing/run?period=YYYY-MM — machine endpoint for an
+/// external scheduler (k8s CronJob / systemd timer). Requires a matching
+/// `X-Billing-Token` header against `BILLING__RUN_TOKEN`. Unlike the LAN-trust
+/// `/internal/*` routes this is **fail-closed**: with no token configured the
+/// endpoint is disabled (503), since it mutates billing data and may be exposed.
+pub async fn run_billing(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<RunQuery>,
+) -> Response {
+    let Some(secret) = std::env::var(RUN_TOKEN_ENV)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    else {
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "billing run endpoint disabled (BILLING__RUN_TOKEN unset)",
+        )
+            .into_response();
+    };
+    let presented = headers
+        .get(RUN_TOKEN_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !ct_eq(presented.as_bytes(), secret.as_bytes()) {
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    }
+    let Some(period_date) = period_first_of_month(&q.period) else {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            "period must be YYYY-MM",
+        )
+            .into_response();
+    };
+    let Some(p) = st.db.as_ref() else {
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "db unavailable",
+        )
+            .into_response();
+    };
+    match generate_all_for_period(p, &period_date).await {
+        Ok(n) => Json(RunResult {
+            period: period_date,
+            generated: n,
+        })
+        .into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("db: {e}"),
+        )
+            .into_response(),
+    }
+}
+
 /// Parse "49" / "49.9" / "49.90" into cents; None on garbage or negative.
 fn parse_price_to_cents(s: &str) -> Option<i64> {
     let s = s.trim().replace(',', ".");
@@ -768,7 +911,30 @@ fn parse_price_to_cents(s: &str) -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{fmt_date, invoice_row, money, parse_price_to_cents, Invoice};
+    use super::{
+        ct_eq, fmt_date, invoice_row, money, parse_price_to_cents, period_first_of_month, Invoice,
+    };
+
+    #[test]
+    fn period_first_of_month_normalizes_and_validates() {
+        assert_eq!(period_first_of_month("2026-06"), Some("2026-06-01".into()));
+        assert_eq!(
+            period_first_of_month("2026-06-15"),
+            Some("2026-06-01".into())
+        );
+        assert_eq!(period_first_of_month(""), None);
+        assert_eq!(period_first_of_month("2026/06"), None);
+        assert_eq!(period_first_of_month("abcd-ef"), None);
+        assert_eq!(period_first_of_month("2026-6"), None);
+    }
+
+    #[test]
+    fn run_token_compare_is_constant_time_equal() {
+        assert!(ct_eq(b"s3cret", b"s3cret"));
+        assert!(!ct_eq(b"s3cret", b"s3crxt"));
+        assert!(!ct_eq(b"s3cret", b"s3cre"));
+        assert!(ct_eq(b"", b""));
+    }
 
     #[test]
     fn fmt_date_renders_rfc3339() {

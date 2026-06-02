@@ -31,6 +31,19 @@
 </section>
 
 <section class="card">
+  <h2>Gerar faturas do mês (todos os tenants)</h2>
+  <p class="hint">
+    Gera, de uma vez, a fatura do período para cada tenant com plano precificado.
+    Idempotente — re-rodar o mesmo mês só preenche o que faltava.
+  </p>
+  <form method="post" action="/billing/generate-all" style="display:flex;gap:6px;align-items:center">
+    <label>Mês:</label>
+    <input type="month" name="period" required>
+    <button type="submit">Gerar para todos</button>
+  </form>
+</section>
+
+<section class="card">
   <h2>Faturas por tenant</h2>
 
   <form method="get" action="/billing.html" style="display:flex;gap:6px;align-items:center;margin-bottom:1rem">
