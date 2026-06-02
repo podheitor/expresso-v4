@@ -143,6 +143,35 @@ async fn get_one(
     Ok(resp)
 }
 
+/// Authorize an addressbook mutation. `delete` allows OWNER only (you cannot
+/// delete a book merely shared to you); `update` (rename/set-default) allows
+/// OWNER or ADMIN. A non-grantee gets a 404 so existence is not revealed; a
+/// grantee without enough privilege gets 403. Mirrors contacts.rs::assert_can_write.
+async fn assert_owns(
+    repo: &AddressbookRepo<'_>,
+    tenant_id: Uuid,
+    id: Uuid,
+    user_id: Uuid,
+    allow_admin: bool,
+) -> Result<()> {
+    let level = repo.access_level(tenant_id, id, user_id).await?;
+    owner_decision(level.as_deref(), allow_admin, id)
+}
+
+/// Pure privilege decision for an addressbook mutation. `None` (no grant) → 404
+/// (hide existence); insufficient privilege → 403; OWNER always passes, ADMIN
+/// passes only when `allow_admin` (update, not delete).
+fn owner_decision(level: Option<&str>, allow_admin: bool, id: Uuid) -> Result<()> {
+    match level {
+        Some("OWNER") => Ok(()),
+        Some("ADMIN") if allow_admin => Ok(()),
+        Some(_) => Err(crate::error::ContactsError::Forbidden),
+        None => Err(crate::error::ContactsError::AddressbookNotFound(
+            id.to_string(),
+        )),
+    }
+}
+
 async fn update(
     State(state): State<AppState>,
     ctx: RequestCtx,
@@ -150,9 +179,9 @@ async fn update(
     Json(body): Json<UpdateAddressbook>,
 ) -> Result<Json<Addressbook>> {
     let pool = state.db_or_unavailable()?;
-    let ab = AddressbookRepo::new(pool)
-        .update(ctx.tenant_id, id, body)
-        .await?;
+    let repo = AddressbookRepo::new(pool);
+    assert_owns(&repo, ctx.tenant_id, id, ctx.user_id, true).await?;
+    let ab = repo.update(ctx.tenant_id, id, body).await?;
     Ok(Json(ab))
 }
 
@@ -162,7 +191,9 @@ async fn delete(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
-    AddressbookRepo::new(pool).delete(ctx.tenant_id, id).await?;
+    let repo = AddressbookRepo::new(pool);
+    assert_owns(&repo, ctx.tenant_id, id, ctx.user_id, false).await?;
+    repo.delete(ctx.tenant_id, id).await?;
     state.bus().publish(ContactsEvent::AddressbookDeleted {
         tenant_id: ctx.tenant_id,
         addressbook_id: id,
@@ -178,4 +209,49 @@ async fn ctag_one(
     let pool = state.db_or_unavailable()?;
     let ctag = AddressbookRepo::new(pool).ctag(ctx.tenant_id, id).await?;
     Ok(Json(serde_json::json!({ "id": id, "ctag": ctag })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::owner_decision;
+    use crate::error::ContactsError;
+    use uuid::Uuid;
+
+    fn id() -> Uuid {
+        Uuid::nil()
+    }
+
+    #[test]
+    fn owner_passes_update_and_delete() {
+        assert!(owner_decision(Some("OWNER"), true, id()).is_ok());
+        assert!(owner_decision(Some("OWNER"), false, id()).is_ok());
+    }
+
+    #[test]
+    fn admin_passes_update_only() {
+        assert!(owner_decision(Some("ADMIN"), true, id()).is_ok());
+        // delete (allow_admin=false): ADMIN is not enough.
+        assert!(matches!(
+            owner_decision(Some("ADMIN"), false, id()),
+            Err(ContactsError::Forbidden)
+        ));
+    }
+
+    #[test]
+    fn write_and_read_grants_are_forbidden_for_owner_actions() {
+        for lvl in ["WRITE", "READ"] {
+            assert!(matches!(
+                owner_decision(Some(lvl), true, id()),
+                Err(ContactsError::Forbidden)
+            ));
+        }
+    }
+
+    #[test]
+    fn no_grant_is_not_found() {
+        assert!(matches!(
+            owner_decision(None, true, id()),
+            Err(ContactsError::AddressbookNotFound(_))
+        ));
+    }
 }

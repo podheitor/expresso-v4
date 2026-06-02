@@ -67,7 +67,9 @@ async fn get_one(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ContactGroup>> {
     let pool = state.db_or_unavailable()?;
-    let group = ContactGroupRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let group = ContactGroupRepo::new(pool)
+        .get(ctx.tenant_id, ctx.user_id, id)
+        .await?;
     Ok(Json(group))
 }
 
@@ -79,7 +81,7 @@ async fn update(
 ) -> Result<Json<ContactGroup>> {
     let pool = state.db_or_unavailable()?;
     let group = ContactGroupRepo::new(pool)
-        .update(ctx.tenant_id, id, body)
+        .update(ctx.tenant_id, ctx.user_id, id, body)
         .await?;
     Ok(Json(group))
 }
@@ -91,7 +93,7 @@ async fn delete(
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     ContactGroupRepo::new(pool)
-        .delete(ctx.tenant_id, id)
+        .delete(ctx.tenant_id, ctx.user_id, id)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -103,7 +105,7 @@ async fn list_members(
 ) -> Result<Json<Vec<Contact>>> {
     let pool = state.db_or_unavailable()?;
     let members = ContactGroupRepo::new(pool)
-        .list_members(ctx.tenant_id, id)
+        .list_members(ctx.tenant_id, ctx.user_id, id)
         .await?;
     Ok(Json(members))
 }
@@ -121,7 +123,7 @@ async fn add_member(
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     ContactGroupRepo::new(pool)
-        .add_member(ctx.tenant_id, id, body.contact_id)
+        .add_member(ctx.tenant_id, ctx.user_id, id, body.contact_id)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -133,7 +135,7 @@ async fn remove_member(
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     ContactGroupRepo::new(pool)
-        .remove_member(ctx.tenant_id, id, contact_id)
+        .remove_member(ctx.tenant_id, ctx.user_id, id, contact_id)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

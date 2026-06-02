@@ -97,22 +97,28 @@ impl<'a> ContactGroupRepo<'a> {
         Ok(rows)
     }
 
-    pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<ContactGroup> {
+    /// Owner-scoped read: a non-owner gets RowNotFound (groups are not shared).
+    pub async fn get(&self, tenant_id: Uuid, owner_user_id: Uuid, id: Uuid) -> Result<ContactGroup> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, ContactGroup>(
-            r#"SELECT * FROM contact_groups WHERE tenant_id = $1 AND id = $2"#,
+            r#"SELECT * FROM contact_groups
+                WHERE tenant_id = $1 AND id = $2 AND owner_user_id = $3"#,
         )
         .bind(tenant_id)
         .bind(id)
+        .bind(owner_user_id)
         .fetch_one(&mut *tx)
         .await?;
         tx.commit().await?;
         Ok(row)
     }
 
+    /// Scoped to the owner: a non-owner (even in the same tenant) gets RowNotFound,
+    /// never another user's group. Mirrors `get_owned`'s owner_user_id predicate.
     pub async fn update(
         &self,
         tenant_id: Uuid,
+        owner_user_id: Uuid,
         id: Uuid,
         input: UpdateContactGroup,
     ) -> Result<ContactGroup> {
@@ -123,14 +129,15 @@ impl<'a> ContactGroupRepo<'a> {
         let row = sqlx::query_as::<_, ContactGroup>(
             r#"
             UPDATE contact_groups
-               SET name        = COALESCE($3, name),
-                   description = COALESCE($4, description)
-             WHERE tenant_id = $1 AND id = $2
+               SET name        = COALESCE($4, name),
+                   description = COALESCE($5, description)
+             WHERE tenant_id = $1 AND id = $2 AND owner_user_id = $3
              RETURNING *
             "#,
         )
         .bind(tenant_id)
         .bind(id)
+        .bind(owner_user_id)
         .bind(input.name)
         .bind(input.description)
         .fetch_one(&mut *tx)
@@ -139,13 +146,17 @@ impl<'a> ContactGroupRepo<'a> {
         Ok(row)
     }
 
-    pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
+    /// Owner-scoped delete: a non-owner gets RowNotFound (no cross-user delete).
+    pub async fn delete(&self, tenant_id: Uuid, owner_user_id: Uuid, id: Uuid) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
-        let res = sqlx::query(r#"DELETE FROM contact_groups WHERE tenant_id = $1 AND id = $2"#)
-            .bind(tenant_id)
-            .bind(id)
-            .execute(&mut *tx)
-            .await?;
+        let res = sqlx::query(
+            r#"DELETE FROM contact_groups WHERE tenant_id = $1 AND id = $2 AND owner_user_id = $3"#,
+        )
+        .bind(tenant_id)
+        .bind(id)
+        .bind(owner_user_id)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         if res.rows_affected() == 0 {
             return Err(ContactsError::Database(sqlx::Error::RowNotFound));
@@ -161,22 +172,45 @@ impl<'a> ContactGroupRepo<'a> {
     pub async fn add_member(
         &self,
         tenant_id: Uuid,
+        owner_user_id: Uuid,
         group_id: Uuid,
         contact_id: Uuid,
     ) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
-        sqlx::query(
+        // The SELECT...WHERE owner_user_id gates the insert to the group's owner:
+        // a non-owner inserts zero rows, surfaced as RowNotFound below (no
+        // cross-user membership writes).
+        let res = sqlx::query(
             r#"
             INSERT INTO contact_group_members (group_id, contact_id, tenant_id)
-            VALUES ($1, $2, $3)
+            SELECT $1, $2, $3
+             WHERE EXISTS (SELECT 1 FROM contact_groups
+                            WHERE id = $1 AND tenant_id = $3 AND owner_user_id = $4)
             ON CONFLICT (group_id, contact_id) DO NOTHING
             "#,
         )
         .bind(group_id)
         .bind(contact_id)
         .bind(tenant_id)
+        .bind(owner_user_id)
         .execute(&mut *tx)
         .await?;
+        // 0 rows = either not the owner, or an idempotent re-add. Re-adds are fine,
+        // so only reject when the group is not owned by the caller at all.
+        if res.rows_affected() == 0 {
+            let owns: Option<(Uuid,)> = sqlx::query_as(
+                "SELECT id FROM contact_groups WHERE id = $1 AND tenant_id = $2 AND owner_user_id = $3",
+            )
+            .bind(group_id)
+            .bind(tenant_id)
+            .bind(owner_user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+            if owns.is_none() {
+                tx.commit().await?;
+                return Err(ContactsError::Database(sqlx::Error::RowNotFound));
+            }
+        }
         tx.commit().await?;
         Ok(())
     }
@@ -186,17 +220,21 @@ impl<'a> ContactGroupRepo<'a> {
     pub async fn remove_member(
         &self,
         tenant_id: Uuid,
+        owner_user_id: Uuid,
         group_id: Uuid,
         contact_id: Uuid,
     ) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let res = sqlx::query(
             r#"DELETE FROM contact_group_members
-               WHERE tenant_id = $1 AND group_id = $2 AND contact_id = $3"#,
+               WHERE tenant_id = $1 AND group_id = $2 AND contact_id = $3
+                 AND group_id IN (SELECT id FROM contact_groups
+                                   WHERE tenant_id = $1 AND owner_user_id = $4)"#,
         )
         .bind(tenant_id)
         .bind(group_id)
         .bind(contact_id)
+        .bind(owner_user_id)
         .execute(&mut *tx)
         .await?;
         tx.commit().await?;
@@ -206,8 +244,15 @@ impl<'a> ContactGroupRepo<'a> {
         Ok(())
     }
 
-    /// List the full contact rows in a group, newest membership first.
-    pub async fn list_members(&self, tenant_id: Uuid, group_id: Uuid) -> Result<Vec<Contact>> {
+    /// List the full contact rows in a group, newest membership first. Owner-scoped:
+    /// the group must belong to the caller, else the result is empty (no peeking
+    /// into another user's group membership).
+    pub async fn list_members(
+        &self,
+        tenant_id: Uuid,
+        owner_user_id: Uuid,
+        group_id: Uuid,
+    ) -> Result<Vec<Contact>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query_as::<_, Contact>(
             r#"
@@ -215,11 +260,14 @@ impl<'a> ContactGroupRepo<'a> {
             FROM contacts c
             JOIN contact_group_members m ON m.contact_id = c.id
             WHERE m.tenant_id = $1 AND m.group_id = $2
+              AND m.group_id IN (SELECT id FROM contact_groups
+                                  WHERE tenant_id = $1 AND owner_user_id = $3)
             ORDER BY m.added_at DESC
             "#,
         )
         .bind(tenant_id)
         .bind(group_id)
+        .bind(owner_user_id)
         .fetch_all(&mut *tx)
         .await?;
         tx.commit().await?;
