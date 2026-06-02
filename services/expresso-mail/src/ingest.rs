@@ -763,6 +763,29 @@ async fn webhook_url_is_safe(url: &str) -> std::result::Result<(), String> {
     Ok(())
 }
 
+/// Max `Received:` hops tolerated before a relay refuses to forward — the
+/// RFC 5321 §6.3 loop-control mechanism. A mutual auto-forward (A→B→A…) accrues
+/// a Received line per hop; refusing past this breaks the loop. Generous enough
+/// that legitimate multi-hop delivery is unaffected.
+const MAX_RECEIVED_HOPS: usize = 30;
+
+/// Count `Received:` header lines in the message header block (case-insensitive,
+/// non-continuation). Used for loop control before relaying.
+fn received_hop_count(raw: &[u8]) -> usize {
+    let text = String::from_utf8_lossy(raw);
+    let header_block = text
+        .split_once("\r\n\r\n")
+        .map(|(h, _)| h)
+        .unwrap_or_else(|| text.split_once("\n\n").map(|(h, _)| h).unwrap_or(&text));
+    header_block
+        .lines()
+        .filter(|l| {
+            let t = l.as_bytes();
+            t.len() >= 9 && t[..9].eq_ignore_ascii_case(b"Received:")
+        })
+        .count()
+}
+
 /// Relay raw RFC 5321 message bytes to `to_addr` via plain SMTP on `relay_host:relay_port`.
 /// Implements the minimal SMTP exchange: EHLO → MAIL FROM → RCPT TO → DATA → QUIT.
 /// No auth, no TLS — intended for internal MTA relay (Postfix, etc.) on trusted network.
@@ -775,6 +798,14 @@ async fn relay_forward(
 ) -> anyhow::Result<()> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::TcpStream;
+
+    // Loop control (RFC 5321 §6.3): refuse to relay a message that has already
+    // traversed too many hops, so mutual auto-forwards can't amplify endlessly.
+    let hops = received_hop_count(raw);
+    anyhow::ensure!(
+        hops <= MAX_RECEIVED_HOPS,
+        "relay refused: {hops} Received hops exceeds loop limit {MAX_RECEIVED_HOPS}"
+    );
 
     let stream = TcpStream::connect((relay_host, relay_port)).await?;
     let (reader, mut writer) = tokio::io::split(stream);
@@ -1198,6 +1229,23 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[test]
+    fn received_hops_counted_in_header_block_only() {
+        let raw =
+            b"Received: from a\r\nReceived: from b\r\nSubject: hi\r\n\r\nReceived: in body\r\n";
+        assert_eq!(received_hop_count(raw), 2);
+    }
+
+    #[test]
+    fn received_hops_zero_when_absent() {
+        assert_eq!(received_hop_count(b"Subject: hi\r\n\r\nbody"), 0);
+    }
+
+    #[test]
+    fn received_hops_case_insensitive() {
+        assert_eq!(received_hop_count(b"received: x\r\nRECEIVED: y\r\n\r\n"), 2);
     }
 
     #[test]

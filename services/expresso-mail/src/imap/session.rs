@@ -3600,6 +3600,11 @@ fn mime_boundary(raw: &[u8]) -> Option<String> {
         .map(|(_, v)| v)
 }
 
+/// Max MIME nesting depth navigable by a single FETCH BODY[...] section path.
+/// Far beyond any real message; bounds [`mime_navigate`] recursion against a
+/// crafted deep-path stack-overflow DoS.
+const MAX_MIME_DEPTH: usize = 64;
+
 /// Split a multipart message body into its constituent MIME parts.
 /// Returns a Vec of raw bytes for each part (including the part's own headers).
 /// Returns empty Vec for non-multipart or unparseable messages.
@@ -3673,6 +3678,13 @@ fn mime_split_parts(raw: &[u8]) -> Vec<Vec<u8>> {
 /// `path` is the sequence of 1-based part numbers, e.g. [1, 2] = part 1.2.
 /// Returns None when any step in the path is out of range.
 fn mime_navigate(raw: &[u8], path: &[u32]) -> Option<Vec<u8>> {
+    // Bound recursion depth: each level consumes one path element, so a FETCH
+    // with a pathologically deep BODY[1.1.1…] section on a deeply nested message
+    // could otherwise overflow the session-worker stack. Real MIME nesting is
+    // shallow; anything past the cap is treated as "no such part".
+    if path.len() > MAX_MIME_DEPTH {
+        return None;
+    }
     if path.is_empty() {
         return Some(raw.to_vec());
     }
@@ -4369,7 +4381,7 @@ fn build_envelope(
 mod tests {
     use super::{
         email_text_bytes, list_matches, mime_boundary, mime_navigate, mime_part_body,
-        mime_part_body_path, mime_part_mime_headers, mime_split_parts,
+        mime_part_body_path, mime_part_mime_headers, mime_split_parts, MAX_MIME_DEPTH,
     };
 
     const MULTIPART_MSG: &[u8] = b"\
@@ -4477,6 +4489,14 @@ Attachment\r\n\
     fn navigate_none_for_invalid_path() {
         assert!(mime_navigate(MULTIPART_MSG, &[3]).is_none());
         assert!(mime_navigate(MULTIPART_MSG, &[1, 2]).is_none());
+    }
+
+    #[test]
+    fn navigate_rejects_path_past_depth_cap() {
+        // A path longer than MAX_MIME_DEPTH returns None without deep recursion,
+        // so a crafted deep BODY[...] section can't overflow the stack.
+        let deep = vec![1u32; MAX_MIME_DEPTH + 1];
+        assert!(mime_navigate(MULTIPART_MSG, &deep).is_none());
     }
 
     #[test]
