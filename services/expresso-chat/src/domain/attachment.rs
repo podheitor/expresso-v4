@@ -137,13 +137,15 @@ impl<'a> AttachmentRepo<'a> {
     ) -> Result<Vec<Attachment>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows: Vec<Attachment> = sqlx::query_as(
+            // Explicit tenant_id predicate (defense-in-depth on top of RLS).
             r#"SELECT id, channel_id, user_id, event_id,
                       filename, content_type, size_bytes, kind, mxc_uri
                FROM chat_attachments
-               WHERE channel_id = $1
+               WHERE tenant_id = $1 AND channel_id = $2
                ORDER BY created_at DESC
-               LIMIT $2"#,
+               LIMIT $3"#,
         )
+        .bind(tenant)
         .bind(channel)
         .bind(limit)
         .fetch_all(&mut *tx)

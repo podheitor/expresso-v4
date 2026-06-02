@@ -70,9 +70,11 @@ impl<'a> ReactionRepo<'a> {
     ) -> Result<bool> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let res = sqlx::query(
+            // Explicit tenant_id predicate (defense-in-depth on top of RLS).
             r#"DELETE FROM chat_reactions
-               WHERE channel_id=$1 AND event_id=$2 AND user_id=$3 AND emoji=$4"#,
+               WHERE tenant_id=$1 AND channel_id=$2 AND event_id=$3 AND user_id=$4 AND emoji=$5"#,
         )
+        .bind(tenant)
         .bind(channel)
         .bind(event_id)
         .bind(user)
@@ -97,15 +99,18 @@ impl<'a> ReactionRepo<'a> {
         }
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows: Vec<ReactionCount> = sqlx::query_as(
+            // Explicit tenant_id predicate (defense-in-depth on top of RLS — the
+            // codebase convention is to never rely on RLS alone in repo queries).
             r#"SELECT event_id,
                       emoji,
                       COUNT(*)            AS count,
                       array_agg(user_id)  AS users
                FROM chat_reactions
-               WHERE channel_id = $1 AND event_id = ANY($2)
+               WHERE tenant_id = $1 AND channel_id = $2 AND event_id = ANY($3)
                GROUP BY event_id, emoji
                ORDER BY event_id, emoji"#,
         )
+        .bind(tenant)
         .bind(channel)
         .bind(event_ids)
         .fetch_all(&mut *tx)
