@@ -2081,14 +2081,23 @@ async fn message_stats(
         })
         .unwrap_or_default();
 
-    let since_filter = params
-        .since
-        .as_deref()
-        .map(|s| {
-            let esc = s.replace('\'', "''");
-            format!("AND m.received_at >= '{esc}'::timestamptz")
-        })
-        .unwrap_or_default();
+    let since_filter = match params.since.as_deref() {
+        Some(s) => {
+            let date_fmt = time::macros::format_description!("[year]-[month]-[day]");
+            let valid = time::Date::parse(s, date_fmt).is_ok()
+                || OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).is_ok();
+            if !valid {
+                return Err(MailError::BadRequest(
+                    "invalid 'since'; expected YYYY-MM-DD or RFC3339".into(),
+                ));
+            }
+            format!(
+                "AND m.received_at >= '{}'::timestamptz",
+                s.replace('\'', "''")
+            )
+        }
+        None => String::new(),
+    };
 
     let sql = format!(
         "SELECT mb.name AS folder, \
