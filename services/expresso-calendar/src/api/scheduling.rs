@@ -271,6 +271,12 @@ async fn handle_reply(
         r.message = "uid not found in tenant".into();
         return Ok(Json(r));
     };
+    // Authorize: applying a REPLY mutates the stored event, so the caller must be
+    // able to write the event's calendar (same gate as every other event
+    // mutation). Without this, any tenant member could rewrite any attendee's
+    // PARTSTAT on any event by UID.
+    crate::api::events::assert_can_write(repo.pool(), ctx.tenant_id, ev.calendar_id, ctx.user_id)
+        .await?;
 
     // RFC 5546 §3.2.3: reject stale REPLYs (lower SEQUENCE, or equal SEQUENCE
     // with older DTSTAMP). Never mutate state; organizer keeps the latest view.
@@ -329,9 +335,18 @@ async fn handle_counter(
         .await?;
     let matched = event_opt.is_some();
 
-    // Persist proposal so admin can accept/reject (RFC 5546 §3.2.7).
+    // Persist proposal so admin can accept/reject (RFC 5546 §3.2.7). Authorize
+    // first: a COUNTER writes a proposal row against the event, so the caller
+    // must be able to write its calendar (matches REPLY/CANCEL).
     let mut proposal_id: Option<uuid::Uuid> = None;
     if let (Some(ev), Some(a)) = (event_opt.as_ref(), att.as_ref()) {
+        crate::api::events::assert_can_write(
+            repo.pool(),
+            ctx.tenant_id,
+            ev.calendar_id,
+            ctx.user_id,
+        )
+        .await?;
         let crepo = CounterRepo::new(repo.pool());
         match crepo
             .insert(
@@ -409,6 +424,16 @@ async fn handle_refresh(
     let matched = event_opt.is_some();
     let mut republished = false;
     if let Some(ev) = event_opt {
+        // Authorize: a REFRESH rebroadcasts an iMIP REQUEST to all attendees, so
+        // the caller must be able to write the event's calendar — otherwise any
+        // tenant member could trigger invitation-resend spam for any event.
+        crate::api::events::assert_can_write(
+            repo.pool(),
+            ctx.tenant_id,
+            ev.calendar_id,
+            ctx.user_id,
+        )
+        .await?;
         republished = state.events().publish_imip(ev, "REQUEST");
     }
     tracing::info!(
@@ -446,6 +471,11 @@ async fn handle_cancel(
         r.message = "uid not found in tenant".into();
         return Ok(Json(r));
     };
+    // Authorize: CANCEL sets STATUS:CANCELLED on the stored event, so the caller
+    // must be able to write its calendar. Without this, any tenant member could
+    // cancel any event in the tenant by UID.
+    crate::api::events::assert_can_write(repo.pool(), ctx.tenant_id, ev.calendar_id, ctx.user_id)
+        .await?;
 
     // Staleness gate mirrors REPLY: a CANCEL with SEQUENCE < stored is rejected
     // (attendee already saw a later revision from the organizer).
