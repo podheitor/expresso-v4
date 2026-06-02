@@ -419,13 +419,16 @@ async fn resolve_bodies(state: &AppState, items: &mut [MailItem], max_bytes: usi
 
 /// Extract the decoded plain-text body from a raw RFC822 message. Parses MIME
 /// via `mail-parser` and returns the first `text/plain` part (transfer-decoded,
-/// charset-normalised). Falls back to the raw bytes after the header separator
-/// when the message doesn't parse or has no text part (e.g. HTML-only — HTML→
-/// text conversion is a further refinement).
+/// charset-normalised); for HTML-only messages it strips the HTML to text.
+/// Falls back to the raw bytes after the header separator when the message
+/// doesn't parse.
 fn extract_plain_body(raw: &[u8]) -> String {
     if let Some(msg) = mail_parser::MessageParser::default().parse(raw) {
         if let Some(text) = msg.body_text(0) {
             return text.into_owned();
+        }
+        if let Some(html) = msg.body_html(0) {
+            return html_to_text(&html);
         }
     }
     let body = raw
@@ -433,6 +436,44 @@ fn extract_plain_body(raw: &[u8]) -> String {
         .position(|w| w == b"\r\n\r\n")
         .map_or(raw, |pos| &raw[pos + 4..]);
     String::from_utf8_lossy(body).into_owned()
+}
+
+/// Minimal HTML→text for the EAS body fallback (no new dependency): drop tags,
+/// turn `<br>`/`</p>`/`</div>` into newlines, decode the few common entities.
+/// Good enough for a phone to render an HTML-only message as readable text;
+/// faithful HTML rendering is the client's job when it requests a HTML body.
+fn html_to_text(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut chars = html.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '<' {
+            // Capture the tag name to map block tags to newlines.
+            let mut tag = String::new();
+            for t in chars.by_ref() {
+                if t == '>' {
+                    break;
+                }
+                tag.push(t.to_ascii_lowercase());
+            }
+            let name = tag.trim_start_matches('/').trim();
+            if name.starts_with("br")
+                || name.starts_with("p")
+                || name.starts_with("div")
+                || name.starts_with("li")
+                || name.starts_with("tr")
+            {
+                out.push('\n');
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
 }
 
 async fn load_state(
@@ -728,6 +769,35 @@ Content-Type: multipart/alternative; boundary=\"B\"\r\n\r\n\
         let raw = b"Content-Type: text/plain\r\n\
 Content-Transfer-Encoding: quoted-printable\r\n\r\nca=C3=A9"; // "caé"
         assert_eq!(extract_plain_body(raw).trim(), "caé");
+    }
+
+    #[test]
+    fn extract_plain_body_html_only_stripped() {
+        let raw = b"Content-Type: text/html\r\n\r\n<p>Hello <b>world</b></p>";
+        let body = extract_plain_body(raw);
+        assert!(body.contains("Hello"));
+        assert!(body.contains("world"));
+        assert!(!body.contains('<'));
+    }
+
+    #[test]
+    fn html_to_text_strips_tags_and_breaks() {
+        let html = "<p>line one</p><p>line two</p>";
+        let text = html_to_text(html);
+        assert!(text.contains("line one"));
+        assert!(text.contains("line two"));
+        assert!(text.contains('\n'));
+        assert!(!text.contains('<'));
+    }
+
+    #[test]
+    fn html_to_text_decodes_entities() {
+        assert_eq!(html_to_text("a &amp; b &lt;c&gt;"), "a & b <c>");
+    }
+
+    #[test]
+    fn html_to_text_br_becomes_newline() {
+        assert_eq!(html_to_text("a<br>b"), "a\nb");
     }
 
     #[test]
