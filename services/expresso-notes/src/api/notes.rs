@@ -5,6 +5,7 @@
 //!                                          → list own notes (by notebook or tag)
 //!   GET    /api/v1/notes/shared            → list notes shared with me
 //!   GET    /api/v1/notes/search?q=&limit=  → substring search own notes
+//!   GET    /api/v1/notes/export             → full JSON backup of own notes
 //!   POST   /api/v1/notes                    → create
 //!   GET    /api/v1/notes/:id                → fetch one (own or shared)
 //!   PATCH  /api/v1/notes/:id                → partial update
@@ -23,6 +24,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
+    response::{IntoResponse, Response},
     routing::{get, patch},
     Json, Router,
 };
@@ -32,8 +34,8 @@ use uuid::Uuid;
 use crate::api::context::RequestCtx;
 use crate::domain::note::NotebookFilter;
 use crate::domain::{
-    NewNote, Note, NoteRepo, NoteSnapshot, NoteTagRepo, NoteVersion, NoteVersionRepo, NotebookRepo,
-    SharedNote, TagCount, TagPairCount, UpdateNote,
+    ExportNote, NewNote, Note, NoteRepo, NoteSnapshot, NoteTagRepo, NoteVersion, NoteVersionRepo,
+    NotebookRepo, SharedNote, TagCount, TagPairCount, UpdateNote,
 };
 use crate::error::{NotesError, Result};
 use crate::state::AppState;
@@ -46,6 +48,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/notes/shared", get(list_shared))
         // `search` static segment — also before `:id` (matchit static-first).
         .route("/api/v1/notes/search", get(search))
+        .route("/api/v1/notes/export", get(export))
         // Tag-wide ops (`tags` static, before `:id`): stats, rename + merge
         // across all of the caller's notes. `stats` is static so matchit prefers
         // it over the `:tag` param on the same prefix.
@@ -299,6 +302,25 @@ async fn tag_stats(State(state): State<AppState>, ctx: RequestCtx) -> Result<Jso
         .count_by_tag(ctx.tenant_id, ctx.user_id)
         .await?;
     Ok(Json(stats))
+}
+
+/// GET /api/v1/notes/export — full backup of the caller's own notes as a JSON
+/// bundle (`{count, notes:[…]}`), each note with its tags. Owner-scoped via the
+/// repo query; archived notes included. Sent with a Content-Disposition so a
+/// browser saves it as a file. Mirrors the export endpoints of contacts (.vcf),
+/// calendar (.ics) and compliance (archive).
+async fn export(State(state): State<AppState>, ctx: RequestCtx) -> Result<Response> {
+    let pool = state.db_or_unavailable()?;
+    let notes: Vec<ExportNote> = NoteRepo::new(pool)
+        .list_for_export(ctx.tenant_id, ctx.user_id)
+        .await?;
+    let body = serde_json::json!({ "count": notes.len(), "notes": notes });
+    let mut resp = Json(body).into_response();
+    resp.headers_mut().insert(
+        axum::http::header::CONTENT_DISPOSITION,
+        axum::http::HeaderValue::from_static("attachment; filename=\"notes-export.json\""),
+    );
+    Ok(resp)
 }
 
 /// Query for the co-occurrence endpoint: how many tag pairs to return.

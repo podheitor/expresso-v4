@@ -36,6 +36,24 @@ pub struct Note {
     pub updated_at: OffsetDateTime,
 }
 
+/// One note in a full export bundle: its content + denormalised tag list. Omits
+/// internal ids (tenant/user) — an export is the caller's own data, portable.
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct ExportNote {
+    pub id: Uuid,
+    pub title: String,
+    pub body: String,
+    pub color: Option<String>,
+    pub pinned: bool,
+    pub archived: bool,
+    pub notebook_id: Option<Uuid>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub updated_at: OffsetDateTime,
+    pub tags: Vec<String>,
+}
+
 /// A note shared with the caller, plus the caller's granted privilege.
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct SharedNote {
@@ -123,6 +141,33 @@ impl<'a> NoteRepo<'a> {
         .await?;
         tx.commit().await?;
         Ok(row)
+    }
+
+    /// Every note the user owns (archived and not), each with its tag set, for a
+    /// full backup/export. Ordered oldest-first so an export reads chronologically.
+    /// Tags are aggregated in-query (LEFT JOIN + array_agg) to avoid an N+1.
+    pub async fn list_for_export(&self, tenant: Uuid, user: Uuid) -> Result<Vec<ExportNote>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let rows: Vec<ExportNote> = sqlx::query_as(
+            r#"SELECT n.id, n.title, n.body, n.color, n.pinned, n.archived,
+                      n.notebook_id, n.created_at, n.updated_at,
+                      COALESCE(
+                        array_remove(array_agg(t.tag ORDER BY t.tag), NULL),
+                        '{}'
+                      ) AS tags
+                 FROM notes n
+                 LEFT JOIN notes_tags t
+                        ON t.note_id = n.id AND t.tenant_id = n.tenant_id
+                WHERE n.tenant_id = $1 AND n.user_id = $2
+                GROUP BY n.id
+                ORDER BY n.created_at"#,
+        )
+        .bind(tenant)
+        .bind(user)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
     }
 
     /// List a user's notes. `archived = false` returns the live board; `true`
@@ -422,5 +467,28 @@ mod tests {
     fn empty_title_and_body_ok() {
         assert_eq!(validate_title("").unwrap(), "");
         assert_eq!(validate_body("").unwrap(), "");
+    }
+
+    #[test]
+    fn export_note_serializes_tags_and_omits_internal_ids() {
+        let n = ExportNote {
+            id: Uuid::nil(),
+            title: "T".into(),
+            body: "B".into(),
+            color: None,
+            pinned: true,
+            archived: false,
+            notebook_id: None,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
+            tags: vec!["work".into(), "urgent".into()],
+        };
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&n).unwrap()).unwrap();
+        assert_eq!(v["tags"], serde_json::json!(["work", "urgent"]));
+        assert_eq!(v["title"], "T");
+        // Internal scoping ids are not part of the portable export.
+        assert!(v.get("tenant_id").is_none());
+        assert!(v.get("user_id").is_none());
     }
 }
