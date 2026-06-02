@@ -12,4 +12,4 @@ pub use addressbook::{Addressbook, AddressbookRepo, NewAddressbook, UpdateAddres
 pub use contact::{ContactAddressRow, ContactEmailRow, ContactRenameEntry, ContactRepo};
 pub use dead_props::{DeadProp, DeadPropRepo};
 pub use group::{ContactGroup, ContactGroupRepo, NewContactGroup, UpdateContactGroup};
-pub use version::{ContactVersion, ContactVersionRepo};
+pub use version::{diff_vcards, ContactVersion, ContactVersionRepo, VCardDiff};

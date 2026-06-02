@@ -82,6 +82,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/addressbooks/:book_id/contacts/:id/versions/:version_no/restore",
             post(restore_version),
         )
+        .route(
+            "/api/v1/addressbooks/:book_id/contacts/:id/versions/:from_no/diff/:to_no",
+            get(diff_versions),
+        )
         .route("/api/v1/addressbooks/:book_id/export.vcf", get(export_vcf))
         .route("/api/v1/addressbooks/:book_id/import", post(import_vcf))
         .route("/api/v1/contacts/import", post(import_csv))
@@ -301,6 +305,25 @@ async fn list_versions(
         .list(ctx.tenant_id, id)
         .await?;
     Ok(axum::Json(rows))
+}
+
+/// GET …/contacts/:id/versions/:from_no/diff/:to_no — line-level diff between two
+/// stored vCard revisions of a contact (added/removed properties). Read-only;
+/// 404-guards the contact, then each version number (VersionNotFound). The diff
+/// direction is from→to, so `added` are properties present in `to_no` but not
+/// `from_no`.
+async fn diff_versions(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((_book_id, id, from_no, to_no)): Path<(Uuid, Uuid, i32, i32)>,
+) -> Result<axum::Json<crate::domain::VCardDiff>> {
+    let pool = state.db_or_unavailable()?;
+    ContactRepo::new(pool).get(ctx.tenant_id, id).await?; // 404 guard
+    let repo = crate::domain::ContactVersionRepo::new(pool);
+    let from = repo.get(ctx.tenant_id, id, from_no).await?;
+    let to = repo.get(ctx.tenant_id, id, to_no).await?;
+    let diff = crate::domain::diff_vcards(&from.vcard_raw, &to.vcard_raw);
+    Ok(axum::Json(diff))
 }
 
 /// POST /api/v1/addressbooks/:book_id/contacts/:id/versions/:version_no/restore

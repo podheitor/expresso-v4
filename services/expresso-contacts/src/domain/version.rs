@@ -32,6 +32,38 @@ pub struct ContactVersion {
     pub created_at: OffsetDateTime,
 }
 
+/// A line-level diff between two vCard snapshots. vCard is line-oriented (one
+/// property per logical line), so removed/added lines correspond to changed
+/// properties. Unchanged lines are omitted. This is a content diff, not a
+/// positional one: a line present in both is "unchanged" regardless of order,
+/// which suits property sets where order is not semantically meaningful.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct VCardDiff {
+    /// Lines in the newer version that were not in the older one.
+    pub added: Vec<String>,
+    /// Lines in the older version that are gone in the newer one.
+    pub removed: Vec<String>,
+}
+
+/// Compute the line-level content diff from `old` to `new`. Blank lines are
+/// ignored. Duplicate identical lines collapse (a property set, not a multiset).
+pub fn diff_vcards(old: &str, new: &str) -> VCardDiff {
+    use std::collections::BTreeSet;
+    let lines = |s: &str| -> BTreeSet<String> {
+        s.lines()
+            .map(str::trim_end)
+            .filter(|l| !l.is_empty())
+            .map(str::to_owned)
+            .collect()
+    };
+    let old_set = lines(old);
+    let new_set = lines(new);
+    VCardDiff {
+        added: new_set.difference(&old_set).cloned().collect(),
+        removed: old_set.difference(&new_set).cloned().collect(),
+    }
+}
+
 pub struct ContactVersionRepo<'a> {
     pool: &'a DbPool,
 }
@@ -108,5 +140,43 @@ impl<'a> ContactVersionRepo<'a> {
         .ok_or(ContactsError::VersionNotFound(version_no))?;
         tx.commit().await?;
         Ok(row)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::diff_vcards;
+
+    #[test]
+    fn diff_detects_changed_property() {
+        let old = "BEGIN:VCARD\nFN:Alice\nTEL:111\nEND:VCARD";
+        let new = "BEGIN:VCARD\nFN:Alice\nTEL:222\nEND:VCARD";
+        let d = diff_vcards(old, new);
+        assert_eq!(d.added, vec!["TEL:222".to_string()]);
+        assert_eq!(d.removed, vec!["TEL:111".to_string()]);
+    }
+
+    #[test]
+    fn diff_detects_added_and_removed() {
+        let old = "FN:Alice\nORG:Acme";
+        let new = "FN:Alice\nEMAIL:a@x.com";
+        let d = diff_vcards(old, new);
+        assert_eq!(d.added, vec!["EMAIL:a@x.com".to_string()]);
+        assert_eq!(d.removed, vec!["ORG:Acme".to_string()]);
+    }
+
+    #[test]
+    fn diff_identical_is_empty() {
+        let s = "BEGIN:VCARD\nFN:Bob\nEND:VCARD";
+        let d = diff_vcards(s, s);
+        assert!(d.added.is_empty() && d.removed.is_empty());
+    }
+
+    #[test]
+    fn diff_ignores_blank_lines_and_trailing_ws() {
+        let old = "FN:Bob\n\nTEL:1   ";
+        let new = "FN:Bob\nTEL:1";
+        let d = diff_vcards(old, new);
+        assert!(d.added.is_empty() && d.removed.is_empty());
     }
 }
