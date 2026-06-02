@@ -13,6 +13,7 @@
 
 mod auth;
 mod calsync;
+mod consync;
 mod foldersync;
 mod ping;
 mod provision;
@@ -118,6 +119,8 @@ async fn handle_command(
             // calendar, `con:` → contacts (later), else the bare-UUID mail path.
             let resp = if req.collection_id.starts_with("cal:") {
                 calsync::calendar_sync_response(&state, principal.tenant_id, &req).await
+            } else if req.collection_id.starts_with("con:") {
+                consync::contacts_sync_response(&state, principal.tenant_id, &req).await
             } else {
                 sync::sync_response(&state, principal.user_id, principal.tenant_id, device, &req)
                     .await
