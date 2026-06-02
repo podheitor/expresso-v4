@@ -11,6 +11,7 @@
 mod config;
 mod error;
 mod handlers;
+mod internal_auth;
 mod kc_admin;
 mod metrics;
 mod oidc;
@@ -46,6 +47,25 @@ async fn ready() -> Json<Value> {
     Json(json!({"ready": true}))
 }
 
+/// The `/internal/*` routes, gated behind the shared-secret middleware. Called
+/// by the admin service over the internal network; the gate is defense-in-depth
+/// on top of network trust (no-op until `AUTH__INTERNAL_TOKEN` is set).
+fn internal_routes() -> Router<std::sync::Arc<AppState>> {
+    Router::new()
+        .route(
+            "/internal/tokens/introspect",
+            post(handlers::tokens::introspect),
+        )
+        .route("/internal/saml/idp-sync", post(handlers::saml_sync::sync))
+        .route(
+            "/internal/saml/idp-delete",
+            post(handlers::saml_sync::remove),
+        )
+        .route("/internal/ldap/sync", post(handlers::ldap_sync::sync))
+        .route("/internal/ldap/remove", post(handlers::ldap_sync::remove))
+        .layer(axum::middleware::from_fn(internal_auth::internal_auth_mw))
+}
+
 fn resolve_addr() -> anyhow::Result<SocketAddr> {
     let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port = env::var("PORT")
@@ -65,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     metrics::init();
+    internal_auth::warn_if_unset();
 
     let cfg = RpConfig::from_env()?;
 
@@ -208,17 +229,7 @@ async fn main() -> anyhow::Result<()> {
             post(handlers::tokens::create).get(handlers::tokens::list),
         )
         .route("/auth/tokens/:id", delete(handlers::tokens::revoke))
-        .route(
-            "/internal/tokens/introspect",
-            post(handlers::tokens::introspect),
-        )
-        .route("/internal/saml/idp-sync", post(handlers::saml_sync::sync))
-        .route(
-            "/internal/saml/idp-delete",
-            post(handlers::saml_sync::remove),
-        )
-        .route("/internal/ldap/sync", post(handlers::ldap_sync::sync))
-        .route("/internal/ldap/remove", post(handlers::ldap_sync::remove))
+        .merge(internal_routes())
         .route(
             "/auth/saml/idp-template/:alias/metadata",
             get(handlers::saml_sync::idp_metadata),

@@ -82,24 +82,39 @@ pub async fn create(
     };
     let pool = pool(&st)?;
 
+    // 32 random bytes, base64url; only sha256 persists. Prefix marks it a PAT.
+    let mut raw = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut raw);
+    let token = format!("ept_{}", URL_SAFE_NO_PAD.encode(raw));
+    let token_hash = format!("{:x}", Sha256::digest(token.as_bytes()));
+
+    // Enforce the per-user cap without a TOCTOU race. A per-(tenant,user)
+    // transaction-scoped advisory lock serialises concurrent create requests for
+    // the same user, so the count-then-insert can't be raced past the cap (the
+    // previous check-then-insert let concurrent requests exceed MAX_TOKENS_PER_USER).
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, $2))")
+        .bind(format!("{}:{}", ctx.tenant_id, ctx.user_id))
+        .bind(0x70_61_74_5f_63_61_70_i64) // "pat_cap" namespace salt
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM api_tokens \
           WHERE tenant_id = $1 AND user_id = $2 AND revoked_at IS NULL",
     )
     .bind(ctx.tenant_id)
     .bind(ctx.user_id)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
     if count >= MAX_TOKENS_PER_USER {
         return Err(err(StatusCode::CONFLICT, "token limit reached"));
     }
-
-    // 32 random bytes, base64url; only sha256 persists. Prefix marks it a PAT.
-    let mut raw = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut raw);
-    let token = format!("ept_{}", URL_SAFE_NO_PAD.encode(raw));
-    let token_hash = format!("{:x}", Sha256::digest(token.as_bytes()));
 
     let id: Uuid = sqlx::query_scalar(
         "INSERT INTO api_tokens (tenant_id, user_id, name, token_hash, expires_at) \
@@ -110,9 +125,12 @@ pub async fn create(
     .bind(name)
     .bind(&token_hash)
     .bind(expires_at)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    tx.commit()
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
 
     Ok((
         StatusCode::CREATED,

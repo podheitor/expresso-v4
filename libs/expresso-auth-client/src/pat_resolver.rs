@@ -62,10 +62,19 @@ impl PatResolver {
     /// must not authenticate).
     pub async fn resolve(&self, token: &str, now_unix: i64) -> Result<AuthContext, AuthError> {
         let url = format!("{}/internal/tokens/introspect", self.auth_url);
-        let resp = self
+        let mut req = self
             .http
             .post(&url)
-            .json(&serde_json::json!({ "token": token }))
+            .json(&serde_json::json!({ "token": token }));
+        // Present the shared secret when configured so the auth service's
+        // /internal/* gate accepts the call (no-op when unset on both sides).
+        if let Ok(secret) = std::env::var("AUTH__INTERNAL_TOKEN") {
+            let secret = secret.trim();
+            if !secret.is_empty() {
+                req = req.header("x-internal-token", secret);
+            }
+        }
+        let resp = req
             .send()
             .await
             .map_err(|e| AuthError::InvalidToken(format!("pat introspect failed: {e}")))?;
