@@ -1249,6 +1249,7 @@ async fn unified_search_page(
     let p_cal = format!("/api/v1/calendars/events/search?q={enc}&limit=6");
     let p_con = format!("/api/v1/contacts/search?q={enc}&limit=6");
     let p_chat = format!("/api/v1/messages/search?q={enc}&limit=6");
+    let p_notes = format!("/api/v1/notes/search?q={enc}&limit=6");
 
     let mail = search_source(
         &st,
@@ -1301,8 +1302,18 @@ async fn unified_search_page(
             (!cid.is_empty()).then(|| format!("/chat/channels/{cid}"))
         },
     );
+    let notes = search_source(
+        &st,
+        &st.backends.notes,
+        &p_notes,
+        &headers,
+        ctx,
+        &["title", "body"],
+        |r| Some(format!("/notes?id={}", str_field(r, "id"))),
+    );
     // Federate concurrently — one slow backend doesn't serialise the rest.
-    let (mail, drive, cal, contacts, chat) = tokio::join!(mail, drive, cal, contacts, chat);
+    let (mail, drive, cal, contacts, chat, notes) =
+        tokio::join!(mail, drive, cal, contacts, chat, notes);
 
     let groups = vec![
         SearchGroup {
@@ -1329,6 +1340,11 @@ async fn unified_search_page(
             label: "Chat".into(),
             icon: "💬".into(),
             hits: chat,
+        },
+        SearchGroup {
+            label: "Notas".into(),
+            icon: "📝".into(),
+            hits: notes,
         },
     ];
     let total: usize = groups.iter().map(|g| g.hits.len()).sum();
