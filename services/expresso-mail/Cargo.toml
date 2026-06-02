@@ -47,6 +47,7 @@ expresso-observability = { workspace = true }
 expresso-mail-auth   = { path = "../../libs/expresso-mail-auth", package = "expresso-mail-auth" }
 expresso-storage = { path = "../../libs/expresso-storage", package = "expresso-storage" }
 expresso-auth-client = { path = "../../libs/expresso-auth-client", package = "expresso-auth-client" }
+expresso-wbxml = { path = "../../libs/expresso-wbxml", package = "expresso-wbxml" }
 sqlx = { workspace = true }
 
 [features]
@@ -58,6 +59,7 @@ optional = true
 
 [dev-dependencies]
 tokio-test = "0.4"
+serde_urlencoded = "0.7"
 
 [package.metadata.cargo-machete]
 # Used via macros/features/lib-rename that machete's source scan can't see.

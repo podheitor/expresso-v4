@@ -132,6 +132,10 @@ pub struct MailServerConfig {
     /// POP3S port (implicit TLS, RFC 8314)
     #[serde(default = "default_pop3s_port")]
     pub pop3s_port: u16,
+    /// Enable the Exchange ActiveSync (EAS) endpoint on the HTTP server.
+    /// Default off — opt-in while the protocol implementation matures.
+    #[serde(default)]
+    pub activesync_enabled: bool,
     /// Outbound relay host (submission)
     #[serde(default = "default_relay_host")]
     pub relay_host: String,

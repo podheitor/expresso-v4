@@ -45,11 +45,15 @@ async fn http_metrics_middleware(req: Request, next: Next) -> Response {
 }
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let mut base = Router::new()
         .merge(health::routes())
         .merge(expresso_observability::metrics_router())
-        .nest("/api/v1", api_routes(state.clone()))
-        .layer(middleware::from_fn(http_metrics_middleware))
+        .nest("/api/v1", api_routes(state.clone()));
+    // ActiveSync lives at a fixed protocol path (not under /api/v1); opt-in.
+    if state.cfg().mail_server.activesync_enabled {
+        base = base.merge(crate::eas::routes());
+    }
+    base.layer(middleware::from_fn(http_metrics_middleware))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         .layer(

@@ -12,6 +12,7 @@
 mod api;
 mod bootstrap;
 mod dkim;
+mod eas;
 mod error;
 #[cfg(feature = "fuzzing")]
 pub mod fuzz_entry;
