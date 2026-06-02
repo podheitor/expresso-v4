@@ -22,10 +22,10 @@
 <section class="card">
   <h2>Faturas</h2>
   <table class="grid">
-    <thead><tr><th>Período</th><th>Plano</th><th>Valor</th><th>Status</th></tr></thead>
+    <thead><tr><th>Período</th><th>Plano</th><th>Valor</th><th>Status</th><th>Fatura</th></tr></thead>
     <tbody>
       {% if invoices.is_empty() %}
-        <tr><td colspan="4" class="hint">Nenhuma fatura emitida ainda.</td></tr>
+        <tr><td colspan="5" class="hint">Nenhuma fatura emitida ainda.</td></tr>
       {% else %}
         {% for inv in invoices %}
         <tr>
@@ -33,6 +33,7 @@
           <td><code>{{ inv.plan }}</code></td>
           <td>{{ inv.currency }} {{ inv.amount }}</td>
           <td>{{ inv.status }}</td>
+          <td><a href="/my-billing/invoices/{{ inv.id }}" target="_blank">🧾 Ver / PDF</a></td>
         </tr>
         {% endfor %}
       {% endif %}

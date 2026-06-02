@@ -1,0 +1,67 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8">
+<title>Fatura {{ period }} — {{ tenant_name }}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body { font-family: system-ui, sans-serif; color: #1a1a1a; max-width: 48rem;
+         margin: 2rem auto; padding: 0 1.5rem; line-height: 1.5; }
+  header { display: flex; justify-content: space-between; align-items: flex-start;
+           border-bottom: 2px solid #1a1a1a; padding-bottom: 1rem; margin-bottom: 1.5rem; }
+  .brand { font-size: 1.4rem; font-weight: 700; }
+  .doc-title { text-align: right; }
+  .doc-title h1 { margin: 0; font-size: 1.6rem; }
+  .meta { color: #555; font-size: .9rem; }
+  table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; }
+  th, td { text-align: left; padding: .6rem .4rem; border-bottom: 1px solid #ddd; }
+  th { color: #555; font-weight: 600; }
+  .amount { text-align: right; font-variant-numeric: tabular-nums; }
+  .total td { font-size: 1.2rem; font-weight: 700; border-bottom: none;
+              border-top: 2px solid #1a1a1a; }
+  .status { display: inline-block; padding: .15rem .6rem; border-radius: 1rem;
+            font-size: .85rem; font-weight: 600; text-transform: uppercase; }
+  .status.paid { background: #e6f4ea; color: #1e7a34; }
+  .status.pending { background: #fef4e0; color: #9a6700; }
+  .status.void { background: #f1f1f1; color: #777; text-decoration: line-through; }
+  footer { margin-top: 2.5rem; color: #777; font-size: .85rem; }
+  .print-btn { margin-bottom: 1rem; }
+  @media print { .print-btn { display: none; } body { margin: 0; } }
+</style>
+</head><body>
+<button class="print-btn" onclick="window.print()">🖨 Imprimir / Salvar PDF</button>
+<header>
+  <div class="brand">Expresso</div>
+  <div class="doc-title">
+    <h1>Fatura</h1>
+    <div class="meta">{{ period }}</div>
+    <div class="meta">Nº {{ invoice_id }}</div>
+  </div>
+</header>
+
+<p><strong>Cobrança para:</strong> {{ tenant_name }}</p>
+<p class="meta">
+  Emitida em {{ issued_at }}
+  {% match paid_at %}{% when Some with (pd) %}· Paga em {{ pd }}{% when None %}{% endmatch %}
+</p>
+
+<table>
+  <thead><tr><th>Descrição</th><th>Plano</th><th class="amount">Valor</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Assinatura mensal Expresso — período {{ period }}</td>
+      <td><code>{{ plan }}</code></td>
+      <td class="amount">{{ currency }} {{ amount }}</td>
+    </tr>
+    <tr class="total">
+      <td colspan="2">Total</td>
+      <td class="amount">{{ currency }} {{ amount }}</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Status: <span class="status {{ status }}">{{ status }}</span></p>
+
+<footer>
+  Documento gerado pelo Expresso. Pagamento registrado pela equipe Expresso
+  (sem gateway externo). Em caso de dúvidas, contate o administrador da sua organização.
+</footer>
+</body></html>

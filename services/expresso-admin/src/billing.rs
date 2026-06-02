@@ -581,6 +581,118 @@ pub async fn my_page(State(st): State<Arc<AppState>>, headers: HeaderMap) -> Res
     }
 }
 
+// ─── Printable single invoice ────────────────────────────────────────────────
+
+/// A printable invoice document (one invoice, browser print-to-PDF friendly).
+#[derive(Template)]
+#[template(path = "invoice_print.html")]
+pub struct InvoicePrintTpl {
+    pub tenant_name: String,
+    pub invoice_id: String,
+    pub period: String,
+    pub plan: String,
+    pub amount: String,
+    pub currency: String,
+    pub status: String,
+    pub issued_at: String,
+    pub paid_at: Option<String>,
+}
+
+/// A row joining an invoice to its tenant name, for the printable document.
+#[derive(FromRow)]
+struct InvoiceDoc {
+    tenant_name: String,
+    id: uuid::Uuid,
+    period: time::OffsetDateTime,
+    plan: String,
+    amount_cents: i64,
+    currency: String,
+    status: String,
+    issued_at: time::OffsetDateTime,
+    paid_at: Option<time::OffsetDateTime>,
+}
+
+fn fmt_date(d: time::OffsetDateTime) -> String {
+    d.format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default()
+}
+
+/// GET /my-billing/invoices/:id — a printable invoice document, scoped to
+/// the caller's own tenant. The query carries an explicit `tenant_id = $2`
+/// (matching the principal) so a guessed invoice id from another tenant 404s.
+pub async fn invoice_print(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> Response {
+    let principal = auth::principal_for(&st, &headers).await;
+    // Super-admins have no single tenant; they use /billing.html. Tenant-admins
+    // are confined to their own tenant_id.
+    let tenant_filter = if auth::is_super_admin(&principal.roles) {
+        None
+    } else {
+        match principal.tenant_id {
+            Some(t) => Some(t),
+            None => {
+                return (axum::http::StatusCode::FORBIDDEN, "no tenant on principal")
+                    .into_response()
+            }
+        }
+    };
+    let Some(p) = st.db.as_ref() else {
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "db unavailable",
+        )
+            .into_response();
+    };
+
+    let doc: Option<InvoiceDoc> = sqlx::query_as(
+        "SELECT t.name AS tenant_name, i.id, i.period, i.plan, i.amount_cents, \
+                i.currency, i.status, i.issued_at, i.paid_at \
+         FROM billing_invoices i JOIN tenants t ON t.id = i.tenant_id \
+         WHERE i.id = $1 AND ($2::uuid IS NULL OR i.tenant_id = $2)",
+    )
+    .bind(id)
+    .bind(tenant_filter)
+    .fetch_optional(p)
+    .await
+    .unwrap_or_default();
+    let Some(d) = doc else {
+        return (axum::http::StatusCode::NOT_FOUND, "invoice not found").into_response();
+    };
+
+    let period = d
+        .period
+        .format(&time::format_description::parse("[year]-[month]").unwrap_or_else(|_| Vec::new()))
+        .unwrap_or_default();
+    match (InvoicePrintTpl {
+        tenant_name: d.tenant_name,
+        invoice_id: d.id.to_string(),
+        period,
+        plan: d.plan,
+        amount: money(d.amount_cents),
+        currency: d.currency,
+        status: d.status,
+        issued_at: fmt_date(d.issued_at),
+        paid_at: d.paid_at.map(fmt_date),
+    })
+    .render()
+    {
+        Ok(html) => (
+            axum::http::StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            html,
+        )
+            .into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("template: {e}"),
+        )
+            .into_response(),
+    }
+}
+
 /// Parse "49" / "49.9" / "49.90" into cents; None on garbage or negative.
 fn parse_price_to_cents(s: &str) -> Option<i64> {
     let s = s.trim().replace(',', ".");
