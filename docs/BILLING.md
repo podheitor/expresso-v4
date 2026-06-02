@@ -29,9 +29,32 @@ Tudo vive no serviço `expresso-admin`.
 As telas `/my-billing*` são acessíveis a qualquer admin e resolvem o tenant a
 partir da sessão (`/auth/me`), nunca de um id na URL.
 
+## Add-ons por uso (excedente)
+
+Além do preço-base fixo, cada plano tem uma **franquia** e um **preço de
+excedente** por dimensão:
+
+| Dimensão | Franquia | Excedente |
+| --- | --- | --- |
+| Usuários (seats) | `included_seats` | `seat_overage_cents` por usuário acima |
+| Armazenamento | `included_storage_gb` | `storage_overage_cents_per_gb` por GB acima |
+
+O armazenamento medido = soma de bytes de mailbox (`messages`) + arquivos vivos
+do Drive (`drive_files` não-deletados); GB são arredondados **para cima**. Seats
+= contagem de `users` do tenant.
+
+Na geração da fatura, o uso atual é medido e, quando excede a franquia **e** o
+preço de excedente é > 0, a fatura ganha linhas `seat_overage` /
+`storage_overage` além da linha `base`. O total da fatura
+(`billing_invoices.amount_cents`) é a soma das linhas; o detalhamento aparece na
+fatura imprimível. Deixe o excedente em 0 para um plano puramente fixo (default).
+
+Re-gerar um período **re-mede** o uso (idempotente por `(tenant, período)`).
+
 ## Definir preços
 
-Via tela (`/billing.html` → "Salvar" na linha do plano) ou via API:
+Via tela (`/billing.html` → colunas de preço-base, franquias e excedentes na
+linha do plano → "Salvar") ou via API:
 
 ```bash
 curl -X PUT https://admin.example/api/v1/admin/billing/plans/professional \
