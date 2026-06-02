@@ -581,6 +581,69 @@ pub async fn my_page(State(st): State<Arc<AppState>>, headers: HeaderMap) -> Res
     }
 }
 
+/// GET /my-billing/invoices.csv — the caller's own-tenant invoice history as
+/// CSV (RFC 4180, formula-injection-safe via `audit::csv_escape`). Scoped to the
+/// principal's tenant; super-admins (no single tenant) get a 403 pointing at the
+/// per-tenant admin screen.
+pub async fn my_invoices_csv(State(st): State<Arc<AppState>>, headers: HeaderMap) -> Response {
+    let principal = auth::principal_for(&st, &headers).await;
+    let Some(tid) = principal.tenant_id else {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            "no tenant on principal — super-admins use /billing.html",
+        )
+            .into_response();
+    };
+    let Some(p) = st.db.as_ref() else {
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "db unavailable",
+        )
+            .into_response();
+    };
+
+    let invoices: Vec<Invoice> = sqlx::query_as(
+        "SELECT id, tenant_id, period, plan, amount_cents, currency, status \
+         FROM billing_invoices WHERE tenant_id = $1 ORDER BY period DESC",
+    )
+    .bind(tid)
+    .fetch_all(p)
+    .await
+    .unwrap_or_default();
+
+    let mut buf = String::with_capacity(invoices.len() * 64 + 64);
+    buf.push_str("period,plan,amount,currency,status\r\n");
+    for i in invoices {
+        let row = invoice_row(i);
+        buf.push_str(&crate::audit::csv_escape(&row.period));
+        buf.push(',');
+        buf.push_str(&crate::audit::csv_escape(&row.plan));
+        buf.push(',');
+        buf.push_str(&crate::audit::csv_escape(&row.amount));
+        buf.push(',');
+        buf.push_str(&crate::audit::csv_escape(&row.currency));
+        buf.push(',');
+        buf.push_str(&crate::audit::csv_escape(&row.status));
+        buf.push_str("\r\n");
+    }
+
+    (
+        axum::http::StatusCode::OK,
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "text/csv; charset=utf-8".to_string(),
+            ),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                "attachment; filename=\"invoices.csv\"".to_string(),
+            ),
+        ],
+        buf,
+    )
+        .into_response()
+}
+
 // ─── Printable single invoice ────────────────────────────────────────────────
 
 /// A printable invoice document (one invoice, browser print-to-PDF friendly).

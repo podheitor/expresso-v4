@@ -183,6 +183,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/billing.html", get(billing::page))
         .route("/my-billing.html", get(billing::my_page))
+        .route("/my-billing/invoices.csv", get(billing::my_invoices_csv))
         .route("/my-billing/invoices/:id", get(billing::invoice_print))
         .route("/billing/price", post(billing::set_price_action))
         .route("/billing/generate", post(billing::generate_action))

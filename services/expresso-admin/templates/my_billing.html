@@ -21,6 +21,9 @@
 
 <section class="card">
   <h2>Faturas</h2>
+  {% if !invoices.is_empty() %}
+  <p><a href="/my-billing/invoices.csv">⬇ Exportar histórico (CSV)</a></p>
+  {% endif %}
   <table class="grid">
     <thead><tr><th>Período</th><th>Plano</th><th>Valor</th><th>Status</th><th>Fatura</th></tr></thead>
     <tbody>

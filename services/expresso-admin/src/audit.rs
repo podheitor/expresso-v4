@@ -470,7 +470,7 @@ pub async fn purge(
 /// um atacante que controle qualquer campo do audit (action, resource,
 /// metadata) consegue executar fórmulas — incluindo HYPERLINK pra exfiltrar
 /// dados — quando um super_admin abre o CSV exportado.
-fn csv_escape(f: &str) -> String {
+pub(crate) fn csv_escape(f: &str) -> String {
     let starts_dangerous = f
         .as_bytes()
         .first()
