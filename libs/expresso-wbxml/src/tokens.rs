@@ -13,9 +13,20 @@ pub mod page {
     pub const CALENDAR: u8 = 4;
     pub const FOLDER_HIERARCHY: u8 = 7;
     pub const CONTACTS: u8 = 1;
+    pub const GET_ITEM_ESTIMATE: u8 = 6;
     pub const PING: u8 = 13;
     pub const PROVISION: u8 = 14;
     pub const AIR_SYNC_BASE: u8 = 17;
+}
+
+/// GetItemEstimate (page 6) tokens — pre-Sync item count (subset).
+pub mod item_estimate {
+    pub const GET_ITEM_ESTIMATE: u8 = 0x05;
+    pub const RESPONSE: u8 = 0x07;
+    pub const STATUS: u8 = 0x08;
+    pub const COLLECTION: u8 = 0x09;
+    pub const COLLECTION_ID: u8 = 0x0C;
+    pub const ESTIMATE: u8 = 0x0D;
 }
 
 /// Calendar (page 4) tokens — Sync ApplicationData for calendar items (subset).
@@ -158,6 +169,7 @@ mod tests {
         assert_eq!(page::CONTACTS, 1);
         assert_eq!(page::EMAIL, 2);
         assert_eq!(page::CALENDAR, 4);
+        assert_eq!(page::GET_ITEM_ESTIMATE, 6);
         assert_eq!(page::FOLDER_HIERARCHY, 7);
         assert_eq!(page::PING, 13);
         assert_eq!(page::PROVISION, 14);

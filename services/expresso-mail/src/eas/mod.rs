@@ -15,6 +15,7 @@ mod auth;
 mod calsync;
 mod consync;
 mod foldersync;
+mod itemestimate;
 mod ping;
 mod provision;
 mod sendmail;
@@ -147,9 +148,22 @@ async fn handle_command(
                 }
             }
         }
+        "GetItemEstimate" => {
+            let ids = itemestimate::parse_collection_ids(&body);
+            let device = q.device_id.as_deref().unwrap_or("default");
+            let resp = itemestimate::item_estimate_response(
+                &state,
+                principal.tenant_id,
+                principal.user_id,
+                device,
+                &ids,
+            )
+            .await;
+            wbxml_ok(resp)
+        }
         // Implemented in later sprints; return 501 with a clear status so a
         // client doesn't treat an empty 200 as a malformed response.
-        "GetItemEstimate" | "ItemOperations" => {
+        "ItemOperations" => {
             warn!(cmd = %cmd, "EAS command not yet implemented");
             (
                 StatusCode::NOT_IMPLEMENTED,
