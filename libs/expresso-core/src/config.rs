@@ -141,6 +141,16 @@ pub struct MailServerConfig {
     /// Default off — opt-in while the protocol implementation matures.
     #[serde(default)]
     pub activesync_enabled: bool,
+    /// EAS device policy: require a device PIN/password. Default true.
+    #[serde(default = "default_true")]
+    pub activesync_require_pin: bool,
+    /// EAS device policy: minimum PIN length. Default 4.
+    #[serde(default = "default_pin_len")]
+    pub activesync_min_pin_len: u32,
+    /// EAS device policy: local-wipe after this many failed PIN attempts.
+    /// Default 8.
+    #[serde(default = "default_max_pin_failures")]
+    pub activesync_max_pin_failures: u32,
     /// Outbound relay host (submission)
     #[serde(default = "default_relay_host")]
     pub relay_host: String,
@@ -215,6 +225,15 @@ fn default_pop3_port() -> u16 {
 }
 fn default_pop3s_port() -> u16 {
     995
+}
+fn default_true() -> bool {
+    true
+}
+fn default_pin_len() -> u32 {
+    4
+}
+fn default_max_pin_failures() -> u32 {
+    8
 }
 fn default_relay_host() -> String {
     "127.0.0.1".into()

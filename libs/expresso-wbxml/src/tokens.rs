@@ -133,6 +133,13 @@ pub mod provision {
     pub const POLICY_KEY: u8 = 0x09;
     pub const STATUS: u8 = 0x0B;
     pub const DATA: u8 = 0x0A;
+    // EAS provision-doc policy settings (MS-ASWBXML Provision page, 14.x set).
+    pub const EAS_PROVISION_DOC: u8 = 0x12;
+    pub const DEVICE_PASSWORD_ENABLED: u8 = 0x13;
+    pub const ALPHANUMERIC_PWD_REQUIRED: u8 = 0x14;
+    pub const MIN_DEVICE_PASSWORD_LENGTH: u8 = 0x1B;
+    pub const MAX_PASSWORD_FAILED_ATTEMPTS: u8 = 0x1C;
+    pub const ALLOW_SIMPLE_DEVICE_PASSWORD: u8 = 0x22;
 }
 
 /// Email (page 2) tokens — used by mail Sync ApplicationData (subset).

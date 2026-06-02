@@ -103,7 +103,15 @@ async fn handle_command(
     );
 
     match cmd {
-        "Provision" => wbxml_ok(provision::provision_response()),
+        "Provision" => {
+            let cfg = &state.cfg().mail_server;
+            let policy = provision::DevicePolicy {
+                require_pin: cfg.activesync_require_pin,
+                min_pin_len: cfg.activesync_min_pin_len,
+                max_pin_failures: cfg.activesync_max_pin_failures,
+            };
+            wbxml_ok(provision::provision_response(policy))
+        }
         "FolderSync" => {
             let key = foldersync::parse_sync_key(&body);
             let resp = foldersync::foldersync_response(
