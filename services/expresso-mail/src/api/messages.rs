@@ -1106,7 +1106,7 @@ async fn head_message_raw(
         .into_response())
 }
 
-async fn fetch_body_bytes_api(state: &AppState, body_path: &str) -> Option<Vec<u8>> {
+pub(crate) async fn fetch_body_bytes_api(state: &AppState, body_path: &str) -> Option<Vec<u8>> {
     if let Some(idx) = body_path
         .strip_prefix("s3://")
         .and_then(|s| s.find('/').map(|i| "s3://".len() + i + 1))

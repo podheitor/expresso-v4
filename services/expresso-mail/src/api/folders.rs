@@ -6,6 +6,7 @@
 //! endpoint vazava mailboxes de todos os tenants (RLS no schema é NULL-bypass).
 
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
@@ -60,6 +61,7 @@ pub fn routes() -> Router<AppState> {
             axum::routing::post(undo_folder_rename),
         )
         .route("/mail/folders/:id/stats", get(folder_stats_by_id))
+        .route("/mail/folders/:id/export.mbox", get(export_folder_mbox))
         .route(
             "/mail/folders/:name",
             axum::routing::patch(rename_folder).delete(delete_folder),
@@ -1592,6 +1594,104 @@ async fn folder_stats_by_id(
     })))
 }
 
+/// Cap on messages exported in one mbox download. The archive is assembled in
+/// memory, so this bounds the response; a larger folder is truncated (newest
+/// kept) — fine for backup/migration, and clients can page by date if needed.
+const MAX_MBOX_MESSAGES: i64 = 5000;
+
+/// Wrap one raw RFC 822 message as an mbox entry (RFC 4155): a `From ` separator
+/// line, then the message with any body line beginning `From ` `>`-quoted so the
+/// separator stays unambiguous on re-import. `\r\n` is normalised to `\n`.
+fn mbox_frame(out: &mut String, sender: &str, raw: &[u8]) {
+    // mboxrd-style separator; the date is cosmetic, the `From ` prefix is what matters.
+    out.push_str("From ");
+    out.push_str(if sender.is_empty() {
+        "MAILER-DAEMON"
+    } else {
+        sender
+    });
+    out.push_str(" Thu Jan  1 00:00:00 1970\n");
+    let text = String::from_utf8_lossy(raw);
+    for line in text.split_inclusive('\n') {
+        let line = line.strip_suffix('\n').unwrap_or(line);
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        // mboxrd quoting: a run of leading `>` followed by `From ` gets one more `>`.
+        let trimmed = line.trim_start_matches('>');
+        if trimmed.starts_with("From ") {
+            out.push('>');
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.push('\n'); // blank line terminates the entry
+}
+
+/// GET /api/v1/mail/folders/:id/export.mbox — download a folder as a single
+/// mbox file (RFC 4155), one entry per message, newest first. Owner-scoped:
+/// the mailbox must belong to the caller (404 otherwise). Capped at
+/// MAX_MBOX_MESSAGES. Mirrors the export endpoints of contacts/calendar/notes.
+async fn export_folder_mbox(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    // Resolve + ownership-check the folder, and pull each message's body path
+    // and From address in one owner-scoped query.
+    let folder: Option<(String,)> = sqlx::query_as(
+        "SELECT folder_name FROM mailboxes \
+         WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let (folder_name,) = folder.ok_or(MailError::NotFound)?;
+
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT m.body_path, m.from_addr \
+         FROM messages m \
+         WHERE m.mailbox_id = $1 AND m.tenant_id = $2 \
+         ORDER BY m.received_at DESC, m.id DESC \
+         LIMIT $3",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(MAX_MBOX_MESSAGES)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let mut out = String::new();
+    for (body_path, from_addr) in &rows {
+        if let Some(raw) = crate::api::messages::fetch_body_bytes_api(&state, body_path).await {
+            mbox_frame(&mut out, from_addr.as_deref().unwrap_or(""), &raw);
+        }
+    }
+
+    let safe: String = folder_name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let cd = format!("attachment; filename=\"{safe}.mbox\"");
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/mbox".to_string()),
+            (header::CONTENT_DISPOSITION, cd),
+        ],
+        Body::from(out),
+    )
+        .into_response())
+}
+
 /// Reject names that would confuse IMAP hierarchy or SQL injection via folder_name
 /// interpolation in legacy code paths. Keeps folders safe for IMAP LIST patterns.
 fn validate_folder_name(name: &str) -> Result<()> {
@@ -1615,6 +1715,26 @@ mod tests {
     #[test]
     fn valid_folder_name_passes() {
         assert!(validate_folder_name("Work Projects").is_ok());
+    }
+
+    #[test]
+    fn mbox_frame_adds_separator_and_blank_line() {
+        let mut out = String::new();
+        mbox_frame(&mut out, "alice@ex.com", b"Subject: hi\r\n\r\nbody\r\n");
+        assert!(out.starts_with("From alice@ex.com "));
+        assert!(out.contains("\nSubject: hi\n\nbody\n"));
+        assert!(out.ends_with("\n\n")); // entry terminated by blank line
+    }
+
+    #[test]
+    fn mbox_frame_quotes_body_from_lines() {
+        let mut out = String::new();
+        mbox_frame(&mut out, "", b"H: x\n\nFrom the start\n>From already\n");
+        // A body line beginning "From " is >-quoted; an existing >From gets another >.
+        assert!(out.contains("\n>From the start\n"));
+        assert!(out.contains("\n>>From already\n"));
+        // Empty sender falls back to MAILER-DAEMON.
+        assert!(out.starts_with("From MAILER-DAEMON "));
     }
 
     #[test]
