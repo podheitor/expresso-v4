@@ -157,6 +157,8 @@ pub mod air_sync_base {
     pub const ESTIMATED_DATA_SIZE: u8 = 0x0C;
     pub const TRUNCATED: u8 = 0x0D;
     pub const NATIVE_BODY_TYPE: u8 = 0x16;
+    pub const FILE_REFERENCE: u8 = 0x0E;
+    pub const CONTENT_TYPE: u8 = 0x0F;
 }
 
 /// Resolve `(page, token)` to a human-readable `Page:Tag` name, or `None` when
