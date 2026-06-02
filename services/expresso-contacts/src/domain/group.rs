@@ -98,7 +98,12 @@ impl<'a> ContactGroupRepo<'a> {
     }
 
     /// Owner-scoped read: a non-owner gets RowNotFound (groups are not shared).
-    pub async fn get(&self, tenant_id: Uuid, owner_user_id: Uuid, id: Uuid) -> Result<ContactGroup> {
+    pub async fn get(
+        &self,
+        tenant_id: Uuid,
+        owner_user_id: Uuid,
+        id: Uuid,
+    ) -> Result<ContactGroup> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, ContactGroup>(
             r#"SELECT * FROM contact_groups
