@@ -13,6 +13,7 @@ mod stream;
 mod tasks;
 mod users;
 mod wellknown;
+mod working_hours;
 
 use axum::Router;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
@@ -35,6 +36,7 @@ pub fn router(state: AppState) -> Router {
         .merge(tasks::routes())
         .merge(users::routes())
         .merge(wellknown::routes())
+        .merge(working_hours::routes())
         .layer(CorsLayer::permissive());
 
     // CalDAV: ≠ passa por CorsLayer (senão OPTIONS é sequestrado
