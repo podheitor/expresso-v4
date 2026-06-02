@@ -2,8 +2,10 @@
 //!
 //! A task belongs to a calendar and inherits its tenant + ACL. Storage is
 //! `calendar_tasks` (RLS by `app.tenant_id`). The repo mirrors `EventRepo`:
-//! `begin_tenant_tx` for tenant scoping, `RETURNING *` for round-trips. CalDAV
-//! VTODO serialization is a later slice; this layer is REST-first.
+//! `begin_tenant_tx` for tenant scoping, `RETURNING *` for round-trips. Tasks
+//! serialize to/from CalDAV VTODO via [`Task::to_ical`] + the CalDAV upsert
+//! (`replace_by_uid`); the CalDAV PROPFIND/REPORT paths already serve them, so
+//! VTODO is first-class alongside the REST API.
 
 use expresso_core::{begin_tenant_tx, DbPool};
 use serde::{Deserialize, Serialize};
