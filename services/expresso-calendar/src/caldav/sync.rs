@@ -25,6 +25,12 @@ use crate::state::AppState;
 
 const TOKEN_PREFIX: &str = "urn:expresso:ctag:";
 
+/// Cap on rows emitted per sync-collection delta query (changed set and
+/// tombstone set each). Bounds the response a client can pull with an old token
+/// against a calendar with a huge change history. A client that hits the cap
+/// keeps an older token and re-syncs to drain the rest (RFC 6578 partial sync).
+const MAX_SYNC_ROWS: i64 = 5000;
+
 pub async fn handle(
     state: AppState,
     principal: &CalDavPrincipal,
@@ -51,11 +57,23 @@ pub async fn handle(
         return Ok(ok_207(out));
     }
 
+    // The token we will hand back. Normally the collection's current ctag, but a
+    // capped (partial) delta lowers it to the last row emitted so the client
+    // re-syncs the remainder rather than skipping it.
+    let mut effective_token = new_token.clone();
+
     match client_ctag {
         // Incremental delta since last known ctag.
         Some(from) if from < current_ctag => {
-            write_changed_since(&mut out, pool, principal, calendar_id, from).await?;
-            write_tombstones_since(&mut out, pool, principal, calendar_id, from).await?;
+            let partial = write_changed_since(&mut out, pool, principal, calendar_id, from).await?;
+            match partial {
+                // Cap hit: advance only to the last emitted change; defer
+                // tombstones to the next round (the next from-ctag covers them).
+                Some(last) => effective_token = format!("{TOKEN_PREFIX}{last}"),
+                None => {
+                    write_tombstones_since(&mut out, pool, principal, calendar_id, from).await?;
+                }
+            }
         }
         // Token from the future — calendar was restored/rolled back; client must
         // restart. RFC 6578 §3.7 mandates 410 Gone with the new current token so
@@ -85,41 +103,50 @@ pub async fn handle(
         }
     }
 
-    push_token(&mut out, &new_token);
+    push_token(&mut out, &effective_token);
     Ok(ok_207(out))
 }
 
+/// Emit changed members since `from_ctag`. Capped at `MAX_SYNC_ROWS`; when the
+/// cap is hit, returns `Some(last_ctag_emitted)` so the caller advances the sync
+/// token only to that point (partial sync) instead of to the collection's
+/// current ctag — otherwise the client would skip the un-emitted tail.
 async fn write_changed_since(
     out: &mut String,
     pool: &DbPool,
     principal: &CalDavPrincipal,
     calendar_id: Uuid,
     from_ctag: i64,
-) -> Result<()> {
+) -> Result<Option<i64>> {
     let mut tx = begin_tenant_tx(pool, principal.tenant_id).await?;
     let rows = sqlx::query(
         r#"
-        SELECT uid, etag
+        SELECT uid, etag, last_ctag
           FROM calendar_events
          WHERE tenant_id = $1
            AND calendar_id = $2
            AND last_ctag > $3
          ORDER BY last_ctag
+         LIMIT $4
         "#,
     )
     .bind(principal.tenant_id)
     .bind(calendar_id)
     .bind(from_ctag)
+    .bind(MAX_SYNC_ROWS)
     .fetch_all(&mut *tx)
     .await?;
     tx.commit().await?;
 
+    let truncated = rows.len() as i64 == MAX_SYNC_ROWS;
+    let mut last_emitted = from_ctag;
     for r in rows {
         let uid: String = r.get("uid");
         let etag: String = r.get("etag");
+        last_emitted = r.get("last_ctag");
         push_member(out, principal.user_id, calendar_id, &uid, &etag);
     }
-    Ok(())
+    Ok(truncated.then_some(last_emitted))
 }
 
 async fn write_tombstones_since(
@@ -138,11 +165,13 @@ async fn write_tombstones_since(
            AND calendar_id = $2
            AND deleted_ctag > $3
          ORDER BY deleted_ctag
+         LIMIT $4
         "#,
     )
     .bind(principal.tenant_id)
     .bind(calendar_id)
     .bind(from_ctag)
+    .bind(MAX_SYNC_ROWS)
     .fetch_all(&mut *tx)
     .await?;
     tx.commit().await?;

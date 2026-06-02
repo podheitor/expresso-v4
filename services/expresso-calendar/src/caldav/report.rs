@@ -17,6 +17,15 @@ use crate::domain::{EventQuery, EventRepo, TaskRepo};
 use crate::error::Result;
 use crate::state::AppState;
 
+/// Cap on objects fetched by one calendar-multiget REPORT. Bounds the IN-list
+/// query size and response buffer; RFC 4791 allows returning a subset.
+const MAX_MULTIGET_UIDS: usize = 2000;
+
+/// Explicit result cap for calendar-query (the request carries no limit of its
+/// own). Matches EventRepo's internal clamp; applied here so the cap is visible
+/// at the REPORT layer and bounds the built response.
+const MAX_QUERY_EVENTS: i64 = 5000;
+
 pub async fn handle(
     state: AppState,
     principal: CalDavPrincipal,
@@ -78,6 +87,10 @@ async fn multiget(
         .collect();
     uids.sort();
     uids.dedup();
+    // Cap the multiget batch: a client asking for tens of thousands of hrefs in
+    // one REPORT would otherwise drive an unbounded IN-list query and response.
+    // RFC 4791 permits returning a subset; clients re-request the remainder.
+    uids.truncate(MAX_MULTIGET_UIDS);
 
     let pool = state.db_or_unavailable()?;
     let events = EventRepo::new(pool)
@@ -128,7 +141,7 @@ async fn query(
     let q = EventQuery {
         from: range.map(|(s, _)| s),
         to: range.map(|(_, e)| e),
-        limit: None,
+        limit: Some(MAX_QUERY_EVENTS),
     };
 
     let pool = state.db_or_unavailable()?;
@@ -238,7 +251,7 @@ async fn free_busy(
     let q = EventQuery {
         from: Some(from),
         to: Some(to),
-        limit: None,
+        limit: Some(MAX_QUERY_EVENTS),
     };
     let events = EventRepo::new(pool)
         .list(principal.tenant_id, calendar_id, &q)

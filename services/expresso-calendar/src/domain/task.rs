@@ -23,6 +23,12 @@ const MAX_DESCRIPTION_BYTES: usize = 64 * 1024;
 /// The four VTODO STATUS values we accept (RFC 5545 §3.8.1.11).
 const VALID_STATUS: [&str; 4] = ["NEEDS-ACTION", "IN-PROCESS", "COMPLETED", "CANCELLED"];
 
+/// Hard cap on tasks returned by a single collection listing. Well above any
+/// real per-calendar task count; bounds the memory a CalDAV REPORT / task list
+/// can build from one collection so a pathological calendar can't be used to
+/// exhaust the response buffer.
+const MAX_LIST_TASKS: i64 = 5000;
+
 /// A stored task.
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Task {
@@ -218,15 +224,19 @@ impl<'a> TaskRepo<'a> {
     }
 
     /// List a calendar's tasks, open ones first (status order), then by due.
+    /// Capped at `MAX_LIST_TASKS` so one collection can't drive an unbounded
+    /// response (CalDAV calendar-query has no result limit of its own).
     pub async fn list(&self, tenant: Uuid, calendar_id: Uuid) -> Result<Vec<Task>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows = sqlx::query_as::<_, Task>(
             r#"SELECT * FROM calendar_tasks
                 WHERE tenant_id = $1 AND calendar_id = $2
-                ORDER BY (status IN ('COMPLETED','CANCELLED')), due NULLS LAST, created_at"#,
+                ORDER BY (status IN ('COMPLETED','CANCELLED')), due NULLS LAST, created_at
+                LIMIT $3"#,
         )
         .bind(tenant)
         .bind(calendar_id)
+        .bind(MAX_LIST_TASKS)
         .fetch_all(&mut *tx)
         .await?;
         tx.commit().await?;

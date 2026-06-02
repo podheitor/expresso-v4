@@ -17,6 +17,14 @@ use crate::domain::ContactRepo;
 use crate::error::Result;
 use crate::state::AppState;
 
+/// Cap on objects fetched by one addressbook-multiget REPORT (bounds the IN-list
+/// query + response). RFC 6352 permits returning a subset.
+const MAX_MULTIGET_UIDS: usize = 2000;
+
+/// Result cap for an addressbook-query (the request carries no limit). Bounds the
+/// in-memory response built from one collection.
+const MAX_QUERY_CONTACTS: i64 = 5000;
+
 pub async fn handle(
     state: AppState,
     principal: CardDavPrincipal,
@@ -75,6 +83,9 @@ async fn multiget(
         .collect();
     uids.sort();
     uids.dedup();
+    // Cap the batch: a multiget asking for tens of thousands of hrefs would drive
+    // an unbounded IN-list query and response. RFC 6352 allows a subset.
+    uids.truncate(MAX_MULTIGET_UIDS);
 
     let pool = state.db_or_unavailable()?;
     let contacts = ContactRepo::new(pool)
@@ -106,7 +117,7 @@ async fn query(
     let filter = filter::parse(body);
     let pool = state.db_or_unavailable()?;
     let contacts = ContactRepo::new(pool)
-        .list(principal.tenant_id, addressbook_id)
+        .list_capped(principal.tenant_id, addressbook_id, MAX_QUERY_CONTACTS)
         .await?;
 
     let mut out = String::with_capacity(4096);

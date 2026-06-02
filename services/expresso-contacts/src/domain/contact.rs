@@ -122,6 +122,34 @@ impl<'a> ContactRepo<'a> {
         Ok(rows)
     }
 
+    /// Like [`list`](Self::list) but bounded to `limit` rows. Used by the CardDAV
+    /// REPORT/PROPFIND paths, which build the whole response in memory — a single
+    /// addressbook should not be able to drive an unbounded response. The
+    /// unbounded [`list`](Self::list) is kept for export, which must be complete.
+    pub async fn list_capped(
+        &self,
+        tenant_id: Uuid,
+        addressbook_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<Contact>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let rows = sqlx::query_as::<_, Contact>(
+            r#"
+            SELECT * FROM contacts
+             WHERE tenant_id = $1 AND addressbook_id = $2
+             ORDER BY COALESCE(full_name, uid)
+             LIMIT $3
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(addressbook_id)
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     /// Case-insensitive substring search across the denormalized name / email /
     /// organization columns, over ALL of the tenant's contacts (every
     /// addressbook). RLS + the explicit `tenant_id` filter keep it tenant-local;
