@@ -570,20 +570,29 @@ async fn apply_flow_actions(
                         serde_json::json!({ "message_id": message_id, "tenant_id": tenant_id });
                     let db = state.db().clone();
                     tokio::spawn(async move {
-                        // Capture the delivery outcome (was fire-and-forget) and
-                        // log it so a user can debug failing webhooks.
-                        let (status, ok, err) = match reqwest::Client::new()
-                            .post(&url)
-                            .json(&payload)
-                            .timeout(std::time::Duration::from_secs(5))
-                            .send()
-                            .await
+                        // SSRF guard: the URL comes from a user-authored flow rule.
+                        // Reject non-http(s) schemes and any host that resolves to a
+                        // loopback/link-local/private/ULA address (cloud metadata,
+                        // localhost, internal services) BEFORE making the request.
+                        let (status, ok, err) = if let Err(reason) = webhook_url_is_safe(&url).await
                         {
-                            Ok(resp) => {
-                                let code = resp.status().as_u16() as i32;
-                                (Some(code), resp.status().is_success(), None)
+                            (None, false, Some(reason))
+                        } else {
+                            // Capture the delivery outcome (was fire-and-forget) and
+                            // log it so a user can debug failing webhooks.
+                            match reqwest::Client::new()
+                                .post(&url)
+                                .json(&payload)
+                                .timeout(std::time::Duration::from_secs(5))
+                                .send()
+                                .await
+                            {
+                                Ok(resp) => {
+                                    let code = resp.status().as_u16() as i32;
+                                    (Some(code), resp.status().is_success(), None)
+                                }
+                                Err(e) => (None, false, Some(e.to_string())),
                             }
-                            Err(e) => (None, false, Some(e.to_string())),
                         };
                         let res = sqlx::query(
                             "INSERT INTO flow_webhook_log \
@@ -688,6 +697,70 @@ async fn apply_flow_actions(
             other => tracing::warn!(action_type = %other, "flows: unknown action type"),
         }
     }
+}
+
+/// True when `ip` is NOT a globally-routable unicast address — i.e. one an SSRF
+/// payload would target: loopback, link-local (incl. 169.254 cloud metadata),
+/// private (RFC1918), unique-local (fc00::/7), unspecified, or broadcast. Pure
+/// and unit-tested.
+fn ip_is_blocked(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    match ip {
+        IpAddr::V4(v4) => v4_is_blocked(v4),
+        // IPv4-mapped IPv6 (::ffff:a.b.c.d) must be judged on the embedded v4.
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => v4_is_blocked(v4),
+            None => {
+                v6.is_loopback()
+                    || v6.is_unspecified()
+                    // Unique-local fc00::/7.
+                    || (v6.segments()[0] & 0xfe00) == 0xfc00
+                    // Link-local fe80::/10.
+                    || (v6.segments()[0] & 0xffc0) == 0xfe80
+            }
+        },
+    }
+}
+
+fn v4_is_blocked(v4: std::net::Ipv4Addr) -> bool {
+    v4.is_loopback()
+        || v4.is_private()
+        || v4.is_link_local()
+        || v4.is_unspecified()
+        || v4.is_broadcast()
+        || v4.is_documentation()
+        // Carrier-grade NAT 100.64.0.0/10.
+        || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xc0) == 64)
+}
+
+/// Validate a user-supplied webhook URL against SSRF: require http/https and
+/// ensure every resolved IP is globally routable. Returns `Err(reason)` (logged
+/// to flow_webhook_log) when the URL is unsafe or unresolvable.
+async fn webhook_url_is_safe(url: &str) -> std::result::Result<(), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid url: {e}"))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        other => return Err(format!("blocked scheme: {other}")),
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "url has no host".to_string())?;
+    let port = parsed.port_or_known_default().unwrap_or(80);
+    // Resolve and reject if ANY resolved address is non-global (defends against
+    // DNS that returns an internal IP, and direct-IP literals alike).
+    let mut addrs = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|e| format!("dns resolve failed: {e}"))?
+        .peekable();
+    if addrs.peek().is_none() {
+        return Err("host did not resolve".to_string());
+    }
+    for sa in addrs {
+        if ip_is_blocked(sa.ip()) {
+            return Err(format!("blocked target address: {}", sa.ip()));
+        }
+    }
+    Ok(())
 }
 
 /// Relay raw RFC 5321 message bytes to `to_addr` via plain SMTP on `relay_host:relay_port`.
@@ -1072,6 +1145,60 @@ fn parse_date(raw: Option<&str>) -> Option<OffsetDateTime> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::IpAddr;
+
+    #[test]
+    fn ip_blocked_rejects_loopback_private_linklocal_metadata() {
+        for s in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "192.168.0.5",
+            "172.16.0.1",
+            "169.254.169.254", // cloud metadata
+            "0.0.0.0",
+            "100.64.0.1", // CGNAT
+            "::1",
+            "fc00::1",          // ULA
+            "fe80::1",          // link-local
+            "::ffff:127.0.0.1", // IPv4-mapped loopback
+            "::ffff:169.254.169.254",
+        ] {
+            let ip: IpAddr = s.parse().unwrap();
+            assert!(ip_is_blocked(ip), "{s} should be blocked");
+        }
+    }
+
+    #[test]
+    fn ip_blocked_allows_public() {
+        for s in [
+            "8.8.8.8",
+            "1.1.1.1",
+            "93.184.216.34",
+            "2606:4700:4700::1111",
+        ] {
+            let ip: IpAddr = s.parse().unwrap();
+            assert!(!ip_is_blocked(ip), "{s} should be allowed");
+        }
+    }
+
+    #[tokio::test]
+    async fn webhook_rejects_non_http_scheme() {
+        assert!(webhook_url_is_safe("file:///etc/passwd").await.is_err());
+        assert!(webhook_url_is_safe("gopher://x/").await.is_err());
+        assert!(webhook_url_is_safe("not a url").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn webhook_rejects_loopback_literal() {
+        assert!(webhook_url_is_safe("http://127.0.0.1:8080/x")
+            .await
+            .is_err());
+        assert!(
+            webhook_url_is_safe("http://169.254.169.254/latest/meta-data/")
+                .await
+                .is_err()
+        );
+    }
 
     #[test]
     fn normalized_recipients_deduplicates_and_filters_empty_values() {
