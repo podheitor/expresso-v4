@@ -38,6 +38,9 @@ async-trait = { workspace = true }
 futures = { workspace = true }
 lettre = { workspace = true }
 async-nats = "0.37"
+# IANA timezone conversion for working-hours → free/busy (DST-aware). Bundled
+# tzdb so it works without system tzdata.
+jiff = { version = "0.2", default-features = false, features = ["std", "tzdb-bundle-always"] }
 
 # Internal libs
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
