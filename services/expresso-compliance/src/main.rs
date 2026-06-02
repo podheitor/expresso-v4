@@ -525,13 +525,42 @@ fn ilike_escape(s: &str) -> String {
         .replace('_', "\\_")
 }
 
+/// Build an `AND archived_at <op> '<date>'::timestamptz` filter from an optional
+/// user-supplied date, validating that the value parses as a date (`YYYY-MM-DD`)
+/// or an RFC3339 timestamp first. Returns an empty string when `opt` is None, and
+/// a 400 (instead of letting Postgres 500 on a bad `::timestamptz` cast) when the
+/// value is unparseable. The validated value contains no SQL metacharacters; the
+/// `''` escaping is kept as defense-in-depth.
+fn archived_at_filter(
+    opt: Option<String>,
+    col: &str,
+    op: &str,
+) -> std::result::Result<String, (StatusCode, Json<serde_json::Value>)> {
+    let Some(d) = opt else {
+        return Ok(String::new());
+    };
+    let date_fmt = time::macros::format_description!("[year]-[month]-[day]");
+    let ok = time::Date::parse(&d, date_fmt).is_ok()
+        || time::OffsetDateTime::parse(&d, &time::format_description::well_known::Rfc3339).is_ok();
+    if !ok {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "invalid date; expected YYYY-MM-DD or RFC3339" })),
+        ));
+    }
+    Ok(format!(
+        "AND {col} {op} '{}'::timestamptz",
+        d.replace('\'', "''")
+    ))
+}
+
 async fn list_archive(
     State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
     Query(params): Query<ArchiveListParams>,
     req_headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    let limit = params.limit.unwrap_or(50).min(200);
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
     let order = if params
         .sort
         .as_deref()
@@ -543,19 +572,8 @@ async fn list_archive(
         "DESC"
     };
 
-    let since_filter = params
-        .since
-        .map(|d| {
-            format!(
-                "AND archived_at >= '{}'::timestamptz",
-                d.replace('\'', "''")
-            )
-        })
-        .unwrap_or_default();
-    let before_date_filter = params
-        .before
-        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
-        .unwrap_or_default();
+    let since_filter = archived_at_filter(params.since, "archived_at", ">=")?;
+    let before_date_filter = archived_at_filter(params.before, "archived_at", "<")?;
     let subject_filter = params
         .subject
         .map(|s| {
@@ -743,19 +761,8 @@ async fn count_archive(
     AuthCtx(ctx): AuthCtx,
     Query(params): Query<ArchiveListParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let since_filter = params
-        .since
-        .map(|d| {
-            format!(
-                "AND archived_at >= '{}'::timestamptz",
-                d.replace('\'', "''")
-            )
-        })
-        .unwrap_or_default();
-    let before_date_filter = params
-        .before
-        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
-        .unwrap_or_default();
+    let since_filter = archived_at_filter(params.since, "archived_at", ">=")?;
+    let before_date_filter = archived_at_filter(params.before, "archived_at", "<")?;
     let subject_filter = params
         .subject
         .map(|s| {
@@ -838,19 +845,8 @@ async fn histogram_archive(
         }
     };
 
-    let since_filter = params
-        .since
-        .map(|d| {
-            format!(
-                "AND archived_at >= '{}'::timestamptz",
-                d.replace('\'', "''")
-            )
-        })
-        .unwrap_or_default();
-    let before_filter = params
-        .before
-        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
-        .unwrap_or_default();
+    let since_filter = archived_at_filter(params.since, "archived_at", ">=")?;
+    let before_filter = archived_at_filter(params.before, "archived_at", "<")?;
 
     let sql = format!(
         "SELECT date_trunc('{bucket}', archived_at) AS ts, COUNT(*) AS c \
@@ -906,19 +902,8 @@ async fn top_senders_archive(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(10).clamp(1, 100);
 
-    let since_filter = params
-        .since
-        .map(|d| {
-            format!(
-                "AND archived_at >= '{}'::timestamptz",
-                d.replace('\'', "''")
-            )
-        })
-        .unwrap_or_default();
-    let before_filter = params
-        .before
-        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
-        .unwrap_or_default();
+    let since_filter = archived_at_filter(params.since, "archived_at", ">=")?;
+    let before_filter = archived_at_filter(params.before, "archived_at", "<")?;
 
     let sql = format!(
         "SELECT COALESCE(from_addr, '(unknown)') AS sender, COUNT(*) AS c \
@@ -962,19 +947,8 @@ async fn top_recipients_archive(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(10).clamp(1, 100);
 
-    let since_filter = params
-        .since
-        .map(|d| {
-            format!(
-                "AND archived_at >= '{}'::timestamptz",
-                d.replace('\'', "''")
-            )
-        })
-        .unwrap_or_default();
-    let before_filter = params
-        .before
-        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
-        .unwrap_or_default();
+    let since_filter = archived_at_filter(params.since, "archived_at", ">=")?;
+    let before_filter = archived_at_filter(params.before, "archived_at", "<")?;
 
     let sql = format!(
         "SELECT t AS recipient, COUNT(*) AS c \
@@ -1019,19 +993,8 @@ async fn top_subjects_archive(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(10).clamp(1, 100);
 
-    let since_filter = params
-        .since
-        .map(|d| {
-            format!(
-                "AND archived_at >= '{}'::timestamptz",
-                d.replace('\'', "''")
-            )
-        })
-        .unwrap_or_default();
-    let before_filter = params
-        .before
-        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
-        .unwrap_or_default();
+    let since_filter = archived_at_filter(params.since, "archived_at", ">=")?;
+    let before_filter = archived_at_filter(params.before, "archived_at", "<")?;
 
     let sql = format!(
         "SELECT LOWER(TRIM(COALESCE(subject, '(no subject)'))) AS subj, COUNT(*) AS c \
@@ -1076,19 +1039,8 @@ async fn top_domains_archive(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(10).clamp(1, 100);
 
-    let since_filter = params
-        .since
-        .map(|d| {
-            format!(
-                "AND archived_at >= '{}'::timestamptz",
-                d.replace('\'', "''")
-            )
-        })
-        .unwrap_or_default();
-    let before_filter = params
-        .before
-        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
-        .unwrap_or_default();
+    let since_filter = archived_at_filter(params.since, "archived_at", ">=")?;
+    let before_filter = archived_at_filter(params.before, "archived_at", "<")?;
 
     let sql = format!(
         "SELECT CASE \
@@ -1135,19 +1087,8 @@ async fn size_histogram_archive(
     AuthCtx(ctx): AuthCtx,
     Query(params): Query<TopSendersParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let since_filter = params
-        .since
-        .map(|d| {
-            format!(
-                "AND archived_at >= '{}'::timestamptz",
-                d.replace('\'', "''")
-            )
-        })
-        .unwrap_or_default();
-    let before_filter = params
-        .before
-        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
-        .unwrap_or_default();
+    let since_filter = archived_at_filter(params.since, "archived_at", ">=")?;
+    let before_filter = archived_at_filter(params.before, "archived_at", "<")?;
 
     // Thresholds em bytes (exclusivo no upper). width_bucket(v, lo, hi, n) retorna
     // 0 quando v < lo, n+1 quando v >= hi; usamos thresholds custom via CASE.
@@ -1226,24 +1167,8 @@ async fn top_tags_archive(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(10).clamp(1, 100);
 
-    let since_filter = params
-        .since
-        .map(|d| {
-            format!(
-                "AND a.archived_at >= '{}'::timestamptz",
-                d.replace('\'', "''")
-            )
-        })
-        .unwrap_or_default();
-    let before_filter = params
-        .before
-        .map(|d| {
-            format!(
-                "AND a.archived_at < '{}'::timestamptz",
-                d.replace('\'', "''")
-            )
-        })
-        .unwrap_or_default();
+    let since_filter = archived_at_filter(params.since, "a.archived_at", ">=")?;
+    let before_filter = archived_at_filter(params.before, "a.archived_at", "<")?;
 
     let sql = format!(
         "SELECT t.tag, COUNT(*) AS c \
@@ -2288,21 +2213,8 @@ async fn export_archive(
     Query(params): Query<ArchiveListParams>,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     // Build the same filter clauses as list_archive but without pagination.
-    let since_filter = params
-        .since
-        .as_deref()
-        .map(|d| {
-            format!(
-                "AND archived_at >= '{}'::timestamptz",
-                d.replace('\'', "''")
-            )
-        })
-        .unwrap_or_default();
-    let before_date_filter = params
-        .before
-        .as_deref()
-        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
-        .unwrap_or_default();
+    let since_filter = archived_at_filter(params.since.clone(), "archived_at", ">=")?;
+    let before_date_filter = archived_at_filter(params.before.clone(), "archived_at", "<")?;
     let subject_filter = params
         .subject
         .as_deref()
@@ -3302,5 +3214,43 @@ mod tests {
         let addr = resolve_addr().unwrap();
         assert_eq!(addr.port(), 1);
         std::env::remove_var("PORT");
+    }
+
+    #[test]
+    fn archived_at_filter_none_is_empty() {
+        assert_eq!(archived_at_filter(None, "archived_at", ">=").unwrap(), "");
+    }
+
+    #[test]
+    fn archived_at_filter_accepts_date_and_rfc3339() {
+        assert_eq!(
+            archived_at_filter(Some("2026-06-01".into()), "archived_at", ">=").unwrap(),
+            "AND archived_at >= '2026-06-01'::timestamptz"
+        );
+        assert!(
+            archived_at_filter(Some("2026-06-01T12:30:00Z".into()), "a.archived_at", "<")
+                .unwrap()
+                .starts_with("AND a.archived_at < '2026-06-01T12:30:00Z'")
+        );
+    }
+
+    #[test]
+    fn archived_at_filter_rejects_garbage() {
+        assert_eq!(
+            archived_at_filter(Some("not-a-date".into()), "archived_at", ">=")
+                .unwrap_err()
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+        // A SQL-injection probe is unparseable as a date → rejected, never interpolated.
+        assert!(
+            archived_at_filter(Some("2026'); DROP TABLE x;--".into()), "archived_at", "<").is_err()
+        );
+    }
+
+    #[test]
+    fn ilike_escape_neutralizes_wildcards_and_quotes() {
+        assert_eq!(ilike_escape("100%_off'"), "100\\%\\_off''");
+        assert_eq!(ilike_escape("a\\b"), "a\\\\b");
     }
 }
