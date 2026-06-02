@@ -705,7 +705,17 @@ fn parse_price_to_cents(s: &str) -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{invoice_row, money, parse_price_to_cents, Invoice};
+    use super::{fmt_date, invoice_row, money, parse_price_to_cents, Invoice};
+
+    #[test]
+    fn fmt_date_renders_rfc3339() {
+        let d = time::OffsetDateTime::parse(
+            "2026-06-15T09:30:00Z",
+            &time::format_description::well_known::Rfc3339,
+        )
+        .unwrap();
+        assert_eq!(fmt_date(d), "2026-06-15T09:30:00Z");
+    }
 
     #[test]
     fn invoice_row_formats_period_and_amount() {
