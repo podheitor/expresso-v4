@@ -16,7 +16,21 @@ pub mod page {
     pub const GET_ITEM_ESTIMATE: u8 = 6;
     pub const PING: u8 = 13;
     pub const PROVISION: u8 = 14;
+    pub const SEARCH: u8 = 15;
     pub const AIR_SYNC_BASE: u8 = 17;
+}
+
+/// Search (page 15) tokens — Search command (subset).
+pub mod search {
+    pub const SEARCH: u8 = 0x05;
+    pub const STORE: u8 = 0x07;
+    pub const NAME: u8 = 0x08;
+    pub const QUERY: u8 = 0x09;
+    pub const STATUS: u8 = 0x0C;
+    pub const RESPONSE: u8 = 0x0D;
+    pub const RESULT: u8 = 0x0E;
+    pub const PROPERTIES: u8 = 0x0F;
+    pub const LONG_ID: u8 = 0x11;
 }
 
 /// GetItemEstimate (page 6) tokens — pre-Sync item count (subset).
@@ -174,6 +188,7 @@ mod tests {
         assert_eq!(page::GET_ITEM_ESTIMATE, 6);
         assert_eq!(page::FOLDER_HIERARCHY, 7);
         assert_eq!(page::PING, 13);
+        assert_eq!(page::SEARCH, 15);
         assert_eq!(page::PROVISION, 14);
         assert_eq!(page::AIR_SYNC_BASE, 17);
     }

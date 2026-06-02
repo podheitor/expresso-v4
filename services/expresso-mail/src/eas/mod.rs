@@ -18,6 +18,7 @@ mod foldersync;
 mod itemestimate;
 mod ping;
 mod provision;
+mod searchmail;
 mod sendmail;
 mod sync;
 
@@ -40,7 +41,7 @@ const PROTOCOL_VERSIONS: &str = "14.1";
 /// Commands advertised in the OPTIONS response. Only Provision is functional
 /// this sprint; the rest are advertised so clients proceed past discovery.
 const PROTOCOL_COMMANDS: &str =
-    "Provision,FolderSync,Sync,Ping,GetItemEstimate,ItemOperations,SendMail";
+    "Provision,FolderSync,Sync,Ping,GetItemEstimate,ItemOperations,SendMail,Search";
 const WBXML_CONTENT_TYPE: &str = "application/vnd.ms-sync.wbxml";
 
 /// EAS query string: `?Cmd=Sync&User=u&DeviceId=d&DeviceType=t`.
@@ -159,6 +160,13 @@ async fn handle_command(
                 &ids,
             )
             .await;
+            wbxml_ok(resp)
+        }
+        "Search" => {
+            let query = searchmail::parse_query(&body);
+            let resp =
+                searchmail::search_response(&state, principal.tenant_id, principal.user_id, &query)
+                    .await;
             wbxml_ok(resp)
         }
         // Implemented in later sprints; return 501 with a clear status so a
