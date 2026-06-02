@@ -117,6 +117,43 @@ async fn inject_validator(State(st): State<AppState>, mut req: Request, next: Ne
     next.run(req).await
 }
 
+/// Whether the context carries a super-admin role (DLQ ops gate).
+fn is_super_admin(ctx: &AuthContext) -> bool {
+    ctx.roles
+        .iter()
+        .any(|r| r.eq_ignore_ascii_case("super_admin") || r.eq_ignore_ascii_case("superadmin"))
+}
+
+/// Gate the DLQ admin/ops endpoints: they read and mutate the cross-tenant
+/// dead-letter queue, so they must require a super-admin. Previously these routes
+/// took no auth extractor at all and were reachable unauthenticated on the public
+/// `/api/v1/notifications/*` surface (list/purge/patch across every tenant).
+/// In dev mode (no validator configured) auth is skipped, matching the rest of
+/// the service's `MaybeAuthenticated` convention.
+async fn require_dlq_admin(req: Request, next: Next) -> Response {
+    use std::sync::Arc;
+    // Dev mode: no validator → no auth enforced anywhere in this service.
+    if req.extensions().get::<Arc<OidcValidator>>().is_none() {
+        return next.run(req).await;
+    }
+    let (mut parts, body) = req.into_parts();
+    match Authenticated::from_request_parts(&mut parts, &()).await {
+        Ok(Authenticated(ctx)) if is_super_admin(&ctx) => {
+            next.run(Request::from_parts(parts, body)).await
+        }
+        Ok(_) => (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "forbidden", "message": "super_admin required"})),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "unauthorized", "message": "missing_bearer"})),
+        )
+            .into_response(),
+    }
+}
+
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
 /// POST /internal/notify — called by expresso-mail on new delivery.
@@ -3930,6 +3967,29 @@ async fn main() -> anyhow::Result<()> {
             "/api/v1/notifications/push",
             post(push_subscribe).delete(push_unsubscribe),
         )
+        .merge(dlq_routes())
+        .merge(expresso_observability::metrics_router())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            inject_validator,
+        ))
+        .with_state(state);
+
+    let addr = resolve_addr()?;
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+
+    info!(service = SERVICE, %addr, "listening");
+
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
+
+/// All DLQ admin/ops routes, gated behind super-admin auth (these read and
+/// mutate the cross-tenant dead-letter queue). Merged into the app before the
+/// validator-injection layer so the gate can resolve the bearer.
+fn dlq_routes() -> Router<AppState> {
+    Router::new()
         .route("/api/v1/notifications/dlq/stats", get(dlq_stats))
         .route(
             "/api/v1/notifications/dlq/stats/by-day",
@@ -4082,19 +4142,43 @@ async fn main() -> anyhow::Result<()> {
                 .patch(patch_dlq_entry),
         )
         .route("/api/v1/notifications/dlq/:id/retry", post(retry_dlq_entry))
-        .merge(expresso_observability::metrics_router())
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            inject_validator,
-        ))
-        .with_state(state);
+        .route_layer(middleware::from_fn(require_dlq_admin))
+}
 
-    let addr = resolve_addr()?;
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+#[cfg(test)]
+mod dlq_gate_tests {
+    use super::is_super_admin;
+    use expresso_auth_client::AuthContext;
+    use uuid::Uuid;
 
-    info!(service = SERVICE, %addr, "listening");
+    fn ctx(roles: &[&str]) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            email: "x@ex.com".into(),
+            display_name: "X".into(),
+            roles: roles.iter().map(|r| r.to_string()).collect(),
+            expires_at: 0,
+            acr: None,
+            amr: vec![],
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: vec![],
+            identity_provider: None,
+            ldap_id: None,
+        }
+    }
 
-    axum::serve(listener, app).await?;
+    #[test]
+    fn super_admin_variants_pass() {
+        assert!(is_super_admin(&ctx(&["super_admin"])));
+        assert!(is_super_admin(&ctx(&["SuperAdmin"])));
+        assert!(is_super_admin(&ctx(&["user", "SUPERADMIN"])));
+    }
 
-    Ok(())
+    #[test]
+    fn non_admin_roles_rejected() {
+        assert!(!is_super_admin(&ctx(&["user"])));
+        assert!(!is_super_admin(&ctx(&["tenant_admin"])));
+        assert!(!is_super_admin(&ctx(&[])));
+    }
 }
