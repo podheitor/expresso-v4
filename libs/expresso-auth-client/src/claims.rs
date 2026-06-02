@@ -61,6 +61,11 @@ pub struct RawClaims {
     /// SAML and other brokered logins; absent for direct realm logins.
     #[serde(default)]
     pub identity_provider: Option<String>,
+    /// Keycloak's `LDAP_ID` user attribute — present only on users backed by an
+    /// LDAP/AD user-storage provider (User Federation, not brokering). Exposed
+    /// via a protocol-mapper (seed §13); the discriminator for LDAP logins.
+    #[serde(default)]
+    pub ldap_id: Option<String>,
 }
 
 /// `aud` can be a single string or an array per RFC 7519 §4.1.3.
@@ -113,6 +118,8 @@ pub struct AuthContext {
     pub govbr_confiabilidades: Vec<String>,
     /// Keycloak broker alias when federated through an external IdP (SAML etc.).
     pub identity_provider: Option<String>,
+    /// Keycloak `LDAP_ID` — set only for LDAP/AD user-storage-backed users.
+    pub ldap_id: Option<String>,
 }
 
 impl AuthContext {
@@ -170,6 +177,7 @@ impl AuthContext {
             govbr_cpf_hash: raw.govbr_cpf_hash,
             govbr_confiabilidades: raw.govbr_confiabilidades.unwrap_or_default(),
             identity_provider: raw.identity_provider,
+            ldap_id: raw.ldap_id,
         })
     }
 }
@@ -191,6 +199,7 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: Vec::new(),
             identity_provider: None,
+            ldap_id: None,
         }
     }
 
@@ -266,6 +275,7 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
             identity_provider: None,
+            ldap_id: None,
         };
         let c = AuthContext::from_raw(raw, "expresso-web").unwrap();
         assert_eq!(c.tenant_id, tid);
@@ -291,6 +301,7 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
             identity_provider: None,
+            ldap_id: None,
         };
         let c = AuthContext::from_raw(raw, "expresso-web").unwrap();
         assert_eq!(c.tenant_id, tid);
@@ -315,6 +326,7 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
             identity_provider: None,
+            ldap_id: None,
         };
         let r = AuthContext::from_raw(raw, "expresso-web");
         assert!(matches!(r, Err(AuthError::MissingClaim("tenant_id"))));
@@ -349,6 +361,7 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
             identity_provider: None,
+            ldap_id: None,
         };
         let c = AuthContext::from_raw(raw, "expresso-web").unwrap();
         // "user" from realm_access; "editor" from resource_access; "user" deduped.
@@ -449,6 +462,7 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
             identity_provider: None,
+            ldap_id: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert_eq!(c.display_name, "Full Name");
@@ -474,6 +488,7 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
             identity_provider: None,
+            ldap_id: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert_eq!(c.display_name, "alice_u");
@@ -506,6 +521,7 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
             identity_provider: None,
+            ldap_id: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert!(c.amr.is_empty());
@@ -538,9 +554,37 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
             identity_provider: Some("okta".into()),
+            ldap_id: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert_eq!(c.identity_provider.as_deref(), Some("okta"));
+    }
+
+    #[test]
+    fn from_raw_ldap_id_preserved_when_set() {
+        let uid = uuid::Uuid::new_v4();
+        let tid = uuid::Uuid::new_v4();
+        let raw = RawClaims {
+            sub: uid.to_string(),
+            iss: format!("https://kc/realms/{tid}"),
+            aud: AudClaim::Empty,
+            exp: 0,
+            email: None,
+            preferred_username: None,
+            name: None,
+            tenant_id: None,
+            realm_access: None,
+            resource_access: HashMap::new(),
+            acr: None,
+            amr: None,
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: None,
+            identity_provider: None,
+            ldap_id: Some("CN=alice,OU=People,DC=corp".into()),
+        };
+        let c = AuthContext::from_raw(raw, "aud").unwrap();
+        assert_eq!(c.ldap_id.as_deref(), Some("CN=alice,OU=People,DC=corp"));
+        assert!(c.identity_provider.is_none());
     }
 
     #[test]
@@ -563,6 +607,7 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: None,
             identity_provider: None,
+            ldap_id: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert!(c.identity_provider.is_none());
@@ -588,6 +633,7 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: Some(vec!["biometria".into(), "cadastro-basico".into()]),
             identity_provider: None,
+            ldap_id: None,
         };
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert_eq!(c.govbr_confiabilidades.len(), 2);

@@ -218,23 +218,38 @@ async fn log_and_provision_federation(app: &AppState, ctx: &expresso_auth_client
         );
         return;
     }
-    let Some(fed) = crate::oidc::saml::SamlFederation::from_ctx(ctx) else {
+    if let Some(fed) = crate::oidc::saml::SamlFederation::from_ctx(ctx) {
+        // Best-effort JIT: a provisioning failure must not block a successful
+        // authentication — the token is valid; the row reconciles next login.
+        if let Some(pool) = app.pool.as_ref() {
+            if let Err(e) = jit_provision_saml(pool, ctx, &fed).await {
+                warn!(error = %e, idp = %fed.idp_alias, user_id = %ctx.user_id, "SAML JIT provisioning failed");
+            }
+        }
+        tracing::info!(
+            target: "audit",
+            event = "auth.federation.saml",
+            user_id = %ctx.user_id,
+            tenant_id = %ctx.tenant_id,
+            idp_alias = %fed.idp_alias,
+            "user federated via SAML"
+        );
+        return;
+    }
+    let Some(fed) = crate::oidc::ldap::LdapFederation::from_ctx(ctx) else {
         return;
     };
-    // Best-effort JIT: a provisioning failure must not block a successful
-    // authentication — the token is already valid; the row reconciles next login.
     if let Some(pool) = app.pool.as_ref() {
-        if let Err(e) = jit_provision_saml(pool, ctx, &fed).await {
-            warn!(error = %e, idp = %fed.idp_alias, user_id = %ctx.user_id, "SAML JIT provisioning failed");
+        if let Err(e) = jit_provision_ldap(pool, ctx, &fed).await {
+            warn!(error = %e, user_id = %ctx.user_id, "LDAP JIT provisioning failed");
         }
     }
     tracing::info!(
         target: "audit",
-        event = "auth.federation.saml",
+        event = "auth.federation.ldap",
         user_id = %ctx.user_id,
         tenant_id = %ctx.tenant_id,
-        idp_alias = %fed.idp_alias,
-        "user federated via SAML"
+        "user federated via LDAP"
     );
 }
 
@@ -249,25 +264,7 @@ async fn jit_provision_saml(
     fed: &crate::oidc::saml::SamlFederation,
 ) -> anyhow::Result<()> {
     let mut tx = expresso_core::begin_tenant_tx(pool, ctx.tenant_id).await?;
-
-    // Upsert the user. On a returning user (same KC sub) refresh the mutable
-    // profile fields but never downgrade an existing role or deactivate them.
-    sqlx::query(
-        "INSERT INTO users (id, tenant_id, email, display_name, role, is_active) \
-         VALUES ($1, $2, $3, $4, 'user', true) \
-         ON CONFLICT (id) DO UPDATE SET \
-             email = EXCLUDED.email, \
-             display_name = EXCLUDED.display_name, \
-             last_login_at = now(), \
-             updated_at = now()",
-    )
-    .bind(ctx.user_id)
-    .bind(ctx.tenant_id)
-    .bind(&ctx.email)
-    .bind(&ctx.display_name)
-    .execute(&mut *tx)
-    .await?;
-
+    upsert_federated_user(&mut tx, ctx).await?;
     sqlx::query(
         "INSERT INTO saml_user_map (tenant_id, idp_alias, saml_subject, user_id, last_login_at) \
          VALUES ($1, $2, $3, $4, now()) \
@@ -281,8 +278,59 @@ async fn jit_provision_saml(
     .bind(ctx.user_id)
     .execute(&mut *tx)
     .await?;
-
     tx.commit().await?;
+    Ok(())
+}
+
+/// JIT-provision an LDAP-federated user: upsert the local `users` row + the
+/// `ldap_user_map` binding in one tenant-scoped tx. Same idempotent, best-effort
+/// shape as the SAML path.
+async fn jit_provision_ldap(
+    pool: &expresso_core::DbPool,
+    ctx: &expresso_auth_client::AuthContext,
+    fed: &crate::oidc::ldap::LdapFederation,
+) -> anyhow::Result<()> {
+    let mut tx = expresso_core::begin_tenant_tx(pool, ctx.tenant_id).await?;
+    upsert_federated_user(&mut tx, ctx).await?;
+    sqlx::query(
+        "INSERT INTO ldap_user_map (tenant_id, ldap_id, user_id, last_login_at) \
+         VALUES ($1, $2, $3, now()) \
+         ON CONFLICT (tenant_id, ldap_id) DO UPDATE SET \
+             user_id = EXCLUDED.user_id, \
+             last_login_at = now()",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&fed.ldap_id)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Upsert the local `users` row for a federated login (keyed by the Keycloak
+/// `sub` = `ctx.user_id`). On a returning user, refresh the mutable profile
+/// fields; never downgrade an existing role or deactivate them. Shared by the
+/// SAML and LDAP JIT paths.
+async fn upsert_federated_user(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ctx: &expresso_auth_client::AuthContext,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        "INSERT INTO users (id, tenant_id, email, display_name, role, is_active) \
+         VALUES ($1, $2, $3, $4, 'user', true) \
+         ON CONFLICT (id) DO UPDATE SET \
+             email = EXCLUDED.email, \
+             display_name = EXCLUDED.display_name, \
+             last_login_at = now(), \
+             updated_at = now()",
+    )
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .bind(&ctx.email)
+    .bind(&ctx.display_name)
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 

@@ -115,6 +115,7 @@ mod tests {
             govbr_cpf_hash: cpf.map(String::from),
             govbr_confiabilidades: conf,
             identity_provider: None,
+            ldap_id: None,
         }
     }
 

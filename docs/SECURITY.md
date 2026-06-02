@@ -40,6 +40,8 @@ Expected response time: acknowledgement within 2 business days, patch timeline w
 | OIDC `state` / `code` | `expresso-auth` callback | PKCE S256; state stored in-memory with TTL; `is_safe_local_redirect` for post-login URL |
 | SAML assertions (SSO) | Keycloak broker (not Rust) | XML parsing + XML-dsig signature verification done by Keycloak; `validateSignature` + `wantAssertionsSigned` forced on. The Rust auth service only consumes the resulting OIDC token (same gate as the JWT row) and JIT-provisions the user in an RLS-scoped tx. No XML reaches Rust. |
 | SAML IdP config (admin) | `expresso-admin` `/api/v1/saml/idps` | `require_tenant_match` (tenant_admin own tenant, super_admin any); get/delete authorize against the row's tenant so an id guess can't cross tenants |
+| LDAP/AD federation (sync) | Keycloak User Storage (not Rust) | Keycloak binds/searches the directory; Rust never speaks LDAP. The bind credential is write-through to the KC component and never persisted in our DB. LDAP logins are local KC users; JIT provisions them in an RLS-scoped tx. |
+| LDAP config (admin) | `expresso-admin` `/api/v1/ldap/configs` | `require_tenant_match` (per-tenant); `bind_credential` accepted write-only and never returned by GET |
 | SMTP envelope (MAIL FROM / RCPT TO) | `expresso-mail` SMTP session | milter pipeline; SPF/DKIM/DMARC via `mail-auth` |
 | IMAP commands | `expresso-mail` IMAP session | imap-codec parser; per-user RLS on DB queries |
 | CalDAV/CardDAV XML bodies | `expresso-calendar`, `expresso-contacts` | quick-xml parse with bounded depth; PROPFIND depth 0/1 enforced |

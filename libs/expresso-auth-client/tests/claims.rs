@@ -42,6 +42,7 @@ fn base(sub: &str, tenant: Option<&str>) -> RawClaims {
         govbr_cpf_hash: None,
         govbr_confiabilidades: None,
         identity_provider: None,
+        ldap_id: None,
     }
 }
 

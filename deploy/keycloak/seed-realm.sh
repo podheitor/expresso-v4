@@ -253,6 +253,18 @@ JSON
   else
     curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/components" -d "$LDAP_COMP" || true
   fi
+
+  # Client protocol mapper: expose Keycloak's LDAP_ID user attribute as the
+  # `ldap_id` access-token claim. It is set only on LDAP-storage-backed users, so
+  # it is the discriminator the JIT flow (sprint C) uses to detect LDAP logins.
+  LDAP_ID_CLAIM=$(cat <<JSON
+{"name":"claim-ldap-id","protocol":"openid-connect","protocolMapper":"oidc-usermodel-attribute-mapper",
+ "config":{"user.attribute":"LDAP_ID","claim.name":"ldap_id","jsonType.label":"String",
+           "access.token.claim":"true","id.token.claim":"false","userinfo.token.claim":"true"}}
+JSON
+  )
+  curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/clients/$CUID/protocol-mappers/models" -d "$LDAP_ID_CLAIM" || true
+
   echo "OK: LDAP federation seeded (name=$LDAP_NAME url=$LDAP_CONNECTION_URL)"
 else
   echo "SKIP: LDAP federation (set LDAP_CONNECTION_URL/LDAP_BIND_DN to enable)"

@@ -98,6 +98,7 @@ impl PatResolver {
             govbr_cpf_hash: None,
             govbr_confiabilidades: Vec::new(),
             identity_provider: None,
+            ldap_id: None,
         })
     }
 }

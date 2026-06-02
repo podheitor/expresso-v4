@@ -59,6 +59,7 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: vec![],
             identity_provider: idp.map(String::from),
+            ldap_id: None,
         }
     }
 

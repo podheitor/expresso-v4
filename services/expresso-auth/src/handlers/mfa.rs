@@ -257,6 +257,7 @@ mod tests {
             govbr_cpf_hash: None,
             govbr_confiabilidades: vec![],
             identity_provider: None,
+            ldap_id: None,
         }
     }
 
