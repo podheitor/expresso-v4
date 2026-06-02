@@ -23,7 +23,8 @@ use crate::{
         Folder, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailComposeTpl,
         MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
         MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell,
-        SecurityTpl, SettingsTpl, ShareRow, TasksTpl, VersionRow,
+        SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TasksTpl,
+        VersionRow,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
@@ -127,6 +128,7 @@ pub fn router(state: AppState) -> Router {
         .route("/contacts/:book_id/export.vcf", get(contacts_export_vcf))
         .route("/contacts/:book_id/import", post(contacts_import_vcf))
         // mail extras
+        .route("/search", get(unified_search_page))
         .route("/mail/search", get(mail_search_page))
         .route("/mail/:id/attachments/:idx", get(mail_attachment_proxy))
         .route("/mail/quick-reply", post(mail_quick_reply_action))
@@ -1159,6 +1161,181 @@ async fn mail_compose_action(
         }
         .into_response())
     }
+}
+
+// ─── /search (unified) ───────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct UnifiedSearchQuery {
+    q: Option<String>,
+}
+
+/// Per-source hit cap on the unified results page (keeps it scannable).
+const UNIFIED_HITS_PER_SOURCE: usize = 6;
+
+/// Pull up to `UNIFIED_HITS_PER_SOURCE` hits from a backend `/search` endpoint.
+/// Responses differ per app, so we read them as JSON and pick a display string
+/// (first present of `text_keys`) and build the item link via `href`. Failures
+/// (service down, shape change) degrade to an empty group, never an error page.
+async fn search_source(
+    st: &AppState,
+    backend: &str,
+    path: &str,
+    headers: &HeaderMap,
+    ctx: (&str, &str),
+    text_keys: &[&str],
+    href: impl Fn(&serde_json::Value) -> Option<String>,
+) -> Vec<SearchHit> {
+    let rows = get_json::<Vec<serde_json::Value>>(st, backend, path, headers, Some(ctx))
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    rows.into_iter()
+        .filter_map(|r| {
+            let text = text_keys
+                .iter()
+                .find_map(|k| r.get(*k).and_then(|v| v.as_str()))
+                .unwrap_or("(sem título)")
+                .chars()
+                .take(80)
+                .collect::<String>();
+            href(&r).map(|h| SearchHit { text, href: h })
+        })
+        .take(UNIFIED_HITS_PER_SOURCE)
+        .collect()
+}
+
+fn str_field(r: &serde_json::Value, key: &str) -> String {
+    r.get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// GET /search?q= — federated results across Mail, Drive, Agenda, Contatos, Chat.
+/// Each source is queried via its own authenticated REST search; results are
+/// grouped by app. The topbar's Enter action points here.
+async fn unified_search_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(uq): Query<UnifiedSearchQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let query = uq.q.unwrap_or_default();
+    let qt = query.trim();
+
+    if qt.is_empty() {
+        return Ok(askama_axum::IntoResponse::into_response(SearchTpl {
+            me,
+            query: String::new(),
+            groups: Vec::new(),
+            total: 0,
+        }));
+    }
+    let enc = utf8_percent_encode(qt, NON_ALPHANUMERIC).to_string();
+    let ctx = (t.as_str(), u.as_str());
+
+    // Bind each path so the borrowed &str outlives the federated futures.
+    let p_mail = format!("/api/v1/mail/search?q={enc}&limit=6");
+    let p_drive = format!("/api/v1/drive/search?q={enc}&limit=6");
+    let p_cal = format!("/api/v1/calendars/events/search?q={enc}&limit=6");
+    let p_con = format!("/api/v1/contacts/search?q={enc}&limit=6");
+    let p_chat = format!("/api/v1/messages/search?q={enc}&limit=6");
+
+    let mail = search_source(
+        &st,
+        &st.backends.mail,
+        &p_mail,
+        &headers,
+        ctx,
+        &["subject", "preview_text", "from_addr"],
+        |r| Some(format!("/mail/{}", str_field(r, "id"))),
+    );
+    let drive = search_source(
+        &st,
+        &st.backends.drive,
+        &p_drive,
+        &headers,
+        ctx,
+        &["name"],
+        |_| Some("/drive".to_string()),
+    );
+    let cal = search_source(
+        &st,
+        &st.backends.calendar,
+        &p_cal,
+        &headers,
+        ctx,
+        &["summary", "title"],
+        |r| {
+            let cal = str_field(r, "calendar_id");
+            (!cal.is_empty()).then(|| format!("/calendar/{cal}"))
+        },
+    );
+    let contacts = search_source(
+        &st,
+        &st.backends.contacts,
+        &p_con,
+        &headers,
+        ctx,
+        &["full_name", "email", "uid"],
+        |_| Some("/contacts".to_string()),
+    );
+    let chat = search_source(
+        &st,
+        &st.backends.chat,
+        &p_chat,
+        &headers,
+        ctx,
+        &["body"],
+        |r| {
+            let cid = str_field(r, "channel_id");
+            (!cid.is_empty()).then(|| format!("/chat/channels/{cid}"))
+        },
+    );
+    // Federate concurrently — one slow backend doesn't serialise the rest.
+    let (mail, drive, cal, contacts, chat) = tokio::join!(mail, drive, cal, contacts, chat);
+
+    let groups = vec![
+        SearchGroup {
+            label: "Mail".into(),
+            icon: "✉".into(),
+            hits: mail,
+        },
+        SearchGroup {
+            label: "Drive".into(),
+            icon: "📄".into(),
+            hits: drive,
+        },
+        SearchGroup {
+            label: "Agenda".into(),
+            icon: "📅".into(),
+            hits: cal,
+        },
+        SearchGroup {
+            label: "Contatos".into(),
+            icon: "👤".into(),
+            hits: contacts,
+        },
+        SearchGroup {
+            label: "Chat".into(),
+            icon: "💬".into(),
+            hits: chat,
+        },
+    ];
+    let total: usize = groups.iter().map(|g| g.hits.len()).sum();
+
+    Ok(askama_axum::IntoResponse::into_response(SearchTpl {
+        me,
+        query,
+        groups,
+        total,
+    }))
 }
 
 // ─── /mail/search ────────────────────────────────────────────────────────────

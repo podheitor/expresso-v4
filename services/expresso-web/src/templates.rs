@@ -133,6 +133,28 @@ pub struct MessageDetail {
 
 // ───── Templates ─────────────────────────────────────────────────────────────
 
+/// One hit in the unified search results, normalised across apps.
+pub struct SearchHit {
+    pub text: String,
+    pub href: String,
+}
+
+/// A group of hits from one app (Mail, Drive, …) for the unified search page.
+pub struct SearchGroup {
+    pub label: String,
+    pub icon: String,
+    pub hits: Vec<SearchHit>,
+}
+
+#[derive(Template)]
+#[template(path = "search.html")]
+pub struct SearchTpl {
+    pub me: Me,
+    pub query: String,
+    pub groups: Vec<SearchGroup>,
+    pub total: usize,
+}
+
 #[derive(Template)]
 #[template(path = "login.html")]
 pub struct LoginTpl {

@@ -97,7 +97,7 @@ function topbarSearchInput(q) {
 }
 function topbarSearch(q) {
   if (!q.trim()) return;
-  window.location.href = '/mail/search?q=' + encodeURIComponent(q.trim());
+  window.location.href = '/search?q=' + encodeURIComponent(q.trim());
 }
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 document.addEventListener('click', function(e) {

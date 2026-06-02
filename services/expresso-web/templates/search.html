@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block nav %}{% let current = "" %}{% include "_appnav.html" %}{% endblock %}
+{% block title %}Busca · Expresso{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="card stack" style="max-width:820px">
+    <h1>Resultados da busca</h1>
+
+    <form action="/search" method="get" style="display:flex;gap:.5rem">
+      <input type="search" name="q" value="{{ query }}" placeholder="Buscar em tudo…"
+             autofocus style="flex:1" class="topbar-search-input">
+      <button class="btn btn-primary" type="submit">Buscar</button>
+    </form>
+
+    {% if query.is_empty() %}
+      <p class="muted">Digite um termo para buscar em Mail, Drive, Agenda, Contatos e Chat.</p>
+    {% else if total == 0 %}
+      <p class="muted">Nenhum resultado para “{{ query }}”.</p>
+    {% else %}
+      <p class="muted small">{{ total }} resultado(s) para “{{ query }}”.</p>
+      {% for g in groups %}
+        {% if !g.hits.is_empty() %}
+        <section class="subcard stack">
+          <h2 style="font-size:1rem">{{ g.icon }} {{ g.label }}</h2>
+          <ul class="stack" style="list-style:none;padding:0;margin:0">
+            {% for h in g.hits %}
+            <li><a class="topbar-search-item" href="{{ h.href }}">{{ h.text }}</a></li>
+            {% endfor %}
+          </ul>
+        </section>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
