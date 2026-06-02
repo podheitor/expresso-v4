@@ -10,10 +10,35 @@
 pub mod page {
     pub const AIR_SYNC: u8 = 0;
     pub const EMAIL: u8 = 2;
+    pub const CALENDAR: u8 = 4;
     pub const FOLDER_HIERARCHY: u8 = 7;
+    pub const CONTACTS: u8 = 1;
     pub const PING: u8 = 13;
     pub const PROVISION: u8 = 14;
     pub const AIR_SYNC_BASE: u8 = 17;
+}
+
+/// Calendar (page 4) tokens — Sync ApplicationData for calendar items (subset).
+pub mod calendar {
+    pub const TIMEZONE: u8 = 0x05;
+    pub const ALL_DAY_EVENT: u8 = 0x06;
+    pub const DTSTAMP: u8 = 0x08;
+    pub const END_TIME: u8 = 0x09;
+    pub const LOCATION: u8 = 0x0E;
+    pub const REMINDER: u8 = 0x0F;
+    pub const SUBJECT: u8 = 0x14;
+    pub const START_TIME: u8 = 0x15;
+    pub const UID: u8 = 0x17;
+}
+
+/// Contacts (page 1) tokens — Sync ApplicationData for contact items (subset).
+pub mod contacts {
+    pub const EMAIL1_ADDRESS: u8 = 0x0F;
+    pub const FILE_AS: u8 = 0x13;
+    pub const FIRST_NAME: u8 = 0x15;
+    pub const LAST_NAME: u8 = 0x19;
+    pub const MOBILE_PHONE: u8 = 0x1B;
+    pub const COMPANY_NAME: u8 = 0x12;
 }
 
 /// Ping (page 13) tokens — Ping/Direct-Push command.
@@ -130,8 +155,11 @@ mod tests {
     #[test]
     fn pages_match_ms_aswbxml() {
         assert_eq!(page::AIR_SYNC, 0);
+        assert_eq!(page::CONTACTS, 1);
         assert_eq!(page::EMAIL, 2);
+        assert_eq!(page::CALENDAR, 4);
         assert_eq!(page::FOLDER_HIERARCHY, 7);
+        assert_eq!(page::PING, 13);
         assert_eq!(page::PROVISION, 14);
         assert_eq!(page::AIR_SYNC_BASE, 17);
     }
@@ -170,6 +198,10 @@ mod tests {
             air_sync_base::NATIVE_BODY_TYPE,
             ping::PING,
             ping::MAX_FOLDERS,
+            calendar::UID,
+            calendar::START_TIME,
+            contacts::FIRST_NAME,
+            contacts::EMAIL1_ADDRESS,
         ] {
             assert!(t <= 0x3F, "token {t:#x} exceeds 6 bits");
         }

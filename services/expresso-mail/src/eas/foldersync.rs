@@ -88,7 +88,7 @@ pub async fn foldersync_response(
     for f in &folders {
         doc.push(Event::start(p, folder::ADD));
         doc.push(Event::start(p, folder::SERVER_ID));
-        doc.push(Event::Text(f.id.to_string()));
+        doc.push(Event::Text(f.server_id.clone()));
         doc.push(Event::EndElement);
         doc.push(Event::start(p, folder::PARENT_ID));
         doc.push(Event::Text("0".into())); // flat hierarchy: all folders under root
@@ -97,7 +97,7 @@ pub async fn foldersync_response(
         doc.push(Event::Text(f.display_name.clone()));
         doc.push(Event::EndElement);
         doc.push(Event::start(p, folder::TYPE));
-        doc.push(Event::Text(folder_type(f.special_use.as_deref()).into()));
+        doc.push(Event::Text(f.folder_type.into()));
         doc.push(Event::EndElement);
         doc.push(Event::EndElement); // Add
     }
@@ -107,14 +107,20 @@ pub async fn foldersync_response(
     encode(&doc)
 }
 
+/// An EAS folder to advertise. `server_id` is the opaque id echoed back on Sync;
+/// mail uses the bare mailbox UUID (so the mail Sync parses it directly) while
+/// calendar/contacts carry a `cal:`/`con:` prefix the Sync router dispatches on.
 struct FolderRow {
-    id: Uuid,
+    server_id: String,
     display_name: String,
-    special_use: Option<String>,
+    folder_type: &'static str,
 }
 
 async fn load_folders(state: &AppState, user_id: Uuid, tenant_id: Uuid) -> Vec<FolderRow> {
-    let rows: Vec<(Uuid, String, Option<String>)> = sqlx::query_as(
+    let mut out = Vec::new();
+
+    // Mail folders (from mailboxes; ServerId = bare mailbox UUID).
+    let mail: Vec<(Uuid, String, Option<String>)> = sqlx::query_as(
         "SELECT id, folder_name, special_use FROM mailboxes \
          WHERE user_id = $1 AND tenant_id = $2 AND subscribed = TRUE \
          ORDER BY folder_name",
@@ -124,13 +130,49 @@ async fn load_folders(state: &AppState, user_id: Uuid, tenant_id: Uuid) -> Vec<F
     .fetch_all(state.db())
     .await
     .unwrap_or_default();
-    rows.into_iter()
-        .map(|(id, folder_name, special_use)| FolderRow {
-            id,
-            display_name: folder_name,
-            special_use,
-        })
-        .collect()
+    for (id, name, special_use) in mail {
+        out.push(FolderRow {
+            server_id: id.to_string(),
+            display_name: name,
+            folder_type: folder_type(special_use.as_deref()),
+        });
+    }
+
+    // Calendar collections (EAS type 8), prefixed `cal:`.
+    let cals: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT id, name FROM calendars WHERE owner_user_id = $1 AND tenant_id = $2 ORDER BY name",
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .fetch_all(state.db())
+    .await
+    .unwrap_or_default();
+    for (id, name) in cals {
+        out.push(FolderRow {
+            server_id: format!("cal:{id}"),
+            display_name: name,
+            folder_type: "8",
+        });
+    }
+
+    // Contacts collections (EAS type 9), prefixed `con:`.
+    let books: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT id, name FROM addressbooks WHERE owner_user_id = $1 AND tenant_id = $2 ORDER BY name",
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .fetch_all(state.db())
+    .await
+    .unwrap_or_default();
+    for (id, name) in books {
+        out.push(FolderRow {
+            server_id: format!("con:{id}"),
+            display_name: name,
+            folder_type: "9",
+        });
+    }
+
+    out
 }
 
 #[cfg(test)]
