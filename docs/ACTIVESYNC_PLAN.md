@@ -1,5 +1,14 @@
 # Exchange ActiveSync (EAS) — Implementation Plan
 
+> **Status (2026-06): command set COMPLETE.** Sprints #70–#82 shipped the WBXML
+> codec + every EAS command: OPTIONS, Provision, FolderSync (mail+calendar+
+> contacts), Sync (mail read/write + calendar/contacts read), Ping, SendMail,
+> GetItemEstimate, Search, ItemOperations(Fetch). Behind
+> `mail_server.activesync_enabled` (default off). Remaining = refinements only:
+> client-side calendar/contact writes, MIME multipart body decode, real
+> device-policy, GetAttachment. The sections below are the original plan.
+
+
 **Nature:** Unlike SAML/LDAP (brokered by Keycloak), ActiveSync **cannot be
 delegated** — it's a Microsoft protocol (WBXML over HTTP POST to
 `/Microsoft-Server-ActiveSync`) we must implement ourselves in Rust, reading
