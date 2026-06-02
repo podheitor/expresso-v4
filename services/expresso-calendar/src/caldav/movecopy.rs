@@ -1,13 +1,15 @@
 //! CalDAV MOVE + COPY verbs (RFC 4918 §9.8 / §9.9).
 //!
-//! Scope: event resources only (URI pattern `/caldav/<user>/<calendar>/<uid>.ics`).
-//! - Destination URI must resolve to the *same authenticated user*.
-//! - Both source + destination must be Event targets.
-//! - Cross-calendar COPY/MOVE allowed (same user, same tenant).
-//! - `Overwrite: F` header → if destination exists, return 412.
-//! - `Depth` ignored for resources (always 0).
+//! Two scopes, dispatched on the source URI:
+//! - **Event resource** (`/caldav/<user>/<calendar>/<uid>.ics`): copy/move one
+//!   event; cross-calendar allowed (same user/tenant).
+//! - **Calendar collection** (`/caldav/<user>/<calendar>/`): copy/move the whole
+//!   calendar (metadata + all events, i.e. Depth: infinity); MOVE deletes the
+//!   source collection after cloning.
 //!
-//! Out of scope (future): COPY/MOVE of whole collections, Depth: infinity.
+//! Common rules: Destination must resolve to the *same authenticated user* and
+//! the *same target kind* as the source; `Overwrite: F` → 412 if the
+//! destination exists.
 
 use axum::{
     body::Body,
@@ -17,7 +19,7 @@ use axum::{
 
 use crate::caldav::auth::CalDavPrincipal;
 use crate::caldav::uri::{self, Target};
-use crate::domain::EventRepo;
+use crate::domain::{CalendarRepo, EventQuery, EventRepo, NewCalendar};
 use crate::error::Result;
 use crate::events::Event;
 use crate::state::AppState;
@@ -49,6 +51,15 @@ async fn process(
     headers: &HeaderMap,
     is_move: bool,
 ) -> Result<Response> {
+    // Collection-level COPY/MOVE (whole calendar) when the source URI is a
+    // Calendar collection. Event-level handling continues below.
+    if let Target::Calendar { user_id, .. } = uri::classify(path) {
+        if user_id != principal.user_id {
+            return Ok(simple(StatusCode::FORBIDDEN));
+        }
+        return process_collection(state, principal, path, headers, is_move).await;
+    }
+
     // Source must be an event owned by principal.
     let (src_cal, src_uid) = match uri::classify(path) {
         Target::Event {
@@ -124,6 +135,100 @@ async fn process(
             tenant_id: principal.tenant_id,
             event_id: src.id,
         });
+    }
+
+    let status = if dst_existed {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::CREATED
+    };
+    Ok(simple(status))
+}
+
+/// Collection-level COPY/MOVE: clone a whole calendar (metadata + all events)
+/// to a new calendar, or MOVE it (clone then delete the source). RFC 4918
+/// §9.8/§9.9 with Depth: infinity (collections always copy their members).
+async fn process_collection(
+    state: AppState,
+    principal: CalDavPrincipal,
+    path: &str,
+    headers: &HeaderMap,
+    is_move: bool,
+) -> Result<Response> {
+    let src_cal = match uri::classify(path) {
+        Target::Calendar { calendar_id, .. } => calendar_id,
+        _ => return Ok(simple(StatusCode::NOT_FOUND)),
+    };
+
+    // Destination must be a Calendar collection owned by the same user.
+    let dest_raw = match headers.get("destination").and_then(|h| h.to_str().ok()) {
+        Some(s) => s.trim().to_string(),
+        None => return Ok(bad_request("missing Destination header")),
+    };
+    let dst_cal_id = match uri::classify(&strip_origin(&dest_raw)) {
+        Target::Calendar {
+            user_id,
+            calendar_id,
+        } if user_id == principal.user_id => calendar_id,
+        Target::Calendar { .. } => return Ok(simple(StatusCode::FORBIDDEN)),
+        _ => {
+            return Ok(bad_request(
+                "destination must resolve to a calendar collection",
+            ))
+        }
+    };
+
+    let overwrite = headers
+        .get("overwrite")
+        .and_then(|h| h.to_str().ok())
+        .map(str::trim);
+    let allow_overwrite = !matches!(overwrite, Some("F") | Some("f"));
+
+    let pool = state.db_or_unavailable()?;
+    let cal_repo = CalendarRepo::new(pool);
+    let ev_repo = EventRepo::new(pool);
+
+    let src = cal_repo.get(principal.tenant_id, src_cal).await?;
+    let dst_existed = cal_repo.get(principal.tenant_id, dst_cal_id).await.is_ok();
+    if dst_existed && !allow_overwrite {
+        return Ok(simple(StatusCode::PRECONDITION_FAILED));
+    }
+
+    // Create the destination collection with the caller-supplied UUID when it
+    // doesn't yet exist (MKCALENDAR-style); reuse it on overwrite.
+    if !dst_existed {
+        let new = NewCalendar {
+            name: src.name.clone(),
+            description: src.description.clone(),
+            color: src.color.clone(),
+            timezone: Some(src.timezone.clone()),
+            is_default: false,
+        };
+        cal_repo
+            .create_with_id(dst_cal_id, principal.tenant_id, principal.user_id, &new)
+            .await?;
+    }
+
+    // Copy every event by re-applying its raw iCalendar into the destination.
+    let events = ev_repo
+        .list(principal.tenant_id, src_cal, &EventQuery::default())
+        .await?;
+    for ev in &events {
+        let dst_ev = ev_repo
+            .replace_by_uid(principal.tenant_id, dst_cal_id, &ev.ical_raw)
+            .await?;
+        state.events().publish(Event::EventUpdated {
+            tenant_id: principal.tenant_id,
+            event_id: dst_ev.id,
+            summary: dst_ev.summary.clone(),
+            sequence: dst_ev.sequence,
+        });
+    }
+
+    // MOVE: drop the source collection (cascades its events) unless it's the
+    // same calendar.
+    if is_move && src_cal != dst_cal_id {
+        cal_repo.delete(principal.tenant_id, src_cal).await?;
     }
 
     let status = if dst_existed {
