@@ -27,6 +27,11 @@ pub struct AppConfig {
     /// `{calendar_url}/api/v1/scheduling/inbox` on delivery.
     #[serde(default)]
     pub calendar_url: String,
+    /// URL of the contacts service (e.g. "http://localhost:8003").
+    /// When set, `expresso-mail`'s ActiveSync bridge forwards device-side contact
+    /// writes to `{contacts_url}/internal/contacts/items`.
+    #[serde(default)]
+    pub contacts_url: String,
     /// URL of the notifications service (e.g. "http://localhost:8006").
     /// When set, `expresso-mail` fires POST /internal/notify after each delivery.
     #[serde(default)]

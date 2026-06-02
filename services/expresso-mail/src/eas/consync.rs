@@ -1,13 +1,13 @@
 //! EAS Sync for the Contacts class (MS-ASCNTC).
 //!
 //! Routed here when the Sync CollectionId carries the `con:` prefix FolderSync
-//! assigned. Maps `contacts` rows to EAS Contact items (page 1) inside the
-//! AirSync envelope. Read direction only for now; client-side contact creation
-//! is a later refinement. Contacts come from the contacts service's shared
-//! tables. Mirrors the calendar Sync shape.
+//! assigned. Server→client: maps `contacts` rows to EAS Contact items (page 1).
+//! Client→server: Add/Change/Delete are translated to a vCard and applied
+//! THROUGH the contacts service's internal API (`/internal/contacts/items`) —
+//! never writing the `contacts` table from mail. Mirrors the calendar bridge.
 
 use expresso_wbxml::{
-    encode,
+    decode, encode,
     tokens::{air_sync, contacts, page},
     Event,
 };
@@ -18,12 +18,13 @@ use crate::state::AppState;
 
 const WINDOW_SIZE: i64 = 100;
 
-/// Build the Sync response for a `con:` collection. The UUID after the prefix is
-/// the address-book id.
+/// Build the Sync response for a `con:` collection. `body` is the raw request
+/// WBXML — needed to read client `<Commands>` (contact create/edit/delete).
 pub async fn contacts_sync_response(
     state: &AppState,
     tenant_id: Uuid,
     req: &SyncRequest,
+    body: &[u8],
 ) -> Vec<u8> {
     let Some(uuid_str) = req.collection_id.strip_prefix("con:") else {
         return status_only("8");
@@ -36,9 +37,221 @@ pub async fn contacts_sync_response(
         return ok(&req.collection_id, 1, &[]);
     }
 
+    // Apply client→server contact changes THROUGH the contacts service's internal
+    // API — never writing the contacts table directly from mail.
+    apply_contact_changes(state, tenant_id, book_id, body).await;
+
     let key: i64 = req.sync_key.parse().unwrap_or(1);
     let items = load_contacts(state, tenant_id, book_id).await;
     ok(&req.collection_id, key + 1, &items)
+}
+
+/// A client-originated contact command parsed from the Sync request.
+enum ConCommand {
+    Upsert {
+        uid: String,
+        first: Option<String>,
+        last: Option<String>,
+        file_as: Option<String>,
+        email: Option<String>,
+        phone: Option<String>,
+        company: Option<String>,
+    },
+    Delete {
+        contact_id: String,
+    },
+}
+
+/// Parse client `<Commands>` from a contacts Sync request. Add/Change collect
+/// Contacts-page fields into an Upsert (UID falls back to ServerId); Delete
+/// collects its ServerId. Depth-tracked so nested field closes don't flush early.
+fn parse_contact_commands(body: &[u8]) -> Vec<ConCommand> {
+    let Ok(events) = decode(body) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut mode: Option<bool> = None; // Some(true)=delete
+    let mut cmd_depth: i32 = 0;
+    let mut depth: i32 = 0;
+    let mut server_id: Option<String> = None;
+    let (mut first, mut last, mut file_as, mut email, mut phone, mut company) =
+        (None, None, None, None, None, None);
+    let mut want: Option<(u8, u8)> = None;
+    for ev in events {
+        match &ev {
+            Event::StartElement {
+                page: p,
+                token,
+                has_content,
+            } => {
+                if *p == page::AIR_SYNC
+                    && matches!(*token, air_sync::ADD | air_sync::CHANGE | air_sync::DELETE)
+                {
+                    mode = Some(*token == air_sync::DELETE);
+                    cmd_depth = depth;
+                    server_id = None;
+                    first = None;
+                    last = None;
+                    file_as = None;
+                    email = None;
+                    phone = None;
+                    company = None;
+                } else {
+                    want = Some((*p, *token));
+                }
+                if *has_content {
+                    depth += 1;
+                }
+            }
+            Event::Text(t) => {
+                match want {
+                    Some((page::AIR_SYNC, air_sync::SERVER_ID)) => server_id = Some(t.clone()),
+                    Some((page::CONTACTS, contacts::FIRST_NAME)) => first = Some(t.clone()),
+                    Some((page::CONTACTS, contacts::LAST_NAME)) => last = Some(t.clone()),
+                    Some((page::CONTACTS, contacts::FILE_AS)) => file_as = Some(t.clone()),
+                    Some((page::CONTACTS, contacts::EMAIL1_ADDRESS)) => email = Some(t.clone()),
+                    Some((page::CONTACTS, contacts::MOBILE_PHONE)) => phone = Some(t.clone()),
+                    Some((page::CONTACTS, contacts::COMPANY_NAME)) => company = Some(t.clone()),
+                    _ => {}
+                }
+                want = None;
+            }
+            Event::EndElement => {
+                depth -= 1;
+                want = None;
+                if mode.is_some() && depth == cmd_depth {
+                    match mode {
+                        Some(true) if server_id.is_some() => out.push(ConCommand::Delete {
+                            contact_id: server_id.take().unwrap(),
+                        }),
+                        Some(false) if server_id.is_some() || email.is_some() => {
+                            out.push(ConCommand::Upsert {
+                                uid: server_id.clone().unwrap_or_else(new_uid),
+                                first: first.clone(),
+                                last: last.clone(),
+                                file_as: file_as.clone(),
+                                email: email.clone(),
+                                phone: phone.clone(),
+                                company: company.clone(),
+                            });
+                        }
+                        _ => {}
+                    }
+                    mode = None;
+                }
+            }
+            _ => want = None,
+        }
+    }
+    out
+}
+
+/// A synthetic UID for a brand-new contact the device created without one.
+/// Deterministic-enough (no rand dep): derived from the field set is overkill —
+/// the contacts service treats UID as the dedup key, and a new contact simply
+/// needs a unique-ish value; the ServerId path covers edits.
+fn new_uid() -> String {
+    format!("eas-{}", Uuid::new_v4())
+}
+
+/// Apply parsed contact commands via the contacts service internal API.
+/// Best-effort; no-op when `contacts_url` is unset.
+async fn apply_contact_changes(state: &AppState, tenant_id: Uuid, book_id: Uuid, body: &[u8]) {
+    let base = state.cfg().contacts_url.clone();
+    if base.is_empty() {
+        return;
+    }
+    let http = reqwest::Client::new();
+    for cmd in parse_contact_commands(body) {
+        let result = match cmd {
+            ConCommand::Upsert {
+                uid,
+                first,
+                last,
+                file_as,
+                email,
+                phone,
+                company,
+            } => {
+                let vcard = build_vcard(
+                    &uid,
+                    first.as_deref(),
+                    last.as_deref(),
+                    file_as.as_deref(),
+                    email.as_deref(),
+                    phone.as_deref(),
+                    company.as_deref(),
+                );
+                http.post(format!("{base}/internal/contacts/items"))
+                    .json(&serde_json::json!({
+                        "tenant_id": tenant_id,
+                        "addressbook_id": book_id,
+                        "vcard_raw": vcard,
+                    }))
+                    .send()
+                    .await
+                    .map(|_| ())
+            }
+            ConCommand::Delete { contact_id } => http
+                .delete(format!("{base}/internal/contacts/items/{contact_id}"))
+                .query(&[("tenant_id", tenant_id.to_string())])
+                .send()
+                .await
+                .map(|_| ()),
+        };
+        if let Err(e) = result {
+            tracing::warn!(error = %e, "EAS contact change forward failed");
+        }
+    }
+}
+
+/// Build a minimal vCard 3.0 from EAS Contact fields.
+#[allow(clippy::too_many_arguments)]
+fn build_vcard(
+    uid: &str,
+    first: Option<&str>,
+    last: Option<&str>,
+    file_as: Option<&str>,
+    email: Option<&str>,
+    phone: Option<&str>,
+    company: Option<&str>,
+) -> String {
+    let fn_display = file_as
+        .map(str::to_string)
+        .or_else(|| match (first, last) {
+            (Some(f), Some(l)) => Some(format!("{f} {l}")),
+            (Some(f), None) => Some(f.to_string()),
+            (None, Some(l)) => Some(l.to_string()),
+            (None, None) => None,
+        })
+        .unwrap_or_else(|| "Unnamed".to_string());
+    let mut s = String::from("BEGIN:VCARD\r\nVERSION:3.0\r\n");
+    s.push_str(&format!("UID:{uid}\r\n"));
+    s.push_str(&format!(
+        "N:{};{};;;\r\n",
+        vcard_escape(last.unwrap_or("")),
+        vcard_escape(first.unwrap_or(""))
+    ));
+    s.push_str(&format!("FN:{}\r\n", vcard_escape(&fn_display)));
+    if let Some(o) = company {
+        s.push_str(&format!("ORG:{}\r\n", vcard_escape(o)));
+    }
+    if let Some(e) = email {
+        s.push_str(&format!("EMAIL;TYPE=INTERNET:{e}\r\n"));
+    }
+    if let Some(p) = phone {
+        s.push_str(&format!("TEL;TYPE=CELL:{p}\r\n"));
+    }
+    s.push_str("END:VCARD\r\n");
+    s
+}
+
+/// Escape vCard TEXT special chars (RFC 6350 §3.4).
+fn vcard_escape(v: &str) -> String {
+    v.replace('\\', "\\\\")
+        .replace(';', "\\;")
+        .replace(',', "\\,")
+        .replace('\n', "\\n")
 }
 
 struct ConItem {
@@ -174,7 +387,90 @@ async fn load_contacts(state: &AppState, tenant_id: Uuid, book_id: Uuid) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use expresso_wbxml::decode;
+
+    #[test]
+    fn build_vcard_has_fields() {
+        let v = build_vcard(
+            "c-1",
+            Some("Alice"),
+            Some("Smith"),
+            None,
+            Some("a@x.com"),
+            Some("+551199999"),
+            Some("Acme"),
+        );
+        assert!(v.contains("BEGIN:VCARD"));
+        assert!(v.contains("UID:c-1"));
+        assert!(v.contains("FN:Alice Smith"));
+        assert!(v.contains("N:Smith;Alice;;;"));
+        assert!(v.contains("EMAIL;TYPE=INTERNET:a@x.com"));
+        assert!(v.contains("ORG:Acme"));
+    }
+
+    #[test]
+    fn build_vcard_file_as_overrides_fn() {
+        let v = build_vcard(
+            "u",
+            Some("A"),
+            Some("B"),
+            Some("Custom Name"),
+            None,
+            None,
+            None,
+        );
+        assert!(v.contains("FN:Custom Name"));
+    }
+
+    #[test]
+    fn vcard_escape_handles_specials() {
+        assert_eq!(vcard_escape("a;b,c"), "a\\;b\\,c");
+    }
+
+    #[test]
+    fn parse_contact_commands_upsert_and_delete() {
+        let a = page::AIR_SYNC;
+        let c = page::CONTACTS;
+        let body = encode(&[
+            Event::start(a, air_sync::SYNC),
+            Event::start(a, air_sync::COMMANDS),
+            Event::start(a, air_sync::ADD),
+            Event::start(a, air_sync::SERVER_ID),
+            Event::Text("new-1".into()),
+            Event::EndElement,
+            Event::start(a, air_sync::APPLICATION_DATA),
+            Event::start(c, contacts::FIRST_NAME),
+            Event::Text("Bob".into()),
+            Event::EndElement,
+            Event::start(c, contacts::EMAIL1_ADDRESS),
+            Event::Text("bob@x.com".into()),
+            Event::EndElement,
+            Event::EndElement, // ApplicationData
+            Event::EndElement, // Add
+            Event::start(a, air_sync::DELETE),
+            Event::start(a, air_sync::SERVER_ID),
+            Event::Text("con-del".into()),
+            Event::EndElement,
+            Event::EndElement, // Delete
+            Event::EndElement, // Commands
+            Event::EndElement, // Sync
+        ]);
+        let cmds = parse_contact_commands(&body);
+        assert_eq!(cmds.len(), 2);
+        match &cmds[0] {
+            ConCommand::Upsert {
+                uid, email, first, ..
+            } => {
+                assert_eq!(uid, "new-1");
+                assert_eq!(first.as_deref(), Some("Bob"));
+                assert_eq!(email.as_deref(), Some("bob@x.com"));
+            }
+            ConCommand::Delete { .. } => panic!("expected upsert first"),
+        }
+        match &cmds[1] {
+            ConCommand::Delete { contact_id } => assert_eq!(contact_id, "con-del"),
+            ConCommand::Upsert { .. } => panic!("expected delete second"),
+        }
+    }
 
     fn item() -> ConItem {
         ConItem {

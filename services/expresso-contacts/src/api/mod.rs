@@ -6,6 +6,7 @@ pub mod context;
 mod gal;
 mod groups;
 mod health;
+mod internal;
 mod search_index;
 mod sharing;
 mod users;
@@ -22,6 +23,7 @@ pub fn router(state: AppState) -> Router {
         .merge(expresso_observability::metrics_router())
         .merge(addressbooks::routes())
         .merge(contacts::routes())
+        .merge(internal::routes())
         .merge(gal::routes())
         .merge(groups::routes())
         .merge(sharing::routes())
