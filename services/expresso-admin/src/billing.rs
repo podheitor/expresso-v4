@@ -327,20 +327,7 @@ pub async fn page(
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|i| InvoiceRow {
-            id: i.id.to_string(),
-            period: i
-                .period
-                .format(
-                    &time::format_description::parse("[year]-[month]")
-                        .unwrap_or_else(|_| Vec::new()),
-                )
-                .unwrap_or_default(),
-            plan: i.plan,
-            amount: money(i.amount_cents),
-            currency: i.currency,
-            status: i.status,
-        })
+        .map(invoice_row)
         .collect()
     } else {
         Vec::new()
@@ -493,6 +480,107 @@ pub async fn mark_action(
     .into_response()
 }
 
+// ─── Tenant self-service screen ──────────────────────────────────────────────
+
+/// The own-tenant billing screen: current plan + price + read-only invoices.
+/// Unlike the super-admin screen there is no tenant picker (the tenant is the
+/// caller's own) and no price/generate/mark actions.
+#[derive(Template)]
+#[template(path = "my_billing.html")]
+pub struct MyBillingTpl {
+    pub current: &'static str,
+    pub tenant_name: String,
+    pub plan: String,
+    pub plan_price: String,
+    pub currency: String,
+    pub invoices: Vec<InvoiceRow>,
+}
+
+fn invoice_row(i: Invoice) -> InvoiceRow {
+    InvoiceRow {
+        id: i.id.to_string(),
+        period: i
+            .period
+            .format(
+                &time::format_description::parse("[year]-[month]").unwrap_or_else(|_| Vec::new()),
+            )
+            .unwrap_or_default(),
+        plan: i.plan,
+        amount: money(i.amount_cents),
+        currency: i.currency,
+        status: i.status,
+    }
+}
+
+/// GET /my-billing.html — the caller's own-tenant plan + invoices, read-only.
+/// Accessible to any admin (tenant_admin or super_admin); scoped to the
+/// principal's own tenant_id (never a path-supplied one).
+pub async fn my_page(State(st): State<Arc<AppState>>, headers: HeaderMap) -> Response {
+    let principal = auth::principal_for(&st, &headers).await;
+    let Some(tid) = principal.tenant_id else {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            "no tenant on principal — super-admins use /billing.html",
+        )
+            .into_response();
+    };
+    let Some(p) = st.db.as_ref() else {
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "db unavailable",
+        )
+            .into_response();
+    };
+
+    let plan_row: Option<(String, String, i64, String)> = sqlx::query_as(
+        "SELECT t.name, bp.plan, bp.monthly_price_cents, bp.currency \
+         FROM tenants t JOIN billing_plans bp ON bp.plan = t.plan WHERE t.id = $1",
+    )
+    .bind(tid)
+    .fetch_optional(p)
+    .await
+    .unwrap_or_default();
+    let (tenant_name, plan, plan_price, currency) = match plan_row {
+        Some((name, plan, cents, cur)) => (name, plan, money(cents), cur),
+        None => (String::new(), String::new(), money(0), "BRL".into()),
+    };
+
+    let invoices: Vec<InvoiceRow> = sqlx::query_as::<_, Invoice>(
+        "SELECT id, tenant_id, period, plan, amount_cents, currency, status \
+         FROM billing_invoices WHERE tenant_id = $1 ORDER BY period DESC",
+    )
+    .bind(tid)
+    .fetch_all(p)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(invoice_row)
+    .collect();
+
+    match (MyBillingTpl {
+        current: "mybilling",
+        tenant_name,
+        plan,
+        plan_price,
+        currency,
+        invoices,
+    })
+    .render()
+    {
+        Ok(html) => (
+            axum::http::StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            html,
+        )
+            .into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("template: {e}"),
+        )
+            .into_response(),
+    }
+}
+
 /// Parse "49" / "49.9" / "49.90" into cents; None on garbage or negative.
 fn parse_price_to_cents(s: &str) -> Option<i64> {
     let s = s.trim().replace(',', ".");
@@ -505,7 +593,30 @@ fn parse_price_to_cents(s: &str) -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{money, parse_price_to_cents};
+    use super::{invoice_row, money, parse_price_to_cents, Invoice};
+
+    #[test]
+    fn invoice_row_formats_period_and_amount() {
+        let period = time::OffsetDateTime::parse(
+            "2026-06-01T00:00:00Z",
+            &time::format_description::well_known::Rfc3339,
+        )
+        .unwrap();
+        let inv = Invoice {
+            id: uuid::Uuid::nil(),
+            tenant_id: uuid::Uuid::nil(),
+            period,
+            plan: "professional".into(),
+            amount_cents: 9990,
+            currency: "BRL".into(),
+            status: "pending".into(),
+        };
+        let row = invoice_row(inv);
+        assert_eq!(row.period, "2026-06");
+        assert_eq!(row.amount, "99.90");
+        assert_eq!(row.plan, "professional");
+        assert_eq!(row.status, "pending");
+    }
 
     #[test]
     fn money_formats_cents() {

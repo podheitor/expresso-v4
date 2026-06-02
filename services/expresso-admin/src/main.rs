@@ -182,6 +182,7 @@ async fn main() -> anyhow::Result<()> {
             axum::routing::patch(billing::set_invoice_status),
         )
         .route("/billing.html", get(billing::page))
+        .route("/my-billing.html", get(billing::my_page))
         .route("/billing/price", post(billing::set_price_action))
         .route("/billing/generate", post(billing::generate_action))
         .route("/billing/mark", post(billing::mark_action))

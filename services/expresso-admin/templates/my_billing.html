@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>Minha conta — Plano e Faturas</h1>
+  <p class="hint">
+    Faturas da sua organização. O pagamento é registrado pela equipe Expresso
+    (sem gateway externo); aqui você acompanha o histórico.
+  </p>
+
+  <table class="grid">
+    <thead><tr><th>Organização</th><th>Plano</th><th>Preço mensal</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>{{ tenant_name }}</td>
+        <td><code>{{ plan }}</code></td>
+        <td>{{ currency }} {{ plan_price }}</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>Faturas</h2>
+  <table class="grid">
+    <thead><tr><th>Período</th><th>Plano</th><th>Valor</th><th>Status</th></tr></thead>
+    <tbody>
+      {% if invoices.is_empty() %}
+        <tr><td colspan="4" class="hint">Nenhuma fatura emitida ainda.</td></tr>
+      {% else %}
+        {% for inv in invoices %}
+        <tr>
+          <td>{{ inv.period }}</td>
+          <td><code>{{ inv.plan }}</code></td>
+          <td>{{ inv.currency }} {{ inv.amount }}</td>
+          <td>{{ inv.status }}</td>
+        </tr>
+        {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
