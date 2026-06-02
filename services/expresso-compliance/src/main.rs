@@ -514,6 +514,17 @@ async fn archive_message(
     }
 }
 
+/// Escape a user string for safe inclusion in an interpolated ILIKE pattern
+/// literal: double single-quotes (string-literal escaping) and backslash-escape
+/// the LIKE metacharacters `\`, `%`, `_`. Callers MUST add `ESCAPE '\'` to the
+/// ILIKE so the backslash escapes are honored.
+fn ilike_escape(s: &str) -> String {
+    s.replace('\'', "''")
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 async fn list_archive(
     State(st): State<AppState>,
     AuthCtx(ctx): AuthCtx,
@@ -548,26 +559,20 @@ async fn list_archive(
     let subject_filter = params
         .subject
         .map(|s| {
-            let esc = s
-                .replace('\'', "''")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
-            format!("AND subject ILIKE '%{esc}%'")
+            let esc = ilike_escape(&s);
+            format!("AND subject ILIKE '%{esc}%' ESCAPE '\\'")
         })
         .unwrap_or_default();
     let from_addr_filter = params
         .from_addr
         .map(|f| {
-            let esc = f
-                .replace('\'', "''")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
-            format!("AND from_addr ILIKE '%{esc}%'")
+            let esc = ilike_escape(&f);
+            format!("AND from_addr ILIKE '%{esc}%' ESCAPE '\\'")
         })
         .unwrap_or_default();
     let to_addr_filter = params.to_addr.map(|t| {
-        let esc = t.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-        format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(to_addrs) t WHERE t ILIKE '%{esc}%')")
+        let esc = ilike_escape(&t);
+        format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(to_addrs) t WHERE t ILIKE '%{esc}%' ESCAPE '\\')")
     }).unwrap_or_default();
     let size_min_filter = params
         .size_min
@@ -754,26 +759,20 @@ async fn count_archive(
     let subject_filter = params
         .subject
         .map(|s| {
-            let esc = s
-                .replace('\'', "''")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
-            format!("AND subject ILIKE '%{esc}%'")
+            let esc = ilike_escape(&s);
+            format!("AND subject ILIKE '%{esc}%' ESCAPE '\\'")
         })
         .unwrap_or_default();
     let from_addr_filter = params
         .from_addr
         .map(|f| {
-            let esc = f
-                .replace('\'', "''")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
-            format!("AND from_addr ILIKE '%{esc}%'")
+            let esc = ilike_escape(&f);
+            format!("AND from_addr ILIKE '%{esc}%' ESCAPE '\\'")
         })
         .unwrap_or_default();
     let to_addr_filter = params.to_addr.map(|t| {
-        let esc = t.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-        format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(to_addrs) t WHERE t ILIKE '%{esc}%')")
+        let esc = ilike_escape(&t);
+        format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(to_addrs) t WHERE t ILIKE '%{esc}%' ESCAPE '\\')")
     }).unwrap_or_default();
     let size_min_filter = params
         .size_min
@@ -2307,17 +2306,22 @@ async fn export_archive(
     let subject_filter = params
         .subject
         .as_deref()
-        .map(|s| format!("AND subject ILIKE '%{}%'", s.replace('\'', "''")))
+        .map(|s| format!("AND subject ILIKE '%{}%' ESCAPE '\\'", ilike_escape(s)))
         .unwrap_or_default();
     let from_addr_filter = params
         .from_addr
         .as_deref()
-        .map(|s| format!("AND from_addr ILIKE '%{}%'", s.replace('\'', "''")))
+        .map(|s| format!("AND from_addr ILIKE '%{}%' ESCAPE '\\'", ilike_escape(s)))
         .unwrap_or_default();
     let to_addr_filter = params
         .to_addr
         .as_deref()
-        .map(|s| format!("AND to_addrs::text ILIKE '%{}%'", s.replace('\'', "''")))
+        .map(|s| {
+            format!(
+                "AND to_addrs::text ILIKE '%{}%' ESCAPE '\\'",
+                ilike_escape(s)
+            )
+        })
         .unwrap_or_default();
     let size_min_filter = params
         .size_min

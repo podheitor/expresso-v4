@@ -192,9 +192,10 @@ async fn list_rules(
         .map(|n| {
             let esc = n
                 .replace('\'', "''")
+                .replace('\\', "\\\\")
                 .replace('%', "\\%")
                 .replace('_', "\\_");
-            format!("AND name ILIKE '%{esc}%'")
+            format!("AND name ILIKE '%{esc}%' ESCAPE '\\'")
         })
         .unwrap_or_default();
     let priority_min_filter = params
