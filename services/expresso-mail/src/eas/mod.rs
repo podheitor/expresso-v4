@@ -13,6 +13,7 @@
 
 mod auth;
 mod foldersync;
+mod ping;
 mod provision;
 mod sync;
 
@@ -116,9 +117,14 @@ async fn handle_command(
                     .await;
             wbxml_ok(resp)
         }
+        "Ping" => {
+            let req = ping::parse_ping(&body);
+            let resp = ping::ping_response(&state, principal.tenant_id, &req).await;
+            wbxml_ok(resp)
+        }
         // Implemented in later sprints; return 501 with a clear status so a
         // client doesn't treat an empty 200 as a malformed response.
-        "Ping" | "GetItemEstimate" | "ItemOperations" | "SendMail" => {
+        "GetItemEstimate" | "ItemOperations" | "SendMail" => {
             warn!(cmd = %cmd, "EAS command not yet implemented");
             (
                 StatusCode::NOT_IMPLEMENTED,

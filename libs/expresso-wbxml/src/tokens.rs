@@ -11,8 +11,21 @@ pub mod page {
     pub const AIR_SYNC: u8 = 0;
     pub const EMAIL: u8 = 2;
     pub const FOLDER_HIERARCHY: u8 = 7;
+    pub const PING: u8 = 13;
     pub const PROVISION: u8 = 14;
     pub const AIR_SYNC_BASE: u8 = 17;
+}
+
+/// Ping (page 13) tokens — Ping/Direct-Push command.
+pub mod ping {
+    pub const PING: u8 = 0x05;
+    pub const STATUS: u8 = 0x07;
+    pub const HEARTBEAT_INTERVAL: u8 = 0x08;
+    pub const FOLDERS: u8 = 0x09;
+    pub const FOLDER: u8 = 0x0A;
+    pub const ID: u8 = 0x0B;
+    pub const CLASS: u8 = 0x0C;
+    pub const MAX_FOLDERS: u8 = 0x0D;
 }
 
 /// AirSync (page 0) tokens — the Sync command envelope.
@@ -102,6 +115,9 @@ pub fn tag_name(page: u8, token: u8) -> Option<&'static str> {
         (page::PROVISION, provision::PROVISION) => "Provision:Provision",
         (page::PROVISION, provision::POLICY_KEY) => "Provision:PolicyKey",
         (page::PROVISION, provision::STATUS) => "Provision:Status",
+        (page::PING, ping::PING) => "Ping:Ping",
+        (page::PING, ping::STATUS) => "Ping:Status",
+        (page::PING, ping::FOLDER) => "Ping:Folder",
         _ => return None,
     };
     Some(name)
@@ -152,6 +168,8 @@ mod tests {
             provision::PROVISION,
             email::MESSAGE_CLASS,
             air_sync_base::NATIVE_BODY_TYPE,
+            ping::PING,
+            ping::MAX_FOLDERS,
         ] {
             assert!(t <= 0x3F, "token {t:#x} exceeds 6 bits");
         }

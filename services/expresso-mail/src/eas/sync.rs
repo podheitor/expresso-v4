@@ -23,11 +23,21 @@ use crate::state::AppState;
 /// How many messages to emit in one Sync response (EAS WindowSize default 100).
 const WINDOW_SIZE: i64 = 100;
 
+/// A client→server change in a Sync request.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ClientChange {
+    /// Mark read/unread (`<Change>` carrying `<Read>`). ServerId is `mboxid:uid`.
+    SetRead { server_id: String, read: bool },
+    /// Delete a message (`<Delete>`). ServerId is `mboxid:uid`.
+    Delete { server_id: String },
+}
+
 /// Parsed fields from a Sync request collection (only what the MVP needs).
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct SyncRequest {
     pub sync_key: String,
     pub collection_id: String,
+    pub changes: Vec<ClientChange>,
 }
 
 /// Parse the first `<Collection>`'s SyncKey + CollectionId from a Sync request.
@@ -39,22 +49,94 @@ pub fn parse_sync_request(body: &[u8]) -> SyncRequest {
     };
     let mut req = SyncRequest::default();
     let mut field: Option<u8> = None;
+    // Header fields (SyncKey, CollectionId) live before <Commands>; capturing
+    // the first occurrence of each is enough.
     for ev in events {
         match ev {
             Event::StartElement { page: p, token, .. } if p == page::AIR_SYNC => {
-                field = Some(token);
+                field = Some(token)
             }
-            Event::Text(t) => match field {
-                Some(air_sync::SYNC_KEY) if req.sync_key.is_empty() => req.sync_key = t,
-                Some(air_sync::COLLECTION_ID) if req.collection_id.is_empty() => {
-                    req.collection_id = t;
+            Event::Text(t) => {
+                match field {
+                    Some(air_sync::SYNC_KEY) if req.sync_key.is_empty() => req.sync_key = t,
+                    Some(air_sync::COLLECTION_ID) if req.collection_id.is_empty() => {
+                        req.collection_id = t;
+                    }
+                    _ => {}
                 }
-                _ => {}
-            },
+                field = None;
+            }
             _ => field = None,
         }
     }
+    // Client→server commands are parsed in a focused second pass.
+    req.changes = parse_changes(body);
     req
+}
+
+/// Focused parse of client `<Commands>` (Change/Delete) — kept separate from the
+/// header parse so each stays simple. Tracks the current command + its ServerId
+/// and Read value, emitting a [`ClientChange`] when the command element closes.
+fn parse_changes(body: &[u8]) -> Vec<ClientChange> {
+    let Ok(events) = decode(body) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut depth_is_delete: Option<bool> = None;
+    let mut server_id: Option<String> = None;
+    let mut read: Option<bool> = None;
+    let mut want: Option<u8> = None; // which leaf text we're capturing
+    for ev in events {
+        match &ev {
+            Event::StartElement { page: p, token, .. } if *p == page::AIR_SYNC => match *token {
+                air_sync::CHANGE => {
+                    depth_is_delete = Some(false);
+                    server_id = None;
+                    read = None;
+                }
+                air_sync::DELETE => {
+                    depth_is_delete = Some(true);
+                    server_id = None;
+                    read = None;
+                }
+                air_sync::SERVER_ID => want = Some(air_sync::SERVER_ID),
+                _ => want = None,
+            },
+            Event::StartElement { page: p, token, .. }
+                if *p == page::EMAIL && *token == email::READ =>
+            {
+                want = Some(email::READ);
+            }
+            Event::Text(t) => {
+                match want {
+                    Some(air_sync::SERVER_ID) => server_id = Some(t.clone()),
+                    Some(email::READ) => read = Some(t == "1"),
+                    _ => {}
+                }
+                want = None;
+            }
+            Event::EndElement => {
+                // Close of a Change/Delete: emit when we have a ServerId.
+                if let (Some(is_delete), Some(sid)) = (depth_is_delete, server_id.clone()) {
+                    if is_delete {
+                        out.push(ClientChange::Delete { server_id: sid });
+                        depth_is_delete = None;
+                        server_id = None;
+                    } else if let Some(r) = read {
+                        out.push(ClientChange::SetRead {
+                            server_id: sid,
+                            read: r,
+                        });
+                        depth_is_delete = None;
+                        server_id = None;
+                        read = None;
+                    }
+                }
+            }
+            _ => want = None,
+        }
+    }
+    out
 }
 
 /// One message as EAS Sync sees it.
@@ -87,6 +169,10 @@ pub async fn sync_response(
         let _ = reset_state(state, tenant_id, user_id, device_id, collection_id).await;
         return sync_ok(&req.collection_id, 1, &[]);
     }
+
+    // Apply any client→server changes (\Seen toggles, deletes) before computing
+    // the server→client delta. Best-effort: a failed change doesn't abort Sync.
+    apply_client_changes(state, tenant_id, collection_id, &req.changes).await;
 
     let (key, last_uid) = load_state(state, tenant_id, user_id, device_id, collection_id).await;
     let items = load_new_items(state, tenant_id, collection_id, last_uid).await;
@@ -330,6 +416,61 @@ async fn reset_state(
     save_state(state, tenant_id, user_id, device_id, collection_id, 1, 0).await
 }
 
+/// Extract the message UID from an EAS ServerId of the form `mboxid:uid`.
+fn uid_from_server_id(server_id: &str) -> Option<i64> {
+    server_id.rsplit_once(':')?.1.parse().ok()
+}
+
+/// Apply client→server changes to the messages in `collection_id`. Read toggles
+/// add/remove the `\Seen` flag; deletes remove the row. Each is scoped by
+/// mailbox + tenant + uid. Best-effort: errors are logged, not propagated.
+async fn apply_client_changes(
+    state: &AppState,
+    tenant_id: Uuid,
+    collection_id: Uuid,
+    changes: &[ClientChange],
+) {
+    for ch in changes {
+        let result = match ch {
+            ClientChange::SetRead { server_id, read } => {
+                let Some(uid) = uid_from_server_id(server_id) else {
+                    continue;
+                };
+                let sql = if *read {
+                    "UPDATE messages SET flags = \
+                        (SELECT array_agg(DISTINCT f) FROM unnest(flags || ARRAY['\\Seen']) f) \
+                     WHERE mailbox_id = $1 AND tenant_id = $2 AND uid = $3"
+                } else {
+                    "UPDATE messages SET flags = array_remove(flags, '\\Seen') \
+                     WHERE mailbox_id = $1 AND tenant_id = $2 AND uid = $3"
+                };
+                sqlx::query(sql)
+                    .bind(collection_id)
+                    .bind(tenant_id)
+                    .bind(uid)
+                    .execute(state.db())
+                    .await
+            }
+            ClientChange::Delete { server_id } => {
+                let Some(uid) = uid_from_server_id(server_id) else {
+                    continue;
+                };
+                sqlx::query(
+                    "DELETE FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND uid = $3",
+                )
+                .bind(collection_id)
+                .bind(tenant_id)
+                .bind(uid)
+                .execute(state.db())
+                .await
+            }
+        };
+        if let Err(e) = result {
+            tracing::warn!(error = %e, "EAS client change failed");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -404,5 +545,78 @@ mod tests {
         let bytes = sync_ok("col-1", 2, &[]);
         let events = decode(&bytes).unwrap();
         assert_eq!(encode(&events), bytes);
+    }
+
+    #[test]
+    fn uid_from_server_id_parses_suffix() {
+        assert_eq!(uid_from_server_id("mbox-uuid:42"), Some(42));
+        assert_eq!(uid_from_server_id("42"), None);
+        assert_eq!(uid_from_server_id("mbox:notanum"), None);
+    }
+
+    #[test]
+    fn parse_changes_reads_delete() {
+        let a = page::AIR_SYNC;
+        let body = encode(&[
+            Event::start(a, air_sync::SYNC),
+            Event::start(a, air_sync::COMMANDS),
+            Event::start(a, air_sync::DELETE),
+            Event::start(a, air_sync::SERVER_ID),
+            Event::Text("m:7".into()),
+            Event::EndElement,
+            Event::EndElement, // Delete
+            Event::EndElement, // Commands
+            Event::EndElement, // Sync
+        ]);
+        let changes = parse_changes(&body);
+        assert_eq!(
+            changes,
+            vec![ClientChange::Delete {
+                server_id: "m:7".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn parse_changes_reads_set_read() {
+        let a = page::AIR_SYNC;
+        let e = page::EMAIL;
+        let body = encode(&[
+            Event::start(a, air_sync::SYNC),
+            Event::start(a, air_sync::COMMANDS),
+            Event::start(a, air_sync::CHANGE),
+            Event::start(a, air_sync::SERVER_ID),
+            Event::Text("m:9".into()),
+            Event::EndElement,
+            Event::start(a, air_sync::APPLICATION_DATA),
+            Event::start(e, email::READ),
+            Event::Text("1".into()),
+            Event::EndElement,
+            Event::EndElement, // ApplicationData
+            Event::EndElement, // Change
+            Event::EndElement, // Commands
+            Event::EndElement, // Sync
+        ]);
+        let changes = parse_changes(&body);
+        assert_eq!(
+            changes,
+            vec![ClientChange::SetRead {
+                server_id: "m:9".into(),
+                read: true
+            }]
+        );
+    }
+
+    #[test]
+    fn parse_changes_empty_when_no_commands() {
+        let a = page::AIR_SYNC;
+        let body = encode(&[
+            Event::start(a, air_sync::SYNC),
+            Event::start(a, air_sync::SYNC_KEY),
+            Event::Text("3".into()),
+            Event::EndElement,
+            Event::EndElement,
+        ]);
+        assert!(parse_changes(&body).is_empty());
     }
 }
