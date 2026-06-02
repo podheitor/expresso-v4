@@ -1,5 +1,6 @@
 //! Axum HTTP router for expresso-notes.
 
+mod activity;
 pub mod context;
 mod health;
 mod notebooks;
@@ -25,6 +26,7 @@ pub fn router(
         .merge(health::routes())
         .merge(expresso_observability::metrics_router())
         .merge(notes::routes())
+        .merge(activity::routes())
         .merge(notebooks::routes())
         .merge(sharing::routes())
         .layer(TraceLayer::new_for_http())

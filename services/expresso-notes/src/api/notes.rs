@@ -6,6 +6,7 @@
 //!   GET    /api/v1/notes/shared            → list notes shared with me
 //!   GET    /api/v1/notes/search?q=&limit=  → substring search own notes
 //!   GET    /api/v1/notes/export             → full JSON backup of own notes
+//!   GET    /api/v1/notes/:id/activity        → the note's audit trail
 //!   POST   /api/v1/notes                    → create
 //!   GET    /api/v1/notes/:id                → fetch one (own or shared)
 //!   PATCH  /api/v1/notes/:id                → partial update
@@ -163,6 +164,7 @@ async fn create(
         .create(ctx.tenant_id, ctx.user_id, body)
         .await?;
     index_note(&state, &note);
+    super::activity::record(pool, ctx.tenant_id, note.id, ctx.user_id, "create", None).await;
     Ok((StatusCode::CREATED, Json(note)))
 }
 
@@ -219,6 +221,7 @@ async fn update(
     }
     let note = repo.update(ctx.tenant_id, id, body).await?;
     index_note(&state, &note);
+    super::activity::record(pool, ctx.tenant_id, id, ctx.user_id, "update", None).await;
     Ok(Json(note))
 }
 
@@ -246,6 +249,8 @@ async fn delete(
     assert_can_write(&repo, ctx.tenant_id, id, ctx.user_id).await?;
     repo.delete(ctx.tenant_id, id).await?;
     deindex_note(&state, id);
+    // Logged after delete; notes_activity has no FK to notes so the row survives.
+    super::activity::record(pool, ctx.tenant_id, id, ctx.user_id, "delete", None).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
