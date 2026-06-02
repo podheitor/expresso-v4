@@ -25,6 +25,16 @@ pub struct TagCount {
     pub count: i64,
 }
 
+/// An unordered pair of tags and how many of the caller's notes carry both.
+/// `tag_a` is always lexicographically less than `tag_b`, so each pair appears
+/// once.
+#[derive(Debug, Serialize, PartialEq, Eq, sqlx::FromRow)]
+pub struct TagPairCount {
+    pub tag_a: String,
+    pub tag_b: String,
+    pub count: i64,
+}
+
 pub struct NoteTagRepo<'a> {
     pool: &'a DbPool,
 }
@@ -89,6 +99,38 @@ impl<'a> NoteTagRepo<'a> {
         )
         .bind(tenant)
         .bind(user)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
+    /// Count how often each unordered pair of tags co-occurs on the same one of
+    /// `user`'s notes. Self-join on `note_id` with `tag_a < tag_b` yields each
+    /// pair once and excludes self-pairs; owner-scoped via the `notes` join.
+    /// Ordered by descending co-occurrence, then by the pair. `limit` is clamped
+    /// by the caller. Empty when the user has fewer than two tags on any note.
+    pub async fn co_occurrence(
+        &self,
+        tenant: Uuid,
+        user: Uuid,
+        limit: i64,
+    ) -> Result<Vec<TagPairCount>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let rows: Vec<TagPairCount> = sqlx::query_as(
+            "SELECT a.tag AS tag_a, b.tag AS tag_b, COUNT(*) AS count
+               FROM notes_tags a
+               JOIN notes_tags b
+                 ON a.note_id = b.note_id AND a.tenant_id = b.tenant_id AND a.tag < b.tag
+               JOIN notes n ON n.id = a.note_id AND n.tenant_id = a.tenant_id
+              WHERE a.tenant_id = $1 AND n.user_id = $2
+              GROUP BY a.tag, b.tag
+              ORDER BY count DESC, a.tag, b.tag
+              LIMIT $3",
+        )
+        .bind(tenant)
+        .bind(user)
+        .bind(limit)
         .fetch_all(&mut *tx)
         .await?;
         tx.commit().await?;
@@ -203,5 +245,19 @@ mod tests {
     fn normalize_empty_is_empty() {
         assert!(normalize(&[]).unwrap().is_empty());
         assert!(normalize(&["   ".into()]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn tag_pair_count_serializes_pair_and_count() {
+        let p = TagPairCount {
+            tag_a: "urgent".into(),
+            tag_b: "work".into(),
+            count: 3,
+        };
+        let v: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(v["tag_a"], "urgent");
+        assert_eq!(v["tag_b"], "work");
+        assert_eq!(v["count"], 3);
     }
 }

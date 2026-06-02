@@ -33,7 +33,7 @@ use crate::api::context::RequestCtx;
 use crate::domain::note::NotebookFilter;
 use crate::domain::{
     NewNote, Note, NoteRepo, NoteSnapshot, NoteTagRepo, NoteVersion, NoteVersionRepo, NotebookRepo,
-    SharedNote, TagCount, UpdateNote,
+    SharedNote, TagCount, TagPairCount, UpdateNote,
 };
 use crate::error::{NotesError, Result};
 use crate::state::AppState;
@@ -50,6 +50,7 @@ pub fn routes() -> Router<AppState> {
         // across all of the caller's notes. `stats` is static so matchit prefers
         // it over the `:tag` param on the same prefix.
         .route("/api/v1/notes/tags/stats", get(tag_stats))
+        .route("/api/v1/notes/tags/co-occurrence", get(tag_co_occurrence))
         .route("/api/v1/notes/tags/:tag", patch(rename_tag))
         .route(
             "/api/v1/notes/tags/:tag/merge",
@@ -298,6 +299,29 @@ async fn tag_stats(State(state): State<AppState>, ctx: RequestCtx) -> Result<Jso
         .count_by_tag(ctx.tenant_id, ctx.user_id)
         .await?;
     Ok(Json(stats))
+}
+
+/// Query for the co-occurrence endpoint: how many tag pairs to return.
+#[derive(Debug, Deserialize)]
+struct CoOccurrenceQuery {
+    limit: Option<i64>,
+}
+
+/// GET /api/v1/notes/tags/co-occurrence?limit= — pairs of tags that appear
+/// together on the caller's own notes, most-co-occurring first. Like tag_stats,
+/// it only ever counts the caller's own notes via the repo join. `limit` is
+/// clamped to 1..=200 (default 50).
+async fn tag_co_occurrence(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Query(q): Query<CoOccurrenceQuery>,
+) -> Result<Json<Vec<TagPairCount>>> {
+    let pool = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+    let pairs = NoteTagRepo::new(pool)
+        .co_occurrence(ctx.tenant_id, ctx.user_id, limit)
+        .await?;
+    Ok(Json(pairs))
 }
 
 /// PATCH /api/v1/notes/tags/:tag — rename a tag across all the caller's notes.
