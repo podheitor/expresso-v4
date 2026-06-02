@@ -391,14 +391,14 @@ async fn load_new_items(
 }
 
 /// Fill each item's `body_text`/`body_truncated`: fetch the raw message from
-/// storage, take the text after the header separator, and truncate to
-/// `max_bytes`. Falls back to `preview_text` when the body can't be fetched.
+/// storage, decode its plain-text MIME part, and truncate to `max_bytes`.
+/// Falls back to `preview_text` when the body can't be fetched.
 async fn resolve_bodies(state: &AppState, items: &mut [MailItem], max_bytes: usize) {
     for it in items.iter_mut() {
         let full = match &it.body_path {
             Some(path) => crate::pop3::store::fetch_body(state, path)
                 .await
-                .map(|raw| body_text_after_headers(&raw)),
+                .map(|raw| extract_plain_body(&raw)),
             None => None,
         };
         let text = full.or_else(|| it.preview.clone()).unwrap_or_default();
@@ -417,10 +417,17 @@ async fn resolve_bodies(state: &AppState, items: &mut [MailItem], max_bytes: usi
     }
 }
 
-/// Extract the plain-text body section (after the `\r\n\r\n` header separator)
-/// from a raw RFC822 message as a lossy UTF-8 string. MIME multipart decoding is
-/// a later refinement; for now we hand back the raw body bytes as text.
-fn body_text_after_headers(raw: &[u8]) -> String {
+/// Extract the decoded plain-text body from a raw RFC822 message. Parses MIME
+/// via `mail-parser` and returns the first `text/plain` part (transfer-decoded,
+/// charset-normalised). Falls back to the raw bytes after the header separator
+/// when the message doesn't parse or has no text part (e.g. HTML-only — HTML→
+/// text conversion is a further refinement).
+fn extract_plain_body(raw: &[u8]) -> String {
+    if let Some(msg) = mail_parser::MessageParser::default().parse(raw) {
+        if let Some(text) = msg.body_text(0) {
+            return text.into_owned();
+        }
+    }
     let body = raw
         .windows(4)
         .position(|w| w == b"\r\n\r\n")
@@ -700,15 +707,27 @@ mod tests {
     }
 
     #[test]
-    fn body_text_after_headers_strips_headers() {
-        let raw = b"Subject: hi\r\nFrom: a@x\r\n\r\nthe body here";
-        assert_eq!(body_text_after_headers(raw), "the body here");
+    fn extract_plain_body_simple_message() {
+        let raw = b"Subject: hi\r\nContent-Type: text/plain\r\n\r\nthe body here";
+        assert_eq!(extract_plain_body(raw).trim(), "the body here");
     }
 
     #[test]
-    fn body_text_after_headers_whole_when_no_separator() {
-        let raw = b"no separator at all";
-        assert_eq!(body_text_after_headers(raw), "no separator at all");
+    fn extract_plain_body_multipart_picks_text_part() {
+        let raw = b"Subject: hi\r\n\
+Content-Type: multipart/alternative; boundary=\"B\"\r\n\r\n\
+--B\r\nContent-Type: text/plain\r\n\r\nplain version\r\n\
+--B\r\nContent-Type: text/html\r\n\r\n<p>html version</p>\r\n--B--\r\n";
+        let body = extract_plain_body(raw);
+        assert!(body.contains("plain version"));
+        assert!(!body.contains("<p>"));
+    }
+
+    #[test]
+    fn extract_plain_body_quoted_printable_decoded() {
+        let raw = b"Content-Type: text/plain\r\n\
+Content-Transfer-Encoding: quoted-printable\r\n\r\nca=C3=A9"; // "caé"
+        assert_eq!(extract_plain_body(raw).trim(), "caé");
     }
 
     #[test]
