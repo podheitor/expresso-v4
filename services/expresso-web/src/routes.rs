@@ -21,12 +21,12 @@ use crate::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
         AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent,
-        Calendar, CalendarCountersTpl, CalendarDayTpl, CalendarMonthTpl, CalendarShareTpl,
-        CalendarTpl, CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage, ChatTpl, Contact,
-        ContactActivityTpl, ContactAddressRow, ContactDiffTpl, ContactEmailRow, ContactFormTpl,
-        ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow,
-        ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView,
-        DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow,
+        Calendar, CalendarConflictsTpl, CalendarCountersTpl, CalendarDayTpl, CalendarMonthTpl,
+        CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage,
+        ChatTpl, ConflictPairRow, Contact, ContactActivityTpl, ContactAddressRow, ContactDiffTpl,
+        ContactEmailRow, ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl,
+        ContactVersionRow, ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw,
+        DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow,
         DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
         DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
         DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
@@ -108,6 +108,7 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/edit", get(drive_edit_page))
         .route("/calendar", get(calendar_page))
         .route("/calendar/freebusy", get(freebusy_page))
+        .route("/calendar/conflicts", get(calendar_conflicts_page))
         .route("/calendar/counters", get(calendar_counters_page))
         .route(
             "/calendar/counters/:id/:action",
@@ -1603,6 +1604,108 @@ async fn calendar_counter_action(
     Ok(StatusCode::from_u16(status)
         .unwrap_or(StatusCode::BAD_GATEWAY)
         .into_response())
+}
+
+#[derive(Deserialize)]
+struct ConflictsQuery {
+    #[serde(default)]
+    cal_id: Option<String>,
+    #[serde(default)]
+    date: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ConflictPairJson {
+    #[serde(default)]
+    a_summary: Option<String>,
+    #[serde(default)]
+    a_dtstart: Option<String>,
+    #[serde(default)]
+    a_dtend: Option<String>,
+    #[serde(default)]
+    b_summary: Option<String>,
+    #[serde(default)]
+    b_dtstart: Option<String>,
+    #[serde(default)]
+    b_dtend: Option<String>,
+}
+
+/// "HH:MM–HH:MM" from two rfc3339 instants (blank parts skipped).
+fn span_label(start: &Option<String>, end: &Option<String>) -> String {
+    let s = start.as_deref().map(hhmm_of_rfc3339).unwrap_or_default();
+    let e = end.as_deref().map(hhmm_of_rfc3339).unwrap_or_default();
+    format!("{s}–{e}")
+}
+
+/// GET /calendar/conflicts?cal_id=&date= — double-booking detector. Lists pairs
+/// of events on a calendar that overlap in time on the chosen day.
+async fn calendar_conflicts_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<ConflictsQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let calendars = get_json::<Vec<Calendar>>(
+        &st,
+        &st.backends.calendar,
+        "/api/v1/calendars",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    // Default the picker to the user's default calendar (or the first).
+    let default_cal = calendars
+        .iter()
+        .find(|c| c.is_default)
+        .or_else(|| calendars.first())
+        .map(|c| c.id.clone())
+        .unwrap_or_default();
+    let cal_id = q.cal_id.filter(|s| !s.is_empty()).unwrap_or(default_cal);
+    let date = q.date.unwrap_or_default();
+
+    let mut pairs = Vec::new();
+    let queried = !cal_id.is_empty() && date.len() == 10;
+    if queried {
+        let enc = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC);
+        let from = format!("{date}T00:00:00Z");
+        let to = format!("{date}T23:59:59Z");
+        let resp = get_json::<serde_json::Value>(
+            &st,
+            &st.backends.calendar,
+            &format!("/api/v1/calendars/{enc}/events-conflicts?from={from}&to={to}"),
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default();
+        if let Some(arr) = resp.get("conflicts").and_then(|v| v.as_array()) {
+            for c in arr {
+                if let Ok(p) = serde_json::from_value::<ConflictPairJson>(c.clone()) {
+                    pairs.push(ConflictPairRow {
+                        a_summary: p.a_summary.unwrap_or_else(|| "(sem título)".into()),
+                        a_when: span_label(&p.a_dtstart, &p.a_dtend),
+                        b_summary: p.b_summary.unwrap_or_else(|| "(sem título)".into()),
+                        b_when: span_label(&p.b_dtstart, &p.b_dtend),
+                    });
+                }
+            }
+        }
+    }
+    Ok(askama_axum::IntoResponse::into_response(
+        CalendarConflictsTpl {
+            me,
+            calendars,
+            cal_id,
+            date,
+            pairs,
+            queried,
+        },
+    ))
 }
 
 async fn freebusy_page(
@@ -9808,6 +9911,18 @@ mod tests {
             .map(|s| s.replace('T', " ").chars().take(16).collect())
             .unwrap_or_default();
         assert_eq!(when, "2026-06-03 15:20");
+    }
+
+    #[test]
+    fn conflict_span_label_and_parse() {
+        let p: ConflictPairJson = serde_json::from_value(serde_json::json!({
+            "a_summary": "Standup", "a_dtstart": "2026-06-04T09:00:00Z", "a_dtend": "2026-06-04T09:30:00Z",
+            "b_summary": "1:1", "b_dtstart": "2026-06-04T09:15:00Z", "b_dtend": "2026-06-04T09:45:00Z"
+        }))
+        .expect("parse");
+        assert_eq!(p.a_summary.as_deref(), Some("Standup"));
+        assert_eq!(span_label(&p.a_dtstart, &p.a_dtend), "09:00–09:30");
+        assert_eq!(span_label(&p.b_dtstart, &p.b_dtend), "09:15–09:45");
     }
 
     #[test]

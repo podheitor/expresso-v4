@@ -999,6 +999,27 @@ pub struct FreeBusyTpl {
     pub queried: bool,
 }
 
+/// One overlapping pair of events (double-booking) within a day.
+pub struct ConflictPairRow {
+    pub a_summary: String,
+    pub a_when: String,
+    pub b_summary: String,
+    pub b_when: String,
+}
+
+#[derive(Template)]
+#[template(path = "calendar_conflicts.html")]
+pub struct CalendarConflictsTpl {
+    pub me: Me,
+    pub calendars: Vec<Calendar>,
+    /// Selected calendar id (echoed into the form), empty before first query.
+    pub cal_id: String,
+    /// Queried day (YYYY-MM-DD), echoed back.
+    pub date: String,
+    pub pairs: Vec<ConflictPairRow>,
+    pub queried: bool,
+}
+
 /// One pending COUNTER proposal (attendee suggested a different time).
 pub struct CounterRow {
     pub id: String,

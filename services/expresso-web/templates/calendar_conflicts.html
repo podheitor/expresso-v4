@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Conflitos de agenda · Expresso{% endblock %}
+{% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Conflitos de agenda</h1>
+    <a class="btn btn-ghost" href="/calendar">← Agenda</a>
+  </div>
+  <p class="muted small">
+    Detecta eventos que se sobrepõem no horário (double-booking) num dia, para a
+    agenda escolhida. Útil antes de aceitar ou enviar convites.
+  </p>
+
+  <form method="get" action="/calendar/conflicts"
+        style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;margin:1rem 0">
+    <label>
+      <span>Agenda</span>
+      <select name="cal_id" class="input">
+        {% for c in calendars %}
+        <option value="{{ c.id }}"{% if c.id.as_str() == cal_id.as_str() %} selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Dia</span>
+      <input type="date" name="date" value="{{ date }}" required>
+    </label>
+    <button type="submit" class="btn btn-primary">Verificar</button>
+  </form>
+
+  {% if queried %}
+    {% if pairs.is_empty() %}
+    <div class="empty-state">✓ Nenhum conflito neste dia.</div>
+    {% else %}
+    <table class="data-table" style="width:100%">
+      <thead><tr><th>Evento A</th><th>Horário A</th><th>Evento B</th><th>Horário B</th></tr></thead>
+      <tbody>
+        {% for p in pairs %}
+        <tr>
+          <td>{{ p.a_summary }}</td>
+          <td class="mono">{{ p.a_when }}</td>
+          <td>{{ p.b_summary }}</td>
+          <td class="mono">{{ p.b_when }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted small" style="margin-top:.5rem">{{ pairs.len() }} par(es) em conflito.</p>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
