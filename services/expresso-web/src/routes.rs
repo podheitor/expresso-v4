@@ -261,6 +261,10 @@ pub fn router(state: AppState) -> Router {
             post(chat_react_message),
         )
         .route(
+            "/chat/channels/:cid/messages/:mid/edits",
+            get(chat_message_edits),
+        )
+        .route(
             "/chat/channels/:cid/messages/:mid",
             axum::routing::patch(chat_edit_message).delete(chat_delete_message),
         )
@@ -6582,6 +6586,30 @@ async fn chat_delete_message(
     Ok(StatusCode::from_u16(status)
         .unwrap_or(StatusCode::BAD_GATEWAY)
         .into_response())
+}
+
+/// GET /chat/channels/:cid/messages/:mid/edits — the message's edit history
+/// (Matrix `m.replace` relations) as JSON for the edit-history modal.
+async fn chat_message_edits(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((cid, mid)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let edits = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.chat,
+        &format!("/api/v1/channels/{cid}/messages/{mid}/edits"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_else(|| serde_json::json!({ "chunk": [] }));
+    Ok(json_response(&edits))
 }
 
 #[derive(serde::Deserialize)]

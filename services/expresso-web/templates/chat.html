@@ -180,7 +180,7 @@
                 <div class="chat-msg-meta">
                   <span class="chat-msg-sender">{{ msg.sender() }}</span>
                   <span class="chat-msg-time">{{ msg.time_label() }}</span>
-                  {% if msg.edited %}<span class="muted small">(editado)</span>{% endif %}
+                  {% if msg.edited %}<button class="chat-edited-link muted small" style="background:none;border:none;cursor:pointer;padding:0;font:inherit;text-decoration:underline dotted" onclick="showEditHistory('{{ ch.id }}','{{ msg.id }}')" title="Ver histórico de edições">(editado)</button>{% endif %}
                 </div>
                 {% match msg.parent_id %}
                   {% when Some with (pid) %}
@@ -383,7 +383,48 @@
   </div>
 </div>
 
+<!-- Modal: Histórico de edições -->
+<div class="modal-overlay" id="chat-edits-modal" style="display:none" onclick="closeModalOnOverlay(event,'chat-edits-modal')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Histórico de edições</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hideModal('chat-edits-modal')">✕</button>
+    </div>
+    <ul id="chat-edits-list" style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:.5rem;max-height:60vh;overflow:auto">
+      <li class="muted small">Carregando…</li>
+    </ul>
+  </div>
+</div>
+
 <script>
+// ── Histórico de edições de uma mensagem ───────────────────────────────────────
+// Lista as versões de substituição (m.replace) do evento, da mais recente p/ a
+// mais antiga, mais a versão atual em destaque.
+function showEditHistory(chId, msgId) {
+  var modal = document.getElementById('chat-edits-modal');
+  var list = document.getElementById('chat-edits-list');
+  if (!modal || !list) return;
+  modal.style.display = 'flex';
+  list.innerHTML = '<li class="muted small">Carregando…</li>';
+  fetch('/chat/channels/' + encodeURIComponent(chId) + '/messages/' + encodeURIComponent(msgId) + '/edits',
+        { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : { chunk: [] }; })
+    .then(function(data) {
+      var chunk = (data && data.chunk) || [];
+      if (!chunk.length) { list.innerHTML = '<li class="muted small">Nenhuma edição registrada.</li>'; return; }
+      // Newest replacement first (Matrix returns most-recent-first).
+      list.innerHTML = chunk.map(function(ev) {
+        var c = ev.content || {};
+        var body = (c['m.new_content'] && c['m.new_content'].body) || c.body || '';
+        var ts = ev.origin_server_ts ? new Date(ev.origin_server_ts).toLocaleString('pt-BR') : '';
+        return '<li style="border-bottom:1px solid var(--border);padding-bottom:.4rem">' +
+          '<div class="muted small">' + escHtml(ts) + '</div>' +
+          '<div class="chat-msg-body">' + escHtml(body) + '</div>' +
+          '</li>';
+      }).join('');
+    }).catch(function(){ list.innerHTML = '<li class="muted small" style="color:var(--danger)">Erro ao carregar.</li>'; });
+}
+
 // ── Auto-resize textarea ──────────────────────────────────────────────────────
 function autoResize(el) {
   el.style.height = 'auto';
