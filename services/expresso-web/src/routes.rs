@@ -37,8 +37,8 @@ use crate::{
         TagPairRow, TaskRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
-        delete_at, get_bytes, get_json, patch_json, post_body, post_body_json, post_empty,
-        post_json, put_body, put_json,
+        delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
+        post_empty, post_json, put_body, put_json,
     },
     vcard::{build_vcard, ContactForm},
     AppState,
@@ -286,6 +286,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/meet/:id/breakouts/:room_id/delete",
             post(meet_breakout_delete_api),
+        )
+        .route(
+            "/meet/:id/breakouts/:room_id/participants",
+            post(meet_breakout_assign_api).delete(meet_breakout_remove_api),
         )
         // tasks
         .route("/tasks", get(tasks_page))
@@ -6878,7 +6882,28 @@ async fn meet_breakouts_list_api(
     )
     .await?
     .unwrap_or(serde_json::json!([]));
-    Ok(json_response(&v))
+    // Resolve each participant id to an email so the moderator sees who is in
+    // each room (the backend stores only user ids).
+    let mut rooms = Vec::new();
+    if let Some(arr) = v.as_array() {
+        for room in arr {
+            let mut members = Vec::new();
+            if let Some(ps) = room.get("participants").and_then(|p| p.as_array()) {
+                for p in ps {
+                    if let Some(uid) = p.as_str() {
+                        let email = resolve_email_by_id(&st, uid, &headers, &t, &u).await;
+                        members.push(serde_json::json!({ "user_id": uid, "email": email }));
+                    }
+                }
+            }
+            let mut obj = room.clone();
+            if let Some(map) = obj.as_object_mut() {
+                map.insert("participants".into(), serde_json::Value::Array(members));
+            }
+            rooms.push(obj);
+        }
+    }
+    Ok(json_response(&serde_json::Value::Array(rooms)))
 }
 
 #[derive(Deserialize)]
@@ -6936,6 +6961,87 @@ async fn meet_breakout_delete_api(
         &format!("/api/v1/meetings/{enc}/breakouts/{renc}"),
         &headers,
         Some((&t, &u)),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+#[derive(Deserialize)]
+struct BreakoutAssignForm {
+    email: String,
+}
+
+#[derive(Deserialize)]
+struct BreakoutRemoveForm {
+    user_id: String,
+}
+
+/// POST /meet/:id/breakouts/:room_id/participants — assign a participant to a
+/// breakout room (moderator). Resolves the email to a user id for the backend.
+async fn meet_breakout_assign_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, room_id)): Path<(String, String)>,
+    Form(f): Form<BreakoutAssignForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let email = f.email.trim();
+    if email.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "email required").into_response());
+    }
+    let Some(user_id) =
+        resolve_user_id(&st, &st.backends.contacts, email, &headers, &t, &u).await?
+    else {
+        return Ok((StatusCode::NOT_FOUND, "user not found").into_response());
+    };
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let renc = utf8_percent_encode(&room_id, NON_ALPHANUMERIC);
+    let status = post_json(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{enc}/breakouts/{renc}/participants"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "user_id": user_id }),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// DELETE /meet/:id/breakouts/:room_id/participants — remove a participant from
+/// a breakout room (moderator). The backend takes the user id in the body.
+async fn meet_breakout_remove_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, room_id)): Path<(String, String)>,
+    Form(f): Form<BreakoutRemoveForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let user_id = f.user_id.trim();
+    if user_id.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "user_id required").into_response());
+    }
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let renc = utf8_percent_encode(&room_id, NON_ALPHANUMERIC);
+    let status = delete_json(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{enc}/breakouts/{renc}/participants"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "user_id": user_id }),
     )
     .await?;
     Ok(StatusCode::from_u16(status)
@@ -8668,6 +8774,20 @@ mod tests {
     fn split_addrs_tab_separated_returns_empty_after_filter() {
         let v = split_addrs("\t");
         assert!(v.is_empty());
+    }
+
+    #[test]
+    fn breakout_assign_form_deserializes_email() {
+        let f: BreakoutAssignForm =
+            serde_json::from_value(serde_json::json!({ "email": "a@b.com" })).expect("parse");
+        assert_eq!(f.email, "a@b.com");
+    }
+
+    #[test]
+    fn breakout_remove_form_deserializes_user_id() {
+        let f: BreakoutRemoveForm =
+            serde_json::from_value(serde_json::json!({ "user_id": "abc-123" })).expect("parse");
+        assert_eq!(f.user_id, "abc-123");
     }
 }
 

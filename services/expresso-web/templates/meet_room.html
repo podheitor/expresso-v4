@@ -377,14 +377,45 @@ function loadBreakouts() {
       list = Array.isArray(list) ? list : [];
       if (!list.length) { box.innerHTML = '<p class="muted small" style="padding:.5rem">Nenhuma sala de grupo.</p>'; return; }
       box.innerHTML = list.map(function(b){
-        var n = (b.participants && b.participants.length) || 0;
-        return '<div class="subcard" style="padding:.5rem;margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem">' +
-          '<span style="flex:1">' + _escTr(b.name || '(sem nome)') + '</span>' +
-          '<span class="muted small">' + n + ' 👤</span>' +
-          '<button class="btn btn-ghost btn-sm" onclick="deleteBreakout(\'' + b.id + '\')" title="Remover">🗑</button>' +
+        var ps = Array.isArray(b.participants) ? b.participants : [];
+        var members = ps.map(function(p){
+          var label = p.email || p.user_id;
+          return '<div style="display:flex;align-items:center;gap:.3rem;font-size:.85em">' +
+            '<span style="flex:1">' + _escTr(label) + '</span>' +
+            '<button class="btn btn-ghost btn-sm" onclick="removeBreakoutMember(\'' + b.id + '\',\'' + p.user_id + '\')" title="Remover da sala">✕</button>' +
+            '</div>';
+        }).join('') || '<p class="muted small" style="margin:.2rem 0">Vazia.</p>';
+        return '<div class="subcard" style="padding:.5rem;margin-bottom:.5rem">' +
+          '<div style="display:flex;align-items:center;gap:.4rem">' +
+            '<span style="flex:1;font-weight:600">' + _escTr(b.name || '(sem nome)') + '</span>' +
+            '<span class="muted small">' + ps.length + ' 👤</span>' +
+            '<button class="btn btn-ghost btn-sm" onclick="deleteBreakout(\'' + b.id + '\')" title="Remover sala">🗑</button>' +
+          '</div>' +
+          '<div style="margin:.3rem 0">' + members + '</div>' +
+          '<div style="display:flex;gap:.3rem">' +
+            '<input type="email" class="tasks-add-input" placeholder="email…" style="flex:1" ' +
+              'onkeydown="if(event.key===\'Enter\'){assignBreakoutMember(\'' + b.id + '\',this);}">' +
+            '<button class="btn btn-ghost btn-sm" onclick="assignBreakoutMember(\'' + b.id + '\',this.previousElementSibling)" title="Adicionar">+</button>' +
+          '</div>' +
           '</div>';
       }).join('');
     }).catch(function(){ box.innerHTML = '<p class="muted small">Falha ao carregar.</p>'; });
+}
+function assignBreakoutMember(roomId, inp) {
+  var email = (inp && inp.value || '').trim();
+  if (!email) return;
+  var body = new URLSearchParams(); body.set('email', email);
+  fetch('/meet/' + encodeURIComponent(_meetMeetingId) + '/breakouts/' + encodeURIComponent(roomId) + '/participants', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r){ if (r.ok) loadBreakouts(); else alert('Falha (HTTP ' + r.status + ').'); });
+}
+function removeBreakoutMember(roomId, userId) {
+  var body = new URLSearchParams(); body.set('user_id', userId);
+  fetch('/meet/' + encodeURIComponent(_meetMeetingId) + '/breakouts/' + encodeURIComponent(roomId) + '/participants', {
+    method: 'DELETE', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r){ if (r.ok) loadBreakouts(); else alert('Falha (HTTP ' + r.status + ').'); });
 }
 function createBreakout() {
   var inp = document.getElementById('breakout-name');

@@ -89,6 +89,25 @@ pub async fn delete_at(
     Ok(req.send().await?.status().as_u16())
 }
 
+/// DELETE com JSON body → propaga status. Alguns endpoints (ex.: remover
+/// participante de breakout) carregam o alvo no corpo da requisição.
+pub async fn delete_json<T: serde::Serialize>(
+    state: &AppState,
+    base: &str,
+    path: &str,
+    headers: &HeaderMap,
+    ctx: Option<(&str, &str)>,
+    body: &T,
+) -> WebResult<u16> {
+    let url = build_url(base, path);
+    let mut req = state.http.delete(&url).json(body);
+    req = fwd_cookie(req, headers);
+    if let Some((t, u)) = ctx {
+        req = inject_ctx(req, t, u);
+    }
+    Ok(req.send().await?.status().as_u16())
+}
+
 /// POST com body + content-type → propaga status.
 /// Utilizado p/ repassar multipart/form-data do browser p/ backend.
 pub async fn post_body(
