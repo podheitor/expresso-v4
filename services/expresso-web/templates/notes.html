@@ -81,6 +81,15 @@
         </label>
         <textarea class="input" name="body" rows="18" placeholder="Escreva sua nota…">{{ s.body }}</textarea>
       </form>
+      <div class="stack" style="max-width:720px;margin-top:.5rem">
+        <label class="small muted">Tags (separadas por vírgula)
+          <div style="display:flex;gap:.3rem">
+            <input class="input" type="text" id="note-tags-input" data-note-id="{{ s.id }}"
+                   placeholder="carregando…" style="flex:1">
+            <button class="btn btn-ghost btn-sm" type="button" onclick="saveNoteTags()" title="Salvar tags">Salvar tags</button>
+          </div>
+        </label>
+      </div>
       <form action="/notes/{{ s.id }}/delete" method="post" style="margin-top:.75rem"
             onsubmit="return confirm('Excluir esta nota?')">
         <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--danger)">🗑 Excluir nota</button>
@@ -104,4 +113,29 @@
     {% endmatch %}
   </main>
 </section>
+<script>
+// ── Per-note tags (server-backed via /notes/:id/tags) ──
+(function loadNoteTags() {
+  var inp = document.getElementById('note-tags-input');
+  if (!inp) return;
+  var id = inp.dataset.noteId;
+  fetch('/notes/' + encodeURIComponent(id) + '/tags', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(tags){ inp.value = (Array.isArray(tags) ? tags : []).join(', '); inp.placeholder = 'sem tags'; })
+    .catch(function(){ inp.placeholder = 'erro ao carregar'; });
+})();
+function saveNoteTags() {
+  var inp = document.getElementById('note-tags-input');
+  if (!inp) return;
+  var id = inp.dataset.noteId;
+  var body = new URLSearchParams(); body.set('tags', inp.value);
+  fetch('/notes/' + encodeURIComponent(id) + '/tags', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r){
+    if (r.ok) { return r.json().then(function(tags){ inp.value = (Array.isArray(tags) ? tags : []).join(', '); }); }
+    alert('Falha ao salvar tags (HTTP ' + r.status + ').');
+  }).catch(function(){ alert('Erro de rede.'); });
+}
+</script>
 {% endblock %}

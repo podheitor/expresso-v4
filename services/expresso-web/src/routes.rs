@@ -339,6 +339,10 @@ pub fn router(state: AppState) -> Router {
         .route("/notes/:id/delete", post(notes_delete_action))
         .route("/notes/shared", get(notes_shared_page))
         .route("/notes/:id/activity", get(notes_activity_page))
+        .route(
+            "/notes/:id/tags",
+            get(notes_tags_get_api).post(notes_tags_set_api),
+        )
         .route("/notes/:id/versions", get(notes_versions_page))
         .route(
             "/notes/:id/versions/:vno/restore",
@@ -7926,6 +7930,75 @@ async fn notes_activity_page(
     }))
 }
 
+/// GET /notes/:id/tags — current tags of a note as a JSON array (for the editor
+/// tags field).
+async fn notes_tags_get_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let tags = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/{enc}/tags"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_else(|| serde_json::json!([]));
+    Ok(json_response(&tags))
+}
+
+#[derive(Deserialize)]
+struct NoteTagsForm {
+    #[serde(default)]
+    tags: String,
+}
+
+/// POST /notes/:id/tags — replace a note's tags (CSV/space-separated input).
+/// Returns the resulting tag array so the editor field can refresh.
+async fn notes_tags_set_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<NoteTagsForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let tags: Vec<String> = f
+        .tags
+        .split([',', '\n'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = put_json(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/{enc}/tags"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "tags": tags }),
+    )
+    .await?;
+    if !(200..300).contains(&status) {
+        return Ok(StatusCode::from_u16(status)
+            .unwrap_or(StatusCode::BAD_GATEWAY)
+            .into_response());
+    }
+    Ok(json_response(&serde_json::json!(tags)))
+}
+
 /// GET /notes/shared — notes other users have shared with the caller.
 async fn notes_shared_page(
     State(st): State<AppState>,
@@ -9548,6 +9621,20 @@ mod tests {
         assert_eq!(p.attendee_email, "a@b.com");
         assert_eq!(fmt_dt(p.proposed_dtstart), "2026-06-10 14:30");
         assert_eq!(fmt_dt(p.proposed_dtend), "");
+    }
+
+    #[test]
+    fn note_tags_form_splits_csv_trimming_blanks() {
+        let f: NoteTagsForm =
+            serde_json::from_value(serde_json::json!({ "tags": " a, b ,,\nc " })).expect("parse");
+        let tags: Vec<String> = f
+            .tags
+            .split([',', '\n'])
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect();
+        assert_eq!(tags, vec!["a", "b", "c"]);
     }
 
     #[test]
