@@ -671,6 +671,28 @@ pub struct DriveFileTag {
     pub tag: String,
 }
 
+/// A tag + its file count, from the drive `/tags/stats` endpoint.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DriveTagStat {
+    pub tag: String,
+    pub file_count: i64,
+}
+
+#[derive(Template)]
+#[template(path = "drive_tags.html")]
+pub struct DriveTagsTpl {
+    pub me: Me,
+    pub stats: Vec<DriveTagStat>,
+}
+
+#[derive(Template)]
+#[template(path = "drive_tag_files.html")]
+pub struct DriveTagFilesTpl {
+    pub me: Me,
+    pub tag: String,
+    pub files: Vec<DriveFile>,
+}
+
 #[derive(Template)]
 #[template(path = "drive_edit.html")]
 pub struct DriveEditTpl {

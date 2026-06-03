@@ -72,6 +72,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/drive/tags/:tag",
             get(list_files_by_tag).patch(rename_tag),
         )
+        .route(
+            "/api/v1/drive/tags/:tag/files",
+            get(list_file_metadata_by_tag),
+        )
         .route("/api/v1/drive/tags/:tag/merge", post(merge_tag))
         .route("/api/v1/drive/tags/:tag/count", get(count_files_by_tag))
         .route("/api/v1/drive/tags/orphans", delete(delete_orphan_tags))
@@ -1050,6 +1054,20 @@ async fn list_file_tags(
 }
 
 /// GET /api/v1/drive/tags/:tag — list files tagged with this tag (tenant-scoped).
+/// GET /api/v1/drive/tags/:tag/files — active files with `tag`, full metadata.
+async fn list_file_metadata_by_tag(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(tag): Path<String>,
+) -> Result<impl IntoResponse> {
+    let tag = tag.trim().to_lowercase();
+    let pool = state.db_or_unavailable()?;
+    let files = crate::domain::FileRepo::new(pool)
+        .list_by_tag(ctx.tenant_id, &tag)
+        .await?;
+    Ok(Json(files))
+}
+
 async fn list_files_by_tag(
     State(state): State<AppState>,
     ctx: RequestCtx,

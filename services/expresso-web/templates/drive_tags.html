@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Tags · Drive · Expresso{% endblock %}
+{% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Tags do Drive</h1>
+    <a class="btn btn-ghost" href="/drive">← Drive</a>
+  </div>
+  {% if stats.is_empty() %}
+    <div class="empty-state">Nenhuma tag ainda. Adicione tags a um arquivo na página de versões.</div>
+  {% else %}
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+    {% for s in stats %}
+    <a class="badge" href="/drive/tags/{{ s.tag }}" style="font-size:.9rem;padding:.35rem .7rem">
+      🏷 {{ s.tag }} <span class="muted">({{ s.file_count }})</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

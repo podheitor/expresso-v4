@@ -123,6 +123,26 @@ impl<'a> FileRepo<'a> {
         row.ok_or(DriveError::NotFound(id))
     }
 
+    /// List active files carrying `tag` (tenant-scoped), newest-first. Returns
+    /// full metadata so callers can render names/sizes without an N+1 lookup.
+    pub async fn list_by_tag(&self, tenant_id: Uuid, tag: &str) -> Result<Vec<DriveFile>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "SELECT {SELECT_COLS} FROM drive_files f \
+             JOIN drive_file_tags t ON t.file_id = f.id AND t.tenant_id = f.tenant_id \
+             WHERE f.tenant_id = $1 AND t.tag = $2 AND f.deleted_at IS NULL \
+             ORDER BY f.updated_at DESC \
+             LIMIT 500"
+        );
+        let rows: Vec<DriveFile> = sqlx::query_as(&sql)
+            .bind(tenant_id)
+            .bind(tag)
+            .fetch_all(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     pub async fn list_children(
         &self,
         tenant_id: Uuid,

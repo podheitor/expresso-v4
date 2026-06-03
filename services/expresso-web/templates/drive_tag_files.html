@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}🏷 {{ tag }} · Drive · Expresso{% endblock %}
+{% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>🏷 {{ tag }}</h1>
+      <p class="muted">{{ files.len() }} arquivo(s)</p>
+    </div>
+    <a class="btn btn-ghost" href="/drive/tags">← Tags</a>
+  </div>
+  {% if files.is_empty() %}
+    <div class="empty-state">Nenhum arquivo com esta tag.</div>
+  {% else %}
+  <table class="data-table">
+    <thead><tr><th></th><th>Nome</th><th>Tamanho</th><th></th></tr></thead>
+    <tbody>
+      {% for f in files %}
+      <tr>
+        <td>{{ f.icon() }}</td>
+        <td>
+          {% if f.is_folder() %}
+            <a href="/drive?parent_id={{ f.id }}">{{ f.name }}</a>
+          {% else %}
+            {{ f.name }}
+          {% endif %}
+        </td>
+        <td class="muted">{{ f.size_human() }}</td>
+        <td style="text-align:right">
+          {% if !f.is_folder() %}
+          <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/versions">Abrir</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

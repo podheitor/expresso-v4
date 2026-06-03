@@ -20,12 +20,13 @@ use crate::{
         CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatChannel, ChatMessage, ChatTpl, Contact,
         ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl,
         DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DriveEditTpl, DriveFile,
-        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTpl, DriveTrashTpl,
-        DriveVersionsTpl, Event, EventFormTpl, Folder, GalContact, HomeDriveFile, HomeEvent,
-        HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl,
-        Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
-        SettingsTpl, ShareRow, TasksTpl, VersionRow, WorkingHour,
+        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTagFilesTpl, DriveTagStat,
+        DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, Folder,
+        GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl,
+        MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
+        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note,
+        NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TasksTpl,
+        VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
@@ -173,6 +174,8 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/move", post(drive_move_action))
         .route("/drive/bulk-move", post(drive_bulk_move_action))
         .route("/drive/bulk-copy", post(drive_bulk_copy_action))
+        .route("/drive/tags", get(drive_tags_page))
+        .route("/drive/tags/:tag", get(drive_tag_files_page))
         // contacts extras
         .route("/contacts/gal", get(contacts_gal_page))
         // chat / meet
@@ -2240,6 +2243,59 @@ async fn drive_bulk_copy_action(
     Ok(StatusCode::from_u16(status)
         .unwrap_or(StatusCode::BAD_GATEWAY)
         .into_response())
+}
+
+/// GET /drive/tags — overview of all tags with file counts.
+async fn drive_tags_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let stats = get_json::<Vec<DriveTagStat>>(
+        &st,
+        &st.backends.drive,
+        "/api/v1/drive/tags/stats",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(DriveTagsTpl {
+        me,
+        stats,
+    }))
+}
+
+/// GET /drive/tags/:tag — files carrying a tag (full metadata).
+async fn drive_tag_files_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(tag): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&tag, NON_ALPHANUMERIC).to_string();
+    let files = get_json::<Vec<DriveFile>>(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/tags/{enc}/files"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(DriveTagFilesTpl {
+        me,
+        tag,
+        files,
+    }))
 }
 
 // ─── /contacts/gal ───────────────────────────────────────────────────────────
