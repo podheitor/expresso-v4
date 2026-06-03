@@ -231,6 +231,9 @@ pub struct MailListTpl {
     pub viewing_as: Option<String>,
     /// The delegated owner's user id, for carrying `obo` on folder links.
     pub obo: Option<String>,
+    /// The user's flag presets, offered as quick-apply buttons on the open
+    /// message. Empty on the list-only view.
+    pub flag_presets: Vec<FlagPreset>,
 }
 
 impl MailListTpl {

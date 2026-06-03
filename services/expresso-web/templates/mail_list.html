@@ -230,6 +230,17 @@
                   <input type="hidden" name="folder" value="{{ selected }}">
                   <button class="dropdown-item" type="submit">✓ Confirmar leitura ao remetente</button>
                 </form>
+                {% if !flag_presets.is_empty() %}
+                <hr class="dropdown-sep">
+                <div class="dropdown-label">Aplicar preset</div>
+                {% for p in flag_presets %}
+                <form method="post" action="/mail/{{ d.id }}/apply-preset">
+                  <input type="hidden" name="preset_id" value="{{ p.id }}">
+                  <input type="hidden" name="folder" value="{{ selected }}">
+                  <button class="dropdown-item" type="submit" title="{{ p.flags_csv() }}">🏷 {{ p.name }}</button>
+                </form>
+                {% endfor %}
+                {% endif %}
                 <div class="dropdown-label">Mover para</div>
                 {% for f in folders %}
                 <form method="post" action="/mail/{{ d.id }}/move">

@@ -194,6 +194,7 @@ pub fn router(state: AppState) -> Router {
         .route("/mail/:id/attachments/:idx", get(mail_attachment_proxy))
         .route("/mail/quick-reply", post(mail_quick_reply_action))
         .route("/mail/:id/flag", post(mail_flag_action))
+        .route("/mail/:id/apply-preset", post(mail_apply_preset_action))
         .route("/mail/:id/read-receipt", post(mail_read_receipt_action))
         // mail flow rules (automation)
         .route("/notes/export.json", get(notes_export_json))
@@ -707,6 +708,7 @@ async fn mail_page(
         has_next,
         viewing_as,
         obo: obo.map(str::to_string),
+        flag_presets: Vec::new(),
     }))
 }
 
@@ -777,6 +779,17 @@ async fn mail_detail_page(
         None => None,
     };
 
+    // Offer the user's flag presets as quick-apply buttons on the open message.
+    let flag_presets = get_json::<Vec<FlagPreset>>(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/flag-presets",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+
     Ok(askama_axum::IntoResponse::into_response(MailListTpl {
         me,
         folders,
@@ -788,6 +801,7 @@ async fn mail_detail_page(
         has_next: false,
         viewing_as,
         obo: obo.map(str::to_string),
+        flag_presets,
     }))
 }
 
@@ -2007,6 +2021,58 @@ async fn mail_flag_action(
         utf8_percent_encode(&folder, NON_ALPHANUMERIC)
     ))
     .into_response())
+}
+
+#[derive(Deserialize)]
+struct ApplyPresetForm {
+    preset_id: String,
+    folder: Option<String>,
+}
+
+/// POST /mail/:id/apply-preset — add all flags from a saved preset to a message.
+/// Resolves the preset's flags, then PATCHes the message flags ({add, remove:[]}).
+async fn mail_apply_preset_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<ApplyPresetForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let folder = f.folder.unwrap_or_else(|| "INBOX".into());
+    let back = format!(
+        "/mail/{}?folder={}",
+        utf8_percent_encode(&id, NON_ALPHANUMERIC),
+        utf8_percent_encode(&folder, NON_ALPHANUMERIC)
+    );
+    // Resolve the preset's flags, then apply them in one PATCH.
+    let penc = utf8_percent_encode(f.preset_id.trim(), NON_ALPHANUMERIC);
+    let preset = get_json::<FlagPreset>(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/flag-presets/{penc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    if let Some(p) = preset {
+        if !p.flags.is_empty() {
+            let enc_id = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+            let _ = patch_json(
+                &st,
+                &st.backends.mail,
+                &format!("/api/v1/mail/messages/{enc_id}/flags"),
+                &headers,
+                Some((&t, &u)),
+                &serde_json::json!({ "add": p.flags, "remove": [] }),
+            )
+            .await;
+        }
+    }
+    Ok(Redirect::to(&back).into_response())
 }
 
 #[derive(Deserialize)]
