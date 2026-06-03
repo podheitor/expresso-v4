@@ -545,6 +545,45 @@ impl MatrixClient {
         Ok(r.content_uri)
     }
 
+    /// Download bytes from the Matrix media repo given an `mxc://server/mediaId`
+    /// URI (`GET /_matrix/media/v3/download/{server}/{mediaId}`). Returns the raw
+    /// bytes plus the HS-reported content-type. Errors on a malformed mxc URI.
+    pub async fn download_media(
+        &self,
+        acting_as: &str,
+        mxc_uri: &str,
+    ) -> Result<(String, Vec<u8>)> {
+        let (server, media_id) = parse_mxc(mxc_uri)
+            .ok_or_else(|| ChatError::Matrix(format!("bad mxc uri: {mxc_uri}")))?;
+        let url = self.media_url(
+            &format!("/download/{}/{}", urlencode(server), urlencode(media_id)),
+            acting_as,
+        )?;
+        let resp = self
+            .http
+            .get(url)
+            .bearer_auth(self.as_token()?)
+            .send()
+            .await
+            .map_err(|e| ChatError::Matrix(format!("request failed: {e}")))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ChatError::Matrix(format!("HS {status}: {body}")));
+        }
+        let content_type = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| ChatError::Matrix(format!("read body: {e}")))?;
+        Ok((content_type, bytes.to_vec()))
+    }
+
     /// Send a file message referencing previously-uploaded media. Returns the
     /// message event id.
     pub async fn send_file_message(
@@ -658,6 +697,17 @@ fn localpart_from_mxid(mxid: &str) -> Option<&str> {
     Some(local)
 }
 
+/// Split an `mxc://server/mediaId` URI into `(server, media_id)`. Returns None
+/// when the scheme is missing or either part is empty.
+fn parse_mxc(mxc: &str) -> Option<(&str, &str)> {
+    let rest = mxc.strip_prefix("mxc://")?;
+    let (server, media_id) = rest.split_once('/')?;
+    if server.is_empty() || media_id.is_empty() {
+        return None;
+    }
+    Some((server, media_id))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -714,6 +764,18 @@ mod tests {
         assert_eq!(localpart_from_mxid("@:expresso.local"), None, "empty local");
         assert_eq!(localpart_from_mxid("@alice:"), None, "empty server");
         assert_eq!(localpart_from_mxid(""), None, "empty");
+    }
+
+    #[test]
+    fn parse_mxc_splits_server_and_id() {
+        assert_eq!(
+            parse_mxc("mxc://example.com/abc123"),
+            Some(("example.com", "abc123"))
+        );
+        assert_eq!(parse_mxc("mxc://srv/a/b/c"), Some(("srv", "a/b/c")));
+        assert_eq!(parse_mxc("http://example.com/x"), None);
+        assert_eq!(parse_mxc("mxc://example.com/"), None);
+        assert_eq!(parse_mxc("mxc:///id"), None);
     }
 
     #[test]

@@ -32,6 +32,9 @@ pub enum ChatError {
     #[error("channel not found: {0}")]
     ChannelNotFound(Uuid),
 
+    #[error("attachment not found: {0}")]
+    AttachmentNotFound(Uuid),
+
     #[error("not a member of this channel")]
     NotMember,
 
@@ -48,6 +51,11 @@ impl IntoResponse for ChatError {
             Self::ChannelNotFound(_) => {
                 (StatusCode::NOT_FOUND, "channel_not_found", self.to_string())
             }
+            Self::AttachmentNotFound(_) => (
+                StatusCode::NOT_FOUND,
+                "attachment_not_found",
+                self.to_string(),
+            ),
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request", self.to_string()),
             Self::NotMember => (StatusCode::FORBIDDEN, "not_member", self.to_string()),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),

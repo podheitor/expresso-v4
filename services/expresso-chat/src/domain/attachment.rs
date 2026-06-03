@@ -153,6 +153,24 @@ impl<'a> AttachmentRepo<'a> {
         tx.commit().await?;
         Ok(rows)
     }
+
+    /// Fetch one attachment by id within a tenant+channel. None when absent.
+    pub async fn get(&self, tenant: Uuid, channel: Uuid, id: Uuid) -> Result<Option<Attachment>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let row: Option<Attachment> = sqlx::query_as(
+            r#"SELECT id, channel_id, user_id, event_id,
+                      filename, content_type, size_bytes, kind, mxc_uri
+               FROM chat_attachments
+               WHERE tenant_id = $1 AND channel_id = $2 AND id = $3"#,
+        )
+        .bind(tenant)
+        .bind(channel)
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(row)
+    }
 }
 
 #[cfg(test)]

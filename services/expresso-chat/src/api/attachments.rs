@@ -33,7 +33,12 @@ const DEFAULT_LIST_LIMIT: i64 = 50;
 const MAX_LIST_LIMIT: i64 = 200;
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/api/v1/channels/:id/attachments", post(upload).get(list))
+    Router::new()
+        .route("/api/v1/channels/:id/attachments", post(upload).get(list))
+        .route(
+            "/api/v1/channels/:id/attachments/:att_id/download",
+            axum::routing::get(download),
+        )
 }
 
 #[derive(Debug, Deserialize)]
@@ -227,6 +232,49 @@ async fn list(
         .list_for_channel(ctx.tenant_id, channel_id, q.limit)
         .await?;
     Ok(Json(rows))
+}
+
+/// GET /api/v1/channels/:id/attachments/:att_id/download — stream the bytes of a
+/// channel attachment, resolving its `mxc_uri` from the Matrix media repo.
+/// Member-gated; 404 when the attachment isn't in this channel.
+async fn download(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((channel_id, att_id)): Path<(Uuid, Uuid)>,
+) -> Result<axum::response::Response> {
+    use axum::http::header;
+    use axum::response::IntoResponse;
+
+    let pool = state.db_or_unavailable()?;
+    if !ChannelRepo::new(pool)
+        .is_member(ctx.tenant_id, channel_id, ctx.user_id)
+        .await?
+    {
+        return Err(ChatError::NotMember);
+    }
+    let att = AttachmentRepo::new(pool)
+        .get(ctx.tenant_id, channel_id, att_id)
+        .await?
+        .ok_or(ChatError::AttachmentNotFound(att_id))?;
+
+    let matrix = state.matrix_or_unavailable()?;
+    let acting_as = matrix.mxid_for(ctx.user_id);
+    let (content_type, bytes) = matrix.download_media(&acting_as, &att.mxc_uri).await?;
+
+    // Quote the filename and strip CR/LF to keep the header well-formed.
+    let safe_name = att.filename.replace(['"', '\r', '\n'], "");
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, content_type),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{safe_name}\""),
+            ),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 #[cfg(test)]
