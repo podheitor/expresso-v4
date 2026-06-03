@@ -20,21 +20,22 @@ use crate::{
     templates::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
-        AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent,
-        BulkDeleteEventRow, Calendar, CalendarBulkDeleteTpl, CalendarConflictsTpl,
+        AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, ArchiveRow,
+        AuditEvent, BulkDeleteEventRow, Calendar, CalendarBulkDeleteTpl, CalendarConflictsTpl,
         CalendarCountersTpl, CalendarDayTpl, CalendarHistogramTpl, CalendarMonthTpl,
         CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage,
-        ChatTpl, ConflictPairRow, Contact, ContactActivityTpl, ContactAddressRow, ContactDiffTpl,
-        ContactEmailRow, ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl,
-        ContactVersionRow, ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw,
-        DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow,
-        DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
-        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
-        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
-        Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow,
-        FreeBusyTpl, GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
-        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me,
-        MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        ChatTpl, ComplianceArchiveTpl, ConflictPairRow, Contact, ContactActivityTpl,
+        ContactAddressRow, ContactDiffTpl, ContactEmailRow, ContactFormTpl, ContactGroup,
+        ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl,
+        ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
+        DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow, DriveCommentsTpl,
+        DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag,
+        DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl,
+        DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl,
+        FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl,
+        GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias,
+        MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl,
+        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
         MessageListItem, MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
         NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit,
         SearchTpl, SecurityTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow, TagPairRow,
@@ -247,6 +248,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/flows", get(flows_page).post(flow_create_action))
         .route("/flows/reorder", post(flow_reorder_action))
+        .route("/compliance/archive", get(compliance_archive_page))
         .route(
             "/flows/:id/edit",
             get(flow_edit_page).post(flow_edit_action),
@@ -3582,6 +3584,129 @@ async fn flow_delete_action(
     )
     .await?;
     Ok(Redirect::to("/flows").into_response())
+}
+
+// ─── /compliance (e-discovery archive) ───────────────────────────────────────
+
+#[derive(Deserialize)]
+struct ArchiveQuery {
+    #[serde(default)]
+    subject: Option<String>,
+    #[serde(default)]
+    from_addr: Option<String>,
+    #[serde(default)]
+    to_addr: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ArchiveEntryJson {
+    id: String,
+    #[serde(default)]
+    subject: Option<String>,
+    #[serde(default)]
+    from_addr: Option<String>,
+    #[serde(default)]
+    to_addrs: serde_json::Value,
+    #[serde(default)]
+    archived_at: Option<String>,
+    #[serde(default)]
+    size_bytes: i64,
+}
+
+/// Compact byte size for the archive table (B/KB/MB).
+fn archive_size(n: i64) -> String {
+    let b = n as f64;
+    if b < 1024.0 {
+        format!("{n} B")
+    } else if b < 1024.0 * 1024.0 {
+        format!("{:.1} KB", b / 1024.0)
+    } else {
+        format!("{:.1} MB", b / (1024.0 * 1024.0))
+    }
+}
+
+/// Join a `to_addrs` JSON array into a comma list (first 3 + "…").
+fn join_to_addrs(v: &serde_json::Value) -> String {
+    let Some(arr) = v.as_array() else {
+        return String::new();
+    };
+    let mut shown: Vec<&str> = arr.iter().filter_map(|x| x.as_str()).take(3).collect();
+    let label = shown.join(", ");
+    if arr.len() > 3 {
+        shown.clear();
+        return format!("{label}, +{}", arr.len() - 3);
+    }
+    label
+}
+
+/// GET /compliance/archive — e-discovery search over the user's archived mail.
+/// Filters by subject / from / to (ILIKE). Backend is participant-scoped.
+async fn compliance_archive_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<ArchiveQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let subject = q.subject.unwrap_or_default();
+    let from_addr = q.from_addr.unwrap_or_default();
+    let to_addr = q.to_addr.unwrap_or_default();
+    let queried =
+        !subject.trim().is_empty() || !from_addr.trim().is_empty() || !to_addr.trim().is_empty();
+
+    let mut rows = Vec::new();
+    if queried {
+        let mut qs: Vec<String> = vec!["limit=100".into()];
+        for (k, val) in [
+            ("subject", &subject),
+            ("from_addr", &from_addr),
+            ("to_addr", &to_addr),
+        ] {
+            let v = val.trim();
+            if !v.is_empty() {
+                qs.push(format!("{k}={}", utf8_percent_encode(v, NON_ALPHANUMERIC)));
+            }
+        }
+        let resp = get_json::<serde_json::Value>(
+            &st,
+            &st.backends.compliance,
+            &format!("/api/v1/compliance/archive?{}", qs.join("&")),
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default();
+        if let Some(arr) = resp.get("entries").and_then(|v| v.as_array()) {
+            for e in arr {
+                if let Ok(a) = serde_json::from_value::<ArchiveEntryJson>(e.clone()) {
+                    rows.push(ArchiveRow {
+                        id: a.id,
+                        subject: a.subject.unwrap_or_else(|| "(sem assunto)".into()),
+                        from_addr: a.from_addr.unwrap_or_default(),
+                        to_addrs: join_to_addrs(&a.to_addrs),
+                        archived_at: a
+                            .archived_at
+                            .map(|s| s.replace('T', " ").chars().take(16).collect())
+                            .unwrap_or_default(),
+                        size_human: archive_size(a.size_bytes),
+                    });
+                }
+            }
+        }
+    }
+    Ok(askama_axum::IntoResponse::into_response(
+        ComplianceArchiveTpl {
+            me,
+            subject,
+            from_addr,
+            to_addr,
+            rows,
+            queried,
+        },
+    ))
 }
 
 // ─── /mail/:id/move ──────────────────────────────────────────────────────────
@@ -10598,6 +10723,24 @@ mod tests {
         assert!(v.get("cc").is_none());
         assert_eq!(v["undo_seconds"], 10);
         assert_eq!(v["to"], serde_json::json!(["a@x.com"]));
+    }
+
+    #[test]
+    fn archive_size_and_join_and_parse() {
+        assert_eq!(archive_size(512), "512 B");
+        assert_eq!(archive_size(2048), "2.0 KB");
+        assert_eq!(archive_size(3 * 1024 * 1024), "3.0 MB");
+        let many = serde_json::json!(["a@x.com", "b@x.com", "c@x.com", "d@x.com"]);
+        assert_eq!(join_to_addrs(&many), "a@x.com, b@x.com, c@x.com, +1");
+        let few = serde_json::json!(["a@x.com"]);
+        assert_eq!(join_to_addrs(&few), "a@x.com");
+        let a: ArchiveEntryJson = serde_json::from_value(serde_json::json!({
+            "id": "e1", "subject": "Contrato", "from_addr": "ana@x.com",
+            "to_addrs": ["bob@x.com"], "archived_at": "2026-05-01T10:00:00Z", "size_bytes": 2048
+        }))
+        .expect("parse");
+        assert_eq!(a.id, "e1");
+        assert_eq!(a.size_bytes, 2048);
     }
 
     #[test]

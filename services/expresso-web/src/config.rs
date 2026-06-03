@@ -18,6 +18,7 @@ pub struct Backends {
     pub notes: String,
     pub notifications: String,
     pub flows: String,
+    pub compliance: String,
 }
 
 impl Backends {
@@ -34,6 +35,8 @@ impl Backends {
             notifications: envs("BACKEND__NOTIFICATIONS")
                 .unwrap_or_else(|| "http://localhost:8006".into()),
             flows: envs("BACKEND__FLOWS").unwrap_or_else(|| "http://localhost:8005".into()),
+            compliance: envs("BACKEND__COMPLIANCE")
+                .unwrap_or_else(|| "http://localhost:8009".into()),
         }
     }
 }
@@ -171,6 +174,7 @@ mod tests {
             notes: "http://localhost:8012".into(),
             notifications: "http://localhost:8006".into(),
             flows: "http://localhost:8005".into(),
+            compliance: "http://localhost:8009".into(),
         };
         assert_eq!(_b.auth, "http://localhost:8012");
     }
@@ -220,6 +224,7 @@ mod tests {
             notes: "http://notes:8012".into(),
             notifications: "http://notifications:8006".into(),
             flows: "http://flows:8005".into(),
+            compliance: "http://compliance:8009".into(),
         }
     }
 

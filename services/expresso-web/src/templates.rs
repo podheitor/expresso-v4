@@ -999,6 +999,29 @@ pub struct FreeBusyTpl {
     pub queried: bool,
 }
 
+/// One archived message in the compliance e-discovery search results.
+pub struct ArchiveRow {
+    pub id: String,
+    pub subject: String,
+    pub from_addr: String,
+    pub to_addrs: String,
+    /// "YYYY-MM-DD HH:MM"
+    pub archived_at: String,
+    pub size_human: String,
+}
+
+#[derive(Template)]
+#[template(path = "compliance_archive.html")]
+pub struct ComplianceArchiveTpl {
+    pub me: Me,
+    /// Echoed search filters.
+    pub subject: String,
+    pub from_addr: String,
+    pub to_addr: String,
+    pub rows: Vec<ArchiveRow>,
+    pub queried: bool,
+}
+
 /// One bucket in the event-activity histogram.
 pub struct HistogramBar {
     /// Bucket label (e.g. "2026-06-03" for day, "2026-06" for month).

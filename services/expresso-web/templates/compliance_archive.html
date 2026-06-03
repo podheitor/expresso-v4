@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Arquivo de conformidade · Expresso{% endblock %}
+{% block nav %}{% let current = "mail" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>🗄 Arquivo de conformidade</h1>
+    <a class="btn btn-ghost" href="/mail">← Mail</a>
+  </div>
+  <p class="muted small">
+    Busca em mensagens arquivadas (e-discovery). Filtre por assunto, remetente ou
+    destinatário. Apenas o seu arquivo é visível.
+  </p>
+
+  <form method="get" action="/compliance/archive"
+        style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;margin:1rem 0">
+    <label style="flex:1;min-width:180px"><span>Assunto contém</span>
+      <input type="text" name="subject" value="{{ subject }}" placeholder="ex: contrato"></label>
+    <label style="flex:1;min-width:180px"><span>Remetente contém</span>
+      <input type="text" name="from_addr" value="{{ from_addr }}" placeholder="ex: ana@"></label>
+    <label style="flex:1;min-width:180px"><span>Destinatário contém</span>
+      <input type="text" name="to_addr" value="{{ to_addr }}" placeholder="ex: @empresa.com"></label>
+    <button type="submit" class="btn btn-primary">Buscar</button>
+  </form>
+
+  {% if queried %}
+    {% if rows.is_empty() %}
+    <div class="empty-state">Nenhuma mensagem arquivada corresponde aos filtros.</div>
+    {% else %}
+    <table class="data-table" style="width:100%">
+      <thead><tr><th>Assunto</th><th>De</th><th>Para</th><th>Arquivada</th><th>Tamanho</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.subject }}</td>
+          <td class="muted small">{{ r.from_addr }}</td>
+          <td class="muted small">{{ r.to_addrs }}</td>
+          <td class="mono small">{{ r.archived_at }}</td>
+          <td class="mono small">{{ r.size_human }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted small" style="margin-top:.5rem">{{ rows.len() }} resultado(s) (máx. 100).</p>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
