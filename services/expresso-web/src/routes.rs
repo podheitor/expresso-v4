@@ -19,12 +19,13 @@ use crate::{
         AdminUserDetailTpl, AdminUsersTpl, AuditEvent, Calendar, CalendarDayTpl, CalendarMonthTpl,
         CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatChannel, ChatMessage, ChatTpl, Contact,
         ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl,
-        DayColumn, DriveEditTpl, DriveFile, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTpl,
-        DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, Folder, GalContact, HomeDriveFile,
-        HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl,
-        MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl,
-        MessageDetail, MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit,
-        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TasksTpl, VersionRow,
+        DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DriveEditTpl, DriveFile,
+        DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
+        Event, EventFormTpl, Folder, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
+        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
+        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
+        SettingsTpl, ShareRow, TasksTpl, VersionRow,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
@@ -202,6 +203,14 @@ pub fn router(state: AppState) -> Router {
         .route("/settings/autoreply", post(settings_autoreply_save))
         .route("/settings/notifications", post(settings_notifications_save))
         .route("/settings/filters", post(settings_filters_save))
+        .route(
+            "/settings/delegations",
+            get(delegations_page).post(delegation_grant_action),
+        )
+        .route(
+            "/settings/delegations/:id/revoke",
+            post(delegation_revoke_action),
+        )
         .route("/settings/aliases", post(settings_alias_create))
         .route("/settings/aliases/:id/toggle", post(settings_alias_toggle))
         .route("/settings/aliases/:id/delete", post(settings_alias_delete))
@@ -5544,6 +5553,186 @@ async fn settings_alias_delete(
     )
     .await?;
     Ok(Redirect::to("/settings?tab=aliases&flash=Alias+removido").into_response())
+}
+
+// ─── mailbox delegation ──────────────────────────────────────────────────────
+
+/// Resolve a tenant user id to its email via the contacts user-lookup; falls
+/// back to the id string when the lookup fails (best-effort display).
+async fn resolve_email_by_id(
+    st: &AppState,
+    id: &str,
+    headers: &HeaderMap,
+    t: &str,
+    u: &str,
+) -> String {
+    let enc = utf8_percent_encode(id, NON_ALPHANUMERIC).to_string();
+    match get_json::<UserLookup>(
+        st,
+        &st.backends.contacts,
+        &format!("/api/v1/users?id={enc}"),
+        headers,
+        Some((t, u)),
+    )
+    .await
+    {
+        Ok(Some(x)) => x.email.unwrap_or_else(|| id.to_string()),
+        _ => id.to_string(),
+    }
+}
+
+/// Turn raw delegation rows into display rows, resolving each counterparty id
+/// (selected by `show_owner`: owner for given-to-me, delegate for given-by-me)
+/// to an email.
+async fn delegation_views(
+    st: &AppState,
+    raw: Vec<DelegationRaw>,
+    show_owner: bool,
+    headers: &HeaderMap,
+    t: &str,
+    u: &str,
+) -> Vec<DelegationView> {
+    let mut out = Vec::with_capacity(raw.len());
+    for d in raw {
+        let who_id = if show_owner {
+            &d.owner_id
+        } else {
+            &d.delegate_id
+        };
+        let who = resolve_email_by_id(st, who_id, headers, t, u).await;
+        out.push(DelegationView {
+            id: d.id,
+            who,
+            access: d.access,
+        });
+    }
+    out
+}
+
+#[derive(Deserialize)]
+struct DelegationQuery {
+    flash: Option<String>,
+}
+
+/// GET /settings/delegations — mailbox delegation management screen.
+async fn delegations_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<DelegationQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let granted_raw = get_json::<Vec<DelegationRaw>>(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/delegations",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let to_me_raw = get_json::<Vec<DelegationRaw>>(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/delegations/to-me",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+
+    let granted = delegation_views(&st, granted_raw, false, &headers, &t, &u).await;
+    let to_me = delegation_views(&st, to_me_raw, true, &headers, &t, &u).await;
+
+    Ok(askama_axum::IntoResponse::into_response(DelegationsTpl {
+        me,
+        flash: q.flash,
+        granted,
+        to_me,
+    }))
+}
+
+#[derive(Deserialize)]
+struct DelegationGrantForm {
+    email: String,
+    access: String,
+}
+
+#[derive(serde::Serialize)]
+struct GrantPayload<'a> {
+    delegate_id: &'a str,
+    access: &'a str,
+}
+
+/// POST /settings/delegations — grant a tenant user access to the caller's
+/// mailbox. The delegate is identified by email, resolved to a user id.
+async fn delegation_grant_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<DelegationGrantForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let email = f.email.trim();
+    let access = match f.access.trim().to_ascii_uppercase().as_str() {
+        "READ" => "READ",
+        "SEND" => "SEND",
+        _ => return Ok(Redirect::to("/settings/delegations?flash=Acesso+inválido").into_response()),
+    };
+    let Some(delegate_id) =
+        resolve_user_id(&st, &st.backends.contacts, email, &headers, &t, &u).await?
+    else {
+        return Ok(
+            Redirect::to("/settings/delegations?flash=Usuário+não+encontrado").into_response(),
+        );
+    };
+    let status = post_json(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/delegations",
+        &headers,
+        Some((&t, &u)),
+        &GrantPayload {
+            delegate_id: &delegate_id,
+            access,
+        },
+    )
+    .await?;
+    let flash = if (200..300).contains(&status) {
+        "Delegação+criada"
+    } else {
+        "Não+foi+possível+delegar"
+    };
+    Ok(Redirect::to(&format!("/settings/delegations?flash={flash}")).into_response())
+}
+
+/// POST /settings/delegations/:id/revoke — revoke a grant the caller owns.
+async fn delegation_revoke_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let _ = delete_at(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/delegations/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/settings/delegations?flash=Delegação+revogada").into_response())
 }
 
 #[cfg(test)]

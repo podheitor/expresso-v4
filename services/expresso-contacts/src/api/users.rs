@@ -19,6 +19,9 @@ pub fn routes() -> Router<AppState> {
 #[derive(Debug, Deserialize)]
 pub struct UserQuery {
     pub email: Option<String>,
+    /// Reverse lookup: resolve a user id to its email (for displaying grants,
+    /// delegations, etc.). Ignored when `email` is also present.
+    pub id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize)]
@@ -32,27 +35,33 @@ async fn lookup(
     ctx: RequestCtx,
     Query(q): Query<UserQuery>,
 ) -> Result<Json<UserOut>> {
-    let email = q
-        .email
-        .ok_or_else(|| ContactsError::BadRequest("email required".into()))?;
-    let email = email.trim().to_ascii_lowercase();
-    if email.is_empty() {
-        return Err(ContactsError::BadRequest("email empty".into()));
-    }
     let pool = state.db_or_unavailable()?;
-    let row: Option<(Uuid, String)> = sqlx::query_as(
-        "SELECT id, email FROM users WHERE tenant_id = $1 AND lower(email) = $2 LIMIT 1",
-    )
-    .bind(ctx.tenant_id)
-    .bind(&email)
-    .fetch_optional(pool)
-    .await?;
+    // Prefer email lookup; fall back to id lookup when only `id` is given.
+    let row: Option<(Uuid, String)> = if let Some(email) = q.email {
+        let email = email.trim().to_ascii_lowercase();
+        if email.is_empty() {
+            return Err(ContactsError::BadRequest("email empty".into()));
+        }
+        sqlx::query_as(
+            "SELECT id, email FROM users WHERE tenant_id = $1 AND lower(email) = $2 LIMIT 1",
+        )
+        .bind(ctx.tenant_id)
+        .bind(&email)
+        .fetch_optional(pool)
+        .await?
+    } else if let Some(id) = q.id {
+        sqlx::query_as("SELECT id, email FROM users WHERE tenant_id = $1 AND id = $2")
+            .bind(ctx.tenant_id)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+    } else {
+        return Err(ContactsError::BadRequest("email or id required".into()));
+    };
 
     match row {
         Some((id, email)) => Ok(Json(UserOut { id, email })),
-        None => Err(ContactsError::BadRequest(format!(
-            "user not found: {email}"
-        ))),
+        None => Err(ContactsError::BadRequest("user not found".into())),
     }
 }
 
@@ -63,6 +72,15 @@ mod tests {
     #[test]
     fn user_query_email_optional() {
         let q: UserQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.email.is_none());
+        assert!(q.id.is_none());
+    }
+
+    #[test]
+    fn user_query_accepts_id() {
+        let id = uuid::Uuid::nil();
+        let q: UserQuery = serde_json::from_str(&format!(r#"{{"id":"{id}"}}"#)).unwrap();
+        assert_eq!(q.id, Some(id));
         assert!(q.email.is_none());
     }
 

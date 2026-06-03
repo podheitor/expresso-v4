@@ -1236,6 +1236,35 @@ pub struct MailAlias {
     pub is_enabled: bool,
 }
 
+/// A mailbox delegation grant as deserialized from the mail backend (ids).
+#[derive(Debug, Deserialize, Clone)]
+pub struct DelegationRaw {
+    pub id: String,
+    pub owner_id: String,
+    pub delegate_id: String,
+    pub access: String,
+}
+
+/// A delegation row for the screen, with the counterparty id resolved to an
+/// email for display.
+pub struct DelegationView {
+    pub id: String,
+    /// The other party's email (delegate when listing given, owner when given-to-me).
+    pub who: String,
+    pub access: String,
+}
+
+#[derive(Template)]
+#[template(path = "delegations.html")]
+pub struct DelegationsTpl {
+    pub me: Me,
+    pub flash: Option<String>,
+    /// Grants the caller has given (delegate's email shown).
+    pub granted: Vec<DelegationView>,
+    /// Grants given to the caller (owner's email shown).
+    pub to_me: Vec<DelegationView>,
+}
+
 // ─── Admin panel ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Clone, serde::Serialize)]

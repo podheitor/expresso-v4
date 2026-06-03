@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Delegação de caixa · Expresso{% endblock %}
+{% block nav %}{% let current = "settings" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Delegação de caixa de e-mail</h1>
+    <a class="btn btn-ghost btn-sm" href="/settings">← Configurações</a>
+  </div>
+  {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+
+  <div class="card stack">
+    <h2>Conceder acesso à minha caixa</h2>
+    <p class="muted small">
+      Permita que outra pessoa da organização leia (READ) ou envie em seu nome
+      (SEND) a partir da sua caixa.
+    </p>
+    <form class="compose-form" method="post" action="/settings/delegations"
+          style="display:flex;gap:.4rem;align-items:flex-end;flex-wrap:wrap">
+      <label style="flex:1;min-width:220px">
+        <span>E-mail do delegado</span>
+        <input type="email" name="email" required placeholder="colega@empresa.com">
+      </label>
+      <label>
+        <span>Acesso</span>
+        <select name="access">
+          <option value="READ">Ler</option>
+          <option value="SEND">Enviar em meu nome</option>
+        </select>
+      </label>
+      <button class="btn btn-primary" type="submit">Conceder</button>
+    </form>
+
+    {% if granted.is_empty() %}
+      <p class="muted">Você não concedeu acesso a ninguém.</p>
+    {% else %}
+    <table class="data-table">
+      <thead><tr><th>Delegado</th><th>Acesso</th><th></th></tr></thead>
+      <tbody>
+        {% for d in granted %}
+        <tr>
+          <td>{{ d.who }}</td>
+          <td>{{ d.access }}</td>
+          <td style="text-align:right">
+            <form method="post" action="/settings/delegations/{{ d.id }}/revoke" style="display:inline"
+                  onsubmit="return confirm('Revogar este acesso?')">
+              <button class="btn btn-ghost btn-sm" type="submit">Revogar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+
+  <div class="card stack">
+    <h2>Caixas que posso acessar</h2>
+    {% if to_me.is_empty() %}
+      <p class="muted">Ninguém concedeu acesso à própria caixa para você.</p>
+    {% else %}
+    <table class="data-table">
+      <thead><tr><th>Proprietário</th><th>Acesso</th></tr></thead>
+      <tbody>
+        {% for d in to_me %}
+        <tr><td>{{ d.who }}</td><td>{{ d.access }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
