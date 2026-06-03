@@ -82,13 +82,16 @@ jobs:
       # current max and ratchet down by 5 per refactor. See docs/COMPLEXITY_DEBT.md.
       # -C 37: legacy CCN max, ratcheting toward 25 (72→…→38→37; the two
       # structural blockers are done — handle@session STARTTLS prelude + cmd_fetch
-      # \Seen update both extracted). -L 3000: lizard's Rust tokenizer miscounts
-      # one flat table fn (local_to_ical_utc, really 6 LOC) as 932 NLOC.
+      # \Seen update both extracted). -L 4000: lizard's Rust tokenizer chokes on
+      # functions that emit many `\r\n` iCal string literals (local_to_ical_utc,
+      # parse_neg_duration_minutes — each really <15 LOC) and miscounts the
+      # PRECEDING fn's NLOC into the thousands. CCN (the real gate, ≤37) is
+      # unaffected; the -L cap only guards against genuinely long functions.
       - name: lizard (CCN ≤ 37, ratcheting toward 25)
         run: |
           pip install lizard --quiet
           find services libs -name '*.rs' -not -path '*/target/*' \
-            | xargs lizard -l rust -C 37 -L 3000 -w
+            | xargs lizard -l rust -C 37 -L 4000 -w
 
       - name: jscpd (duplication < 5%)
         run: |
