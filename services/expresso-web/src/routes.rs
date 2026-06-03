@@ -22,15 +22,15 @@ use crate::{
         ChatChannel, ChatMessage, ChatTpl, Contact, ContactActivityTpl, ContactFormTpl,
         ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl, DayColumn,
         DelegationRaw, DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl,
-        DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl,
-        DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl,
-        DriveVersionsTpl, Event, EventFormTpl, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder,
-        FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
-        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
-        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MonthCell, Note, Notebook, NotesActivityTpl, NotesTagsTpl, NotesTpl,
-        SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TagPairRow,
-        TasksTpl, VersionRow, WorkingHour,
+        DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag,
+        DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl,
+        DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl,
+        FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact,
+        HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl,
+        MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl,
+        MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note, Notebook,
+        NotesActivityTpl, NotesTagsTpl, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
+        SettingsTpl, ShareRow, TagPairRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_body_json, post_empty,
@@ -197,6 +197,7 @@ pub fn router(state: AppState) -> Router {
         .route("/mail/folders/delete", post(mail_folder_delete_action))
         // drive extras
         .route("/drive/search", get(drive_search_page))
+        .route("/drive/content-search", get(drive_content_search_page))
         .route("/drive/new-folder", post(drive_mkdir_action))
         .route("/drive/:id/rename", post(drive_rename_action))
         .route("/drive/:id/move", post(drive_move_action))
@@ -2706,6 +2707,72 @@ async fn drive_search_page(
         quota,
         folder_ancestors: vec![],
     }))
+}
+
+/// Parse the `{hits:[{file_id,name,snippet}]}` body from the drive content-search
+/// endpoint into display rows. Missing fields default to empty.
+fn drive_content_hits(body: &serde_json::Value) -> Vec<DriveContentHit> {
+    let str_of = |h: &serde_json::Value, k: &str| {
+        h.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    body.get("hits")
+        .and_then(|h| h.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|h| DriveContentHit {
+                    file_id: str_of(h, "file_id"),
+                    name: str_of(h, "name"),
+                    snippet: str_of(h, "snippet"),
+                })
+                .filter(|h| !h.file_id.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// GET /drive/content-search?q= — full-text search inside file *contents*
+/// (the extracted-text index), distinct from the filename search on /drive.
+async fn drive_content_search_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<DriveSearchQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let query = q.q.unwrap_or_default();
+    let (hits, unavailable) = if query.trim().is_empty() {
+        (vec![], false)
+    } else {
+        let enc = utf8_percent_encode(query.trim(), NON_ALPHANUMERIC);
+        match get_json::<serde_json::Value>(
+            &st,
+            &st.backends.drive,
+            &format!("/api/v1/drive/files/content-search?q={enc}&limit=50"),
+            &headers,
+            Some((&t, &u)),
+        )
+        .await
+        {
+            // Backend returns 503 when search isn't configured → flag, don't 500.
+            Ok(Some(body)) => (drive_content_hits(&body), false),
+            Ok(None) => (vec![], false),
+            Err(_) => (vec![], true),
+        }
+    };
+    Ok(askama_axum::IntoResponse::into_response(
+        DriveContentSearchTpl {
+            me,
+            query,
+            hits,
+            unavailable,
+        },
+    ))
 }
 
 #[derive(Deserialize)]
@@ -7554,6 +7621,29 @@ mod tests {
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
         assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn drive_content_hits_parses_and_skips_idless() {
+        let body = serde_json::json!({
+            "hits": [
+                { "file_id": "f1", "name": "Report.pdf", "snippet": "…revenue…" },
+                { "name": "no-id", "snippet": "x" },
+                { "file_id": "f2", "name": "Notes.txt", "snippet": "" }
+            ]
+        });
+        let hits = drive_content_hits(&body);
+        assert_eq!(hits.len(), 2); // the id-less hit is dropped
+        assert_eq!(hits[0].file_id, "f1");
+        assert_eq!(hits[0].name, "Report.pdf");
+        assert_eq!(hits[1].file_id, "f2");
+        assert!(hits[1].snippet.is_empty());
+    }
+
+    #[test]
+    fn drive_content_hits_empty_when_no_hits() {
+        assert!(drive_content_hits(&serde_json::json!({})).is_empty());
+        assert!(drive_content_hits(&serde_json::json!({ "hits": [] })).is_empty());
     }
 
     #[test]

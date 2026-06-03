@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Busca no conteúdo · Drive · Expresso{% endblock %}
+{% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>🔎 Busca no conteúdo</h1>
+    <a class="btn btn-ghost" href="/drive">← Meu Drive</a>
+  </div>
+
+  <p class="muted small" style="margin:.25rem 0 .75rem">
+    Procura dentro do <strong>texto</strong> dos documentos (PDF, Office, txt…), não só no nome.
+    Apenas arquivos cujo conteúdo foi extraído no upload são indexados.
+  </p>
+
+  <form method="get" action="/drive/content-search" style="display:flex;gap:.5rem;margin-bottom:1rem">
+    <input class="input" type="search" name="q" value="{{ query }}" autofocus
+           placeholder="Termo a procurar no conteúdo…" style="max-width:28rem">
+    <button class="btn btn-primary" type="submit">Buscar</button>
+  </form>
+
+  {% if unavailable %}
+    <div class="empty-state">A busca por conteúdo não está disponível (serviço de indexação não configurado).</div>
+  {% else if query.trim().is_empty() %}
+    <div class="empty-state muted">Digite um termo para buscar no conteúdo dos arquivos.</div>
+  {% else if hits.is_empty() %}
+    <div class="empty-state">Nenhum arquivo com “{{ query }}” no conteúdo.</div>
+  {% else %}
+  <ul style="list-style:none;margin:0;padding:0">
+    {% for h in hits %}
+    <li class="card" style="padding:.6rem .8rem;margin-bottom:.5rem">
+      <a class="link" href="/api/v1/drive/files/{{ h.file_id }}" title="Abrir / baixar">📄 <strong>{% if h.name.is_empty() %}(sem nome){% else %}{{ h.name }}{% endif %}</strong></a>
+      {% if !h.snippet.is_empty() %}
+      <div class="muted small" style="margin-top:.25rem">…{{ h.snippet }}…</div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endblock %}

@@ -508,6 +508,26 @@ pub struct DriveStarredTpl {
     pub files: Vec<DriveFile>,
 }
 
+/// One full-text content-search hit: the matched file plus a snippet of the
+/// matching passage from its extracted text.
+#[derive(Debug, Clone)]
+pub struct DriveContentHit {
+    pub file_id: String,
+    pub name: String,
+    pub snippet: String,
+}
+
+#[derive(Template)]
+#[template(path = "drive_content_search.html")]
+pub struct DriveContentSearchTpl {
+    pub me: Me,
+    pub query: String,
+    pub hits: Vec<DriveContentHit>,
+    /// True when search isn't configured (backend 503) — show a hint instead of
+    /// an empty-result message.
+    pub unavailable: bool,
+}
+
 // ─── Calendar ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Clone)]
