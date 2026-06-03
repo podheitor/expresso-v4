@@ -121,6 +121,7 @@ pub fn router(state: AppState) -> Router {
             "/calendar/bulk-location",
             post(calendar_bulk_location_action),
         )
+        .route("/calendar/bulk-summary", post(calendar_bulk_summary_action))
         .route("/calendar/conflicts", get(calendar_conflicts_page))
         .route("/calendar/histogram", get(calendar_histogram_page))
         .route("/calendar/counters", get(calendar_counters_page))
@@ -2120,6 +2121,58 @@ async fn calendar_bulk_location_action(
         &st.backends.calendar,
         &format!(
             "/api/v1/calendars/{enc}/events-by-range/set-location?after={after}&before={before}&location={loc}"
+        ),
+        &headers,
+        Some((&t, &u)),
+        &(),
+    )
+    .await?;
+    let cenc = utf8_percent_encode(&f.cal_id, NON_ALPHANUMERIC);
+    Ok(Redirect::to(&format!(
+        "/calendar/bulk-delete?cal_id={cenc}&from={}&to={}",
+        f.from, f.to
+    ))
+    .into_response())
+}
+
+#[derive(Deserialize)]
+struct BulkSummaryForm {
+    cal_id: String,
+    summary: String,
+    from: String,
+    to: String,
+}
+
+/// POST /calendar/bulk-summary — set the SUMMARY (title) of every event in the
+/// [from, to] range. Title is required (backend rejects empty). Back to preview.
+async fn calendar_bulk_summary_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<BulkSummaryForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let summary = f.summary.trim();
+    if f.cal_id.is_empty()
+        || summary.is_empty()
+        || f.from.len() != 10
+        || f.to.len() != 10
+        || f.from > f.to
+    {
+        return Ok((StatusCode::BAD_REQUEST, "parâmetros inválidos").into_response());
+    }
+    let enc = utf8_percent_encode(&f.cal_id, NON_ALPHANUMERIC);
+    let after = format!("{}T00:00:00Z", f.from);
+    let before = format!("{}T23:59:59Z", f.to);
+    let summ = utf8_percent_encode(summary, NON_ALPHANUMERIC);
+    let _ = patch_json(
+        &st,
+        &st.backends.calendar,
+        &format!(
+            "/api/v1/calendars/{enc}/events-by-range/set-summary?after={after}&before={before}&summary={summ}"
         ),
         &headers,
         Some((&t, &u)),
@@ -10500,6 +10553,16 @@ mod tests {
         assert!(v.get("cc").is_none());
         assert_eq!(v["undo_seconds"], 10);
         assert_eq!(v["to"], serde_json::json!(["a@x.com"]));
+    }
+
+    #[test]
+    fn bulk_summary_form_requires_summary() {
+        let f: BulkSummaryForm = serde_json::from_value(serde_json::json!({
+            "cal_id": "c", "summary": "Reunião semanal", "from": "2026-06-01", "to": "2026-06-30"
+        }))
+        .expect("parse");
+        assert_eq!(f.summary, "Reunião semanal");
+        assert!("  ".trim().is_empty());
     }
 
     #[test]

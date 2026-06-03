@@ -98,6 +98,17 @@
         </label>
         <button type="submit" class="btn btn-ghost">📍 Aplicar local</button>
       </form>
+      <form method="post" action="/calendar/bulk-summary"
+            style="display:flex;gap:.4rem;align-items:flex-end"
+            onsubmit="if(!this.summary.value.trim()){alert('Informe o título.');return false;}return confirm('Definir o título de todos os eventos de {{ from }} a {{ to }}?')">
+        <input type="hidden" name="cal_id" value="{{ cal_id }}">
+        <input type="hidden" name="from" value="{{ from }}">
+        <input type="hidden" name="to" value="{{ to }}">
+        <label class="small muted">Título
+          <input type="text" name="summary" class="input" placeholder="Novo título" required>
+        </label>
+        <button type="submit" class="btn btn-ghost">✏ Aplicar título</button>
+      </form>
     </div>
     {% endif %}
   {% endif %}
