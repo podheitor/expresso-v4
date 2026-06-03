@@ -272,11 +272,16 @@ pub struct DriveFile {
     pub created_at: Option<String>,
     #[serde(default)]
     pub deleted_at: Option<String>,
+    #[serde(default)]
+    pub starred_at: Option<String>,
 }
 
 impl DriveFile {
     pub fn is_folder(&self) -> bool {
         self.kind == "folder"
+    }
+    pub fn is_starred(&self) -> bool {
+        self.starred_at.is_some()
     }
     pub fn size_human(&self) -> String {
         if self.is_folder() {
@@ -479,6 +484,13 @@ pub struct DriveTpl {
 #[derive(Template)]
 #[template(path = "drive_trash.html")]
 pub struct DriveTrashTpl {
+    pub me: Me,
+    pub files: Vec<DriveFile>,
+}
+
+#[derive(Template)]
+#[template(path = "drive_starred.html")]
+pub struct DriveStarredTpl {
     pub me: Me,
     pub files: Vec<DriveFile>,
 }

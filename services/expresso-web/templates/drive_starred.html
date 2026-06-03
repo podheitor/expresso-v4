@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Favoritos · Drive · Expresso{% endblock %}
+{% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>⭐ Favoritos {% if !files.is_empty() %}<span class="badge" style="vertical-align:middle">{{ files.len() }}</span>{% endif %}</h1>
+    <div style="display:flex;gap:.4rem">
+      <a class="btn btn-ghost" href="/drive">← Meu Drive</a>
+    </div>
+  </div>
+
+  {% if files.is_empty() %}
+    <div class="empty-state">Nenhum arquivo favorito. Marque um arquivo com ⭐ no Drive.</div>
+  {% else %}
+  <table class="data-table">
+    <thead>
+      <tr><th></th><th>Nome</th><th>Tamanho</th><th>Marcado em</th><th>Ações</th></tr>
+    </thead>
+    <tbody>
+      {% for f in files %}
+      <tr data-file-id="{{ f.id }}">
+        <td style="width:2rem">{{ f.icon() }}</td>
+        <td>
+          {% if f.is_folder() %}
+            <a class="link drive-name" href="/drive?parent_id={{ f.id }}">{{ f.name }}</a>
+          {% else %}
+            <span class="drive-name">{{ f.name }}</span>
+          {% endif %}
+        </td>
+        <td class="mono muted">{{ f.size_human() }}</td>
+        <td class="mono muted">{% match f.starred_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
+        <td class="row-actions">
+          {% if f.is_folder() == false %}
+            <a class="btn btn-ghost btn-sm" href="/api/v1/drive/files/{{ f.id }}" title="Download">↓</a>
+            <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/versions" title="Versões">Versões</a>
+          {% endif %}
+          <button class="btn btn-ghost btn-sm" type="button"
+                  onclick="unstarFile('{{ f.id }}', this)" title="Remover dos favoritos">★ Remover</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+<script>
+function unstarFile(id, btn) {
+  fetch('/drive/' + encodeURIComponent(id) + '/unstar', { method: 'POST', credentials: 'include' })
+    .then(function(r) {
+      if (!r.ok) { alert('Falha ao remover (HTTP ' + r.status + ').'); return; }
+      var row = btn.closest('tr');
+      if (row) row.remove();
+    })
+    .catch(function() { alert('Erro de rede.'); });
+}
+</script>
+{% endblock %}

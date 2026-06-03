@@ -57,7 +57,7 @@
       <a class="btn btn-ghost" href="/drive/trash">Lixeira</a>
       <a class="btn btn-ghost" href="/drive/tags">🏷 Tags</a>
       <button class="btn btn-ghost btn-sm" onclick="toggleDriveView()" id="drive-view-btn" title="Alternar lista/grade">⊞ Grade</button>
-      <button class="btn btn-ghost btn-sm" onclick="toggleDriveFavs()" id="drive-favs-btn" title="Mostrar favoritos">⭐ Favoritos</button>
+      <a class="btn btn-ghost btn-sm" href="/drive/starred" title="Ver todos os favoritos">⭐ Favoritos</a>
       <button class="btn btn-ghost" onclick="showDriveNewFolder()">📁+ Nova pasta</button>
       <button class="btn btn-ghost" onclick="shareCurrentDriveFolder(this)" title="Copiar link da pasta atual">🔗 Link da pasta</button>
       <button class="btn btn-ghost" onclick="showFolderTotalSize(this)" title="Tamanho total dos arquivos visíveis">📏 Total</button>
@@ -128,7 +128,10 @@
         <td class="mono muted">{% match f.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
         <td class="row-actions">
           <button class="btn btn-ghost btn-sm drive-fav-btn" data-id="{{ f.id }}"
-                  onclick="toggleDriveFav('{{ f.id }}')" title="Favorito">⭐</button>
+                  data-starred="{% if f.is_starred() %}1{% else %}0{% endif %}"
+                  onclick="toggleDriveFav('{{ f.id }}')"
+                  style="opacity:{% if f.is_starred() %}1{% else %}.35{% endif %}"
+                  title="{% if f.is_starred() %}Remover dos favoritos{% else %}Adicionar aos favoritos{% endif %}">⭐</button>
           <button class="btn btn-ghost btn-sm drive-color-btn" data-id="{{ f.id }}"
                   onclick="cycleDriveColor('{{ f.id }}', this)" title="Cor (clique p/ alternar)">●</button>
           {% if f.is_folder() == false %}
@@ -615,47 +618,30 @@ function applyDriveView() {
 }
 applyDriveView();
 
-// ── Drive favorites ───────────────────────────────────────────────────────────
-var DRIVE_FAV_KEY = 'expresso_drive_favs';
-var _showFavsOnly = false;
-
-function loadDriveFavs() { try { return JSON.parse(localStorage.getItem(DRIVE_FAV_KEY) || '[]'); } catch(e) { return []; } }
-function saveDriveFavs(f) { localStorage.setItem(DRIVE_FAV_KEY, JSON.stringify(f)); }
+// ── Drive favorites (server-backed via /drive/:id/star) ─────────────────────────
+// The star state is rendered server-side (data-starred + opacity). Toggling
+// POSTs to the star/unstar proxy and flips the button on success — no
+// localStorage, so favorites sync across devices.
+function setFavButton(btn, starred) {
+  btn.dataset.starred = starred ? '1' : '0';
+  btn.style.opacity = starred ? '1' : '.35';
+  btn.title = starred ? 'Remover dos favoritos' : 'Adicionar aos favoritos';
+}
 
 function toggleDriveFav(id) {
-  var favs = loadDriveFavs();
-  var idx = favs.indexOf(id);
-  if (idx >= 0) { favs.splice(idx, 1); } else { favs.push(id); }
-  saveDriveFavs(favs);
-  renderFavButtons();
+  var btn = document.querySelector('.drive-fav-btn[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+  if (!btn) return;
+  var starred = btn.dataset.starred === '1';
+  var verb = starred ? 'unstar' : 'star';
+  btn.disabled = true;
+  fetch('/drive/' + encodeURIComponent(id) + '/' + verb, { method: 'POST', credentials: 'include' })
+    .then(function(r) {
+      if (r.ok) { setFavButton(btn, !starred); }
+      else { alert('Falha ao atualizar favorito (HTTP ' + r.status + ').'); }
+    })
+    .catch(function() { alert('Erro de rede.'); })
+    .finally(function() { btn.disabled = false; });
 }
-
-function renderFavButtons() {
-  var favs = loadDriveFavs();
-  document.querySelectorAll('.drive-fav-btn[data-id]').forEach(function(btn) {
-    var isFav = favs.indexOf(btn.dataset.id) >= 0;
-    btn.style.opacity = isFav ? '1' : '.35';
-    btn.title = isFav ? 'Remover dos favoritos' : 'Adicionar aos favoritos';
-  });
-  if (_showFavsOnly) {
-    document.querySelectorAll('#drive-table tbody tr[data-file-id]').forEach(function(row) {
-      var id = row.dataset.fileId;
-      row.style.display = (favs.indexOf(id) >= 0) ? '' : 'none';
-    });
-  }
-}
-
-function toggleDriveFavs() {
-  _showFavsOnly = !_showFavsOnly;
-  var btn = document.getElementById('drive-favs-btn');
-  if (btn) btn.textContent = _showFavsOnly ? '⭐ Todos' : '⭐ Favoritos';
-  if (!_showFavsOnly) {
-    document.querySelectorAll('#drive-table tbody tr[data-file-id]').forEach(function(row){ row.style.display = ''; });
-  }
-  renderFavButtons();
-}
-
-renderFavButtons();
 
 // ── File preview modal ────────────────────────────────────────────────────────
 var _imgExts = ['jpg','jpeg','png','gif','webp','svg','bmp','ico'];
@@ -1023,12 +1009,12 @@ function applyDriveColor(btn, color) {
 function toggleDriveOnlyFavs(btn) {
   var on = !document.documentElement.classList.contains('drive-only-favs');
   document.documentElement.classList.toggle('drive-only-favs', on);
-  var favs = [];
-  try { favs = JSON.parse(localStorage.getItem('expresso_drive_favs_{{ me.user_id }}') || '[]').map(function(f){return typeof f==='string'?f:(f.id||'');}); } catch(e){}
+  // Filter by the server-backed star state rendered onto each row's button.
   var hits = 0;
   document.querySelectorAll('tr[data-file-id]').forEach(function(tr) {
-    var id = tr.dataset.fileId;
-    var keep = !on || favs.indexOf(id) >= 0;
+    var favBtn = tr.querySelector('.drive-fav-btn');
+    var isFav = favBtn && favBtn.dataset.starred === '1';
+    var keep = !on || isFav;
     tr.style.display = keep ? '' : 'none';
     if (keep) hits++;
   });
