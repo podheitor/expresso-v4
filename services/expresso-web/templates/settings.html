@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{% if tab == "profile" %}Perfil{% else if tab == "signature" %}Assinatura{% else if tab == "autoreply" %}Resposta automática{% else if tab == "notifications" %}Notificações{% else if tab == "security" %}Segurança{% else if tab == "filters" %}Filtros{% else if tab == "aliases" %}Aliases{% else if tab == "shortcuts" %}Atalhos{% else if tab == "privacy" %}Privacidade{% else %}Configurações{% endif %} · Configurações · Expresso{% endblock %}
+{% block title %}{% if tab == "profile" %}Perfil{% else if tab == "signature" %}Assinatura{% else if tab == "autoreply" %}Resposta automática{% else if tab == "notifications" %}Notificações{% else if tab == "security" %}Segurança{% else if tab == "filters" %}Filtros{% else if tab == "aliases" %}Aliases{% else if tab == "working_hours" %}Horário de trabalho{% else if tab == "shortcuts" %}Atalhos{% else if tab == "privacy" %}Privacidade{% else %}Configurações{% endif %} · Configurações · Expresso{% endblock %}
 {% block nav %}{% let current = "settings" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
 <div class="page settings-page">
@@ -16,6 +16,7 @@
       <a class="settings-nav-item{% if tab == "security" %} active{% endif %}" href="/settings?tab=security">Segurança</a>
       <a class="settings-nav-item{% if tab == "filters" %} active{% endif %}" href="/settings?tab=filters">Filtros de e-mail</a>
       <a class="settings-nav-item{% if tab == "aliases" %} active{% endif %}" href="/settings?tab=aliases">Aliases de e-mail</a>
+      <a class="settings-nav-item{% if tab == "working_hours" %} active{% endif %}" href="/settings?tab=working_hours">Horário de trabalho</a>
       <a class="settings-nav-item" href="/settings/delegations">Delegação de caixa</a>
       <a class="settings-nav-item{% if tab == "shortcuts" %} active{% endif %}" href="/settings?tab=shortcuts">Atalhos de teclado</a>
       <a class="settings-nav-item{% if tab == "privacy" %} active{% endif %}" href="/settings?tab=privacy">Privacidade & dados</a>
@@ -608,6 +609,34 @@
           </tbody>
         </table>
         {% endif %}
+      </div>
+
+      {% else if tab == "working_hours" %}
+      <div class="card stack">
+        <h2>Horário de trabalho</h2>
+        <p class="muted small">
+          Define sua jornada semanal. Usado pela busca de horário livre para
+          preferir reuniões dentro do expediente.
+        </p>
+        {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+        <form class="compose-form" method="post" action="/settings/working-hours">
+          <table class="data-table">
+            <thead><tr><th>Dia</th><th>Ativo</th><th>Início</th><th>Fim</th></tr></thead>
+            <tbody>
+              {% for d in working_days %}
+              <tr>
+                <td>{{ d.label }}</td>
+                <td><input type="checkbox" name="on_{{ d.weekday }}"{% if d.enabled %} checked{% endif %}></td>
+                <td><input type="time" name="start_{{ d.weekday }}" value="{{ d.start }}"></td>
+                <td><input type="time" name="end_{{ d.weekday }}" value="{{ d.end }}"></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Salvar horários</button>
+          </div>
+        </form>
       </div>
 
       {% else if tab == "shortcuts" %}

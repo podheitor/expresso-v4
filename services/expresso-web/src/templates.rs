@@ -1253,6 +1253,27 @@ pub struct SettingsTpl {
     pub sieve_script: Option<String>,
     pub sieve_error: Option<String>,
     pub aliases: Vec<MailAlias>,
+    /// One row per weekday (Mon..Sun), with the configured window as HH:MM
+    /// strings (empty when that day is off).
+    pub working_days: Vec<WorkingDayRow>,
+}
+
+/// A weekday row for the working-hours editor (times pre-formatted as HH:MM).
+pub struct WorkingDayRow {
+    /// Backend weekday index 0..6.
+    pub weekday: i16,
+    pub label: String,
+    pub enabled: bool,
+    pub start: String,
+    pub end: String,
+}
+
+/// A working-hours window as returned by the calendar backend.
+#[derive(Debug, Deserialize, Clone)]
+pub struct WorkingHour {
+    pub weekday: i16,
+    pub start_minute: i32,
+    pub end_minute: i32,
 }
 
 /// A tenant email alias (`alias -> target` forwarding) for the settings screen.

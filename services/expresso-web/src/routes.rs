@@ -25,7 +25,7 @@ use crate::{
         HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl,
         Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
         MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
-        SettingsTpl, ShareRow, TasksTpl, VersionRow,
+        SettingsTpl, ShareRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
@@ -210,6 +210,7 @@ pub fn router(state: AppState) -> Router {
         .route("/settings/autoreply", post(settings_autoreply_save))
         .route("/settings/notifications", post(settings_notifications_save))
         .route("/settings/filters", post(settings_filters_save))
+        .route("/settings/working-hours", post(settings_working_hours_save))
         .route(
             "/settings/delegations",
             get(delegations_page).post(delegation_grant_action),
@@ -5672,6 +5673,22 @@ async fn settings_page(
         .and_then(|v| v.as_str())
         .map(String::from);
 
+    // Working-hours editor rows, loaded only on that tab.
+    let working_days = if tab == "working_hours" {
+        let hours = get_json::<Vec<WorkingHour>>(
+            &st,
+            &st.backends.calendar,
+            "/api/v1/working-hours",
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default();
+        build_working_days(&hours)
+    } else {
+        build_working_days(&[])
+    };
+
     // Load tenant email aliases only on the aliases tab.
     let aliases = if tab == "aliases" {
         get_json::<Vec<MailAlias>>(
@@ -5702,8 +5719,45 @@ async fn settings_page(
         sieve_script,
         sieve_error,
         aliases,
+        working_days,
         me,
     }))
+}
+
+const WEEKDAY_LABELS: [&str; 7] = [
+    "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo",
+];
+
+/// Minutes-from-midnight → "HH:MM".
+fn min_to_hhmm(m: i32) -> String {
+    format!("{:02}:{:02}", m / 60, m % 60)
+}
+
+/// "HH:MM" → minutes-from-midnight, or None if malformed/out of range.
+fn hhmm_to_min(s: &str) -> Option<i32> {
+    let (h, m) = s.trim().split_once(':')?;
+    let h: i32 = h.parse().ok()?;
+    let m: i32 = m.parse().ok()?;
+    if !(0..24).contains(&h) || !(0..60).contains(&m) {
+        return None;
+    }
+    Some(h * 60 + m)
+}
+
+/// Build a 7-row Mon..Sun table from the backend windows (one window per day).
+fn build_working_days(hours: &[WorkingHour]) -> Vec<crate::templates::WorkingDayRow> {
+    (0..7i16)
+        .map(|wd| {
+            let win = hours.iter().find(|h| h.weekday == wd);
+            crate::templates::WorkingDayRow {
+                weekday: wd,
+                label: WEEKDAY_LABELS[wd as usize].to_string(),
+                enabled: win.is_some(),
+                start: win.map_or_else(|| "09:00".into(), |h| min_to_hhmm(h.start_minute)),
+                end: win.map_or_else(|| "18:00".into(), |h| min_to_hhmm(h.end_minute)),
+            }
+        })
+        .collect()
 }
 
 async fn settings_profile_save(
@@ -5810,6 +5864,59 @@ async fn settings_filters_save(
     )
     .await;
     Ok(Redirect::to("/settings?tab=filters&flash=Filtros+salvos").into_response())
+}
+
+#[derive(serde::Serialize)]
+struct WorkingHourOut {
+    weekday: i16,
+    start_minute: i32,
+    end_minute: i32,
+}
+
+/// POST /settings/working-hours — replace the caller's weekly working hours.
+/// The form carries `on_<wd>` (checkbox), `start_<wd>`, `end_<wd>` for wd 0..6;
+/// only enabled days with a valid start<end window are sent.
+async fn settings_working_hours_save(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(fields): Form<std::collections::HashMap<String, String>>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let mut hours = Vec::new();
+    for wd in 0..7i16 {
+        if !fields.contains_key(&format!("on_{wd}")) {
+            continue;
+        }
+        let start = fields
+            .get(&format!("start_{wd}"))
+            .and_then(|s| hhmm_to_min(s));
+        let end = fields
+            .get(&format!("end_{wd}"))
+            .and_then(|s| hhmm_to_min(s));
+        if let (Some(start_minute), Some(end_minute)) = (start, end) {
+            if end_minute > start_minute {
+                hours.push(WorkingHourOut {
+                    weekday: wd,
+                    start_minute,
+                    end_minute,
+                });
+            }
+        }
+    }
+    let _ = put_json(
+        &st,
+        &st.backends.calendar,
+        "/api/v1/working-hours",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "hours": hours }),
+    )
+    .await?;
+    Ok(Redirect::to("/settings?tab=working_hours&flash=Horários+salvos").into_response())
 }
 
 #[derive(Deserialize)]
@@ -6128,6 +6235,17 @@ mod tests {
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
         assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn hhmm_min_roundtrip() {
+        assert_eq!(hhmm_to_min("09:00"), Some(540));
+        assert_eq!(hhmm_to_min("18:30"), Some(1110));
+        assert_eq!(min_to_hhmm(540), "09:00");
+        assert_eq!(min_to_hhmm(1110), "18:30");
+        assert_eq!(hhmm_to_min("24:00"), None);
+        assert_eq!(hhmm_to_min("9:60"), None);
+        assert_eq!(hhmm_to_min("garbage"), None);
     }
 
     #[test]
