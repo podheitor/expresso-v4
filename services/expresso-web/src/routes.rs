@@ -278,6 +278,7 @@ pub fn router(state: AppState) -> Router {
             post(meet_lobby_approve_api),
         )
         .route("/meet/:id/lobby/:user_id/deny", post(meet_lobby_deny_api))
+        .route("/meet/:id/transcripts", get(meet_transcripts_list_api))
         // tasks
         .route("/tasks", get(tasks_page))
         .route("/tasks/create", post(tasks_create_action))
@@ -6821,6 +6822,31 @@ async fn meet_lobby_deny_api(
     Ok(StatusCode::from_u16(status)
         .unwrap_or(StatusCode::BAD_GATEWAY)
         .into_response())
+}
+
+/// GET /meet/:id/transcripts — list a meeting's stored transcripts (JSON for the
+/// meet-room transcripts panel). Participant-gated by the meet backend.
+async fn meet_transcripts_list_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{enc}/transcript"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or(serde_json::json!([]));
+    Ok(json_response(&v))
 }
 
 fn uuid_v4() -> String {
