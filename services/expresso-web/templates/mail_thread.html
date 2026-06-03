@@ -46,6 +46,10 @@
           <button class="btn btn-ghost btn-sm" onclick="snoozeThread(24)" title="Adiar 1 dia">+1d</button>
           <button class="btn btn-ghost btn-sm" onclick="snoozeThread(72)" title="Adiar 3 dias">+3d</button>
           <button class="btn btn-ghost btn-sm" onclick="snoozeThread(168)" title="Adiar 1 semana">+1sem</button>
+          <button class="btn btn-ghost btn-sm" id="thread-pin-btn" onclick="toggleThreadFlag('pin')"
+                  title="Fixar conversa no topo">{% if pinned %}📌 Fixada{% else %}📌 Fixar{% endif %}</button>
+          <button class="btn btn-ghost btn-sm" id="thread-mute-btn" onclick="toggleThreadFlag('mute')"
+                  title="Silenciar — respostas futuras não contam como não lidas">{% if muted %}🔕 Silenciada{% else %}🔔 Silenciar{% endif %}</button>
           <input type="search" id="thread-find" placeholder="Buscar na conversa…" oninput="findInThread(this.value)" style="width:11rem" class="search-input-sm">
           <div style="position:relative">
             <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯ Mover</button>
@@ -294,6 +298,26 @@ function markThreadUnread() {
     }
     window.location.href = '/mail';
   }).catch(function(){ alert('Erro ao marcar como não lida.'); });
+}
+// Thread mute/pin state (per-user overlay, server-backed).
+var _threadFlags = { mute: {% if muted %}true{% else %}false{% endif %}, pin: {% if pinned %}true{% else %}false{% endif %} };
+function toggleThreadFlag(flag) {
+  var next = !_threadFlags[flag];
+  var body = new URLSearchParams(); body.set('on', next ? 'true' : 'false');
+  fetch('/mail/thread/{{ thread_id }}/' + flag, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r){
+    if (!r.ok) { alert('Falha (HTTP ' + r.status + ').'); return; }
+    _threadFlags[flag] = next;
+    if (flag === 'pin') {
+      var b = document.getElementById('thread-pin-btn');
+      if (b) b.textContent = next ? '📌 Fixada' : '📌 Fixar';
+    } else {
+      var m = document.getElementById('thread-mute-btn');
+      if (m) m.textContent = next ? '🔕 Silenciada' : '🔔 Silenciar';
+    }
+  });
 }
 function archiveThread() {
   if (!_threadMsgIds.length) return;

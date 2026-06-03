@@ -267,6 +267,8 @@ pub struct MailThreadTpl {
     pub thread_id: String,
     pub messages: Vec<MessageListItem>,
     pub subject: String,
+    pub muted: bool,
+    pub pinned: bool,
 }
 
 // ─── Drive ───────────────────────────────────────────────────────────────────

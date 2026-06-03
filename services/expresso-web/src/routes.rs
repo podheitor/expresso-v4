@@ -64,6 +64,8 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/mail/rules", get(mail_rules_page).post(mail_rules_save))
         .route("/mail/thread/:tid", get(mail_thread_page))
+        .route("/mail/thread/:tid/mute", post(mail_thread_mute_action))
+        .route("/mail/thread/:tid/pin", post(mail_thread_pin_action))
         .route("/mail/:id", get(mail_detail_page))
         .route("/drive", get(drive_page))
         .route("/drive/trash", get(drive_trash_page))
@@ -941,13 +943,93 @@ async fn mail_thread_page(
         .find_map(|m| m.subject.clone())
         .unwrap_or_else(|| "(sem assunto)".into());
 
+    let state = get_json::<ThreadState>(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/threads/{enc_tid}/state"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+
     Ok(askama_axum::IntoResponse::into_response(MailThreadTpl {
         me,
         folders,
         thread_id: tid,
         messages,
         subject,
+        muted: state.muted,
+        pinned: state.pinned,
     }))
+}
+
+#[derive(Deserialize, Default)]
+struct ThreadState {
+    #[serde(default)]
+    muted: bool,
+    #[serde(default)]
+    pinned: bool,
+}
+
+/// PUT/DELETE proxy for a thread's mute or pin flag. `on=true` → PUT (set),
+/// `on=false` → DELETE (clear). `flag` is "mute" or "pin".
+async fn mail_thread_flag(
+    st: &AppState,
+    headers: &HeaderMap,
+    me: &Me,
+    tid: &str,
+    flag: &str,
+    on: bool,
+) -> WebResult<u16> {
+    let (t, u) = ctx_of(me);
+    let enc = utf8_percent_encode(tid, NON_ALPHANUMERIC);
+    let path = format!("/api/v1/mail/threads/{enc}/{flag}");
+    if on {
+        put_json(st, &st.backends.mail, &path, headers, Some((&t, &u)), &()).await
+    } else {
+        delete_at(st, &st.backends.mail, &path, headers, Some((&t, &u))).await
+    }
+}
+
+#[derive(Deserialize)]
+struct ThreadFlagForm {
+    #[serde(default)]
+    on: bool,
+}
+
+/// POST /mail/thread/:tid/mute — toggle mute (form field `on`=true|false).
+async fn mail_thread_mute_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(tid): Path<String>,
+    Form(f): Form<ThreadFlagForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let status = mail_thread_flag(&st, &headers, &me, &tid, "mute", f.on).await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// POST /mail/thread/:tid/pin — toggle pin (form field `on`=true|false).
+async fn mail_thread_pin_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(tid): Path<String>,
+    Form(f): Form<ThreadFlagForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let status = mail_thread_flag(&st, &headers, &me, &tid, "pin", f.on).await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
 }
 
 // ─── /drive ──────────────────────────────────────────────────────────────────
@@ -8912,6 +8994,25 @@ mod tests {
         let f: BreakoutRemoveForm =
             serde_json::from_value(serde_json::json!({ "user_id": "abc-123" })).expect("parse");
         assert_eq!(f.user_id, "abc-123");
+    }
+
+    #[test]
+    fn thread_state_defaults_false_when_absent() {
+        let s: ThreadState = serde_json::from_value(serde_json::json!({})).expect("parse");
+        assert!(!s.muted && !s.pinned);
+        let s2: ThreadState =
+            serde_json::from_value(serde_json::json!({ "muted": true, "pinned": false }))
+                .expect("parse");
+        assert!(s2.muted && !s2.pinned);
+    }
+
+    #[test]
+    fn thread_flag_form_defaults_off() {
+        let f: ThreadFlagForm = serde_json::from_value(serde_json::json!({})).expect("parse");
+        assert!(!f.on);
+        let f2: ThreadFlagForm =
+            serde_json::from_value(serde_json::json!({ "on": true })).expect("parse");
+        assert!(f2.on);
     }
 
     #[test]
