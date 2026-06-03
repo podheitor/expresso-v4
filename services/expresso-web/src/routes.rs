@@ -266,6 +266,8 @@ pub fn router(state: AppState) -> Router {
         .route("/meet/:id", get(meet_room_page))
         .route("/meet/:id/end", post(meet_end_action))
         .route("/meet/:id/recordings", get(meet_recordings_api))
+        .route("/meet/:id/recording/start", post(meet_recording_start_api))
+        .route("/meet/:id/recording/stop", post(meet_recording_stop_api))
         .route(
             "/meet/:id/polls",
             get(meet_polls_list_api).post(meet_poll_create_api),
@@ -6620,6 +6622,59 @@ async fn meet_recordings_api(
         [(axum::http::header::CONTENT_TYPE, "application/json")],
         serde_json::to_string(&recs).unwrap_or_default(),
     )
+        .into_response())
+}
+
+/// POST /meet/:id/recording/start — mark server-side recording as started
+/// (moderator-gated by the meet backend). Distinct from the Jitsi file
+/// recording: this sets the meeting's `recording_started_at` for audit/status.
+async fn meet_recording_start_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = post_empty(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{enc}/recording/start"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// POST /meet/:id/recording/stop — mark server-side recording as stopped
+/// (moderator-gated by the meet backend).
+async fn meet_recording_stop_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = post_empty(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{enc}/recording/stop"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
         .into_response())
 }
 

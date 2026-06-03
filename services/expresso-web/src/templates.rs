@@ -1263,6 +1263,8 @@ pub struct MeetRoom {
     #[serde(default)]
     pub recording_url: Option<String>,
     #[serde(default)]
+    pub recording_started_at: Option<String>,
+    #[serde(default)]
     pub participant_count: i64,
     #[serde(default)]
     pub duration_minutes: Option<i64>,
@@ -1270,6 +1272,10 @@ pub struct MeetRoom {
 impl MeetRoom {
     pub fn title(&self) -> &str {
         self.name.as_deref().unwrap_or("Reunião")
+    }
+    /// True when the backend has an active server-side recording session.
+    pub fn is_recording(&self) -> bool {
+        self.recording_started_at.is_some()
     }
     pub fn room_id_short(&self) -> &str {
         &self.id[..self.id.len().min(8)]
@@ -1874,6 +1880,15 @@ mod tests {
     fn human_size_negative_treated_as_zero_or_shown() {
         // negative sizes shouldn't panic — just verify it doesn't
         let _ = human_size(-1);
+    }
+
+    #[test]
+    fn meet_room_is_recording_reflects_started_at() {
+        let mut m: MeetRoom =
+            serde_json::from_value(serde_json::json!({ "id": "abcd1234" })).expect("parse");
+        assert!(!m.is_recording());
+        m.recording_started_at = Some("2026-06-03T10:00:00Z".into());
+        assert!(m.is_recording());
     }
 
     #[test]

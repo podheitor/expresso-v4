@@ -608,11 +608,24 @@ function showRoomQr() {
     '<p>' + url + '</p></body></html>');
   w.document.close();
 }
+// Server-side recording state (audit/status), separate from Jitsi file recording.
+var _meetRecording = {% match meeting %}{% when Some with (m) %}{{ m.is_recording() }}{% when None %}false{% endmatch %};
+function _syncRecBtn() {
+  var btn = document.getElementById('rec-btn');
+  if (btn) btn.textContent = _meetRecording ? '⏹ Parar' : '⏺ Gravar';
+}
 function toggleRecording() {
   var api = window._jitsiApi;
-  if (!api) return;
-  api.executeCommand('toggleRecording', { mode: 'file' });
+  if (api) api.executeCommand('toggleRecording', { mode: 'file' });
+  // Mirror the action to the backend so server-side state + audit stay in sync.
+  var action = _meetRecording ? 'stop' : 'start';
+  fetch('/meet/{{ room_id }}/recording/' + action, { method: 'POST', credentials: 'include' })
+    .then(function(r){
+      if (r.ok) { _meetRecording = !_meetRecording; _syncRecBtn(); }
+      else if (r.status !== 409) { alert('Falha ao alternar gravação (HTTP ' + r.status + ').'); }
+    });
 }
+document.addEventListener('DOMContentLoaded', _syncRecBtn);
 
 // participant count
 var _partCount = {{ participants.len() }};
