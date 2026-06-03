@@ -6,10 +6,10 @@
 //! DELETE /api/v1/mail/delegations/:id     — revoke a grant the caller owns
 //!
 //! A grant lets `delegate_id` act on `owner_id`'s mailbox at `READ` or `SEND`
-//! level. This module manages the grants and exposes discovery; it does NOT yet
-//! change the read/send paths — those still scope to the caller's own mailbox.
-//! Enforcement (an on-behalf-of selector honoring these grants) is a later
-//! phase, matching how drive ACL shipped capability before enforcement.
+//! level. This module manages the grants and exposes discovery. Enforcement is
+//! wired: folders/messages/search honor `?on_behalf_of=<owner>` and require a
+//! matching grant (see `folders.rs`/`messages.rs`), and the webmail surfaces
+//! grant management at `/settings/delegations`.
 
 use axum::{
     extract::{Path, State},

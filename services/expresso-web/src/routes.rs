@@ -515,6 +515,22 @@ struct MailQuery {
     folder: Option<String>,
     page: Option<u32>,
     json: Option<u8>,
+    /// When set (a delegated owner's user id), view that mailbox instead of the
+    /// caller's own. Requires a delegation grant (the backend 403s otherwise).
+    obo: Option<String>,
+}
+
+/// Append `&on_behalf_of=<id>` to a backend path when viewing a delegated
+/// mailbox. Returns the path unchanged when `obo` is None/blank.
+fn with_obo(path: String, obo: Option<&str>) -> String {
+    match obo.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(id) => {
+            let enc = utf8_percent_encode(id, NON_ALPHANUMERIC).to_string();
+            let sep = if path.contains('?') { '&' } else { '?' };
+            format!("{path}{sep}on_behalf_of={enc}")
+        }
+        None => path,
+    }
 }
 
 async fn mail_page(
@@ -529,12 +545,13 @@ async fn mail_page(
     let (t, u) = ctx_of(&me);
     let selected = q.folder.unwrap_or_else(|| "INBOX".into());
     let page = q.page.unwrap_or(0);
+    let obo = q.obo.as_deref();
 
     let folders = dedup_folders(
         get_json::<Vec<Folder>>(
             &st,
             &st.backends.mail,
-            "/api/v1/mail/folders",
+            &with_obo("/api/v1/mail/folders".to_string(), obo),
             &headers,
             Some((&t, &u)),
         )
@@ -546,12 +563,21 @@ async fn mail_page(
     let messages = get_json::<Vec<MessageListItem>>(
         &st,
         &st.backends.mail,
-        &format!("/api/v1/mail/messages?folder={enc}&page={page}"),
+        &with_obo(
+            format!("/api/v1/mail/messages?folder={enc}&page={page}"),
+            obo,
+        ),
         &headers,
         Some((&t, &u)),
     )
     .await?
     .unwrap_or_default();
+
+    // Resolve the delegated owner's email for the "viewing as" banner.
+    let viewing_as = match obo.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(id) => Some(resolve_email_by_id(&st, id, &headers, &t, &u).await),
+        None => None,
+    };
 
     let has_next = messages.len() >= 50; // backend page size
     Ok(askama_axum::IntoResponse::into_response(MailListTpl {
@@ -563,6 +589,8 @@ async fn mail_page(
         selected_id: None,
         page,
         has_next,
+        viewing_as,
+        obo: obo.map(str::to_string),
     }))
 }
 
@@ -579,12 +607,13 @@ async fn mail_detail_page(
     let (t, u) = ctx_of(&me);
     let selected = q.folder.unwrap_or_else(|| "INBOX".into());
     let page = q.page.unwrap_or(0);
+    let obo = q.obo.as_deref();
 
     let folders = dedup_folders(
         get_json::<Vec<Folder>>(
             &st,
             &st.backends.mail,
-            "/api/v1/mail/folders",
+            &with_obo("/api/v1/mail/folders".to_string(), obo),
             &headers,
             Some((&t, &u)),
         )
@@ -596,7 +625,10 @@ async fn mail_detail_page(
     let messages = get_json::<Vec<MessageListItem>>(
         &st,
         &st.backends.mail,
-        &format!("/api/v1/mail/messages?folder={enc}&page={page}"),
+        &with_obo(
+            format!("/api/v1/mail/messages?folder={enc}&page={page}"),
+            obo,
+        ),
         &headers,
         Some((&t, &u)),
     )
@@ -607,7 +639,7 @@ async fn mail_detail_page(
     let detail = get_json::<MessageDetail>(
         &st,
         &st.backends.mail,
-        &format!("/api/v1/mail/messages/{enc_id}"),
+        &with_obo(format!("/api/v1/mail/messages/{enc_id}"), obo),
         &headers,
         Some((&t, &u)),
     )
@@ -624,6 +656,11 @@ async fn mail_detail_page(
             .into_response());
     }
 
+    let viewing_as = match obo.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(oid) => Some(resolve_email_by_id(&st, oid, &headers, &t, &u).await),
+        None => None,
+    };
+
     Ok(askama_axum::IntoResponse::into_response(MailListTpl {
         me,
         folders,
@@ -633,6 +670,8 @@ async fn mail_detail_page(
         selected_id: Some(id),
         page: 0,
         has_next: false,
+        viewing_as,
+        obo: obo.map(str::to_string),
     }))
 }
 
@@ -5595,15 +5634,16 @@ async fn delegation_views(
     let mut out = Vec::with_capacity(raw.len());
     for d in raw {
         let who_id = if show_owner {
-            &d.owner_id
+            d.owner_id
         } else {
-            &d.delegate_id
+            d.delegate_id
         };
-        let who = resolve_email_by_id(st, who_id, headers, t, u).await;
+        let who = resolve_email_by_id(st, &who_id, headers, t, u).await;
         out.push(DelegationView {
             id: d.id,
             who,
             access: d.access,
+            who_id,
         });
     }
     out
@@ -5758,6 +5798,25 @@ mod tests {
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
         assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn with_obo_appends_param_with_correct_separator() {
+        assert_eq!(
+            with_obo("/api/v1/mail/folders".into(), Some("abc-123")),
+            "/api/v1/mail/folders?on_behalf_of=abc%2D123"
+        );
+        assert_eq!(
+            with_obo("/api/v1/mail/messages?folder=INBOX".into(), Some("u1")),
+            "/api/v1/mail/messages?folder=INBOX&on_behalf_of=u1"
+        );
+    }
+
+    #[test]
+    fn with_obo_noop_when_blank_or_none() {
+        assert_eq!(with_obo("/x".into(), None), "/x");
+        assert_eq!(with_obo("/x".into(), Some("")), "/x");
+        assert_eq!(with_obo("/x".into(), Some("  ")), "/x");
     }
 
     #[test]

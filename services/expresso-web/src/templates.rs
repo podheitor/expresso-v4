@@ -210,6 +210,20 @@ pub struct MailListTpl {
     pub selected_id: Option<String>,
     pub page: u32,
     pub has_next: bool,
+    /// When viewing a delegated mailbox, the owner's email (for the banner).
+    pub viewing_as: Option<String>,
+    /// The delegated owner's user id, for carrying `obo` on folder links.
+    pub obo: Option<String>,
+}
+
+impl MailListTpl {
+    /// `&obo=<id>` suffix for in-mailbox links when viewing a delegated box.
+    pub fn obo_suffix(&self) -> String {
+        match self.obo.as_deref() {
+            Some(id) if !id.is_empty() => format!("&obo={id}"),
+            _ => String::new(),
+        }
+    }
 }
 
 #[derive(Template)]
@@ -1252,6 +1266,8 @@ pub struct DelegationView {
     /// The other party's email (delegate when listing given, owner when given-to-me).
     pub who: String,
     pub access: String,
+    /// The counterparty's user id (owner, for "to-me" rows → open-mailbox link).
+    pub who_id: String,
 }
 
 #[derive(Template)]

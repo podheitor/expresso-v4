@@ -60,10 +60,16 @@
       <p class="muted">Ninguém concedeu acesso à própria caixa para você.</p>
     {% else %}
     <table class="data-table">
-      <thead><tr><th>Proprietário</th><th>Acesso</th></tr></thead>
+      <thead><tr><th>Proprietário</th><th>Acesso</th><th></th></tr></thead>
       <tbody>
         {% for d in to_me %}
-        <tr><td>{{ d.who }}</td><td>{{ d.access }}</td></tr>
+        <tr>
+          <td>{{ d.who }}</td>
+          <td>{{ d.access }}</td>
+          <td style="text-align:right">
+            <a class="btn btn-ghost btn-sm" href="/mail?obo={{ d.who_id }}">📬 Abrir caixa</a>
+          </td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>

@@ -12,7 +12,7 @@
     <nav class="folder-list" aria-label="Pastas">
       {% for f in folders %}
       <a class="folder-item{% if selected.as_str() == f.name.as_str() %} active{% endif %}"
-         href="/mail?folder={{ f.name }}">
+         href="/mail?folder={{ f.name }}{{ self.obo_suffix() }}">
         <span class="folder-icon">{{ f.icon() }}</span>
         <span class="folder-name">{{ f.name }}</span>
         {% if f.unseen_count > 0 %}
@@ -30,6 +30,12 @@
   </aside>
 
   <main class="mail-main">
+    {% match viewing_as %}{% when Some with (owner) %}
+    <div class="alert alert-warn" style="margin:.5rem .75rem;display:flex;justify-content:space-between;align-items:center">
+      <span>📬 Visualizando a caixa de <strong>{{ owner }}</strong> (delegada)</span>
+      <a class="btn btn-ghost btn-sm" href="/mail">Voltar à minha caixa</a>
+    </div>
+    {% when None %}{% endmatch %}
     <section class="msg-list" aria-label="Mensagens">
       <div class="list-toolbar">
         <h1 class="folder-title">{{ selected }} <span id="folder-unread-count" class="muted" style="font-size:.7em;font-weight:400"></span></h1>
