@@ -21,12 +21,12 @@ use crate::{
         ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl,
         DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DriveEditTpl, DriveFile,
         DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTagFilesTpl, DriveTagStat,
-        DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlowRuleRow,
-        FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl,
-        LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
-        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
-        SettingsTpl, ShareRow, TasksTpl, VersionRow, WorkingHour,
+        DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlowEditTpl,
+        FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile,
+        HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl,
+        MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl,
+        MessageDetail, MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit,
+        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
@@ -164,6 +164,10 @@ pub fn router(state: AppState) -> Router {
         .route("/mail/:id/read-receipt", post(mail_read_receipt_action))
         // mail flow rules (automation)
         .route("/flows", get(flows_page).post(flow_create_action))
+        .route(
+            "/flows/:id/edit",
+            get(flow_edit_page).post(flow_edit_action),
+        )
         .route("/flows/:id/toggle", post(flow_toggle_action))
         .route("/flows/:id/delete", post(flow_delete_action))
         .route("/mail/:id/move", post(mail_move_action))
@@ -2034,6 +2038,135 @@ async fn flow_create_action(
         &st,
         &st.backends.flows,
         "/api/v1/flows/rules",
+        &headers,
+        Some((&t, &u)),
+        &body,
+    )
+    .await?;
+    Ok(Redirect::to("/flows").into_response())
+}
+
+/// GET /flows/:id/edit — edit form pre-filled from the rule's first
+/// condition/action (single-shape; complex rules flagged read-only-ish).
+async fn flow_edit_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let Some(rule) = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.flows,
+        &format!("/api/v1/flows/rules/{id}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    else {
+        return Ok(Redirect::to("/flows").into_response());
+    };
+    let conds = rule
+        .get("conditions")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let acts = rule
+        .get("actions")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let complex = conds.len() > 1 || acts.len() > 1;
+    let c0 = conds.first();
+    let a0 = acts.first();
+    let str_of = |v: Option<&serde_json::Value>, k: &str| {
+        v.and_then(|x| x.get(k))
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let action = a0
+        .and_then(|x| x.get("type"))
+        .and_then(|x| x.as_str())
+        .unwrap_or("move_to_folder")
+        .to_string();
+    let action_value = match action.as_str() {
+        "add_flag" => str_of(a0.and_then(|x| x.get("params")), "flag"),
+        "webhook" => str_of(a0.and_then(|x| x.get("params")), "url"),
+        _ => str_of(a0.and_then(|x| x.get("params")), "folder"),
+    };
+    Ok(askama_axum::IntoResponse::into_response(FlowEditTpl {
+        me,
+        id,
+        name: rule
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        field: {
+            let f = str_of(c0, "field");
+            if f.is_empty() {
+                "from".into()
+            } else {
+                f
+            }
+        },
+        op: {
+            let o = str_of(c0, "op");
+            if o.is_empty() {
+                "contains".into()
+            } else {
+                o
+            }
+        },
+        value: str_of(c0, "value"),
+        action,
+        action_value,
+        complex,
+    }))
+}
+
+/// POST /flows/:id/edit — replace the rule's name/condition/action via PATCH.
+async fn flow_edit_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<FlowCreateForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let name = f.name.trim();
+    let value = f.value.trim();
+    if name.is_empty() || value.is_empty() {
+        return Ok(Redirect::to(&format!("/flows/{id}/edit")).into_response());
+    }
+    let action = match f.action.as_str() {
+        "add_flag" => {
+            serde_json::json!({ "type": "add_flag", "params": { "flag": f.action_value.trim() } })
+        }
+        "webhook" => {
+            serde_json::json!({ "type": "webhook", "params": { "url": f.action_value.trim() } })
+        }
+        _ => {
+            serde_json::json!({ "type": "move_to_folder", "params": { "folder": f.action_value.trim() } })
+        }
+    };
+    let body = serde_json::json!({
+        "name": name,
+        "conditions": [{ "field": f.field, "op": f.op, "value": value }],
+        "condition_mode": "and",
+        "actions": [action],
+    });
+    let _ = patch_json(
+        &st,
+        &st.backends.flows,
+        &format!("/api/v1/flows/rules/{id}"),
         &headers,
         Some((&t, &u)),
         &body,

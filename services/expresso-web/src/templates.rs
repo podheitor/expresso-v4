@@ -689,6 +689,23 @@ pub struct FlowsTpl {
     pub rules: Vec<FlowRuleRow>,
 }
 
+/// Edit form for a single-condition, single-action flow rule (the shape the UI
+/// creates). Fields are pre-selected via the `*_sel` helpers in the template.
+#[derive(Template)]
+#[template(path = "flow_edit.html")]
+pub struct FlowEditTpl {
+    pub me: Me,
+    pub id: String,
+    pub name: String,
+    pub field: String,
+    pub op: String,
+    pub value: String,
+    pub action: String,
+    pub action_value: String,
+    /// True when the rule has >1 condition or action (edit would flatten it).
+    pub complex: bool,
+}
+
 /// One attendee's busy intervals (pre-formatted as HH:MM ranges) for the
 /// free-busy page.
 pub struct FreeBusyRow {

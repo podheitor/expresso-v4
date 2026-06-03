@@ -77,6 +77,7 @@
           </form>
         </td>
         <td style="text-align:right">
+          <a class="btn btn-ghost btn-sm" href="/flows/{{ r.id }}/edit">Editar</a>
           <form method="post" action="/flows/{{ r.id }}/delete" style="display:inline"
                 onsubmit="return confirm('Excluir esta regra?')">
             <button type="submit" class="btn btn-ghost btn-sm">Excluir</button>
