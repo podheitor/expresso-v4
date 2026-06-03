@@ -23,20 +23,20 @@ use crate::{
         AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent,
         Calendar, CalendarCountersTpl, CalendarDayTpl, CalendarMonthTpl, CalendarShareTpl,
         CalendarTpl, CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage, ChatTpl, Contact,
-        ContactActivityTpl, ContactDiffTpl, ContactFormTpl, ContactGroup, ContactGroupDetailTpl,
-        ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl, ContactsTpl, CounterRow,
-        DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DlqEntry, DlqKindCount,
-        DriveActivityTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
-        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
-        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
-        Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow,
-        FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias,
-        MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl,
-        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
-        NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit,
-        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow, TagPairRow,
-        TaskRow, TasksTpl, VersionRow, WorkingHour,
+        ContactActivityTpl, ContactAddressRow, ContactDiffTpl, ContactEmailRow, ContactFormTpl,
+        ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow,
+        ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView,
+        DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveContentHit,
+        DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota,
+        DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl,
+        DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow,
+        FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl,
+        LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl,
+        MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl,
+        MessageDetail, MessageListItem, MonthCell, Note, NoteTagStat, NoteVersionRow,
+        NoteVersionsTpl, Notebook, NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl,
+        Resource, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow,
+        SharedNoteRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -5135,6 +5135,8 @@ async fn contact_new_form(
         phone: String::new(),
         organization: String::new(),
         error: None,
+        emails: Vec::new(),
+        addresses: Vec::new(),
     }
     .into_response())
 }
@@ -5196,6 +5198,24 @@ async fn contact_edit_form(
     else {
         return Ok((StatusCode::NOT_FOUND, "Contato não encontrado").into_response());
     };
+    let emails = get_json::<Vec<ContactEmailRow>>(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/addressbooks/{enc_b}/contacts/{enc_i}/emails"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let addresses = get_json::<Vec<ContactAddressRow>>(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/addressbooks/{enc_b}/contacts/{enc_i}/addresses"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
     Ok(ContactFormTpl {
         me,
         book,
@@ -5207,6 +5227,8 @@ async fn contact_edit_form(
         phone: contact.phone.unwrap_or_default(),
         organization: contact.organization.unwrap_or_default(),
         error: None,
+        emails,
+        addresses,
     }
     .into_response())
 }

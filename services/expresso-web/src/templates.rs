@@ -1288,6 +1288,63 @@ impl AttendeePill {
     }
 }
 
+/// One EMAIL entry parsed from a contact's vCard (with its TYPE label).
+#[derive(Deserialize)]
+pub struct ContactEmailRow {
+    #[serde(default)]
+    pub address: String,
+    #[serde(default)]
+    pub label: Option<String>,
+}
+impl ContactEmailRow {
+    pub fn label_text(&self) -> &str {
+        self.label
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("—")
+    }
+}
+
+/// One structured ADDRESS entry from a contact's vCard.
+#[derive(Deserialize)]
+pub struct ContactAddressRow {
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub street: Option<String>,
+    #[serde(default)]
+    pub locality: Option<String>,
+    #[serde(default)]
+    pub region: Option<String>,
+    #[serde(default)]
+    pub postal_code: Option<String>,
+    #[serde(default)]
+    pub country: Option<String>,
+}
+impl ContactAddressRow {
+    pub fn label_text(&self) -> &str {
+        self.label
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("—")
+    }
+    /// One-line "street, locality region postal, country" with blanks skipped.
+    pub fn one_line(&self) -> String {
+        let parts = [
+            self.street.as_deref(),
+            self.locality.as_deref(),
+            self.region.as_deref(),
+            self.postal_code.as_deref(),
+            self.country.as_deref(),
+        ];
+        parts
+            .iter()
+            .filter_map(|p| p.map(str::trim).filter(|s| !s.is_empty()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
 #[derive(Template)]
 #[template(path = "contact_form.html")]
 pub struct ContactFormTpl {
@@ -1301,6 +1358,9 @@ pub struct ContactFormTpl {
     pub phone: String,
     pub organization: String,
     pub error: Option<String>,
+    /// All EMAIL/ADDRESS entries from the vCard (edit view only; empty on create).
+    pub emails: Vec<ContactEmailRow>,
+    pub addresses: Vec<ContactAddressRow>,
 }
 
 // ─── ACL share templates ────────────────────────────────────────────────────
@@ -2029,6 +2089,20 @@ mod tests {
         assert!(f.is_locked());
         assert!(f.locked_by_me("u1"));
         assert!(!f.locked_by_me("u2"));
+    }
+
+    #[test]
+    fn contact_address_one_line_skips_blanks() {
+        let a: ContactAddressRow = serde_json::from_value(serde_json::json!({
+            "label": "HOME", "street": "Rua A 10", "locality": "Curitiba",
+            "region": "", "postal_code": "80000-000", "country": "Brasil"
+        }))
+        .expect("parse");
+        assert_eq!(a.label_text(), "HOME");
+        assert_eq!(a.one_line(), "Rua A 10, Curitiba, 80000-000, Brasil");
+        let e: ContactEmailRow =
+            serde_json::from_value(serde_json::json!({ "address": "x@y.com" })).expect("parse");
+        assert_eq!(e.label_text(), "—");
     }
 
     #[test]

@@ -63,6 +63,37 @@
     </form>
   </div>
 
+  {% match contact_id %}{% when Some with (_cid) %}
+  {% if !emails.is_empty() || !addresses.is_empty() %}
+  <div class="card" style="max-width:640px;margin-top:1rem">
+    <h2 style="margin-top:0">Mais detalhes do vCard</h2>
+    {% if !emails.is_empty() %}
+    <h3 style="margin-bottom:.25rem">✉ E-mails</h3>
+    <ul style="list-style:none;padding:0;margin:0 0 1rem">
+      {% for e in emails %}
+      <li style="display:flex;gap:.5rem;padding:.2rem 0">
+        <span class="badge">{{ e.label_text() }}</span>
+        <a class="link" href="mailto:{{ e.address }}">{{ e.address }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if !addresses.is_empty() %}
+    <h3 style="margin-bottom:.25rem">📍 Endereços</h3>
+    <ul style="list-style:none;padding:0;margin:0">
+      {% for a in addresses %}
+      <li style="display:flex;gap:.5rem;padding:.2rem 0">
+        <span class="badge">{{ a.label_text() }}</span>
+        <span>{{ a.one_line() }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <p class="muted small" style="margin-top:.75rem">Estes campos vêm do vCard armazenado (somente leitura aqui).</p>
+  </div>
+  {% endif %}
+  {% when None %}{% endmatch %}
+
   {% match contact_id %}{% when Some with (id) %}
   <form id="delete-form" method="post" action="/contacts/{{ book.id }}/{{ id }}/delete" style="display:none"></form>
   {% when None %}{% endmatch %}
