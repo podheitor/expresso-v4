@@ -279,6 +279,14 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/meet/:id/lobby/:user_id/deny", post(meet_lobby_deny_api))
         .route("/meet/:id/transcripts", get(meet_transcripts_list_api))
+        .route(
+            "/meet/:id/breakouts",
+            get(meet_breakouts_list_api).post(meet_breakout_create_api),
+        )
+        .route(
+            "/meet/:id/breakouts/:room_id/delete",
+            post(meet_breakout_delete_api),
+        )
         // tasks
         .route("/tasks", get(tasks_page))
         .route("/tasks/create", post(tasks_create_action))
@@ -6847,6 +6855,92 @@ async fn meet_transcripts_list_api(
     .await?
     .unwrap_or(serde_json::json!([]));
     Ok(json_response(&v))
+}
+
+/// GET /meet/:id/breakouts — list breakout rooms (+ participants) as JSON.
+async fn meet_breakouts_list_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{enc}/breakouts"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or(serde_json::json!([]));
+    Ok(json_response(&v))
+}
+
+#[derive(Deserialize)]
+struct BreakoutCreateForm {
+    name: String,
+}
+
+/// POST /meet/:id/breakouts — create a breakout room (moderator).
+async fn meet_breakout_create_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<BreakoutCreateForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let name = f.name.trim();
+    if name.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "name required").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = post_json(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{enc}/breakouts"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "name": name }),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// POST /meet/:id/breakouts/:room_id/delete — delete a breakout room (moderator).
+async fn meet_breakout_delete_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, room_id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let renc = utf8_percent_encode(&room_id, NON_ALPHANUMERIC);
+    let status = delete_at(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{enc}/breakouts/{renc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
 }
 
 fn uuid_v4() -> String {

@@ -36,6 +36,7 @@
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
       <button class="btn btn-ghost btn-sm" onclick="openPollsPanel()" title="Enquetes">📊</button>
       <button class="btn btn-ghost btn-sm" onclick="openTranscriptsPanel()" title="Transcrições">📝</button>
+      {% if is_moderator %}<button class="btn btn-ghost btn-sm" onclick="openBreakoutsPanel()" title="Salas de grupo">🔀</button>{% endif %}
       {% if is_moderator %}<button class="btn btn-ghost btn-sm" onclick="openLobbyPanel()" title="Sala de espera">🚪 <span id="lobby-badge" class="badge" style="display:none"></span></button>{% endif %}
       {% match meeting %}{% when Some with (m) %}{% match m.recording_url %}
         {% when Some with (url) %}<a class="btn btn-ghost btn-sm" href="{{ url }}" target="_blank" title="Ver gravação">▶ Gravação</a>{% when None %}{% endmatch %}{% when None %}{% endmatch %}
@@ -301,6 +302,21 @@
     </aside>
 
     {% if is_moderator %}
+    <aside class="meet-side-panel" id="panel-breakouts" style="display:none">
+      <div class="meet-side-panel-header">
+        <span>Salas de grupo</span>
+        <button class="btn btn-ghost btn-sm" onclick="loadBreakouts()" title="Atualizar">↻</button>
+        <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-breakouts')">✕</button>
+      </div>
+      <div id="meet-breakouts-list" style="flex:1;overflow:auto;padding:.5rem"></div>
+      <div style="padding:.5rem;border-top:1px solid var(--border)">
+        <input type="text" id="breakout-name" class="tasks-add-input" placeholder="Nome da sala…" style="width:100%;margin-bottom:.3rem">
+        <button class="btn btn-primary btn-sm" onclick="createBreakout()">+ Criar sala</button>
+      </div>
+    </aside>
+    {% endif %}
+
+    {% if is_moderator %}
     <aside class="meet-side-panel" id="panel-lobby" style="display:none">
       <div class="meet-side-panel-header">
         <span>Sala de espera</span>
@@ -345,6 +361,46 @@ function loadTranscripts() {
           '</div>';
       }).join('');
     }).catch(function(){ box.innerHTML = '<p class="muted small">Falha ao carregar.</p>'; });
+}
+
+// ── Meet breakout rooms (server-backed, moderator) ──
+function openBreakoutsPanel() {
+  var el = document.getElementById('panel-breakouts');
+  if (el) { el.style.display = 'flex'; loadBreakouts(); }
+}
+function loadBreakouts() {
+  var box = document.getElementById('meet-breakouts-list');
+  if (!box) return;
+  fetch('/meet/' + encodeURIComponent(_meetMeetingId) + '/breakouts', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(list) {
+      list = Array.isArray(list) ? list : [];
+      if (!list.length) { box.innerHTML = '<p class="muted small" style="padding:.5rem">Nenhuma sala de grupo.</p>'; return; }
+      box.innerHTML = list.map(function(b){
+        var n = (b.participants && b.participants.length) || 0;
+        return '<div class="subcard" style="padding:.5rem;margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem">' +
+          '<span style="flex:1">' + _escTr(b.name || '(sem nome)') + '</span>' +
+          '<span class="muted small">' + n + ' 👤</span>' +
+          '<button class="btn btn-ghost btn-sm" onclick="deleteBreakout(\'' + b.id + '\')" title="Remover">🗑</button>' +
+          '</div>';
+      }).join('');
+    }).catch(function(){ box.innerHTML = '<p class="muted small">Falha ao carregar.</p>'; });
+}
+function createBreakout() {
+  var inp = document.getElementById('breakout-name');
+  var name = (inp && inp.value || '').trim();
+  if (!name) { return; }
+  var body = new URLSearchParams(); body.set('name', name);
+  fetch('/meet/' + encodeURIComponent(_meetMeetingId) + '/breakouts', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r){ if (r.ok) { if (inp) inp.value = ''; loadBreakouts(); } else { alert('Falha (HTTP ' + r.status + ').'); } });
+}
+function deleteBreakout(roomId) {
+  if (!confirm('Remover esta sala de grupo?')) return;
+  fetch('/meet/' + encodeURIComponent(_meetMeetingId) + '/breakouts/' + encodeURIComponent(roomId) + '/delete',
+        { method: 'POST', credentials: 'include' })
+    .then(function(r){ if (r.ok) loadBreakouts(); else alert('Falha (HTTP ' + r.status + ').'); });
 }
 
 // ── Meet polls (server-backed) ──
