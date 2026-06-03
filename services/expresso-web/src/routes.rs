@@ -171,6 +171,8 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/new-folder", post(drive_mkdir_action))
         .route("/drive/:id/rename", post(drive_rename_action))
         .route("/drive/:id/move", post(drive_move_action))
+        .route("/drive/bulk-move", post(drive_bulk_move_action))
+        .route("/drive/bulk-copy", post(drive_bulk_copy_action))
         // contacts extras
         .route("/contacts/gal", get(contacts_gal_page))
         // chat / meet
@@ -2165,6 +2167,79 @@ async fn drive_move_action(
         _ => "/drive".into(),
     };
     Ok(Redirect::to(&back).into_response())
+}
+
+#[derive(Deserialize)]
+struct BulkMoveForm {
+    /// Comma-separated file/folder ids.
+    ids: String,
+    /// Destination folder id; blank → root.
+    #[serde(default)]
+    parent_id: String,
+}
+
+/// Parse the shared bulk-op form into (ids, parent_id) for the JSON payload.
+fn bulk_payload(ids: &str, parent_id: &str) -> serde_json::Value {
+    let ids: Vec<&str> = ids
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    let parent = parent_id.trim();
+    serde_json::json!({
+        "ids": ids,
+        "parent_id": if parent.is_empty() { None } else { Some(parent) },
+    })
+}
+
+/// POST /drive/bulk-move — atomically move the selected items (backend caps 200).
+async fn drive_bulk_move_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<BulkMoveForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let status = post_json(
+        &st,
+        &st.backends.drive,
+        "/api/v1/drive/files/bulk-move",
+        &headers,
+        Some((&t, &u)),
+        &bulk_payload(&f.ids, &f.parent_id),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// POST /drive/bulk-copy — shallow-copy the selected items (backend caps 200).
+async fn drive_bulk_copy_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<BulkMoveForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let status = post_json(
+        &st,
+        &st.backends.drive,
+        "/api/v1/drive/files/bulk-copy",
+        &headers,
+        Some((&t, &u)),
+        &bulk_payload(&f.ids, &f.parent_id),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
 }
 
 // ─── /contacts/gal ───────────────────────────────────────────────────────────
@@ -6235,6 +6310,19 @@ mod tests {
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
         assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn bulk_payload_splits_ids_and_nulls_blank_parent() {
+        let v = bulk_payload(" a , b ,, c ", "  ");
+        assert_eq!(v["ids"], serde_json::json!(["a", "b", "c"]));
+        assert!(v["parent_id"].is_null());
+    }
+
+    #[test]
+    fn bulk_payload_keeps_parent_when_set() {
+        let v = bulk_payload("x", "folder-1");
+        assert_eq!(v["parent_id"], "folder-1");
     }
 
     #[test]

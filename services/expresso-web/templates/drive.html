@@ -75,6 +75,8 @@
         <span class="muted small" id="drive-sel-count">0 selecionados</span>
         <button class="btn btn-ghost btn-sm" onclick="batchDownload()" title="Baixar selecionados sequencialmente">↓ Baixar</button>
         <button class="btn btn-ghost btn-sm" onclick="batchTrash()" title="Mover selecionados para lixeira">🗑 Lixeira</button>
+        <button class="btn btn-ghost btn-sm" onclick="batchMove()" title="Mover selecionados para outra pasta">📁 Mover</button>
+        <button class="btn btn-ghost btn-sm" onclick="batchCopy()" title="Copiar selecionados para outra pasta">⧉ Copiar</button>
         <button class="btn btn-ghost btn-sm" onclick="batchCopyLinks(this)" title="Copiar links de download dos selecionados">🔗 Copiar links</button>
         <button class="btn btn-ghost btn-sm" onclick="invertDriveSelection()" title="Inverter seleção">⇄ Inverter</button>
         <button class="btn btn-ghost btn-sm" onclick="clearDriveSelection()">✕ Cancelar</button>
@@ -319,6 +321,24 @@ function batchTrash() {
     });
   })).then(function() { window.location.reload(); });
 }
+function _batchSelectedIds() {
+  return Array.from(document.querySelectorAll('.drive-file-check:checked')).map(function(cb){ return cb.dataset.id; });
+}
+function _batchMoveOrCopy(path, verb) {
+  var ids = _batchSelectedIds();
+  if (!ids.length) return;
+  var dest = prompt(verb + ' ' + ids.length + ' item(ns) para a pasta de ID (vazio = raiz):', '');
+  if (dest === null) return;
+  var body = new URLSearchParams({ ids: ids.join(','), parent_id: dest.trim() });
+  fetch(path, { method: 'POST', credentials: 'include', body: body })
+    .then(function(r) {
+      if (r.ok) window.location.reload();
+      else alert('Não foi possível ' + verb.toLowerCase() + ' os itens.');
+    })
+    .catch(function() { alert('Falha de rede.'); });
+}
+function batchMove() { _batchMoveOrCopy('/drive/bulk-move', 'Mover'); }
+function batchCopy() { _batchMoveOrCopy('/drive/bulk-copy', 'Copiar'); }
 
 // ── Inline rename on double-click ─────────────────────────────────────────────
 function startRename(e, fileId, el) {
