@@ -194,6 +194,10 @@ pub fn router(state: AppState) -> Router {
             axum::routing::patch(chat_edit_message).delete(chat_delete_message),
         )
         .route(
+            "/chat/channels/:cid/members/invite",
+            post(chat_invite_member),
+        )
+        .route(
             "/chat/channels/:cid/pin",
             get(chat_get_pin).post(chat_set_pin).delete(chat_delete_pin),
         )
@@ -5072,6 +5076,44 @@ async fn chat_delete_message(
         &format!("/api/v1/channels/{cid}/messages/{mid}"),
         &headers,
         Some((&t, &u)),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+#[derive(serde::Deserialize)]
+struct ChatInviteForm {
+    email: String,
+}
+
+/// POST /chat/channels/:cid/members/invite — invite a tenant user (by email) to
+/// the channel. The email is resolved to a user id via the contacts lookup,
+/// then posted to the chat backend's add-member endpoint.
+async fn chat_invite_member(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(cid): Path<String>,
+    Form(f): Form<ChatInviteForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let Some(user_id) =
+        resolve_user_id(&st, &st.backends.contacts, f.email.trim(), &headers, &t, &u).await?
+    else {
+        return Ok((StatusCode::NOT_FOUND, "usuário não encontrado").into_response());
+    };
+    let status = post_json(
+        &st,
+        &st.backends.chat,
+        &format!("/api/v1/channels/{cid}/members"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "user_id": user_id }),
     )
     .await?;
     Ok(StatusCode::from_u16(status)

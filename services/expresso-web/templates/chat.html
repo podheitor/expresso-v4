@@ -108,6 +108,7 @@
         </div>
         <div class="chat-header-actions">
           <button class="chat-action-btn" id="chat-mute-btn" onclick="toggleChannelMute('{{ ch.id }}')" title="Silenciar notificações deste canal">🔔</button>
+          <button class="chat-action-btn" onclick="inviteMember('{{ ch.id }}')" title="Convidar membro">➕</button>
           <div id="chat-members-online" class="chat-members-online" title="Membros online"></div>
           <div class="chat-search-wrap" id="chat-search-wrap">
             <button class="chat-action-btn" onclick="toggleChatSearch()" title="Buscar mensagens">🔍</button>
@@ -1316,6 +1317,16 @@ function deleteMsg(cid, id) {
     var row = document.querySelector('[data-msg-id="' + id + '"]');
     if (row) row.remove();
   }).catch(function() { alert('Falha de rede ao apagar.'); });
+}
+function inviteMember(cid) {
+  var email = prompt('E-mail do membro a convidar:');
+  if (!email || !email.trim()) return;
+  var body = new URLSearchParams({ email: email.trim() });
+  fetch('/chat/channels/' + encodeURIComponent(cid) + '/members/invite', {
+    method: 'POST', credentials: 'include', body: body,
+  }).then(function(r) {
+    alert(r.ok ? 'Convite enviado.' : 'Não foi possível convidar (usuário não encontrado?).');
+  }).catch(function() { alert('Falha de rede ao convidar.'); });
 }
 
 // ── Thread sidebar ────────────────────────────────────────────────────────────
