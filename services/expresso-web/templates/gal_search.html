@@ -44,6 +44,8 @@
           </div>
           <div class="contact-actions">
             <a class="btn btn-ghost btn-sm" href="/mail/compose?to={{ c.email_str() }}">Enviar e-mail</a>
+            <button class="btn btn-ghost btn-sm" onclick="saveGalContact(this)"
+                    data-email="{{ c.email_str() }}" title="Salvar nos meus contatos">➕ Salvar</button>
             <button class="btn btn-ghost btn-sm" onclick="copyGalContact(this)"
                     data-name="{{ c.display() }}" data-email="{{ c.email_str() }}" title="Copiar contato">📋</button>
           </div>
@@ -54,6 +56,20 @@
   </div>
 </div>
 <script>
+function saveGalContact(btn) {
+  var email = btn.dataset.email || '';
+  if (!email) { alert('Sem e-mail para salvar.'); return; }
+  btn.disabled = true;
+  var body = new URLSearchParams(); body.set('email', email);
+  fetch('/contacts/gal/save', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString()
+  }).then(function(r) {
+    if (r.ok) { btn.textContent = '✓ Salvo'; }
+    else { alert('Falha ao salvar (HTTP ' + r.status + ').'); btn.disabled = false; }
+  }).catch(function() { alert('Erro de rede.'); btn.disabled = false; });
+}
 function _allGalEmails() {
   var emails = [];
   document.querySelectorAll('.contact-card').forEach(function(c) {

@@ -206,6 +206,7 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/tags/:tag", get(drive_tag_files_page))
         // contacts extras
         .route("/contacts/gal", get(contacts_gal_page))
+        .route("/contacts/gal/save", post(contacts_gal_save_action))
         // chat / meet
         .route("/chat", get(chat_page))
         .route("/chat/channels", post(chat_create_channel))
@@ -2986,6 +2987,40 @@ async fn contacts_gal_page(
             query,
         },
     ))
+}
+
+#[derive(Deserialize)]
+struct GalSaveForm {
+    email: String,
+}
+
+/// POST /contacts/gal/save — copy a directory (GAL) user into the caller's
+/// personal addressbook. Idempotent on the backend (stable UID per directory
+/// user). Returns the upstream status for the fetch-based UI.
+async fn contacts_gal_save_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<GalSaveForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let email = f.email.trim();
+    if email.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "e-mail vazio").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let status = post_json(
+        &st,
+        &st.backends.contacts,
+        "/api/v1/gal/save",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "email": email }),
+    )
+    .await?;
+    Ok((StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY)).into_response())
 }
 
 // ─── /api/gal/search (JSON autocomplete) ─────────────────────────────────────
