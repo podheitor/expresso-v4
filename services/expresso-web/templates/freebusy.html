@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Horário livre · Agenda · Expresso{% endblock %}
+{% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Encontrar horário livre</h1>
+    <a class="btn btn-ghost" href="/calendar">← Agenda</a>
+  </div>
+  <p class="muted small">
+    Informe os participantes e um dia para ver os horários ocupados de cada um —
+    os intervalos livres são quando ninguém está ocupado. Fora do expediente
+    aparece como ocupado.
+  </p>
+
+  <form method="get" action="/calendar/freebusy"
+        style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;margin:1rem 0">
+    <label style="flex:1;min-width:260px">
+      <span>Participantes (e-mails, separados por vírgula)</span>
+      <input type="text" name="attendees" value="{{ attendees }}"
+             placeholder="ana@empresa.com, bruno@empresa.com" required>
+    </label>
+    <label>
+      <span>Dia</span>
+      <input type="date" name="date" value="{{ date }}" required>
+    </label>
+    <button class="btn btn-primary" type="submit">Consultar</button>
+  </form>
+
+  {% if queried %}
+  <table class="data-table">
+    <thead><tr><th>Participante</th><th>Ocupado em {{ date }}</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.email }}</td>
+        <td>
+          {% if r.busy.is_empty() %}
+            <span class="muted">Livre o dia todo</span>
+          {% else %}
+            {% for span in r.busy %}
+            <span class="badge" style="margin:.1rem">{{ span }}</span>
+            {% endfor %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

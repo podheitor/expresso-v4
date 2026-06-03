@@ -671,6 +671,27 @@ pub struct DriveFileTag {
     pub tag: String,
 }
 
+/// One attendee's busy intervals (pre-formatted as HH:MM ranges) for the
+/// free-busy page.
+pub struct FreeBusyRow {
+    pub email: String,
+    /// "HH:MM–HH:MM" busy spans within the queried day.
+    pub busy: Vec<String>,
+}
+
+#[derive(Template)]
+#[template(path = "freebusy.html")]
+pub struct FreeBusyTpl {
+    pub me: Me,
+    /// The queried attendees text (echoed back into the form).
+    pub attendees: String,
+    /// The queried date (YYYY-MM-DD), echoed back.
+    pub date: String,
+    /// Per-attendee busy rows; empty before the first query.
+    pub rows: Vec<FreeBusyRow>,
+    pub queried: bool,
+}
+
 /// A tag + its file count, from the drive `/tags/stats` endpoint.
 #[derive(Debug, Deserialize, Clone)]
 pub struct DriveTagStat {

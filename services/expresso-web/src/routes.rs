@@ -22,11 +22,11 @@ use crate::{
         DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DriveEditTpl, DriveFile,
         DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTagFilesTpl, DriveTagStat,
         DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, Folder,
-        GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl,
-        MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
-        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note,
-        NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TasksTpl,
-        VersionRow, WorkingHour,
+        FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
+        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
+        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
+        SettingsTpl, ShareRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
@@ -77,6 +77,7 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/preview", get(drive_preview_page))
         .route("/drive/:id/edit", get(drive_edit_page))
         .route("/calendar", get(calendar_page))
+        .route("/calendar/freebusy", get(freebusy_page))
         .route("/calendar/:cal_id", get(calendar_month_page))
         .route("/calendar/:cal_id/week", get(calendar_week_page))
         .route("/calendar/:cal_id/day", get(calendar_day_page))
@@ -1058,6 +1059,86 @@ async fn calendar_page(
     Ok(askama_axum::IntoResponse::into_response(CalendarTpl {
         me,
         calendars,
+    }))
+}
+
+#[derive(Deserialize)]
+struct FreeBusyQuery {
+    attendees: Option<String>,
+    date: Option<String>,
+}
+
+/// Extract "HH:MM" from an RFC3339 instant (chars 11..16), best-effort.
+fn hhmm_of_rfc3339(s: &str) -> &str {
+    s.get(11..16).unwrap_or(s)
+}
+
+/// GET /calendar/freebusy — look up attendees' busy intervals for a day so the
+/// organizer can eyeball free slots. Proxies the calendar freebusy endpoint.
+async fn freebusy_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<FreeBusyQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let attendees = q.attendees.unwrap_or_default();
+    let date = q.date.unwrap_or_default();
+    let emails: Vec<&str> = attendees
+        .split([',', ';', '\n'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let mut rows: Vec<FreeBusyRow> = Vec::new();
+    let queried = !emails.is_empty() && date.len() == 10;
+    if queried {
+        let enc_att = utf8_percent_encode(&emails.join(","), NON_ALPHANUMERIC).to_string();
+        let from = format!("{date}T00:00:00Z");
+        let to = format!("{date}T23:59:59Z");
+        let path = format!(
+            "/api/v1/scheduling/freebusy?attendees={enc_att}&from={from}&to={to}&working_hours=true"
+        );
+        let resp = get_json::<serde_json::Value>(
+            &st,
+            &st.backends.calendar,
+            &path,
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default();
+        let map = resp.get("attendees").and_then(|v| v.as_object());
+        for email in &emails {
+            let busy = map
+                .and_then(|m| m.get(*email))
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|iv| {
+                            let s = iv.get("start")?.as_str()?;
+                            let e = iv.get("end")?.as_str()?;
+                            Some(format!("{}–{}", hhmm_of_rfc3339(s), hhmm_of_rfc3339(e)))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            rows.push(FreeBusyRow {
+                email: (*email).to_string(),
+                busy,
+            });
+        }
+    }
+
+    Ok(askama_axum::IntoResponse::into_response(FreeBusyTpl {
+        me,
+        attendees,
+        date,
+        rows,
+        queried,
     }))
 }
 
@@ -6630,6 +6711,13 @@ mod tests {
         assert_eq!(with_obo("/x".into(), None), "/x");
         assert_eq!(with_obo("/x".into(), Some("")), "/x");
         assert_eq!(with_obo("/x".into(), Some("  ")), "/x");
+    }
+
+    #[test]
+    fn hhmm_of_rfc3339_extracts_time() {
+        assert_eq!(hhmm_of_rfc3339("2026-06-10T14:30:00Z"), "14:30");
+        assert_eq!(hhmm_of_rfc3339("2026-06-10T09:05:00-03:00"), "09:05");
+        assert_eq!(hhmm_of_rfc3339("short"), "short");
     }
 
     #[test]
