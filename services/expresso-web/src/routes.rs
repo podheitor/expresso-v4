@@ -117,6 +117,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/calendar/bulk-move", post(calendar_bulk_move_action))
         .route("/calendar/bulk-status", post(calendar_bulk_status_action))
+        .route(
+            "/calendar/bulk-location",
+            post(calendar_bulk_location_action),
+        )
         .route("/calendar/conflicts", get(calendar_conflicts_page))
         .route("/calendar/histogram", get(calendar_histogram_page))
         .route("/calendar/counters", get(calendar_counters_page))
@@ -2069,6 +2073,53 @@ async fn calendar_bulk_status_action(
         &st.backends.calendar,
         &format!(
             "/api/v1/calendars/{enc}/events-by-range/set-status?after={after}&before={before}&status={status}"
+        ),
+        &headers,
+        Some((&t, &u)),
+        &(),
+    )
+    .await?;
+    let cenc = utf8_percent_encode(&f.cal_id, NON_ALPHANUMERIC);
+    Ok(Redirect::to(&format!(
+        "/calendar/bulk-delete?cal_id={cenc}&from={}&to={}",
+        f.from, f.to
+    ))
+    .into_response())
+}
+
+#[derive(Deserialize)]
+struct BulkLocationForm {
+    cal_id: String,
+    #[serde(default)]
+    location: String,
+    from: String,
+    to: String,
+}
+
+/// POST /calendar/bulk-location — set (or clear) the LOCATION of every event in
+/// the [from, to] range. Empty location clears it. Back to the preview.
+async fn calendar_bulk_location_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<BulkLocationForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    if f.cal_id.is_empty() || f.from.len() != 10 || f.to.len() != 10 || f.from > f.to {
+        return Ok((StatusCode::BAD_REQUEST, "parâmetros inválidos").into_response());
+    }
+    let enc = utf8_percent_encode(&f.cal_id, NON_ALPHANUMERIC);
+    let after = format!("{}T00:00:00Z", f.from);
+    let before = format!("{}T23:59:59Z", f.to);
+    let loc = utf8_percent_encode(f.location.trim(), NON_ALPHANUMERIC);
+    let _ = patch_json(
+        &st,
+        &st.backends.calendar,
+        &format!(
+            "/api/v1/calendars/{enc}/events-by-range/set-location?after={after}&before={before}&location={loc}"
         ),
         &headers,
         Some((&t, &u)),
@@ -10449,6 +10500,20 @@ mod tests {
         assert!(v.get("cc").is_none());
         assert_eq!(v["undo_seconds"], 10);
         assert_eq!(v["to"], serde_json::json!(["a@x.com"]));
+    }
+
+    #[test]
+    fn bulk_location_form_defaults_empty_location() {
+        let f: BulkLocationForm = serde_json::from_value(serde_json::json!({
+            "cal_id": "c", "from": "2026-06-01", "to": "2026-06-30"
+        }))
+        .expect("parse");
+        assert!(f.location.is_empty());
+        let f2: BulkLocationForm = serde_json::from_value(serde_json::json!({
+            "cal_id": "c", "location": "Sala 3", "from": "2026-06-01", "to": "2026-06-30"
+        }))
+        .expect("parse");
+        assert_eq!(f2.location, "Sala 3");
     }
 
     #[test]

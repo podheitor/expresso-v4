@@ -87,6 +87,17 @@
         </label>
         <button type="submit" class="btn btn-ghost">✔ Aplicar status</button>
       </form>
+      <form method="post" action="/calendar/bulk-location"
+            style="display:flex;gap:.4rem;align-items:flex-end"
+            onsubmit="return confirm('Definir o local de todos os eventos de {{ from }} a {{ to }}? (vazio limpa o local)')">
+        <input type="hidden" name="cal_id" value="{{ cal_id }}">
+        <input type="hidden" name="from" value="{{ from }}">
+        <input type="hidden" name="to" value="{{ to }}">
+        <label class="small muted">Local
+          <input type="text" name="location" class="input" placeholder="Ex: Sala 3 (vazio = limpar)">
+        </label>
+        <button type="submit" class="btn btn-ghost">📍 Aplicar local</button>
+      </form>
     </div>
     {% endif %}
   {% endif %}
