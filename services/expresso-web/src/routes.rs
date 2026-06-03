@@ -21,19 +21,20 @@ use crate::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
         AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent,
-        Calendar, CalendarDayTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl,
-        ChatAttachment, ChatChannel, ChatMessage, ChatTpl, Contact, ContactActivityTpl,
-        ContactDiffTpl, ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl,
-        ContactVersionRow, ContactVersionsTpl, ContactsTpl, DayColumn, DelegationRaw,
-        DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveContentHit,
-        DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota,
-        DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl,
-        DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow,
-        FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl,
-        LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl,
-        MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl,
-        MessageDetail, MessageListItem, MonthCell, Note, Notebook, NotesActivityTpl, NotesTagsTpl,
-        NotesTpl, Resource, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow,
+        Calendar, CalendarCountersTpl, CalendarDayTpl, CalendarMonthTpl, CalendarShareTpl,
+        CalendarTpl, CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage, ChatTpl, Contact,
+        ContactActivityTpl, ContactDiffTpl, ContactFormTpl, ContactGroup, ContactGroupDetailTpl,
+        ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl, ContactsTpl, CounterRow,
+        DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DlqEntry, DlqKindCount,
+        DriveActivityTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
+        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
+        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
+        Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow,
+        FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias,
+        MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl,
+        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        MessageListItem, MonthCell, Note, Notebook, NotesActivityTpl, NotesTagsTpl, NotesTpl,
+        Resource, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow,
         SnoozedRow, TagPairRow, TaskRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
@@ -97,6 +98,11 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/edit", get(drive_edit_page))
         .route("/calendar", get(calendar_page))
         .route("/calendar/freebusy", get(freebusy_page))
+        .route("/calendar/counters", get(calendar_counters_page))
+        .route(
+            "/calendar/counters/:id/:action",
+            post(calendar_counter_action),
+        )
         .route(
             "/calendar/resources/:id/conflicts",
             get(resource_conflicts_api),
@@ -1489,6 +1495,89 @@ fn hhmm_of_rfc3339(s: &str) -> &str {
 
 /// GET /calendar/freebusy — look up attendees' busy intervals for a day so the
 /// organizer can eyeball free slots. Proxies the calendar freebusy endpoint.
+#[derive(Deserialize)]
+struct CounterProposal {
+    id: String,
+    event_id: String,
+    attendee_email: String,
+    #[serde(default)]
+    proposed_dtstart: Option<String>,
+    #[serde(default)]
+    proposed_dtend: Option<String>,
+    #[serde(default)]
+    comment: Option<String>,
+}
+
+fn fmt_dt(s: Option<String>) -> String {
+    s.map(|v| v.replace('T', " ").chars().take(16).collect())
+        .unwrap_or_default()
+}
+
+/// GET /calendar/counters — pending COUNTER proposals (attendees suggesting a
+/// different time), each with accept (re-times the event) / reject actions.
+async fn calendar_counters_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let proposals = get_json::<Vec<CounterProposal>>(
+        &st,
+        &st.backends.calendar,
+        "/api/v1/scheduling/counters",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let rows = proposals
+        .into_iter()
+        .map(|p| CounterRow {
+            id: p.id,
+            event_id: p.event_id,
+            attendee_email: p.attendee_email,
+            proposed_start: fmt_dt(p.proposed_dtstart),
+            proposed_end: fmt_dt(p.proposed_dtend),
+            comment: p.comment.unwrap_or_default(),
+        })
+        .collect();
+    Ok(askama_axum::IntoResponse::into_response(
+        CalendarCountersTpl { me, rows },
+    ))
+}
+
+/// POST /calendar/counters/:id/:action — accept or reject a proposal. `action`
+/// is "accept" or "reject"; anything else is rejected as a bad request.
+async fn calendar_counter_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, action)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if action != "accept" && action != "reject" {
+        return Ok((StatusCode::BAD_REQUEST, "invalid action").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = post_empty(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/scheduling/counters/{enc}/{action}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
 async fn freebusy_page(
     State(st): State<AppState>,
     headers: HeaderMap,
@@ -9229,6 +9318,18 @@ mod tests {
         let f: BreakoutRemoveForm =
             serde_json::from_value(serde_json::json!({ "user_id": "abc-123" })).expect("parse");
         assert_eq!(f.user_id, "abc-123");
+    }
+
+    #[test]
+    fn counter_proposal_parses_and_fmt_dt_truncates() {
+        let p: CounterProposal = serde_json::from_value(serde_json::json!({
+            "id": "c1", "event_id": "e1", "attendee_email": "a@b.com",
+            "proposed_dtstart": "2026-06-10T14:30:00Z"
+        }))
+        .expect("parse");
+        assert_eq!(p.attendee_email, "a@b.com");
+        assert_eq!(fmt_dt(p.proposed_dtstart), "2026-06-10 14:30");
+        assert_eq!(fmt_dt(p.proposed_dtend), "");
     }
 
     #[test]

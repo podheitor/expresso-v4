@@ -905,6 +905,24 @@ pub struct FreeBusyTpl {
     pub queried: bool,
 }
 
+/// One pending COUNTER proposal (attendee suggested a different time).
+pub struct CounterRow {
+    pub id: String,
+    pub event_id: String,
+    pub attendee_email: String,
+    /// "YYYY-MM-DD HH:MM" proposed start, or "" when absent.
+    pub proposed_start: String,
+    pub proposed_end: String,
+    pub comment: String,
+}
+
+#[derive(Template)]
+#[template(path = "calendar_counters.html")]
+pub struct CalendarCountersTpl {
+    pub me: Me,
+    pub rows: Vec<CounterRow>,
+}
+
 /// A tag + its file count, from the drive `/tags/stats` endpoint.
 #[derive(Debug, Deserialize, Clone)]
 pub struct DriveTagStat {

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Contra-propostas · Agenda · Expresso{% endblock %}
+{% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Contra-propostas de horário</h1>
+    <a class="btn btn-ghost" href="/calendar">← Agenda</a>
+  </div>
+  <p class="muted small">
+    Quando um participante sugere um horário diferente para um evento (COUNTER),
+    a proposta aparece aqui. Aceitar reagenda o evento para o horário proposto;
+    recusar mantém o horário original.
+  </p>
+
+  {% if rows.is_empty() %}
+  <p class="muted" style="padding:1rem">Nenhuma contra-proposta pendente.</p>
+  {% else %}
+  <table class="data-table" style="width:100%;margin-top:1rem">
+    <thead>
+      <tr>
+        <th>Participante</th>
+        <th>Início proposto</th>
+        <th>Fim proposto</th>
+        <th>Comentário</th>
+        <th>Evento</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.attendee_email }}</td>
+        <td class="mono">{% if r.proposed_start.is_empty() %}—{% else %}{{ r.proposed_start }}{% endif %}</td>
+        <td class="mono">{% if r.proposed_end.is_empty() %}—{% else %}{{ r.proposed_end }}{% endif %}</td>
+        <td>{% if r.comment.is_empty() %}<span class="muted">—</span>{% else %}{{ r.comment }}{% endif %}</td>
+        <td><a class="link-sm" href="/calendar?event={{ r.event_id }}" title="Abrir evento">🔗</a></td>
+        <td class="row-actions" style="white-space:nowrap">
+          <button class="btn btn-primary btn-sm" onclick="resolveCounter('{{ r.id }}','accept')" title="Reagendar para o horário proposto">✓ Aceitar</button>
+          <button class="btn btn-ghost btn-sm" onclick="resolveCounter('{{ r.id }}','reject')" title="Manter horário original">✕ Recusar</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+<script>
+function resolveCounter(id, action) {
+  var msg = action === 'accept' ? 'Reagendar o evento para o horário proposto?' : 'Recusar esta contra-proposta?';
+  if (!confirm(msg)) return;
+  fetch('/calendar/counters/' + encodeURIComponent(id) + '/' + action, { method: 'POST', credentials: 'include' })
+    .then(function(r){ if (r.ok) window.location.reload(); else alert('Falha (HTTP ' + r.status + ').'); });
+}
+</script>
+{% endblock %}

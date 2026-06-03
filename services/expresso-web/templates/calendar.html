@@ -6,6 +6,7 @@
   <div class="page-header">
     <h1>Minhas agendas {% if !calendars.is_empty() %}<span class="badge" style="vertical-align:middle;font-size:.7rem">{{ calendars.len() }}</span>{% endif %}</h1>
     <a class="btn btn-ghost btn-sm" href="/calendar/freebusy" title="Encontrar horário livre entre participantes">🕑 Horário livre</a>
+    <a class="btn btn-ghost btn-sm" href="/calendar/counters" title="Contra-propostas de horário de participantes">🔄 Contra-propostas</a>
     {% if !calendars.is_empty() %}
     <button class="btn btn-ghost btn-sm" onclick="downloadAllIcs()" title="Baixar todas as agendas como .ics">⬇ Todas (.ics)</button>
     {% endif %}
