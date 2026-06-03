@@ -22,6 +22,35 @@
       {% endfor %}
     </nav>
 
+    <details class="folder-manage">
+      <summary class="link-sm sidebar-settings-link" style="cursor:pointer">📁 Gerenciar pastas</summary>
+      <form method="post" action="/mail/folders/create"
+            style="display:flex;gap:.3rem;margin:.4rem 0">
+        <input type="text" name="name" required placeholder="Nova pasta" class="input-sm" style="flex:1">
+        <button type="submit" class="btn btn-primary btn-sm">+</button>
+      </form>
+      <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:.25rem">
+        {% for f in folders %}
+        {% if f.manageable() %}
+        <li style="display:flex;gap:.25rem;align-items:center">
+          <span style="flex:1;font-size:.8rem">{{ f.name }}</span>
+          <form method="post" action="/mail/folders/rename" style="display:inline"
+                onsubmit="var n=prompt('Novo nome da pasta:', this.old_name.value); if(!n) return false; this.new_name.value=n;">
+            <input type="hidden" name="old_name" value="{{ f.name }}">
+            <input type="hidden" name="new_name" value="">
+            <button type="submit" class="btn btn-ghost btn-sm" title="Renomear">✏</button>
+          </form>
+          <form method="post" action="/mail/folders/delete" style="display:inline"
+                onsubmit="return confirm('Apagar a pasta {{ f.name }}? As mensagens nela serão perdidas.')">
+            <input type="hidden" name="name" value="{{ f.name }}">
+            <button type="submit" class="btn btn-ghost btn-sm" title="Apagar">🗑</button>
+          </form>
+        </li>
+        {% endif %}
+        {% endfor %}
+      </ul>
+    </details>
+
     <div class="sidebar-footer">
       <a class="link-sm sidebar-settings-link" href="/mail/search">🔍 Pesquisar</a>
       <a class="link-sm sidebar-settings-link" href="/settings?tab=filters">Filtros</a>

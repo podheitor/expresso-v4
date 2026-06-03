@@ -62,6 +62,10 @@ impl Folder {
             _ => "📁",
         }
     }
+    /// A user folder (not a system/special-use mailbox) may be renamed/deleted.
+    pub fn manageable(&self) -> bool {
+        self.special_use.as_deref().is_none_or(str::is_empty)
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]

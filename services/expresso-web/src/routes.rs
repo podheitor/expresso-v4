@@ -159,6 +159,10 @@ pub fn router(state: AppState) -> Router {
         .route("/mail/:id/flag", post(mail_flag_action))
         .route("/mail/:id/move", post(mail_move_action))
         .route("/mail/:id/delete", post(mail_delete_action))
+        // mail folder management
+        .route("/mail/folders/create", post(mail_folder_create_action))
+        .route("/mail/folders/rename", post(mail_folder_rename_action))
+        .route("/mail/folders/delete", post(mail_folder_delete_action))
         // drive extras
         .route("/drive/search", get(drive_search_page))
         .route("/drive/new-folder", post(drive_mkdir_action))
@@ -1739,6 +1743,109 @@ async fn mail_delete_action(
         utf8_percent_encode(&back, NON_ALPHANUMERIC)
     ))
     .into_response())
+}
+
+// ─── mail folder management ──────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct FolderCreateForm {
+    name: String,
+}
+
+#[derive(serde::Serialize)]
+struct FolderNamePayload<'a> {
+    name: &'a str,
+}
+
+/// POST /mail/folders/create — create a user mail folder.
+async fn mail_folder_create_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<FolderCreateForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let name = f.name.trim();
+    if !name.is_empty() {
+        let _ = post_json(
+            &st,
+            &st.backends.mail,
+            "/api/v1/mail/folders",
+            &headers,
+            Some((&t, &u)),
+            &FolderNamePayload { name },
+        )
+        .await?;
+    }
+    Ok(Redirect::to("/mail").into_response())
+}
+
+#[derive(Deserialize)]
+struct FolderRenameForm {
+    old_name: String,
+    new_name: String,
+}
+
+/// POST /mail/folders/rename — rename a user folder (PATCH upstream by name).
+async fn mail_folder_rename_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<FolderRenameForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let new_name = f.new_name.trim();
+    let enc_old = utf8_percent_encode(f.old_name.trim(), NON_ALPHANUMERIC).to_string();
+    if !new_name.is_empty() {
+        let _ = patch_json(
+            &st,
+            &st.backends.mail,
+            &format!("/api/v1/mail/folders/{enc_old}"),
+            &headers,
+            Some((&t, &u)),
+            &FolderNamePayload { name: new_name },
+        )
+        .await?;
+    }
+    Ok(Redirect::to(&format!(
+        "/mail?folder={}",
+        utf8_percent_encode(new_name, NON_ALPHANUMERIC)
+    ))
+    .into_response())
+}
+
+#[derive(Deserialize)]
+struct FolderDeleteForm {
+    name: String,
+}
+
+/// POST /mail/folders/delete — delete a user folder (DELETE upstream by name).
+async fn mail_folder_delete_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<FolderDeleteForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(f.name.trim(), NON_ALPHANUMERIC).to_string();
+    let _ = delete_at(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/folders/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/mail").into_response())
 }
 
 #[derive(Deserialize)]
