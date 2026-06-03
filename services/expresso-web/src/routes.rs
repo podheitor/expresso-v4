@@ -250,6 +250,8 @@ pub fn router(state: AppState) -> Router {
         .route("/flows/reorder", post(flow_reorder_action))
         .route("/compliance/archive", get(compliance_archive_page))
         .route("/compliance/archive/export", get(compliance_archive_export))
+        .route("/compliance/archive/hold", post(compliance_hold_action))
+        .route("/compliance/archive/unhold", post(compliance_unhold_action))
         .route(
             "/flows/:id/edit",
             get(flow_edit_page).post(flow_edit_action),
@@ -3762,6 +3764,91 @@ async fn compliance_archive_export(
         ],
         body,
     )
+        .into_response())
+}
+
+#[derive(Deserialize)]
+struct HoldForm {
+    /// Comma-separated archive entry ids to (un)hold.
+    ids: String,
+    /// The hold tag (e.g. "hold-litigation"); defaults when blank.
+    #[serde(default)]
+    hold_tag: String,
+}
+
+/// Apply or remove a legal-hold tag on the selected archived messages via the
+/// compliance bulk-hold/unhold endpoints. Returns the upstream status.
+async fn compliance_hold(
+    st: &AppState,
+    headers: &HeaderMap,
+    me: &Me,
+    f: &HoldForm,
+    hold: bool,
+) -> WebResult<u16> {
+    let (t, u) = ctx_of(me);
+    let ids: Vec<&str> = f
+        .ids
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    let trimmed = f.hold_tag.trim();
+    let tag = if trimmed.is_empty() {
+        "hold-litigation"
+    } else {
+        trimmed
+    };
+    let path = if hold {
+        "/api/v1/compliance/archive/bulk-hold"
+    } else {
+        "/api/v1/compliance/archive/bulk-unhold"
+    };
+    crate::upstream::post_json(
+        st,
+        &st.backends.compliance,
+        path,
+        headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "archive_ids": ids, "hold_tag": tag }),
+    )
+    .await
+}
+
+/// POST /compliance/archive/hold — place selected messages under legal hold.
+async fn compliance_hold_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<HoldForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if f.ids.trim().is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "selecione ao menos uma mensagem").into_response());
+    }
+    let status = compliance_hold(&st, &headers, &me, &f, true).await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// POST /compliance/archive/unhold — release selected messages from legal hold.
+async fn compliance_unhold_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<HoldForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if f.ids.trim().is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "selecione ao menos uma mensagem").into_response());
+    }
+    let status = compliance_hold(&st, &headers, &me, &f, false).await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
         .into_response())
 }
 
@@ -10779,6 +10866,26 @@ mod tests {
         assert!(v.get("cc").is_none());
         assert_eq!(v["undo_seconds"], 10);
         assert_eq!(v["to"], serde_json::json!(["a@x.com"]));
+    }
+
+    #[test]
+    fn hold_form_splits_ids_and_defaults_tag() {
+        let f: HoldForm =
+            serde_json::from_value(serde_json::json!({ "ids": " a , b ,, c " })).expect("parse");
+        let ids: Vec<&str> = f
+            .ids
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        assert_eq!(ids, vec!["a", "b", "c"]);
+        let trimmed = f.hold_tag.trim();
+        let tag = if trimmed.is_empty() {
+            "hold-litigation"
+        } else {
+            trimmed
+        };
+        assert_eq!(tag, "hold-litigation");
     }
 
     #[test]
