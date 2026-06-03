@@ -22,18 +22,19 @@ use crate::{
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
         AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent,
         Calendar, CalendarDayTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl,
-        ChatChannel, ChatMessage, ChatTpl, Contact, ContactActivityTpl, ContactFormTpl,
-        ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl, DayColumn,
-        DelegationRaw, DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl,
-        DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag,
-        DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl,
-        DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl,
-        FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact,
-        HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl,
-        MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl,
-        MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note, Notebook,
-        NotesActivityTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit, SearchTpl,
-        SecurityTpl, SettingsTpl, ShareRow, TagPairRow, TasksTpl, VersionRow, WorkingHour,
+        ChatAttachment, ChatChannel, ChatMessage, ChatTpl, Contact, ContactActivityTpl,
+        ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl,
+        DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DlqEntry, DlqKindCount,
+        DriveActivityTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
+        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
+        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
+        Event, EventFormTpl, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl,
+        GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl,
+        MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
+        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note,
+        Notebook, NotesActivityTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit,
+        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TagPairRow, TasksTpl, VersionRow,
+        WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_body_json, post_empty,
@@ -221,6 +222,10 @@ pub fn router(state: AppState) -> Router {
         .route("/chat/channels/:cid", get(chat_channel_page))
         .route("/chat/channels/:cid/send", post(chat_send_message))
         .route("/chat/channels/:cid/poll", get(chat_poll_messages))
+        .route(
+            "/chat/channels/:cid/attachments/:aid/download",
+            get(chat_attachment_download),
+        )
         .route("/chat/channels/:cid/mark-read", post(chat_mark_read))
         .route(
             "/chat/channels/:cid/messages/:mid/react",
@@ -5578,16 +5583,20 @@ async fn chat_page(
     let (t, u) = ctx_of(&me);
     let channels = chat_fetch_channels(&st, &headers, &t, &u).await;
     let active_channel = channels.first().cloned();
-    let messages = if let Some(ref ch) = active_channel {
-        chat_fetch_messages(&st, &headers, &t, &u, &ch.id, None).await
+    let (messages, attachments) = if let Some(ref ch) = active_channel {
+        (
+            chat_fetch_messages(&st, &headers, &t, &u, &ch.id, None).await,
+            chat_fetch_attachments(&st, &headers, &t, &u, &ch.id).await,
+        )
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
     Ok(askama_axum::IntoResponse::into_response(ChatTpl {
         me,
         channels,
         active_channel,
         messages,
+        attachments,
     }))
 }
 
@@ -5604,12 +5613,75 @@ async fn chat_channel_page(
     let channels = chat_fetch_channels(&st, &headers, &t, &u).await;
     let active_channel = channels.iter().find(|c| c.id == cid).cloned();
     let messages = chat_fetch_messages(&st, &headers, &t, &u, &cid, None).await;
+    let attachments = chat_fetch_attachments(&st, &headers, &t, &u, &cid).await;
     Ok(askama_axum::IntoResponse::into_response(ChatTpl {
         me,
         channels,
         active_channel,
         messages,
+        attachments,
     }))
+}
+
+/// Fetch a channel's attachments for the "📎 Arquivos" panel. Best-effort —
+/// errors yield an empty list (panel just shows nothing).
+async fn chat_fetch_attachments(
+    st: &AppState,
+    headers: &HeaderMap,
+    t: &str,
+    u: &str,
+    cid: &str,
+) -> Vec<ChatAttachment> {
+    let enc = utf8_percent_encode(cid, NON_ALPHANUMERIC);
+    get_json::<Vec<ChatAttachment>>(
+        st,
+        &st.backends.chat,
+        &format!("/api/v1/channels/{enc}/attachments?limit=200"),
+        headers,
+        Some((t, u)),
+    )
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default()
+}
+
+/// GET /chat/channels/:cid/attachments/:aid/download — proxy a channel
+/// attachment's bytes to the browser, passing through the backend's content-type
+/// and content-disposition.
+async fn chat_attachment_download(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((cid, aid)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let cenc = utf8_percent_encode(&cid, NON_ALPHANUMERIC);
+    let aenc = utf8_percent_encode(&aid, NON_ALPHANUMERIC);
+    let (status, ct, cd, body) = get_bytes(
+        &st,
+        &st.backends.chat,
+        &format!("/api/v1/channels/{cenc}/attachments/{aenc}/download"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    if !(200..300).contains(&status) {
+        return Ok((StatusCode::BAD_GATEWAY, "Falha ao baixar.").into_response());
+    }
+    let ct = ct.unwrap_or_else(|| "application/octet-stream".into());
+    let cd = cd.unwrap_or_else(|| "attachment".into());
+    Ok((
+        [
+            (header::CONTENT_TYPE, ct),
+            (header::CONTENT_DISPOSITION, cd),
+        ],
+        body,
+    )
+        .into_response())
 }
 
 #[derive(Deserialize)]

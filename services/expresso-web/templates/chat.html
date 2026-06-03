@@ -126,12 +126,31 @@
           <button class="chat-action-btn" onclick="exportChannelMarkdown()" title="Exportar mensagens (Markdown)">📝</button>
           <button class="chat-action-btn" onclick="copyChannelLink(this)" title="Copiar link do canal">🔗</button>
           <button class="chat-action-btn" onclick="showChatBookmarks()" title="Mensagens salvas">🔖</button>
+          <button class="chat-action-btn" onclick="toggleChatFiles()" title="Arquivos compartilhados neste canal" id="chat-files-btn">📎{% if !attachments.is_empty() %} {{ attachments.len() }}{% endif %}</button>
           <button class="chat-action-btn" onclick="showChannelMsgStats()" title="Estatística do canal">📊</button>
           <button class="chat-action-btn" onclick="toggleChatCompact()" title="Modo compacto (densidade)" id="chat-compact-btn">⇕</button>
           <button class="chat-action-btn" onclick="toggleChatTimestamps(this)" title="Mostrar timestamps absolutos em todas as mensagens" id="chat-ts-btn">🕒</button>
           <button class="chat-action-btn" onclick="clearChannelLocal('{{ ch.id }}', this)" title="Apagar dados locais deste canal (fixados, rascunhos, reações offline)">🧹</button>
         </div>
       </header>
+
+      <!-- Arquivos do canal (📎) -->
+      <div class="chat-files-panel" id="chat-files-panel" style="display:none;padding:.5rem .75rem;border-bottom:1px solid var(--border);max-height:14rem;overflow:auto">
+        {% if attachments.is_empty() %}
+          <div class="muted small">Nenhum arquivo compartilhado neste canal.</div>
+        {% else %}
+          <ul style="list-style:none;margin:0;padding:0">
+            {% for a in attachments %}
+            <li style="display:flex;align-items:center;gap:.5rem;padding:.2rem 0">
+              <span>{{ a.icon() }}</span>
+              <a class="link" href="/chat/channels/{{ ch.id }}/attachments/{{ a.id }}/download"
+                 title="Baixar {{ a.filename }}">{{ a.filename }}</a>
+              <span class="muted small" style="margin-left:auto">{{ a.size_human() }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
 
       <!-- Mensagem fixada -->
       <div class="chat-pinned" id="chat-pinned" style="display:none">
@@ -515,6 +534,11 @@ function toggleChatSearch() {
   var visible = inp.style.display !== 'none';
   inp.style.display = visible ? 'none' : 'inline-block';
   if (!visible) { inp.focus(); } else { inp.value = ''; filterMessages(''); }
+}
+function toggleChatFiles() {
+  var p = document.getElementById('chat-files-panel');
+  if (!p) return;
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
 }
 function filterMessages(q) {
   var msgs = document.querySelectorAll('.chat-msg');

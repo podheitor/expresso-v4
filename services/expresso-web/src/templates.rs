@@ -1310,6 +1310,42 @@ impl ChatMessage {
     }
 }
 
+/// One file shared in a channel (the "📎 Arquivos" panel). Bytes are fetched
+/// through the chat download proxy by `id`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChatAttachment {
+    pub id: String,
+    #[serde(default)]
+    pub filename: String,
+    #[serde(default)]
+    pub content_type: String,
+    #[serde(default)]
+    pub size_bytes: i64,
+    #[serde(default)]
+    pub kind: String,
+}
+
+impl ChatAttachment {
+    pub fn size_human(&self) -> String {
+        let b = self.size_bytes as f64;
+        if self.size_bytes < 1024 {
+            format!("{} B", self.size_bytes)
+        } else if b < 1024.0 * 1024.0 {
+            format!("{:.1} KB", b / 1024.0)
+        } else {
+            format!("{:.1} MB", b / (1024.0 * 1024.0))
+        }
+    }
+    pub fn icon(&self) -> &'static str {
+        match self.kind.as_str() {
+            "image" => "🖼",
+            "video" => "🎬",
+            "audio" => "🎵",
+            _ => "📄",
+        }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "chat.html")]
 pub struct ChatTpl {
@@ -1317,6 +1353,7 @@ pub struct ChatTpl {
     pub channels: Vec<ChatChannel>,
     pub active_channel: Option<ChatChannel>,
     pub messages: Vec<ChatMessage>,
+    pub attachments: Vec<ChatAttachment>,
 }
 
 impl ChatTpl {
