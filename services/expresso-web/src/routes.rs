@@ -1200,6 +1200,10 @@ struct ComposeForm {
     cc: String,
     subject: String,
     body_text: String,
+    /// When set (a future ISO instant from the "send later" UI's `send_at`
+    /// hidden field), schedule the message instead of sending immediately.
+    #[serde(default)]
+    send_at: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -1210,6 +1214,37 @@ struct SendPayload {
     cc: Vec<String>,
     subject: String,
     body_text: String,
+}
+
+#[derive(serde::Serialize)]
+struct SchedulePayload {
+    from: String,
+    to: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    cc: Vec<String>,
+    subject: String,
+    body_text: String,
+    deliver_at: String,
+}
+
+/// Normalize a browser `datetime-local` value ("YYYY-MM-DDTHH:MM") to RFC3339
+/// with seconds + UTC offset, which the backend's rfc3339 deserializer needs.
+/// Already-offset values pass through. Returns None on obviously-empty input.
+fn to_rfc3339(local: &str) -> Option<String> {
+    let s = local.trim();
+    if s.is_empty() {
+        return None;
+    }
+    // Has an offset or Z already → assume caller sent RFC3339.
+    if s.ends_with('Z') || s[11.min(s.len())..].contains(['+', '-']) {
+        return Some(s.to_string());
+    }
+    let with_secs = if s.len() == 16 {
+        format!("{s}:00")
+    } else {
+        s.to_string()
+    };
+    Some(format!("{with_secs}Z"))
 }
 
 fn split_addrs(s: &str) -> Vec<String> {
@@ -1241,22 +1276,43 @@ async fn mail_compose_action(
         }
         .into_response());
     }
-    let payload = SendPayload {
-        from: f.from,
-        to,
-        cc: split_addrs(&f.cc),
-        subject: f.subject,
-        body_text: f.body_text,
+    // Schedule for later when a (future) deliver_at is supplied; else send now.
+    let cc = split_addrs(&f.cc);
+    let deliver_at = f.send_at.as_deref().and_then(to_rfc3339);
+    let status = if let Some(deliver_at) = deliver_at {
+        crate::upstream::post_json(
+            &st,
+            &st.backends.mail,
+            "/api/v1/mail/messages/schedule",
+            &headers,
+            Some((&t, &u)),
+            &SchedulePayload {
+                from: f.from,
+                to,
+                cc,
+                subject: f.subject,
+                body_text: f.body_text,
+                deliver_at,
+            },
+        )
+        .await?
+    } else {
+        crate::upstream::post_json(
+            &st,
+            &st.backends.mail,
+            "/api/v1/mail/send",
+            &headers,
+            Some((&t, &u)),
+            &SendPayload {
+                from: f.from,
+                to,
+                cc,
+                subject: f.subject,
+                body_text: f.body_text,
+            },
+        )
+        .await?
     };
-    let status = crate::upstream::post_json(
-        &st,
-        &st.backends.mail,
-        "/api/v1/mail/send",
-        &headers,
-        Some((&t, &u)),
-        &payload,
-    )
-    .await?;
     if (200..300).contains(&(status as u16)) {
         Ok(Redirect::to("/mail").into_response())
     } else {
@@ -6072,6 +6128,32 @@ mod tests {
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
         assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn to_rfc3339_adds_seconds_and_utc() {
+        assert_eq!(
+            to_rfc3339("2026-06-10T14:30"),
+            Some("2026-06-10T14:30:00Z".into())
+        );
+    }
+
+    #[test]
+    fn to_rfc3339_passes_through_offset_and_z() {
+        assert_eq!(
+            to_rfc3339("2026-06-10T14:30:00Z"),
+            Some("2026-06-10T14:30:00Z".into())
+        );
+        assert_eq!(
+            to_rfc3339("2026-06-10T14:30:00-03:00"),
+            Some("2026-06-10T14:30:00-03:00".into())
+        );
+    }
+
+    #[test]
+    fn to_rfc3339_blank_is_none() {
+        assert_eq!(to_rfc3339(""), None);
+        assert_eq!(to_rfc3339("   "), None);
     }
 
     #[test]
