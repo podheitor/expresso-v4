@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Grupos de contatos · Expresso{% endblock %}
+{% block nav %}{% let current = "contacts" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <div class="page-header">
+    <h1>Grupos de contatos</h1>
+    <a class="btn btn-ghost btn-sm" href="/contacts">← Contatos</a>
+  </div>
+  <p class="muted small">
+    Listas de distribuição salvas no servidor — disponíveis em qualquer
+    dispositivo. Use um grupo para escrever um email a todos os seus membros.
+  </p>
+
+  <form method="post" action="/contacts/groups"
+        style="display:flex;gap:.4rem;align-items:center;margin:1rem 0;flex-wrap:wrap">
+    <input type="text" name="name" required placeholder="Nome do grupo"
+           class="tasks-add-input" style="width:220px">
+    <input type="text" name="description" placeholder="Descrição (opcional)"
+           class="tasks-add-input" style="width:280px">
+    <button type="submit" class="btn btn-primary btn-sm">+ Criar grupo</button>
+  </form>
+
+  {% if groups.is_empty() %}
+    <p class="muted">Nenhum grupo ainda.</p>
+  {% else %}
+  <table class="grid">
+    <thead><tr><th>Nome</th><th>Descrição</th><th></th></tr></thead>
+    <tbody>
+      {% for g in groups %}
+      <tr>
+        <td><a href="/contacts/groups/{{ g.id }}">{{ g.name }}</a></td>
+        <td class="muted">{{ g.desc_display() }}</td>
+        <td style="text-align:right">
+          <a class="btn btn-ghost btn-sm" href="/contacts/groups/{{ g.id }}">Membros</a>
+          <form method="post" action="/contacts/groups/{{ g.id }}/delete"
+                style="display:inline" onsubmit="return confirm('Excluir este grupo?')">
+            <button type="submit" class="btn btn-ghost btn-sm">Excluir</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

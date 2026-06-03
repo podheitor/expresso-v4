@@ -559,6 +559,38 @@ pub struct ContactsTpl {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct ContactGroup {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+impl ContactGroup {
+    pub fn desc_display(&self) -> &str {
+        self.description.as_deref().unwrap_or("")
+    }
+}
+
+#[derive(Template)]
+#[template(path = "contact_groups.html")]
+pub struct ContactGroupsTpl {
+    pub me: Me,
+    pub groups: Vec<ContactGroup>,
+}
+
+#[derive(Template)]
+#[template(path = "contact_group_detail.html")]
+pub struct ContactGroupDetailTpl {
+    pub me: Me,
+    pub group: ContactGroup,
+    /// Members currently in the group.
+    pub members: Vec<Contact>,
+    /// Candidate contacts (from the default address book) not yet members.
+    pub candidates: Vec<Contact>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct ShareRow {
     pub id: String,
     #[serde(default)]

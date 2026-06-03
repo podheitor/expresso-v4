@@ -18,13 +18,13 @@ use crate::{
         AdminLoginEvent, AdminMonitoringTpl, AdminTenant, AdminTenantsTpl, AdminUser,
         AdminUserDetailTpl, AdminUsersTpl, AuditEvent, Calendar, CalendarDayTpl, CalendarMonthTpl,
         CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatChannel, ChatMessage, ChatTpl, Contact,
-        ContactFormTpl, ContactsTpl, DayColumn, DriveEditTpl, DriveFile, DrivePreviewTpl,
-        DriveQuota, DriveShareTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl,
-        Folder, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailComposeTpl,
-        MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
-        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note,
-        NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TasksTpl,
-        VersionRow,
+        ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl,
+        DayColumn, DriveEditTpl, DriveFile, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTpl,
+        DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, Folder, GalContact, HomeDriveFile,
+        HomeEvent, HomeTpl, LoginTpl, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl,
+        Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
+        SettingsTpl, ShareRow, TasksTpl, VersionRow,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
@@ -127,6 +127,28 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/contacts/:book_id/export.vcf", get(contacts_export_vcf))
         .route("/contacts/:book_id/import", post(contacts_import_vcf))
+        // contact groups (distribution lists) — server-backed
+        .route(
+            "/contacts/groups",
+            get(contact_groups_page).post(contact_group_create_action),
+        )
+        .route("/contacts/groups/:id", get(contact_group_detail_page))
+        .route(
+            "/contacts/groups/:id/rename",
+            post(contact_group_rename_action),
+        )
+        .route(
+            "/contacts/groups/:id/delete",
+            post(contact_group_delete_action),
+        )
+        .route(
+            "/contacts/groups/:id/members/add",
+            post(contact_group_add_member_action),
+        )
+        .route(
+            "/contacts/groups/:id/members/:cid/remove",
+            post(contact_group_remove_member_action),
+        )
         // mail extras
         .route("/search", get(unified_search_page))
         .route("/api/search", get(unified_search_api))
@@ -3483,6 +3505,284 @@ async fn contacts_import_vcf(
     )
     .await?;
     Ok(Redirect::to(&format!("/contacts?book_id={enc}")).into_response())
+}
+
+// ─── contact groups (distribution lists) ─────────────────────────────────────
+
+/// GET /contacts/groups — list the caller's server-backed contact groups.
+async fn contact_groups_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let groups = get_json::<Vec<ContactGroup>>(
+        &st,
+        &st.backends.contacts,
+        "/api/v1/contact-groups",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(ContactGroupsTpl {
+        me,
+        groups,
+    }))
+}
+
+#[derive(Deserialize)]
+struct GroupForm {
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct NewGroupPayload<'a> {
+    name: &'a str,
+    description: Option<&'a str>,
+}
+
+/// POST /contacts/groups — create a group.
+async fn contact_group_create_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    axum::Form(f): axum::Form<GroupForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let name = f.name.trim();
+    if name.is_empty() {
+        return Ok(Redirect::to("/contacts/groups").into_response());
+    }
+    let desc = f
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let _ = post_json(
+        &st,
+        &st.backends.contacts,
+        "/api/v1/contact-groups",
+        &headers,
+        Some((&t, &u)),
+        &NewGroupPayload {
+            name,
+            description: desc,
+        },
+    )
+    .await?;
+    Ok(Redirect::to("/contacts/groups").into_response())
+}
+
+/// GET /contacts/groups/:id — group members + candidates to add.
+async fn contact_group_detail_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+
+    let group = match get_json::<ContactGroup>(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/contact-groups/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    {
+        Some(g) => g,
+        None => return Ok(Redirect::to("/contacts/groups").into_response()),
+    };
+
+    let members = get_json::<Vec<Contact>>(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/contact-groups/{enc}/members"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+
+    // Candidates = default address book contacts not already members.
+    let books = get_json::<Vec<AddressBook>>(
+        &st,
+        &st.backends.contacts,
+        "/api/v1/addressbooks",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let candidates = if let Some(book) = books.iter().find(|b| b.is_default).or(books.first()) {
+        let benc = utf8_percent_encode(&book.id, NON_ALPHANUMERIC).to_string();
+        let all = get_json::<Vec<Contact>>(
+            &st,
+            &st.backends.contacts,
+            &format!("/api/v1/addressbooks/{benc}/contacts"),
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default();
+        let member_ids: std::collections::HashSet<&str> =
+            members.iter().map(|m| m.id.as_str()).collect();
+        all.into_iter()
+            .filter(|c| !member_ids.contains(c.id.as_str()))
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    Ok(askama_axum::IntoResponse::into_response(
+        ContactGroupDetailTpl {
+            me,
+            group,
+            members,
+            candidates,
+        },
+    ))
+}
+
+#[derive(serde::Serialize)]
+struct UpdateGroupPayload<'a> {
+    name: &'a str,
+    description: Option<&'a str>,
+}
+
+/// POST /contacts/groups/:id/rename — rename / re-describe a group.
+async fn contact_group_rename_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    axum::Form(f): axum::Form<GroupForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let name = f.name.trim();
+    if !name.is_empty() {
+        let desc = f
+            .description
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let _ = patch_json(
+            &st,
+            &st.backends.contacts,
+            &format!("/api/v1/contact-groups/{enc}"),
+            &headers,
+            Some((&t, &u)),
+            &UpdateGroupPayload {
+                name,
+                description: desc,
+            },
+        )
+        .await?;
+    }
+    Ok(Redirect::to(&format!("/contacts/groups/{enc}")).into_response())
+}
+
+/// POST /contacts/groups/:id/delete — delete a group.
+async fn contact_group_delete_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let _ = delete_at(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/contact-groups/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/contacts/groups").into_response())
+}
+
+#[derive(Deserialize)]
+struct AddMemberForm {
+    contact_id: String,
+}
+
+#[derive(serde::Serialize)]
+struct AddMemberPayload<'a> {
+    contact_id: &'a str,
+}
+
+/// POST /contacts/groups/:id/members/add — add a contact to the group.
+async fn contact_group_add_member_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    axum::Form(f): axum::Form<AddMemberForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let cid = f.contact_id.trim();
+    if !cid.is_empty() {
+        let _ = post_json(
+            &st,
+            &st.backends.contacts,
+            &format!("/api/v1/contact-groups/{enc}/members"),
+            &headers,
+            Some((&t, &u)),
+            &AddMemberPayload { contact_id: cid },
+        )
+        .await?;
+    }
+    Ok(Redirect::to(&format!("/contacts/groups/{enc}")).into_response())
+}
+
+/// POST /contacts/groups/:id/members/:cid/remove — remove a member.
+async fn contact_group_remove_member_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, cid)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let enc_c = utf8_percent_encode(&cid, NON_ALPHANUMERIC).to_string();
+    let _ = delete_at(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/contact-groups/{enc}/members/{enc_c}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to(&format!("/contacts/groups/{enc}")).into_response())
 }
 
 // ─── ACL sharing pages ───────────────────────────────────────────────────────

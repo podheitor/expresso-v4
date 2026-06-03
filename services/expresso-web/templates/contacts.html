@@ -45,7 +45,7 @@
           <button class="btn btn-ghost btn-sm" onclick="printVisibleContacts()" title="Imprimir contatos visíveis">🖨 Imprimir</button>
           <button class="btn btn-ghost btn-sm" onclick="showBirthdaysThisMonth()" title="Aniversariantes deste mês">🎂 Mês</button>
           <button class="btn btn-ghost btn-sm" onclick="exportGoogleContactsCsv()" title="Exportar como CSV compatível com Google Contacts">⬇ Google CSV</button>
-          <button class="btn btn-ghost btn-sm" onclick="showGroupsModal()" title="Grupos de contatos">👥 Grupos</button>
+          <a class="btn btn-ghost btn-sm" href="/contacts/groups" title="Grupos de contatos (listas de distribuição)">👥 Grupos</a>
           <div class="view-switch" style="gap:0">
             <button class="btn btn-primary btn-sm" id="contacts-view-list" onclick="setContactsView('list')">☰</button>
             <button class="btn btn-ghost btn-sm" id="contacts-view-cards" onclick="setContactsView('cards')">⊞</button>
@@ -459,63 +459,7 @@ function doMerge(bookId, keepId, mergeIds) {
 function closeMergeModal() { document.getElementById('merge-modal').style.display = 'none'; }
 function escHtmlC(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;'); }
 
-// ── Contact groups ────────────────────────────────────────────────────────────
-var GROUPS_KEY = 'expresso_contact_groups_{{ me.user_id }}';
-function loadGroups() { try { return JSON.parse(localStorage.getItem(GROUPS_KEY) || '[]'); } catch(e) { return []; } }
-function saveGroups(g) { localStorage.setItem(GROUPS_KEY, JSON.stringify(g)); }
-function showGroupsModal() {
-  renderGroupsList();
-  document.getElementById('groups-modal').style.display = 'flex';
-}
-function hideGroupsModal() { document.getElementById('groups-modal').style.display = 'none'; }
-function renderGroupsList() {
-  var groups = loadGroups();
-  var list = document.getElementById('groups-list');
-  if (!list) return;
-  if (!groups.length) { list.innerHTML = '<li class="muted small" style="padding:.5rem 0">Nenhum grupo. Crie um abaixo.</li>'; return; }
-  list.innerHTML = groups.map(function(g, i) {
-    return '<li class="group-item"><div style="flex:1"><strong>' + escCt(g.name) + '</strong>' +
-      '<div class="muted small">' + (g.members||[]).length + ' membro(s)</div></div>' +
-      '<button class="btn btn-ghost btn-sm" onclick="mailGroup(' + i + ')" title="Enviar e-mail">✉</button>' +
-      '<button class="btn btn-ghost btn-sm" onclick="editGroupMembers(' + i + ')">✏</button>' +
-      '<button class="btn btn-ghost btn-sm" onclick="deleteGroup(' + i + ')">✕</button></li>';
-  }).join('');
-}
-function addGroup() {
-  var inp = document.getElementById('new-group-name');
-  var name = inp ? inp.value.trim() : '';
-  if (!name) return;
-  var groups = loadGroups();
-  groups.push({ name: name, members: [] });
-  saveGroups(groups);
-  if (inp) inp.value = '';
-  renderGroupsList();
-}
-function deleteGroup(i) {
-  if (!confirm('Apagar grupo?')) return;
-  var groups = loadGroups();
-  groups.splice(i, 1);
-  saveGroups(groups);
-  renderGroupsList();
-}
-function mailGroup(i) {
-  var groups = loadGroups();
-  var g = groups[i];
-  if (!g || !g.members || !g.members.length) { alert('Grupo sem membros.'); return; }
-  var to = g.members.map(encodeURIComponent).join(',');
-  window.location.href = '/mail/compose?to=' + to;
-}
-function editGroupMembers(i) {
-  var groups = loadGroups();
-  var g = groups[i];
-  if (!g) return;
-  var members = prompt('E-mails dos membros (separados por vírgula):', (g.members||[]).join(', '));
-  if (members === null) return;
-  g.members = members.split(/[,\n]+/).map(function(e){ return e.trim(); }).filter(Boolean);
-  groups[i] = g;
-  saveGroups(groups);
-  renderGroupsList();
-}
+// Contact groups now live on a dedicated server-backed page (/contacts/groups).
 
 function toggleQuickAddContact() {
   var f = document.getElementById('quick-add-contact');
@@ -683,7 +627,7 @@ function toggleContactFav(btn, cid) {
     }
     else if (e.key === 'g' || e.key === 'G') {
       e.preventDefault();
-      if (typeof showGroupsModal === 'function') showGroupsModal();
+      window.location.href = '/contacts/groups';
     }
     else if (e.key === 'u' || e.key === 'U') {
       e.preventDefault();
@@ -936,22 +880,6 @@ document.addEventListener('keydown', function(e){
 </script>
 
 <!-- Groups modal -->
-<div class="modal-overlay" id="groups-modal" style="display:none" onclick="if(event.target.id==='groups-modal')hideGroupsModal()">
-  <div class="modal-box" style="max-width:440px">
-    <div class="modal-header">
-      <h3>Grupos de contatos</h3>
-      <button class="btn btn-ghost btn-sm" onclick="hideGroupsModal()">✕</button>
-    </div>
-    <div class="compose-form">
-      <ul id="groups-list" style="list-style:none;padding:0;margin:0 0 .75rem;display:flex;flex-direction:column;gap:.35rem"></ul>
-      <div style="display:flex;gap:.4rem">
-        <input type="text" id="new-group-name" class="input-sm" placeholder="Nome do novo grupo…" style="flex:1"
-               onkeydown="if(event.key==='Enter')addGroup()">
-        <button class="btn btn-primary btn-sm" onclick="addGroup()">+ Criar</button>
-      </div>
-    </div>
-  </div>
-</div>
 <script>
 // sprint #20732 — copyContactsEmails (tecla x)
 (function(){

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ group.name }} · Grupos · Expresso{% endblock %}
+{% block nav %}{% let current = "contacts" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <div class="page-header">
+    <h1>{{ group.name }}</h1>
+    <a class="btn btn-ghost btn-sm" href="/contacts/groups">← Grupos</a>
+  </div>
+  {% if !group.desc_display().is_empty() %}
+  <p class="muted">{{ group.desc_display() }}</p>
+  {% endif %}
+
+  <form method="post" action="/contacts/groups/{{ group.id }}/rename"
+        style="display:flex;gap:.4rem;align-items:center;margin:1rem 0;flex-wrap:wrap">
+    <input type="text" name="name" required value="{{ group.name }}"
+           class="tasks-add-input" style="width:220px">
+    <input type="text" name="description" value="{{ group.desc_display() }}"
+           placeholder="Descrição" class="tasks-add-input" style="width:280px">
+    <button type="submit" class="btn btn-sm">Salvar</button>
+  </form>
+
+  <h2>Membros ({{ members.len() }})</h2>
+  {% if members.is_empty() %}
+    <p class="muted">Nenhum membro neste grupo.</p>
+  {% else %}
+  <table class="grid">
+    <thead><tr><th>Nome</th><th>Email</th><th></th></tr></thead>
+    <tbody>
+      {% for c in members %}
+      <tr>
+        <td>{{ c.name_display() }}</td>
+        <td class="muted">{{ c.email_display() }}</td>
+        <td style="text-align:right">
+          <form method="post" action="/contacts/groups/{{ group.id }}/members/{{ c.id }}/remove"
+                style="display:inline">
+            <button type="submit" class="btn btn-ghost btn-sm">Remover</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h2 style="margin-top:1.5rem">Adicionar membro</h2>
+  {% if candidates.is_empty() %}
+    <p class="muted small">Todos os contatos do catálogo padrão já estão no grupo.</p>
+  {% else %}
+  <form method="post" action="/contacts/groups/{{ group.id }}/members/add"
+        style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+    <select name="contact_id" required class="tasks-add-input" style="min-width:260px">
+      <option value="">— selecione um contato —</option>
+      {% for c in candidates %}
+      <option value="{{ c.id }}">{{ c.name_display() }}{% if !c.email_display().is_empty() %} &lt;{{ c.email_display() }}&gt;{% endif %}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary btn-sm">+ Adicionar</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}
