@@ -223,6 +223,11 @@
                   onclick="snoozeMailPrompt('{{ d.id }}','{% match d.subject %}{% when Some with (s) %}{{ s }}{% when None %}{% endmatch %}')">
                   🔔 Soneca (lembrar depois)
                 </button>
+                <form method="post" action="/mail/{{ d.id }}/read-receipt"
+                      onsubmit="return confirm('Enviar confirmação de leitura ao remetente?')">
+                  <input type="hidden" name="folder" value="{{ selected }}">
+                  <button class="dropdown-item" type="submit">✓ Confirmar leitura ao remetente</button>
+                </form>
                 <div class="dropdown-label">Mover para</div>
                 {% for f in folders %}
                 <form method="post" action="/mail/{{ d.id }}/move">

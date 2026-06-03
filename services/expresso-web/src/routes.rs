@@ -160,6 +160,7 @@ pub fn router(state: AppState) -> Router {
         .route("/mail/:id/attachments/:idx", get(mail_attachment_proxy))
         .route("/mail/quick-reply", post(mail_quick_reply_action))
         .route("/mail/:id/flag", post(mail_flag_action))
+        .route("/mail/:id/read-receipt", post(mail_read_receipt_action))
         .route("/mail/:id/move", post(mail_move_action))
         .route("/mail/:id/delete", post(mail_delete_action))
         .route("/mail/:id/snooze", post(mail_snooze_action))
@@ -1738,6 +1739,41 @@ async fn mail_flag_action(
         &payload,
     )
     .await;
+    let folder = f.folder.unwrap_or_else(|| "INBOX".into());
+    Ok(Redirect::to(&format!(
+        "/mail/{}?folder={}",
+        id,
+        utf8_percent_encode(&folder, NON_ALPHANUMERIC)
+    ))
+    .into_response())
+}
+
+#[derive(Deserialize)]
+struct ReadReceiptForm {
+    folder: Option<String>,
+}
+
+/// POST /mail/:id/read-receipt — send an MDN (read confirmation) to the original
+/// sender, proxying the mail backend's read-receipt endpoint.
+async fn mail_read_receipt_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<ReadReceiptForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let _ = post_empty(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/messages/{id}/read-receipt"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
     let folder = f.folder.unwrap_or_else(|| "INBOX".into());
     Ok(Redirect::to(&format!(
         "/mail/{}?folder={}",
