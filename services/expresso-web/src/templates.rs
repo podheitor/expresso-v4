@@ -1218,6 +1218,17 @@ pub struct SettingsTpl {
     pub autoreply_end: Option<String>,
     pub sieve_script: Option<String>,
     pub sieve_error: Option<String>,
+    pub aliases: Vec<MailAlias>,
+}
+
+/// A tenant email alias (`alias -> target` forwarding) for the settings screen.
+#[derive(Debug, Deserialize, Clone)]
+pub struct MailAlias {
+    pub id: String,
+    pub alias: String,
+    pub target: String,
+    #[serde(default)]
+    pub is_enabled: bool,
 }
 
 // ─── Admin panel ─────────────────────────────────────────────────────────────

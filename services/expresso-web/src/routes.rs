@@ -21,10 +21,10 @@ use crate::{
         ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl,
         DayColumn, DriveEditTpl, DriveFile, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTpl,
         DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, Folder, GalContact, HomeDriveFile,
-        HomeEvent, HomeTpl, LoginTpl, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl,
-        Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
-        SettingsTpl, ShareRow, TasksTpl, VersionRow,
+        HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl,
+        MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl,
+        MessageDetail, MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit,
+        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TasksTpl, VersionRow,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
@@ -202,6 +202,9 @@ pub fn router(state: AppState) -> Router {
         .route("/settings/autoreply", post(settings_autoreply_save))
         .route("/settings/notifications", post(settings_notifications_save))
         .route("/settings/filters", post(settings_filters_save))
+        .route("/settings/aliases", post(settings_alias_create))
+        .route("/settings/aliases/:id/toggle", post(settings_alias_toggle))
+        .route("/settings/aliases/:id/delete", post(settings_alias_delete))
         // GAL autocomplete JSON API
         .route("/api/gal/search", get(gal_search_api))
         // Mail attachment list (JSON for JS)
@@ -5209,6 +5212,21 @@ async fn settings_page(
         .and_then(|v| v.as_str())
         .map(String::from);
 
+    // Load tenant email aliases only on the aliases tab.
+    let aliases = if tab == "aliases" {
+        get_json::<Vec<MailAlias>>(
+            &st,
+            &st.backends.mail,
+            "/api/v1/mail/aliases",
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
     Ok(askama_axum::IntoResponse::into_response(SettingsTpl {
         tab,
         flash: q.flash,
@@ -5223,6 +5241,7 @@ async fn settings_page(
         autoreply_end,
         sieve_script,
         sieve_error,
+        aliases,
         me,
     }))
 }
@@ -5331,6 +5350,118 @@ async fn settings_filters_save(
     )
     .await;
     Ok(Redirect::to("/settings?tab=filters&flash=Filtros+salvos").into_response())
+}
+
+#[derive(Deserialize)]
+struct AliasForm {
+    alias: String,
+    target: String,
+}
+
+#[derive(serde::Serialize)]
+struct NewAliasPayload<'a> {
+    alias: &'a str,
+    target: &'a str,
+}
+
+/// POST /settings/aliases — create a tenant email alias.
+async fn settings_alias_create(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<AliasForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let alias = f.alias.trim();
+    let target = f.target.trim();
+    if alias.is_empty() || target.is_empty() {
+        return Ok(
+            Redirect::to("/settings?tab=aliases&flash=Preencha+alias+e+destino").into_response(),
+        );
+    }
+    let status = post_json(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/aliases",
+        &headers,
+        Some((&t, &u)),
+        &NewAliasPayload { alias, target },
+    )
+    .await?;
+    let flash = if (200..300).contains(&status) {
+        "Alias+criado"
+    } else {
+        "Alias+inválido+ou+já+existe"
+    };
+    Ok(Redirect::to(&format!("/settings?tab=aliases&flash={flash}")).into_response())
+}
+
+#[derive(Deserialize)]
+struct AliasToggleForm {
+    target: String,
+    /// "1" when the box is checked → enable; absent → disable.
+    #[serde(default)]
+    is_enabled: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct UpdateAliasPayload<'a> {
+    target: &'a str,
+    is_enabled: bool,
+}
+
+/// POST /settings/aliases/:id/toggle — enable/disable an alias (PUT upstream).
+async fn settings_alias_toggle(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<AliasToggleForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let _ = put_json(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/aliases/{enc}"),
+        &headers,
+        Some((&t, &u)),
+        &UpdateAliasPayload {
+            target: f.target.trim(),
+            is_enabled: f.is_enabled.is_some(),
+        },
+    )
+    .await?;
+    Ok(Redirect::to("/settings?tab=aliases&flash=Alias+atualizado").into_response())
+}
+
+/// POST /settings/aliases/:id/delete — remove an alias.
+async fn settings_alias_delete(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let _ = delete_at(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/aliases/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/settings?tab=aliases&flash=Alias+removido").into_response())
 }
 
 #[cfg(test)]

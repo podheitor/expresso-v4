@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{% if tab == "profile" %}Perfil{% else if tab == "signature" %}Assinatura{% else if tab == "autoreply" %}Resposta automática{% else if tab == "notifications" %}Notificações{% else if tab == "security" %}Segurança{% else if tab == "filters" %}Filtros{% else if tab == "shortcuts" %}Atalhos{% else if tab == "privacy" %}Privacidade{% else %}Configurações{% endif %} · Configurações · Expresso{% endblock %}
+{% block title %}{% if tab == "profile" %}Perfil{% else if tab == "signature" %}Assinatura{% else if tab == "autoreply" %}Resposta automática{% else if tab == "notifications" %}Notificações{% else if tab == "security" %}Segurança{% else if tab == "filters" %}Filtros{% else if tab == "aliases" %}Aliases{% else if tab == "shortcuts" %}Atalhos{% else if tab == "privacy" %}Privacidade{% else %}Configurações{% endif %} · Configurações · Expresso{% endblock %}
 {% block nav %}{% let current = "settings" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
 <div class="page settings-page">
@@ -15,6 +15,7 @@
       <a class="settings-nav-item{% if tab == "notifications" %} active{% endif %}" href="/settings?tab=notifications">Notificações</a>
       <a class="settings-nav-item{% if tab == "security" %} active{% endif %}" href="/settings?tab=security">Segurança</a>
       <a class="settings-nav-item{% if tab == "filters" %} active{% endif %}" href="/settings?tab=filters">Filtros de e-mail</a>
+      <a class="settings-nav-item{% if tab == "aliases" %} active{% endif %}" href="/settings?tab=aliases">Aliases de e-mail</a>
       <a class="settings-nav-item{% if tab == "shortcuts" %} active{% endif %}" href="/settings?tab=shortcuts">Atalhos de teclado</a>
       <a class="settings-nav-item{% if tab == "privacy" %} active{% endif %}" href="/settings?tab=privacy">Privacidade & dados</a>
     </nav>
@@ -554,6 +555,58 @@
             </div>
           </form>
         {% endmatch %}
+      </div>
+
+      {% else if tab == "aliases" %}
+      <div class="card stack">
+        <h2>Aliases de e-mail</h2>
+        <p class="muted small">
+          Um alias encaminha mensagens de um endereço para outro. Os aliases são
+          compartilhados pela organização.
+        </p>
+        {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+
+        <form class="compose-form" method="post" action="/settings/aliases"
+              style="display:flex;gap:.4rem;align-items:flex-end;flex-wrap:wrap">
+          <label style="flex:1;min-width:200px">
+            <span>Alias (endereço de origem)</span>
+            <input type="email" name="alias" required placeholder="vendas@empresa.com">
+          </label>
+          <label style="flex:1;min-width:200px">
+            <span>Destino</span>
+            <input type="email" name="target" required placeholder="maria@empresa.com">
+          </label>
+          <button class="btn btn-primary" type="submit">+ Adicionar</button>
+        </form>
+
+        {% if aliases.is_empty() %}
+          <p class="muted">Nenhum alias configurado.</p>
+        {% else %}
+        <table class="data-table">
+          <thead><tr><th>Alias</th><th>Destino</th><th>Ativo</th><th></th></tr></thead>
+          <tbody>
+            {% for a in aliases %}
+            <tr>
+              <td>{{ a.alias }}</td>
+              <td>{{ a.target }}</td>
+              <td>
+                <form method="post" action="/settings/aliases/{{ a.id }}/toggle" style="display:inline">
+                  <input type="hidden" name="target" value="{{ a.target }}">
+                  <input type="checkbox" name="is_enabled" value="1"{% if a.is_enabled %} checked{% endif %}
+                         onchange="this.form.submit()">
+                </form>
+              </td>
+              <td style="text-align:right">
+                <form method="post" action="/settings/aliases/{{ a.id }}/delete" style="display:inline"
+                      onsubmit="return confirm('Remover este alias?')">
+                  <button class="btn btn-ghost btn-sm" type="submit">Remover</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
       </div>
 
       {% else if tab == "shortcuts" %}
