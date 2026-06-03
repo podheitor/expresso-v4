@@ -16,9 +16,9 @@ use crate::{
     ical::{build_vcalendar, categories_from_ical, to_rfc3339, valarm_minutes, EventForm},
     templates::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
-        AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminTenant,
-        AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent, Calendar,
-        CalendarDayTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl,
+        AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
+        AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent,
+        Calendar, CalendarDayTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl,
         ChatChannel, ChatMessage, ChatTpl, Contact, ContactActivityTpl, ContactFormTpl,
         ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl, DayColumn,
         DelegationRaw, DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl,
@@ -29,8 +29,8 @@ use crate::{
         HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl,
         MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl,
         MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note, Notebook,
-        NotesActivityTpl, NotesTagsTpl, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
-        SettingsTpl, ShareRow, TagPairRow, TasksTpl, VersionRow, WorkingHour,
+        NotesActivityTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit, SearchTpl,
+        SecurityTpl, SettingsTpl, ShareRow, TagPairRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_body_json, post_empty,
@@ -321,6 +321,11 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/dlq/retry-all", post(admin_dlq_retry_all))
         .route("/admin/dlq/:id/retry", post(admin_dlq_retry))
         .route("/admin/dlq/:id/delete", post(admin_dlq_delete))
+        .route(
+            "/admin/resources",
+            get(admin_resources_page).post(admin_resource_create),
+        )
+        .route("/admin/resources/:id/delete", post(admin_resource_delete))
         .route(
             "/admin/config",
             get(admin_config_page).post(admin_config_save),
@@ -8608,6 +8613,128 @@ async fn admin_dlq_retry_all(
     )
     .await?;
     Ok(dlq_redirect(status, "Reenvio de todas disparado"))
+}
+
+// ─── /admin/resources (bookable calendar resources) ────────────────────────────
+
+/// GET /admin/resources — list the tenant's bookable resources (rooms/equipment).
+/// Viewing is any-user on the backend, but registry edits are admin-gated, so the
+/// management page itself is admin-only.
+async fn admin_resources_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_admin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let body = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.calendar,
+        "/api/v1/resources",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let resources: Vec<Resource> = body
+        .get("resources")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(
+        AdminResourcesTpl {
+            me,
+            resources,
+            flash: extract_flash(&uri),
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+struct ResourceForm {
+    email: String,
+    name: String,
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    capacity: String,
+}
+
+/// POST /admin/resources — register a bookable resource (admin only).
+async fn admin_resource_create(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<ResourceForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_admin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (email, name) = (f.email.trim(), f.name.trim());
+    if email.is_empty() || name.is_empty() {
+        return Ok(
+            Redirect::to("/admin/resources?flash=E-mail+e+nome+obrigat%C3%B3rios").into_response(),
+        );
+    }
+    let mut payload = serde_json::json!({ "email": email, "name": name });
+    if !f.kind.trim().is_empty() {
+        payload["kind"] = serde_json::json!(f.kind.trim());
+    }
+    if let Ok(cap) = f.capacity.trim().parse::<i32>() {
+        if cap > 0 {
+            payload["capacity"] = serde_json::json!(cap);
+        }
+    }
+    let (t, u) = ctx_of(&me);
+    let status = post_json(
+        &st,
+        &st.backends.calendar,
+        "/api/v1/resources",
+        &headers,
+        Some((&t, &u)),
+        &payload,
+    )
+    .await?;
+    let flash = if (200..300).contains(&status) {
+        "Recurso registrado"
+    } else {
+        "Falha ao registrar (e-mail já existe?)"
+    };
+    let enc = utf8_percent_encode(flash, NON_ALPHANUMERIC);
+    Ok(Redirect::to(&format!("/admin/resources?flash={enc}")).into_response())
+}
+
+/// POST /admin/resources/:id/delete — unregister a resource (admin only).
+async fn admin_resource_delete(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_admin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = delete_at(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/resources/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/admin/resources?flash=Recurso+removido").into_response())
 }
 
 // ─── /admin/config ────────────────────────────────────────────────────────────

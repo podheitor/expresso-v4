@@ -1605,6 +1605,30 @@ pub struct AdminConfigTpl {
     pub flash: Option<String>,
 }
 
+/// A bookable calendar resource (meeting room / equipment).
+#[derive(Debug, Clone, Deserialize)]
+pub struct Resource {
+    pub id: String,
+    #[serde(default)]
+    pub email: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub capacity: Option<i32>,
+    #[serde(default)]
+    pub is_active: bool,
+}
+
+#[derive(Template)]
+#[template(path = "admin_resources.html")]
+pub struct AdminResourcesTpl {
+    pub me: Me,
+    pub resources: Vec<Resource>,
+    pub flash: Option<String>,
+}
+
 /// One dead-lettered notification (a webhook that exhausted its retries).
 #[derive(Debug, Clone)]
 pub struct DlqEntry {

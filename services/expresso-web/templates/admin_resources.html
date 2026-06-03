@@ -1,0 +1,68 @@
+{% extends "admin_base.html" %}
+{% block title %}Recursos · Admin · Expresso{% endblock %}
+{% block nav_resources %} active{% endblock %}
+{% block flash %}
+{% match flash %}{% when Some with (m) %}<div class="flash">{{ m }}</div>{% when None %}{% endmatch %}
+{% endblock %}
+{% block body %}
+<div class="admin-page">
+  <div class="admin-page-header">
+    <h1>Recursos reserváveis {% if !resources.is_empty() %}<span class="badge" style="vertical-align:middle;font-size:.7rem">{{ resources.len() }}</span>{% endif %}</h1>
+  </div>
+
+  <p class="muted small" style="margin:.25rem 0 .75rem">
+    Salas e equipamentos que podem ser convidados para eventos. Cada recurso tem um
+    e-mail próprio; convide-o como participante para reservá-lo (conflitos são detectados pelo servidor).
+  </p>
+
+  <div class="card" style="margin-bottom:1rem;padding:.75rem">
+    <form method="post" action="/admin/resources" style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:end">
+      <label class="small">Nome
+        <input class="input" type="text" name="name" required placeholder="Sala Reunião 1" style="width:12rem">
+      </label>
+      <label class="small">E-mail
+        <input class="input" type="email" name="email" required placeholder="sala1@empresa.com" style="width:14rem">
+      </label>
+      <label class="small">Tipo
+        <select class="input" name="kind">
+          <option value="room">Sala</option>
+          <option value="equipment">Equipamento</option>
+        </select>
+      </label>
+      <label class="small">Capacidade
+        <input class="input" type="number" name="capacity" min="0" placeholder="—" style="width:6rem">
+      </label>
+      <button class="btn btn-primary" type="submit">＋ Registrar</button>
+    </form>
+  </div>
+
+  <div class="card" style="overflow:auto">
+    <table class="admin-table">
+      <thead>
+        <tr><th>Nome</th><th>E-mail</th><th>Tipo</th><th>Capacidade</th><th>Ativo</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% if resources.is_empty() %}
+          <tr><td colspan="6" class="muted" style="text-align:center;padding:2rem">Nenhum recurso registrado.</td></tr>
+        {% else %}
+          {% for r in resources %}
+          <tr>
+            <td><strong>{{ r.name }}</strong></td>
+            <td class="mono small muted">{{ r.email }}</td>
+            <td class="small">{{ r.kind }}</td>
+            <td class="small">{% match r.capacity %}{% when Some with (c) %}{{ c }}{% when None %}—{% endmatch %}</td>
+            <td class="small">{% if r.is_active %}✓{% else %}—{% endif %}</td>
+            <td>
+              <form method="post" action="/admin/resources/{{ r.id }}/delete" style="display:inline"
+                    onsubmit="return confirm('Remover o recurso “{{ r.name }}”?')">
+                <button class="btn btn-ghost btn-sm" type="submit" title="Remover">🗑</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
