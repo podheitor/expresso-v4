@@ -21,12 +21,13 @@ use crate::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
         AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent,
-        Calendar, CalendarConflictsTpl, CalendarCountersTpl, CalendarDayTpl, CalendarMonthTpl,
-        CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage,
-        ChatTpl, ConflictPairRow, Contact, ContactActivityTpl, ContactAddressRow, ContactDiffTpl,
-        ContactEmailRow, ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl,
-        ContactVersionRow, ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw,
-        DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow,
+        BulkDeleteEventRow, Calendar, CalendarBulkDeleteTpl, CalendarConflictsTpl,
+        CalendarCountersTpl, CalendarDayTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl,
+        CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage, ChatTpl, ConflictPairRow,
+        Contact, ContactActivityTpl, ContactAddressRow, ContactDiffTpl, ContactEmailRow,
+        ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow,
+        ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView,
+        DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow,
         DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
         DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
         DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
@@ -110,6 +111,10 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/edit", get(drive_edit_page))
         .route("/calendar", get(calendar_page))
         .route("/calendar/freebusy", get(freebusy_page))
+        .route(
+            "/calendar/bulk-delete",
+            get(calendar_bulk_delete_page).post(calendar_bulk_delete_action),
+        )
         .route("/calendar/conflicts", get(calendar_conflicts_page))
         .route("/calendar/counters", get(calendar_counters_page))
         .route(
@@ -1708,6 +1713,150 @@ async fn calendar_conflicts_page(
             queried,
         },
     ))
+}
+
+#[derive(Deserialize)]
+struct BulkDeleteQuery {
+    #[serde(default)]
+    cal_id: Option<String>,
+    #[serde(default)]
+    from: Option<String>,
+    #[serde(default)]
+    to: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct BulkDeleteEventJson {
+    #[serde(default)]
+    summary: Option<String>,
+    #[serde(default)]
+    dtstart: Option<String>,
+    #[serde(default)]
+    rrule: Option<String>,
+}
+
+/// Preview cap: list at most this many events before the range delete.
+const BULK_DELETE_PREVIEW_CAP: i64 = 200;
+
+/// GET /calendar/bulk-delete?cal_id=&from=&to= — preview events in a date range
+/// (read-only) so the user can confirm before deleting them in bulk.
+async fn calendar_bulk_delete_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<BulkDeleteQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let calendars = get_json::<Vec<Calendar>>(
+        &st,
+        &st.backends.calendar,
+        "/api/v1/calendars",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let default_cal = calendars
+        .iter()
+        .find(|c| c.is_default)
+        .or_else(|| calendars.first())
+        .map(|c| c.id.clone())
+        .unwrap_or_default();
+    let cal_id = q.cal_id.filter(|s| !s.is_empty()).unwrap_or(default_cal);
+    let from = q.from.unwrap_or_default();
+    let to = q.to.unwrap_or_default();
+
+    let mut events = Vec::new();
+    let mut truncated = false;
+    let previewed = !cal_id.is_empty() && from.len() == 10 && to.len() == 10 && from <= to;
+    if previewed {
+        let enc = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC);
+        let after = format!("{from}T00:00:00Z");
+        let before = format!("{to}T23:59:59Z");
+        let cap = BULK_DELETE_PREVIEW_CAP + 1;
+        let resp = get_json::<serde_json::Value>(
+            &st,
+            &st.backends.calendar,
+            &format!(
+                "/api/v1/calendars/{enc}/events-by-range?after={after}&before={before}&limit={cap}"
+            ),
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default();
+        if let Some(arr) = resp.get("events").and_then(|v| v.as_array()) {
+            for e in arr.iter().take(BULK_DELETE_PREVIEW_CAP as usize) {
+                if let Ok(ev) = serde_json::from_value::<BulkDeleteEventJson>(e.clone()) {
+                    events.push(BulkDeleteEventRow {
+                        summary: ev.summary.unwrap_or_else(|| "(sem título)".into()),
+                        when: ev
+                            .dtstart
+                            .map(|s| s.replace('T', " ").chars().take(16).collect())
+                            .unwrap_or_default(),
+                        recurring: ev.rrule.is_some(),
+                    });
+                }
+            }
+            truncated = arr.len() as i64 > BULK_DELETE_PREVIEW_CAP;
+        }
+    }
+    Ok(askama_axum::IntoResponse::into_response(
+        CalendarBulkDeleteTpl {
+            me,
+            calendars,
+            cal_id,
+            from,
+            to,
+            events,
+            previewed,
+            truncated,
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+struct BulkDeleteForm {
+    cal_id: String,
+    from: String,
+    to: String,
+}
+
+/// POST /calendar/bulk-delete — delete every event in the [from, to] range on a
+/// calendar (write-gated by the backend), then back to the preview.
+async fn calendar_bulk_delete_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<BulkDeleteForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    if f.cal_id.is_empty() || f.from.len() != 10 || f.to.len() != 10 || f.from > f.to {
+        return Ok((StatusCode::BAD_REQUEST, "intervalo inválido").into_response());
+    }
+    let enc = utf8_percent_encode(&f.cal_id, NON_ALPHANUMERIC);
+    let after = format!("{}T00:00:00Z", f.from);
+    let before = format!("{}T23:59:59Z", f.to);
+    let _ = post_empty(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/calendars/{enc}/events-bulk-delete?from={after}&to={before}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    let cenc = utf8_percent_encode(&f.cal_id, NON_ALPHANUMERIC);
+    Ok(Redirect::to(&format!(
+        "/calendar/bulk-delete?cal_id={cenc}&from={}&to={}",
+        f.from, f.to
+    ))
+    .into_response())
 }
 
 async fn freebusy_page(
@@ -10012,6 +10161,24 @@ mod tests {
         assert!(v.get("cc").is_none());
         assert_eq!(v["undo_seconds"], 10);
         assert_eq!(v["to"], serde_json::json!(["a@x.com"]));
+    }
+
+    #[test]
+    fn bulk_delete_event_json_parse_and_recurring() {
+        let e: BulkDeleteEventJson = serde_json::from_value(serde_json::json!({
+            "summary": "Daily", "dtstart": "2026-06-05T08:00:00Z", "rrule": "FREQ=DAILY"
+        }))
+        .expect("parse");
+        assert_eq!(e.summary.as_deref(), Some("Daily"));
+        assert!(e.rrule.is_some());
+        let when: String = e
+            .dtstart
+            .map(|s| s.replace('T', " ").chars().take(16).collect())
+            .unwrap_or_default();
+        assert_eq!(when, "2026-06-05 08:00");
+        let plain: BulkDeleteEventJson =
+            serde_json::from_value(serde_json::json!({ "summary": "One-off" })).expect("parse");
+        assert!(plain.rrule.is_none());
     }
 
     #[test]

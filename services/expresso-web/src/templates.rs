@@ -999,6 +999,29 @@ pub struct FreeBusyTpl {
     pub queried: bool,
 }
 
+/// One event in the bulk-delete preview list.
+pub struct BulkDeleteEventRow {
+    pub summary: String,
+    /// "YYYY-MM-DD HH:MM"
+    pub when: String,
+    pub recurring: bool,
+}
+
+#[derive(Template)]
+#[template(path = "calendar_bulk_delete.html")]
+pub struct CalendarBulkDeleteTpl {
+    pub me: Me,
+    pub calendars: Vec<Calendar>,
+    pub cal_id: String,
+    pub from: String,
+    pub to: String,
+    pub events: Vec<BulkDeleteEventRow>,
+    /// True once a preview range has been queried.
+    pub previewed: bool,
+    /// True when the range had more events than the preview cap.
+    pub truncated: bool,
+}
+
 /// One overlapping pair of events (double-booking) within a day.
 pub struct ConflictPairRow {
     pub a_summary: String,
