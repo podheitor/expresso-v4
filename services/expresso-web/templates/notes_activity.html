@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Atividade da nota · Expresso{% endblock %}
+{% block nav %}{% let current = "notes" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Atividade da nota</h1>
+    <a class="btn btn-ghost" href="/notes?id={{ note_id }}">← Voltar à nota</a>
+  </div>
+  {% if events.is_empty() %}
+    <div class="empty-state">Sem histórico de atividade para esta nota.</div>
+  {% else %}
+  <table class="data-table">
+    <thead><tr><th>Quando</th><th>Ação</th><th>Detalhe</th></tr></thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td class="muted">{{ e.when }}</td>
+        <td><code>{{ e.action }}</code></td>
+        <td>{{ e.detail }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

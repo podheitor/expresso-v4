@@ -14,19 +14,20 @@ use serde::Deserialize;
 use crate::{
     error::WebResult,
     templates::{
-        AclRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig, AdminConfigTpl,
-        AdminLoginEvent, AdminMonitoringTpl, AdminTenant, AdminTenantsTpl, AdminUser,
-        AdminUserDetailTpl, AdminUsersTpl, AuditEvent, Calendar, CalendarDayTpl, CalendarMonthTpl,
-        CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatChannel, ChatMessage, ChatTpl, Contact,
-        ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl,
-        DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DriveEditTpl, DriveFile,
-        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTagFilesTpl, DriveTagStat,
-        DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlowEditTpl,
-        FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile,
-        HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl,
-        MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl,
-        MessageDetail, MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit,
-        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TasksTpl, VersionRow, WorkingHour,
+        AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
+        AdminConfigTpl, AdminLoginEvent, AdminMonitoringTpl, AdminTenant, AdminTenantsTpl,
+        AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent, Calendar, CalendarDayTpl,
+        CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatChannel, ChatMessage,
+        ChatTpl, Contact, ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl,
+        ContactsTpl, DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DriveEditTpl,
+        DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTagFilesTpl,
+        DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl,
+        FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact,
+        HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl,
+        MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl,
+        MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note,
+        NotesActivityTpl, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl,
+        ShareRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
@@ -243,6 +244,7 @@ pub fn router(state: AppState) -> Router {
         .route("/notes", get(notes_page).post(notes_create_action))
         .route("/notes/:id", post(notes_edit_action))
         .route("/notes/:id/delete", post(notes_delete_action))
+        .route("/notes/:id/activity", get(notes_activity_page))
         // settings
         .route("/settings", get(settings_page))
         .route("/settings/profile", post(settings_profile_save))
@@ -6503,6 +6505,58 @@ async fn notes_page(
         notes,
         selected,
     }))
+}
+
+/// GET /notes/:id/activity — change history for a note.
+async fn notes_activity_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let events = get_json::<Vec<serde_json::Value>>(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/{enc}/activity"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .into_iter()
+    .map(activity_row_of)
+    .collect();
+    Ok(askama_axum::IntoResponse::into_response(NotesActivityTpl {
+        me,
+        note_id: id,
+        events,
+    }))
+}
+
+/// Map a backend activity JSON event to a display row (action/detail/when).
+fn activity_row_of(e: serde_json::Value) -> ActivityRow {
+    ActivityRow {
+        action: e
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        detail: e
+            .get("detail")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        when: e
+            .get("created_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    }
 }
 
 /// POST /notes — create a note, then redirect to it.

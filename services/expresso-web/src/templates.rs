@@ -671,6 +671,21 @@ pub struct DriveFileTag {
     pub tag: String,
 }
 
+/// One activity-log entry for an object (note/contact), pre-formatted.
+pub struct ActivityRow {
+    pub action: String,
+    pub detail: String,
+    pub when: String,
+}
+
+#[derive(Template)]
+#[template(path = "notes_activity.html")]
+pub struct NotesActivityTpl {
+    pub me: Me,
+    pub note_id: String,
+    pub events: Vec<ActivityRow>,
+}
+
 /// A mail flow (automation) rule summarized for display.
 pub struct FlowRuleRow {
     pub id: String,
