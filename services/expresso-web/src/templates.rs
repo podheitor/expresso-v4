@@ -671,6 +671,24 @@ pub struct DriveFileTag {
     pub tag: String,
 }
 
+/// A mail flow (automation) rule summarized for display.
+pub struct FlowRuleRow {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    /// Human-readable "se <campo> <op> '<valor>'" condition summary.
+    pub when: String,
+    /// Human-readable action summary.
+    pub then: String,
+}
+
+#[derive(Template)]
+#[template(path = "flows.html")]
+pub struct FlowsTpl {
+    pub me: Me,
+    pub rules: Vec<FlowRuleRow>,
+}
+
 /// One attendee's busy intervals (pre-formatted as HH:MM ranges) for the
 /// free-busy page.
 pub struct FreeBusyRow {

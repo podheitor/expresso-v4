@@ -21,9 +21,9 @@ use crate::{
         ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl,
         DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DriveEditTpl, DriveFile,
         DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTagFilesTpl, DriveTagStat,
-        DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, Folder,
-        FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
-        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
+        DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlowRuleRow,
+        FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl,
+        LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
         MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
         MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
         SettingsTpl, ShareRow, TasksTpl, VersionRow, WorkingHour,
@@ -162,6 +162,10 @@ pub fn router(state: AppState) -> Router {
         .route("/mail/quick-reply", post(mail_quick_reply_action))
         .route("/mail/:id/flag", post(mail_flag_action))
         .route("/mail/:id/read-receipt", post(mail_read_receipt_action))
+        // mail flow rules (automation)
+        .route("/flows", get(flows_page).post(flow_create_action))
+        .route("/flows/:id/toggle", post(flow_toggle_action))
+        .route("/flows/:id/delete", post(flow_delete_action))
         .route("/mail/:id/move", post(mail_move_action))
         .route("/mail/:id/delete", post(mail_delete_action))
         .route("/mail/:id/snooze", post(mail_snooze_action))
@@ -1862,6 +1866,213 @@ async fn mail_read_receipt_action(
         utf8_percent_encode(&folder, NON_ALPHANUMERIC)
     ))
     .into_response())
+}
+
+// ─── mail flow rules (automation) ─────────────────────────────────────────────
+
+/// Summarize a rule's first condition into "campo op 'valor'" (the UI creates
+/// single-condition rules; extra conditions from the API are noted as "+N").
+fn summarize_conditions(conds: &serde_json::Value, mode: &str) -> String {
+    let arr = conds.as_array().cloned().unwrap_or_default();
+    if arr.is_empty() {
+        return "qualquer mensagem".into();
+    }
+    let one = |c: &serde_json::Value| {
+        let field = c.get("field").and_then(|v| v.as_str()).unwrap_or("?");
+        let op = c.get("op").and_then(|v| v.as_str()).unwrap_or("contains");
+        let value = c.get("value").and_then(|v| v.as_str()).unwrap_or("");
+        format!("{field} {op} \"{value}\"")
+    };
+    let first = one(&arr[0]);
+    if arr.len() == 1 {
+        first
+    } else {
+        let joiner = if mode == "or" { "ou" } else { "e" };
+        format!("{first} {joiner} +{}", arr.len() - 1)
+    }
+}
+
+/// Summarize a rule's first action into readable text.
+fn summarize_actions(actions: &serde_json::Value) -> String {
+    let arr = actions.as_array().cloned().unwrap_or_default();
+    let Some(a) = arr.first() else {
+        return "nenhuma ação".into();
+    };
+    let kind = a.get("type").and_then(|v| v.as_str()).unwrap_or("?");
+    let params = a.get("params");
+    let p = |k: &str| {
+        params
+            .and_then(|v| v.get(k))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let base = match kind {
+        "move_to_folder" => format!("mover para \"{}\"", p("folder")),
+        "add_flag" => format!("marcar \"{}\"", p("flag")),
+        "webhook" => format!("webhook {}", p("url")),
+        other => other.to_string(),
+    };
+    if arr.len() > 1 {
+        format!("{base} +{}", arr.len() - 1)
+    } else {
+        base
+    }
+}
+
+/// GET /flows — list the caller's mail automation rules.
+async fn flows_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let raw = get_json::<Vec<serde_json::Value>>(
+        &st,
+        &st.backends.flows,
+        "/api/v1/flows/rules",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let rules = raw
+        .into_iter()
+        .map(|r| {
+            let mode = r
+                .get("condition_mode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("and");
+            FlowRuleRow {
+                id: r
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                name: r
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("(sem nome)")
+                    .to_string(),
+                enabled: r.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true),
+                when: summarize_conditions(
+                    r.get("conditions").unwrap_or(&serde_json::Value::Null),
+                    mode,
+                ),
+                then: summarize_actions(r.get("actions").unwrap_or(&serde_json::Value::Null)),
+            }
+        })
+        .collect();
+    Ok(askama_axum::IntoResponse::into_response(FlowsTpl {
+        me,
+        rules,
+    }))
+}
+
+#[derive(Deserialize)]
+struct FlowCreateForm {
+    name: String,
+    field: String,
+    op: String,
+    value: String,
+    action: String,
+    action_value: String,
+}
+
+/// POST /flows — create a single-condition, single-action rule from the form.
+async fn flow_create_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<FlowCreateForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let name = f.name.trim();
+    let value = f.value.trim();
+    if name.is_empty() || value.is_empty() {
+        return Ok(Redirect::to("/flows").into_response());
+    }
+    // Map the action selector to the backend's {type, params} shape.
+    let action = match f.action.as_str() {
+        "add_flag" => {
+            serde_json::json!({ "type": "add_flag", "params": { "flag": f.action_value.trim() } })
+        }
+        "webhook" => {
+            serde_json::json!({ "type": "webhook", "params": { "url": f.action_value.trim() } })
+        }
+        // default: move to folder
+        _ => {
+            serde_json::json!({ "type": "move_to_folder", "params": { "folder": f.action_value.trim() } })
+        }
+    };
+    let body = serde_json::json!({
+        "name": name,
+        "enabled": true,
+        "conditions": [{ "field": f.field, "op": f.op, "value": value }],
+        "condition_mode": "and",
+        "actions": [action],
+    });
+    let _ = post_json(
+        &st,
+        &st.backends.flows,
+        "/api/v1/flows/rules",
+        &headers,
+        Some((&t, &u)),
+        &body,
+    )
+    .await?;
+    Ok(Redirect::to("/flows").into_response())
+}
+
+/// POST /flows/:id/toggle — enable/disable a rule.
+async fn flow_toggle_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let _ = patch_json(
+        &st,
+        &st.backends.flows,
+        &format!("/api/v1/flows/rules/{id}/toggle"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({}),
+    )
+    .await?;
+    Ok(Redirect::to("/flows").into_response())
+}
+
+/// POST /flows/:id/delete — delete a rule.
+async fn flow_delete_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let _ = delete_at(
+        &st,
+        &st.backends.flows,
+        &format!("/api/v1/flows/rules/{id}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/flows").into_response())
 }
 
 // ─── /mail/:id/move ──────────────────────────────────────────────────────────
@@ -6761,6 +6972,36 @@ mod tests {
         assert_eq!(with_obo("/x".into(), None), "/x");
         assert_eq!(with_obo("/x".into(), Some("")), "/x");
         assert_eq!(with_obo("/x".into(), Some("  ")), "/x");
+    }
+
+    #[test]
+    fn summarize_conditions_one_and_many() {
+        let one = serde_json::json!([{"field":"from","op":"contains","value":"x@y.com"}]);
+        assert_eq!(
+            summarize_conditions(&one, "and"),
+            "from contains \"x@y.com\""
+        );
+        let many = serde_json::json!([
+            {"field":"from","op":"contains","value":"a"},
+            {"field":"subject","op":"equals","value":"b"}
+        ]);
+        assert_eq!(
+            summarize_conditions(&many, "or"),
+            "from contains \"a\" ou +1"
+        );
+        assert_eq!(
+            summarize_conditions(&serde_json::json!([]), "and"),
+            "qualquer mensagem"
+        );
+    }
+
+    #[test]
+    fn summarize_actions_known_types() {
+        let mv = serde_json::json!([{"type":"move_to_folder","params":{"folder":"Fin"}}]);
+        assert_eq!(summarize_actions(&mv), "mover para \"Fin\"");
+        let fl = serde_json::json!([{"type":"add_flag","params":{"flag":"\\Flagged"}}]);
+        assert_eq!(summarize_actions(&fl), "marcar \"\\Flagged\"");
+        assert_eq!(summarize_actions(&serde_json::json!([])), "nenhuma ação");
     }
 
     #[test]

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Regras de e-mail · Expresso{% endblock %}
+{% block nav %}{% let current = "mail" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Regras automáticas de e-mail</h1>
+    <a class="btn btn-ghost" href="/mail">← E-mail</a>
+  </div>
+  <p class="muted small">
+    As regras são aplicadas às mensagens recebidas, em ordem de prioridade. Cada
+    regra: quando uma condição casa, executa uma ação.
+  </p>
+
+  <section class="card stack" style="margin:1rem 0">
+    <h2>Nova regra</h2>
+    <form method="post" action="/flows" class="compose-form">
+      <label>
+        <span>Nome</span>
+        <input type="text" name="name" required placeholder="ex: Faturas para a pasta Financeiro">
+      </label>
+      <div class="row" style="gap:.5rem;align-items:flex-end;flex-wrap:wrap">
+        <label style="flex:1;min-width:120px">
+          <span>Se o campo</span>
+          <select name="field">
+            <option value="from">Remetente (de)</option>
+            <option value="to">Destinatário (para)</option>
+            <option value="subject">Assunto</option>
+            <option value="folder">Pasta</option>
+          </select>
+        </label>
+        <label style="min-width:120px">
+          <span>operador</span>
+          <select name="op">
+            <option value="contains">contém</option>
+            <option value="equals">é igual a</option>
+            <option value="starts_with">começa com</option>
+          </select>
+        </label>
+        <label style="flex:1;min-width:140px">
+          <span>valor</span>
+          <input type="text" name="value" required placeholder="ex: faturas@">
+        </label>
+      </div>
+      <div class="row" style="gap:.5rem;align-items:flex-end;flex-wrap:wrap">
+        <label style="min-width:160px">
+          <span>Então</span>
+          <select name="action">
+            <option value="move_to_folder">mover para a pasta</option>
+            <option value="add_flag">adicionar marcador</option>
+            <option value="webhook">chamar webhook</option>
+          </select>
+        </label>
+        <label style="flex:1;min-width:160px">
+          <span>valor da ação</span>
+          <input type="text" name="action_value" placeholder="ex: Financeiro / \Flagged / https://…">
+        </label>
+        <button class="btn btn-primary" type="submit">+ Criar regra</button>
+      </div>
+    </form>
+  </section>
+
+  {% if rules.is_empty() %}
+    <div class="empty-state">Nenhuma regra ainda.</div>
+  {% else %}
+  <table class="data-table">
+    <thead><tr><th>Nome</th><th>Quando</th><th>Então</th><th>Ativa</th><th></th></tr></thead>
+    <tbody>
+      {% for r in rules %}
+      <tr>
+        <td>{{ r.name }}</td>
+        <td class="muted"><code>{{ r.when }}</code></td>
+        <td class="muted"><code>{{ r.then }}</code></td>
+        <td>
+          <form method="post" action="/flows/{{ r.id }}/toggle" style="display:inline">
+            <button type="submit" class="btn btn-ghost btn-sm">{% if r.enabled %}✅ Ativa{% else %}⛔ Inativa{% endif %}</button>
+          </form>
+        </td>
+        <td style="text-align:right">
+          <form method="post" action="/flows/{{ r.id }}/delete" style="display:inline"
+                onsubmit="return confirm('Excluir esta regra?')">
+            <button type="submit" class="btn btn-ghost btn-sm">Excluir</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}
