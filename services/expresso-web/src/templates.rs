@@ -271,6 +271,26 @@ pub struct MailThreadTpl {
     pub pinned: bool,
 }
 
+/// One comment on a drive file (author email resolved for display).
+pub struct DriveCommentRow {
+    pub id: String,
+    pub author: String,
+    pub body: String,
+    /// "YYYY-MM-DD HH:MM"
+    pub when: String,
+    /// True when the current user authored it (delete affordance).
+    pub mine: bool,
+}
+
+#[derive(Template)]
+#[template(path = "drive_comments.html")]
+pub struct DriveCommentsTpl {
+    pub me: Me,
+    pub file_id: String,
+    pub file_name: String,
+    pub comments: Vec<DriveCommentRow>,
+}
+
 /// One snoozed message on the `/mail/snoozed` page.
 pub struct SnoozedRow {
     pub message_id: String,

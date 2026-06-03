@@ -26,17 +26,18 @@ use crate::{
         ContactActivityTpl, ContactAddressRow, ContactDiffTpl, ContactEmailRow, ContactFormTpl,
         ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow,
         ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView,
-        DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveContentHit,
-        DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota,
-        DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl,
-        DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow,
-        FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl,
-        LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl,
-        MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl,
-        MessageDetail, MessageListItem, MonthCell, Note, NoteTagStat, NoteVersionRow,
-        NoteVersionsTpl, Notebook, NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl,
-        Resource, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow,
-        SharedNoteRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, VersionRow, WorkingHour,
+        DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow,
+        DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
+        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
+        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
+        Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow,
+        FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias,
+        MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl,
+        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        MessageListItem, MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
+        NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit,
+        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow, TagPairRow,
+        TaskRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -87,6 +88,14 @@ pub fn router(state: AppState) -> Router {
             get(drive_share_page).post(drive_share_create),
         )
         .route("/drive/:id/share/:sid/revoke", post(drive_share_revoke))
+        .route(
+            "/drive/:id/comments",
+            get(drive_comments_page).post(drive_comment_create),
+        )
+        .route(
+            "/drive/:id/comments/:comment_id/delete",
+            post(drive_comment_delete),
+        )
         .route("/drive/:id/versions", get(drive_versions_page))
         .route(
             "/drive/:id/versions/:vno/restore",
@@ -3910,6 +3919,128 @@ async fn drive_versions_page(
         tags,
     }
     .into_response())
+}
+
+#[derive(Deserialize)]
+struct DriveCommentJson {
+    id: String,
+    user_id: String,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    created_at: Option<String>,
+}
+
+/// GET /drive/:id/comments — file comment thread, authors resolved to emails.
+async fn drive_comments_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let file: Option<DriveFile> = get_json(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{enc}/metadata"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    let file_name = file.map(|f| f.name).unwrap_or_else(|| "Arquivo".into());
+    let raw = get_json::<Vec<DriveCommentJson>>(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{enc}/comments"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let mut comments = Vec::with_capacity(raw.len());
+    for c in raw {
+        let mine = c.user_id == me.user_id;
+        let author = resolve_email_by_id(&st, &c.user_id, &headers, &t, &u).await;
+        comments.push(DriveCommentRow {
+            id: c.id,
+            author,
+            body: c.body,
+            when: c
+                .created_at
+                .map(|s| s.replace('T', " ").chars().take(16).collect())
+                .unwrap_or_default(),
+            mine,
+        });
+    }
+    Ok(DriveCommentsTpl {
+        me,
+        file_id: id,
+        file_name,
+        comments,
+    }
+    .into_response())
+}
+
+#[derive(Deserialize)]
+struct DriveCommentForm {
+    body: String,
+}
+
+/// POST /drive/:id/comments — add a comment, then back to the thread.
+async fn drive_comment_create(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<DriveCommentForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let body = f.body.trim();
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    if !body.is_empty() {
+        let _ = post_json(
+            &st,
+            &st.backends.drive,
+            &format!("/api/v1/drive/files/{enc}/comments"),
+            &headers,
+            Some((&t, &u)),
+            &serde_json::json!({ "body": body }),
+        )
+        .await?;
+    }
+    Ok(Redirect::to(&format!("/drive/{enc}/comments")).into_response())
+}
+
+/// POST /drive/:id/comments/:comment_id/delete — delete a comment (author only,
+/// enforced by the backend).
+async fn drive_comment_delete(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, comment_id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let cenc = utf8_percent_encode(&comment_id, NON_ALPHANUMERIC).to_string();
+    let _ = delete_at(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{enc}/comments/{cenc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to(&format!("/drive/{enc}/comments")).into_response())
 }
 
 async fn drive_version_restore(
@@ -9659,6 +9790,24 @@ mod tests {
         let f: BreakoutRemoveForm =
             serde_json::from_value(serde_json::json!({ "user_id": "abc-123" })).expect("parse");
         assert_eq!(f.user_id, "abc-123");
+    }
+
+    #[test]
+    fn drive_comment_json_parses_and_truncates_when() {
+        let c: DriveCommentJson = serde_json::from_value(serde_json::json!({
+            "id": "c1", "user_id": "u9", "body": "looks good",
+            "created_at": "2026-06-03T15:20:30Z"
+        }))
+        .expect("parse");
+        assert_eq!(
+            (c.id.as_str(), c.user_id.as_str(), c.body.as_str()),
+            ("c1", "u9", "looks good")
+        );
+        let when: String = c
+            .created_at
+            .map(|s| s.replace('T', " ").chars().take(16).collect())
+            .unwrap_or_default();
+        assert_eq!(when, "2026-06-03 15:20");
     }
 
     #[test]

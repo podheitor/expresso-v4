@@ -140,6 +140,7 @@
             <a class="btn btn-ghost btn-sm" href="/api/v1/drive/files/{{ f.id }}" title="Download">↓</a>
             <button class="btn btn-ghost btn-sm" onclick="openShareModal('{{ f.id }}','{{ f.name }}')" title="Compartilhar">Compartilhar</button>
             <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/versions" title="Versões">Versões</a>
+            <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/comments" title="Comentários">💬</a>
             {% if f.is_editable() %}<a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/edit" title="Editar online">Editar</a>{% endif %}
             <button class="btn btn-ghost btn-sm drive-lock-btn" data-id="{{ f.id }}"
                     data-locked="{% if f.is_locked() %}1{% else %}0{% endif %}"

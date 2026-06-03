@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Comentários · {{ file_name }} · Drive{% endblock %}
+{% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>💬 Comentários {% if !comments.is_empty() %}<span class="badge" style="vertical-align:middle">{{ comments.len() }}</span>{% endif %}</h1>
+    <a class="btn btn-ghost" href="/drive">← Drive</a>
+  </div>
+  <p class="muted small" style="margin:.25rem 0 .75rem">Arquivo: <strong>{{ file_name }}</strong></p>
+
+  {% if comments.is_empty() %}
+    <div class="empty-state">Nenhum comentário ainda. Seja o primeiro a comentar.</div>
+  {% else %}
+  <ul style="list-style:none;padding:0;margin:0 0 1rem">
+    {% for c in comments %}
+    <li style="display:flex;gap:.6rem;padding:.6rem 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;gap:.5rem;align-items:baseline">
+          <strong>{{ c.author }}</strong>
+          <span class="muted small">{{ c.when }}</span>
+        </div>
+        <div style="white-space:pre-wrap;margin-top:.15rem">{{ c.body }}</div>
+      </div>
+      {% if c.mine %}
+      <form method="post" action="/drive/{{ file_id }}/comments/{{ c.id }}/delete" style="display:inline"
+            onsubmit="return confirm('Apagar este comentário?')">
+        <button class="btn btn-ghost btn-sm" type="submit" title="Apagar comentário">🗑</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <form method="post" action="/drive/{{ file_id }}/comments" class="stack" style="max-width:640px">
+    <textarea class="input" name="body" rows="3" maxlength="4096" required placeholder="Escreva um comentário…"></textarea>
+    <div style="display:flex;justify-content:flex-end">
+      <button class="btn btn-primary" type="submit">Comentar</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
