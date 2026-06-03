@@ -33,7 +33,7 @@ use crate::{
         MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
         MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note,
         Notebook, NotesActivityTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit,
-        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TagPairRow, TasksTpl, VersionRow,
+        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TagPairRow, TaskRow, TasksTpl, VersionRow,
         WorkingHour,
     },
     upstream::{
@@ -267,6 +267,9 @@ pub fn router(state: AppState) -> Router {
         .route("/meet/:id/lobby/:user_id/deny", post(meet_lobby_deny_api))
         // tasks
         .route("/tasks", get(tasks_page))
+        .route("/tasks/create", post(tasks_create_action))
+        .route("/tasks/:id/complete", post(tasks_complete_action))
+        .route("/tasks/:id/delete", post(tasks_delete_action))
         .route("/notes", get(notes_page).post(notes_create_action))
         .route("/notes/tags", get(notes_tags_page))
         .route("/notes/notebooks", post(notes_notebook_create_action))
@@ -6645,6 +6648,27 @@ fn uuid_v4() -> String {
 
 // ─── /tasks ──────────────────────────────────────────────────────────────────
 
+/// Resolve the user's default calendar id (falls back to the first one). Empty
+/// when the user has no calendars.
+async fn default_calendar_id(st: &AppState, headers: &HeaderMap, t: &str, u: &str) -> String {
+    let cals = get_json::<Vec<Calendar>>(
+        st,
+        &st.backends.calendar,
+        "/api/v1/calendars",
+        headers,
+        Some((t, u)),
+    )
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default();
+    cals.iter()
+        .find(|c| c.is_default)
+        .or_else(|| cals.first())
+        .map(|c| c.id.clone())
+        .unwrap_or_default()
+}
+
 async fn tasks_page(
     State(st): State<AppState>,
     headers: HeaderMap,
@@ -6653,7 +6677,148 @@ async fn tasks_page(
     let Some(me) = require_me(&st, &headers).await? else {
         return Ok(login_redirect(&uri).into_response());
     };
-    Ok(askama_axum::IntoResponse::into_response(TasksTpl { me }))
+    let (t, u) = ctx_of(&me);
+    let cal_id = default_calendar_id(&st, &headers, &t, &u).await;
+    let tasks = if cal_id.is_empty() {
+        Vec::new()
+    } else {
+        let enc = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC);
+        get_json::<Vec<TaskRow>>(
+            &st,
+            &st.backends.calendar,
+            &format!("/api/v1/calendars/{enc}/tasks"),
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default()
+    };
+    Ok(askama_axum::IntoResponse::into_response(TasksTpl {
+        me,
+        tasks,
+        cal_id,
+    }))
+}
+
+#[derive(Deserialize)]
+struct TaskCreateForm {
+    summary: String,
+    #[serde(default)]
+    due: String,
+    #[serde(default)]
+    priority: String,
+    cal_id: String,
+}
+
+/// POST /tasks/create — create a server-backed VTODO in the user's calendar.
+async fn tasks_create_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<TaskCreateForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (summary, cal_id) = (f.summary.trim(), f.cal_id.trim());
+    if summary.is_empty() || cal_id.is_empty() {
+        return Ok(Redirect::to("/tasks").into_response());
+    }
+    let mut payload = serde_json::json!({ "summary": summary });
+    // The due input is a date ("YYYY-MM-DD"); make it midnight RFC3339.
+    let due = f.due.trim();
+    if due.len() == 10 {
+        payload["due"] = serde_json::json!(format!("{due}T00:00:00Z"));
+    }
+    if let Ok(p) = f.priority.trim().parse::<i16>() {
+        if (1..=9).contains(&p) {
+            payload["priority"] = serde_json::json!(p);
+        }
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(cal_id, NON_ALPHANUMERIC);
+    let _ = post_json(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/calendars/{enc}/tasks"),
+        &headers,
+        Some((&t, &u)),
+        &payload,
+    )
+    .await?;
+    Ok(Redirect::to("/tasks").into_response())
+}
+
+#[derive(Deserialize)]
+struct TaskActionForm {
+    cal_id: String,
+    /// For complete: "1" marks COMPLETED, "0" reopens to NEEDS-ACTION.
+    #[serde(default)]
+    done: String,
+}
+
+/// POST /tasks/:id/complete — toggle a task's COMPLETED status.
+async fn tasks_complete_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<TaskActionForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let cal_id = f.cal_id.trim();
+    if cal_id.is_empty() {
+        return Ok(Redirect::to("/tasks").into_response());
+    }
+    let status = if f.done == "1" {
+        "COMPLETED"
+    } else {
+        "NEEDS-ACTION"
+    };
+    let (t, u) = ctx_of(&me);
+    let cenc = utf8_percent_encode(cal_id, NON_ALPHANUMERIC);
+    let ienc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = patch_json(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/calendars/{cenc}/tasks/{ienc}"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "status": status }),
+    )
+    .await?;
+    Ok(Redirect::to("/tasks").into_response())
+}
+
+/// POST /tasks/:id/delete — delete a task.
+async fn tasks_delete_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<TaskActionForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let cal_id = f.cal_id.trim();
+    if cal_id.is_empty() {
+        return Ok(Redirect::to("/tasks").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let cenc = utf8_percent_encode(cal_id, NON_ALPHANUMERIC);
+    let ienc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = delete_at(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/calendars/{cenc}/tasks/{ienc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/tasks").into_response())
 }
 
 // ─── /notes ──────────────────────────────────────────────────────────────────
@@ -7767,6 +7932,29 @@ mod tests {
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
         assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn task_row_status_and_helpers() {
+        let mk = |status: &str, prio: i16, due: Option<&str>| crate::templates::TaskRow {
+            id: "1".into(),
+            summary: "x".into(),
+            status: status.into(),
+            priority: prio,
+            due: due.map(String::from),
+        };
+        assert!(mk("COMPLETED", 0, None).is_done());
+        assert!(mk("CANCELLED", 0, None).is_done());
+        assert!(!mk("NEEDS-ACTION", 0, None).is_done());
+        assert_eq!(mk("", 1, None).priority_label(), "Alta");
+        assert_eq!(mk("", 5, None).priority_label(), "Média");
+        assert_eq!(mk("", 9, None).priority_label(), "Baixa");
+        assert_eq!(mk("", 0, None).priority_label(), "");
+        assert_eq!(
+            mk("", 0, Some("2026-06-10T09:00:00Z")).due_date(),
+            "2026-06-10"
+        );
+        assert_eq!(mk("", 0, None).due_date(), "");
     }
 
     #[test]

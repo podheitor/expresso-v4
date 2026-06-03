@@ -1423,10 +1423,49 @@ pub struct MeetRoomTpl {
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
 
+/// One server-backed VTODO task row (subset of the backend Task for display).
+#[derive(Debug, Clone, Deserialize)]
+pub struct TaskRow {
+    pub id: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub priority: i16,
+    #[serde(default)]
+    pub due: Option<String>,
+}
+
+impl TaskRow {
+    pub fn is_done(&self) -> bool {
+        self.status == "COMPLETED" || self.status == "CANCELLED"
+    }
+    /// Date portion of the RFC3339 due, for compact display ("YYYY-MM-DD").
+    pub fn due_date(&self) -> &str {
+        match &self.due {
+            Some(d) if d.len() >= 10 => &d[..10],
+            _ => "",
+        }
+    }
+    pub fn priority_label(&self) -> &'static str {
+        match self.priority {
+            1..=4 => "Alta",
+            5 => "Média",
+            6..=9 => "Baixa",
+            _ => "",
+        }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "tasks.html")]
 pub struct TasksTpl {
     pub me: Me,
+    pub tasks: Vec<TaskRow>,
+    /// The calendar tasks are stored in (the user's default). Empty when the user
+    /// has no calendar yet — the page shows a hint instead of the form.
+    pub cal_id: String,
 }
 
 #[derive(Template)]
