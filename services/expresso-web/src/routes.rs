@@ -2246,11 +2246,19 @@ async fn drive_share_page(
 #[derive(Deserialize)]
 struct ShareCreateForm {
     ttl_hours: i64,
+    #[serde(default)]
+    password: Option<String>,
+    #[serde(default)]
+    max_downloads: Option<i32>,
 }
 
 #[derive(serde::Serialize)]
 struct ShareCreatePayload {
     expires_in_seconds: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    password: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_downloads: Option<i32>,
 }
 
 #[derive(serde::Deserialize)]
@@ -2272,8 +2280,18 @@ async fn drive_share_create(
     };
     let (t, u) = ctx_of(&me);
     let ttl_s = f.ttl_hours.clamp(1, 720) * 3600;
+    // Treat blank password / non-positive download cap as "unset".
+    let password = f
+        .password
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let max_downloads = f.max_downloads.filter(|&n| n > 0);
     let payload = ShareCreatePayload {
         expires_in_seconds: ttl_s,
+        password,
+        max_downloads,
     };
     // Precisamos do corpo de resposta → usa http client direto (não post_json que só retorna status).
     let url = format!(
