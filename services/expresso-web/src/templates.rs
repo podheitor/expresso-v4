@@ -768,11 +768,19 @@ pub struct TagPairRow {
     pub count: i64,
 }
 
+/// One tag with how many of the caller's notes carry it.
+pub struct NoteTagStat {
+    pub tag: String,
+    pub count: i64,
+}
+
 #[derive(Template)]
 #[template(path = "notes_tags.html")]
 pub struct NotesTagsTpl {
     pub me: Me,
     pub pairs: Vec<TagPairRow>,
+    /// Per-tag usage counts (most-used first), for the rename/merge panel.
+    pub stats: Vec<NoteTagStat>,
 }
 
 /// One activity-log entry for an object (note/contact), pre-formatted.

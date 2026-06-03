@@ -7,6 +7,39 @@
     <h1>Tags relacionadas</h1>
     <a class="btn btn-ghost" href="/notes">← Notas</a>
   </div>
+  <h2 style="margin-top:1rem">Gerenciar tags</h2>
+  <p class="muted small">Renomear ou mesclar uma tag afeta todas as suas notas de uma vez.</p>
+  {% if stats.is_empty() %}
+    <div class="empty-state">Nenhuma tag ainda — adicione tags às suas notas.</div>
+  {% else %}
+  <table class="data-table">
+    <thead><tr><th>Tag</th><th>Notas</th><th></th></tr></thead>
+    <tbody>
+      {% for s in stats %}
+      <tr>
+        <td><span class="badge">{{ s.tag }}</span></td>
+        <td class="muted">{{ s.count }}</td>
+        <td style="white-space:nowrap">
+          <form method="post" action="/notes/tags/rename" style="display:inline"
+                onsubmit="var n=prompt('Renomear a tag &quot;{{ s.tag }}&quot; para:','{{ s.tag }}');if(!n)return false;this.new.value=n;return true">
+            <input type="hidden" name="tag" value="{{ s.tag }}">
+            <input type="hidden" name="new" value="">
+            <button class="btn btn-ghost btn-sm" type="submit" title="Renomear em todas as notas">✏ Renomear</button>
+          </form>
+          <form method="post" action="/notes/tags/merge" style="display:inline"
+                onsubmit="var d=prompt('Mesclar &quot;{{ s.tag }}&quot; em qual tag?');if(!d)return false;this.into.value=d;return confirm('Mesclar &quot;{{ s.tag }}&quot; em &quot;'+d+'&quot;? As notas passam a usar a tag de destino.')">
+            <input type="hidden" name="tag" value="{{ s.tag }}">
+            <input type="hidden" name="into" value="">
+            <button class="btn btn-ghost btn-sm" type="submit" title="Mesclar em outra tag">⇲ Mesclar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h2 style="margin-top:1.5rem">Tags relacionadas</h2>
   <p class="muted small">Pares de tags que aparecem juntos nas suas notas, dos mais frequentes aos menos.</p>
   {% if pairs.is_empty() %}
     <div class="empty-state">Nenhum par de tags ainda — adicione tags às suas notas.</div>

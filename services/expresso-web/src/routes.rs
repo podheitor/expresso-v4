@@ -33,7 +33,7 @@ use crate::{
         FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias,
         MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl,
         MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MonthCell, Note, NoteVersionRow, NoteVersionsTpl, Notebook,
+        MessageListItem, MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
         NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit,
         SearchTpl, SecurityTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow, TagPairRow,
         TaskRow, TasksTpl, VersionRow, WorkingHour,
@@ -324,6 +324,8 @@ pub fn router(state: AppState) -> Router {
         .route("/tasks/:id/delete", post(tasks_delete_action))
         .route("/notes", get(notes_page).post(notes_create_action))
         .route("/notes/tags", get(notes_tags_page))
+        .route("/notes/tags/rename", post(notes_tag_rename_action))
+        .route("/notes/tags/merge", post(notes_tag_merge_action))
         .route("/notes/notebooks", post(notes_notebook_create_action))
         .route(
             "/notes/notebooks/:id/rename",
@@ -8063,10 +8065,103 @@ async fn notes_tags_page(
             .unwrap_or(0),
     })
     .collect();
+    let stats = get_json::<Vec<serde_json::Value>>(
+        &st,
+        &st.backends.notes,
+        "/api/v1/notes/tags/stats",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .into_iter()
+    .map(|s| NoteTagStat {
+        tag: s
+            .get("tag")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        count: s
+            .get("count")
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(0),
+    })
+    .collect();
     Ok(askama_axum::IntoResponse::into_response(NotesTagsTpl {
         me,
         pairs,
+        stats,
     }))
+}
+
+#[derive(Deserialize)]
+struct TagRenameForm {
+    tag: String,
+    new: String,
+}
+
+/// POST /notes/tags/rename — rename a tag across all the caller's notes.
+async fn notes_tag_rename_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<TagRenameForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let tag = f.tag.trim();
+    let new = f.new.trim();
+    if tag.is_empty() || new.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "tag and new required").into_response());
+    }
+    let enc = utf8_percent_encode(tag, NON_ALPHANUMERIC);
+    let _ = patch_json(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/tags/{enc}"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "new": new }),
+    )
+    .await?;
+    Ok(Redirect::to("/notes/tags").into_response())
+}
+
+#[derive(Deserialize)]
+struct TagMergeForm {
+    tag: String,
+    into: String,
+}
+
+/// POST /notes/tags/merge — merge a tag into another across the caller's notes.
+async fn notes_tag_merge_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<TagMergeForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let tag = f.tag.trim();
+    let into = f.into.trim();
+    if tag.is_empty() || into.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "tag and into required").into_response());
+    }
+    let enc = utf8_percent_encode(tag, NON_ALPHANUMERIC);
+    let _ = post_json(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/tags/{enc}/merge"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "into": into }),
+    )
+    .await?;
+    Ok(Redirect::to("/notes/tags").into_response())
 }
 
 /// POST /notes — create a note, then redirect to it.
@@ -9453,6 +9548,18 @@ mod tests {
         assert_eq!(p.attendee_email, "a@b.com");
         assert_eq!(fmt_dt(p.proposed_dtstart), "2026-06-10 14:30");
         assert_eq!(fmt_dt(p.proposed_dtend), "");
+    }
+
+    #[test]
+    fn tag_rename_and_merge_forms_deserialize() {
+        let r: TagRenameForm =
+            serde_json::from_value(serde_json::json!({ "tag": "wip", "new": "in-progress" }))
+                .expect("parse");
+        assert_eq!((r.tag.as_str(), r.new.as_str()), ("wip", "in-progress"));
+        let m: TagMergeForm =
+            serde_json::from_value(serde_json::json!({ "tag": "todo", "into": "tasks" }))
+                .expect("parse");
+        assert_eq!((m.tag.as_str(), m.into.as_str()), ("todo", "tasks"));
     }
 
     #[test]
