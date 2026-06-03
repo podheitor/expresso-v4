@@ -23,18 +23,18 @@ use crate::{
         AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent,
         Calendar, CalendarDayTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl,
         ChatAttachment, ChatChannel, ChatMessage, ChatTpl, Contact, ContactActivityTpl,
-        ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl,
-        DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DlqEntry, DlqKindCount,
-        DriveActivityTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
-        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
-        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
-        Event, EventFormTpl, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl,
-        GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl,
-        MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
-        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note,
-        Notebook, NotesActivityTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit,
-        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TagPairRow, TaskRow, TasksTpl, VersionRow,
-        WorkingHour,
+        ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow,
+        ContactVersionsTpl, ContactsTpl, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
+        DlqEntry, DlqKindCount, DriveActivityTpl, DriveContentHit, DriveContentSearchTpl,
+        DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl,
+        DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl,
+        DriveVersionsTpl, Event, EventFormTpl, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder,
+        FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
+        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
+        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        MessageListItem, MonthCell, Note, Notebook, NotesActivityTpl, NotesTagsTpl, NotesTpl,
+        Resource, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow,
+        TagPairRow, TaskRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_body_json, post_empty,
@@ -142,6 +142,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/contacts/:book_id/:id/activity",
             get(contact_activity_page),
+        )
+        .route(
+            "/contacts/:book_id/:id/versions",
+            get(contact_versions_page),
+        )
+        .route(
+            "/contacts/:book_id/:id/versions/:vno/restore",
+            post(contact_version_restore_action),
         )
         .route(
             "/contacts/:book_id/share",
@@ -4786,6 +4794,62 @@ async fn contact_activity_page(
             events,
         },
     ))
+}
+
+/// GET /contacts/:book_id/:id/versions — past vCard revisions of a contact.
+async fn contact_versions_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((book_id, id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc_b = utf8_percent_encode(&book_id, NON_ALPHANUMERIC).to_string();
+    let enc_i = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let versions = get_json::<Vec<ContactVersionRow>>(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/addressbooks/{enc_b}/contacts/{enc_i}/versions"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(
+        ContactVersionsTpl {
+            me,
+            book_id,
+            contact_id: id,
+            versions,
+        },
+    ))
+}
+
+/// POST /contacts/:book_id/:id/versions/:vno/restore — re-apply a past revision.
+async fn contact_version_restore_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((book_id, id, vno)): Path<(String, String, i32)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc_b = utf8_percent_encode(&book_id, NON_ALPHANUMERIC).to_string();
+    let enc_i = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let _ = post_empty(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/addressbooks/{enc_b}/contacts/{enc_i}/versions/{vno}/restore"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to(&format!("/contacts/{enc_b}/{enc_i}/versions")).into_response())
 }
 
 async fn contacts_export_vcf(

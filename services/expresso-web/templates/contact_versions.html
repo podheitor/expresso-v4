@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Histórico do contato · Expresso{% endblock %}
+{% block nav %}{% let current = "contacts" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Histórico de versões {% if !versions.is_empty() %}<span class="badge" style="vertical-align:middle">{{ versions.len() }}</span>{% endif %}</h1>
+    <a class="btn btn-ghost" href="/contacts/{{ book_id }}/{{ contact_id }}/edit">← Voltar ao contato</a>
+  </div>
+  <p class="muted small" style="margin:.25rem 0 .75rem">
+    Cada edição salva guarda o vCard anterior. Restaurar uma versão re-aplica aquele
+    conteúdo (e é reversível: o estado atual é gravado como nova versão antes).
+  </p>
+  {% if versions.is_empty() %}
+    <div class="empty-state">Nenhuma versão anterior — este contato ainda não foi editado.</div>
+  {% else %}
+  <table class="data-table">
+    <thead><tr><th>Versão</th><th>Nome</th><th>Salva em</th><th></th></tr></thead>
+    <tbody>
+      {% for v in versions %}
+      <tr>
+        <td class="mono">#{{ v.version_no }}</td>
+        <td>{{ v.name() }}</td>
+        <td class="muted small">{{ v.created_at }}</td>
+        <td>
+          <form method="post" action="/contacts/{{ book_id }}/{{ contact_id }}/versions/{{ v.version_no }}/restore"
+                style="display:inline" onsubmit="return confirm('Restaurar a versão #{{ v.version_no }}? O estado atual será salvo como nova versão.')">
+            <button class="btn btn-ghost btn-sm" type="submit" title="Restaurar esta versão">↩ Restaurar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

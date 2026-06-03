@@ -754,6 +754,31 @@ pub struct ContactActivityTpl {
     pub events: Vec<ActivityRow>,
 }
 
+/// One past vCard revision of a contact (the version-history list).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ContactVersionRow {
+    pub version_no: i32,
+    #[serde(default)]
+    pub full_name: Option<String>,
+    #[serde(default)]
+    pub created_at: String,
+}
+
+impl ContactVersionRow {
+    pub fn name(&self) -> &str {
+        self.full_name.as_deref().unwrap_or("(sem nome)")
+    }
+}
+
+#[derive(Template)]
+#[template(path = "contact_versions.html")]
+pub struct ContactVersionsTpl {
+    pub me: Me,
+    pub book_id: String,
+    pub contact_id: String,
+    pub versions: Vec<ContactVersionRow>,
+}
+
 #[derive(Template)]
 #[template(path = "drive_activity.html")]
 pub struct DriveActivityTpl {
