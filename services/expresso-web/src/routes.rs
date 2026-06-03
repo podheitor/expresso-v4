@@ -13,7 +13,10 @@ use serde::Deserialize;
 
 use crate::{
     error::WebResult,
-    ical::{build_vcalendar, categories_from_ical, to_rfc3339, valarm_minutes, EventForm},
+    ical::{
+        booked_resources_from_ical, build_vcalendar, categories_from_ical, to_rfc3339,
+        valarm_minutes, EventForm,
+    },
     templates::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
@@ -87,6 +90,10 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/edit", get(drive_edit_page))
         .route("/calendar", get(calendar_page))
         .route("/calendar/freebusy", get(freebusy_page))
+        .route(
+            "/calendar/resources/:id/conflicts",
+            get(resource_conflicts_api),
+        )
         .route("/calendar/:cal_id", get(calendar_month_page))
         .route("/calendar/:cal_id/week", get(calendar_week_page))
         .route("/calendar/:cal_id/day", get(calendar_day_page))
@@ -1272,6 +1279,39 @@ async fn freebusy_page(
         rows,
         queried,
     }))
+}
+
+#[derive(Deserialize)]
+struct ResourceConflictsQuery {
+    from: String,
+    to: String,
+}
+
+/// GET /calendar/resources/:id/conflicts?from=&to= — JSON proxy so the event
+/// form can check a room's availability for the chosen window from the browser.
+async fn resource_conflicts_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(q): Query<ResourceConflictsQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok((StatusCode::UNAUTHORIZED, "não autenticado").into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let from = utf8_percent_encode(q.from.trim(), NON_ALPHANUMERIC);
+    let to = utf8_percent_encode(q.to.trim(), NON_ALPHANUMERIC);
+    let body = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/resources/{enc}/conflicts?from={from}&to={to}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_else(|| serde_json::json!({ "conflicts": [] }));
+    Ok(json_response(&body))
 }
 
 // ─── /contacts ───────────────────────────────────────────────────────────────
@@ -4048,6 +4088,7 @@ async fn event_new_form(
             .format(format_description!("[year]-[month]-[day]"))
             .unwrap()
     });
+    let resources = fetch_resources(&st, &headers, &t, &u).await;
     Ok(EventFormTpl {
         me,
         calendar,
@@ -4061,9 +4102,30 @@ async fn event_new_form(
         attendee_pills: Vec::new(),
         reminders: String::new(),
         categories: String::new(),
+        resources,
+        booked_resources: Vec::new(),
         error: None,
     }
     .into_response())
+}
+
+/// Fetch the tenant's bookable resources for the event form. Best-effort — an
+/// error or missing list yields an empty catalog (the section just hides).
+async fn fetch_resources(st: &AppState, headers: &HeaderMap, t: &str, u: &str) -> Vec<Resource> {
+    let body = get_json::<serde_json::Value>(
+        st,
+        &st.backends.calendar,
+        "/api/v1/resources",
+        headers,
+        Some((t, u)),
+    )
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default();
+    body.get("resources")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default()
 }
 
 fn parse_attendees(raw: &str) -> Vec<String> {
@@ -4267,6 +4329,12 @@ async fn event_edit_form(
             .as_deref()
             .map(categories_from_ical)
             .unwrap_or_default(),
+        resources: fetch_resources(&st, &headers, &t, &u).await,
+        booked_resources: event
+            .ical_raw
+            .as_deref()
+            .map(booked_resources_from_ical)
+            .unwrap_or_default(),
         error: None,
     }
     .into_response())
@@ -4422,6 +4490,7 @@ async fn event_delete_action(
                 attendees: String::new(),
                 reminders: String::new(),
                 categories: String::new(),
+                resources: String::new(),
             };
             let organizer = ev.organizer_email.as_deref().or(Some(me.email.as_str()));
             if let Some(itip) =

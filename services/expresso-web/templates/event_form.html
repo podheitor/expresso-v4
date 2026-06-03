@@ -141,6 +141,24 @@
                placeholder="trabalho, pessoal, reunião (separadas por vírgula)">
       </label>
 
+      {% if !resources.is_empty() %}
+      <!-- Recursos reserváveis (salas / equipamento) -->
+      <fieldset style="display:block;margin-bottom:.75rem;border:1px solid var(--border);border-radius:.4rem;padding:.5rem .75rem">
+        <legend style="font-size:.875rem;padding:0 .3rem">🏢 Reservar recursos</legend>
+        <input type="hidden" name="resources" id="resources-value" value="">
+        {% for r in resources %}
+        <label style="display:flex;align-items:center;gap:.4rem;margin:.2rem 0;font-size:.85rem">
+          <input type="checkbox" class="resource-cb" value="{{ r.email }}"
+                 onchange="updateResources()"
+                 {% if self.is_booked(r.email.as_str()) %}checked{% endif %}>
+          <span>{{ r.name }}{% match r.capacity %}{% when Some with (c) %} <span class="muted small">(até {{ c }})</span>{% when None %}{% endmatch %}</span>
+          <button type="button" class="btn btn-ghost btn-sm" style="margin-left:auto"
+                  onclick="checkResourceFree('{{ r.id }}', this)" title="Verificar disponibilidade no horário">🕑 Livre?</button>
+        </label>
+        {% endfor %}
+      </fieldset>
+      {% endif %}
+
       <label>Convidados <span class="muted">(um email por linha ou separados por vírgula)</span>
         <textarea name="attendees" id="event-attendees-ta" rows="3" placeholder="fulano@expresso.local&#10;ciclano@expresso.local"
                   oninput="updateAttendeeCount(this)">{{ attendees }}</textarea>
@@ -193,6 +211,39 @@
   {% when None %}{% endmatch %}
 </div>
 <script>
+// ── Bookable resources ──────────────────────────────────────────────────────
+function updateResources() {
+  var emails = Array.prototype.map.call(
+    document.querySelectorAll('.resource-cb:checked'), function(cb){ return cb.value; });
+  var hidden = document.getElementById('resources-value');
+  if (hidden) hidden.value = emails.join(',');
+}
+// datetime-local "YYYY-MM-DDTHH:MM" → RFC3339 "…:00Z" for the conflicts query.
+function _localToRfc3339(v) {
+  if (!v) return '';
+  return v.length === 16 ? v + ':00Z' : v + 'Z';
+}
+function checkResourceFree(id, btn) {
+  var s = document.querySelector('input[name="dtstart"]');
+  var e = document.querySelector('input[name="dtend"]');
+  var from = _localToRfc3339(s && s.value), to = _localToRfc3339(e && e.value);
+  if (!from || !to) { alert('Defina início e fim primeiro.'); return; }
+  var orig = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  fetch('/calendar/resources/' + encodeURIComponent(id) +
+        '/conflicts?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to),
+        { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : { conflicts: [] }; })
+    .then(function(d){
+      var n = (d && d.conflicts && d.conflicts.length) || 0;
+      btn.textContent = n === 0 ? '✓ Livre' : ('⚠ ' + n + ' conflito(s)');
+      btn.style.color = n === 0 ? 'var(--ok, green)' : 'var(--danger, #b00)';
+    })
+    .catch(function(){ btn.textContent = orig; })
+    .finally(function(){ btn.disabled = false; });
+}
+// Seed the hidden field from any pre-checked (already-booked) resources on load.
+updateResources();
+
 var _activePreset = '';
 function applyRrulePreset(preset) {
   _activePreset = preset;

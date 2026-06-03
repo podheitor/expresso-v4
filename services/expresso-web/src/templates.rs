@@ -1068,7 +1068,21 @@ pub struct EventFormTpl {
     pub reminders: String,
     /// Comma-separated categories, seeding the form's categories input.
     pub categories: String,
+    /// The tenant's bookable resources, offered as checkboxes.
+    pub resources: Vec<Resource>,
+    /// Emails of resources already booked on this event (seeds the checkboxes on
+    /// edit). Empty on a new event.
+    pub booked_resources: Vec<String>,
     pub error: Option<String>,
+}
+
+impl EventFormTpl {
+    /// Whether a resource email is already booked on this event (case-insensitive).
+    pub fn is_booked(&self, email: &str) -> bool {
+        self.booked_resources
+            .iter()
+            .any(|b| b.eq_ignore_ascii_case(email))
+    }
 }
 
 #[derive(Debug, Clone)]

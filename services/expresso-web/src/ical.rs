@@ -27,6 +27,26 @@ pub struct EventForm {
     /// parses + indexes these from the iCalendar on save.
     #[serde(default)]
     pub categories: String,
+    /// Comma-separated emails of bookable resources (rooms/equipment) to reserve.
+    /// Each is emitted as an `ATTENDEE;CUTYPE=ROOM`; the backend records the
+    /// booking and detects double-bookings.
+    #[serde(default)]
+    pub resources: String,
+}
+
+/// Split a comma/semicolon/whitespace-separated list of resource emails into a
+/// deduped, lowercased list (mirrors attendee parsing, capped to bound output).
+pub fn parse_resource_emails(raw: &str) -> Vec<String> {
+    let mut out: Vec<String> = raw
+        .split(|c: char| c == ',' || c == ';' || c.is_whitespace())
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && s.contains('@'))
+        .map(str::to_ascii_lowercase)
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out.truncate(50);
+    out
 }
 
 /// Normalize a browser `datetime-local` value ("YYYY-MM-DDTHH:MM") to RFC 3339:
@@ -145,6 +165,30 @@ pub fn format_categories(raw: &str) -> String {
         .join(",")
 }
 
+/// Extract the emails of booked resources from an event's iCalendar: every
+/// `ATTENDEE` line carrying `CUTYPE=ROOM` or `CUTYPE=RESOURCE`, read from the
+/// trailing `mailto:`. Lowercased + deduped to seed the edit form's checkboxes.
+pub fn booked_resources_from_ical(ical: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in ical.lines() {
+        let l = line.trim();
+        let upper = l.to_ascii_uppercase();
+        if !upper.starts_with("ATTENDEE") {
+            continue;
+        }
+        if !upper.contains("CUTYPE=ROOM") && !upper.contains("CUTYPE=RESOURCE") {
+            continue;
+        }
+        if let Some(idx) = upper.rfind("MAILTO:") {
+            let email = l[idx + "MAILTO:".len()..].trim().to_ascii_lowercase();
+            if !email.is_empty() && !out.contains(&email) {
+                out.push(email);
+            }
+        }
+    }
+    out
+}
+
 /// Extract CATEGORIES from an event's iCalendar as a comma-separated string for
 /// the edit form. Joins values across multiple CATEGORIES lines.
 pub fn categories_from_ical(ical: &str) -> String {
@@ -222,6 +266,13 @@ pub fn build_vcalendar(
     for a in attendees {
         ical.push_str(&format!(
             "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:{a}\r\n"
+        ));
+    }
+    // Booked resources (rooms/equipment): CUTYPE=ROOM marks them so the backend
+    // records the booking + flags double-bookings.
+    for r in parse_resource_emails(&f.resources) {
+        ical.push_str(&format!(
+            "ATTENDEE;CUTYPE=ROOM;ROLE=NON-PARTICIPANT;RSVP=FALSE:mailto:{r}\r\n"
         ));
     }
     // VALARMs carry reminders into the stored event (and to CalDAV clients).
@@ -318,6 +369,7 @@ mod tests {
             attendees: String::new(),
             reminders: "15".into(),
             categories: "work".into(),
+            resources: String::new(),
         };
         let ical = build_vcalendar("uid-1@x", Some("a@ex.com"), &["b@ex.com".into()], None, &f)
             .expect("valid dates");
@@ -343,6 +395,7 @@ mod tests {
             attendees: String::new(),
             reminders: "15".into(),
             categories: String::new(),
+            resources: String::new(),
         };
         let ical = build_vcalendar("u", None, &[], Some("CANCEL"), &f).expect("valid dates");
         assert!(ical.contains("METHOD:CANCEL"));
@@ -387,7 +440,49 @@ mod tests {
             attendees: String::new(),
             reminders: String::new(),
             categories: String::new(),
+            resources: String::new(),
         };
         assert!(build_vcalendar("u", None, &[], None, &f).is_none());
+    }
+
+    #[test]
+    fn parse_resource_emails_dedups_lowercases_filters() {
+        assert_eq!(
+            parse_resource_emails("Sala1@x.com, sala1@x.com; notanemail , sala2@x.com"),
+            vec!["sala1@x.com", "sala2@x.com"]
+        );
+        assert!(parse_resource_emails("").is_empty());
+        assert!(parse_resource_emails("nope").is_empty());
+    }
+
+    #[test]
+    fn build_vcalendar_emits_room_attendee_for_resources() {
+        let f = EventForm {
+            summary: "Reunião".into(),
+            location: String::new(),
+            description: String::new(),
+            dtstart: "2026-06-10T09:00".into(),
+            dtend: "2026-06-10T10:00".into(),
+            attendees: String::new(),
+            reminders: String::new(),
+            categories: String::new(),
+            resources: "sala1@x.com".into(),
+        };
+        let ical = build_vcalendar("u", None, &[], None, &f).expect("valid");
+        assert!(ical
+            .contains("ATTENDEE;CUTYPE=ROOM;ROLE=NON-PARTICIPANT;RSVP=FALSE:mailto:sala1@x.com"));
+    }
+
+    #[test]
+    fn booked_resources_from_ical_extracts_room_attendees() {
+        let ical = "BEGIN:VEVENT\r\n\
+                    ATTENDEE;ROLE=REQ-PARTICIPANT:mailto:bob@x.com\r\n\
+                    ATTENDEE;CUTYPE=ROOM;ROLE=NON-PARTICIPANT:mailto:Sala1@x.com\r\n\
+                    ATTENDEE;CUTYPE=RESOURCE:mailto:projetor@x.com\r\n\
+                    END:VEVENT\r\n";
+        let r = booked_resources_from_ical(ical);
+        assert_eq!(r, vec!["sala1@x.com", "projetor@x.com"]);
+        // a plain attendee is not a resource
+        assert!(!r.contains(&"bob@x.com".to_string()));
     }
 }
