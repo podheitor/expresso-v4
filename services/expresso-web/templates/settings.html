@@ -305,19 +305,21 @@
         {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
         <form class="compose-form" method="post" action="/settings/notifications">
           <div class="subcard stack">
-            <h3>E-mail</h3>
+            <h3>Eventos notificados</h3>
+            <p class="muted small">Estas preferências são salvas no servidor e valem em qualquer dispositivo.</p>
             <label class="checkbox-row">
-              <input type="checkbox" name="notify_new_mail" value="1" checked>
-              <span>Notificar ao receber novo e-mail</span>
+              <input type="checkbox" name="notify_new_mail" value="1"{% if notify_new_mail %} checked{% endif %}>
+              <span>Novo e-mail recebido</span>
             </label>
             <label class="checkbox-row">
-              <input type="checkbox" name="notify_calendar" value="1" checked>
-              <span>Convites de calendário</span>
+              <input type="checkbox" name="notify_flags_changed" value="1"{% if notify_flags_changed %} checked{% endif %}>
+              <span>Alteração de marcadores (lido/sinalizado)</span>
             </label>
             <label class="checkbox-row">
-              <input type="checkbox" name="notify_shared" value="1">
-              <span>Arquivos e agendas compartilhadas comigo</span>
+              <input type="checkbox" name="notify_folder_updated" value="1"{% if notify_folder_updated %} checked{% endif %}>
+              <span>Atualização de pasta</span>
             </label>
+            <div class="form-actions"><button class="btn btn-primary" type="submit">Salvar</button></div>
           </div>
           <div class="subcard stack">
             <h3>Notificações do navegador</h3>

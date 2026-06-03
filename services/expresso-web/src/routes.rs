@@ -5965,12 +5965,13 @@ struct AutoreplyForm {
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code)] // notification-pref form fields accepted from the wire
 struct NotificationsForm {
+    #[serde(default)]
     notify_new_mail: Option<String>,
-    notify_calendar: Option<String>,
-    notify_shared: Option<String>,
-    browser_push: Option<String>,
+    #[serde(default)]
+    notify_flags_changed: Option<String>,
+    #[serde(default)]
+    notify_folder_updated: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -6096,6 +6097,34 @@ async fn settings_page(
         build_working_days(&[])
     };
 
+    // Notification preferences (per-kind; absent kind = enabled by default).
+    let (mut notify_new_mail, mut notify_flags_changed, mut notify_folder_updated) =
+        (true, true, true);
+    if tab == "notifications" {
+        if let Some(v) = get_json::<serde_json::Value>(
+            &st,
+            &st.backends.notifications,
+            "/api/v1/notifications/preferences",
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        {
+            if let Some(arr) = v.get("preferences").and_then(|p| p.as_array()) {
+                for row in arr {
+                    let kind = row.get("kind").and_then(|k| k.as_str()).unwrap_or("");
+                    let enabled = row.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
+                    match kind {
+                        "new_mail" => notify_new_mail = enabled,
+                        "flags_changed" => notify_flags_changed = enabled,
+                        "folder_updated" => notify_folder_updated = enabled,
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
     // Load tenant email aliases only on the aliases tab.
     let aliases = if tab == "aliases" {
         get_json::<Vec<MailAlias>>(
@@ -6127,6 +6156,9 @@ async fn settings_page(
         sieve_error,
         aliases,
         working_days,
+        notify_new_mail,
+        notify_flags_changed,
+        notify_folder_updated,
         me,
     }))
 }
@@ -6240,12 +6272,30 @@ async fn settings_notifications_save(
     State(st): State<AppState>,
     headers: HeaderMap,
     uri: Uri,
-    Form(_f): Form<NotificationsForm>,
+    Form(f): Form<NotificationsForm>,
 ) -> WebResult<Response> {
-    let Some(_me) = require_me(&st, &headers).await? else {
+    let Some(me) = require_me(&st, &headers).await? else {
         return Ok(login_redirect(&uri).into_response());
     };
-    // Notification preferences are stored client-side (no dedicated backend endpoint)
+    let (t, u) = ctx_of(&me);
+    // A checkbox present in the form = enabled; absent = disabled. PUT each kind
+    // (the backend stores one row per kind; absent row = enabled by default).
+    let kinds = [
+        ("new_mail", f.notify_new_mail.is_some()),
+        ("flags_changed", f.notify_flags_changed.is_some()),
+        ("folder_updated", f.notify_folder_updated.is_some()),
+    ];
+    for (kind, enabled) in kinds {
+        let _ = put_json(
+            &st,
+            &st.backends.notifications,
+            "/api/v1/notifications/preferences",
+            &headers,
+            Some((&t, &u)),
+            &serde_json::json!({ "kind": kind, "enabled": enabled }),
+        )
+        .await;
+    }
     Ok(Redirect::to("/settings?tab=notifications&flash=Preferências+salvas").into_response())
 }
 

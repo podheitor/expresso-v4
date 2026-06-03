@@ -1301,6 +1301,10 @@ pub struct SettingsTpl {
     /// One row per weekday (Mon..Sun), with the configured window as HH:MM
     /// strings (empty when that day is off).
     pub working_days: Vec<WorkingDayRow>,
+    /// Server-backed notification toggles (default true when unset).
+    pub notify_new_mail: bool,
+    pub notify_flags_changed: bool,
+    pub notify_folder_updated: bool,
 }
 
 /// A weekday row for the working-hours editor (times pre-formatted as HH:MM).
