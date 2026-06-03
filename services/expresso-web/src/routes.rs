@@ -223,6 +223,12 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/meet/:id/polls/:poll_id", get(meet_poll_get_api))
         .route("/meet/:id/polls/:poll_id/vote", post(meet_poll_vote_api))
+        .route("/meet/:id/lobby", get(meet_lobby_list_api))
+        .route(
+            "/meet/:id/lobby/:user_id/approve",
+            post(meet_lobby_approve_api),
+        )
+        .route("/meet/:id/lobby/:user_id/deny", post(meet_lobby_deny_api))
         // tasks
         .route("/tasks", get(tasks_page))
         .route("/notes", get(notes_page).post(notes_create_action))
@@ -6120,6 +6126,89 @@ async fn meet_poll_vote_api(
         &headers,
         Some((&t, &u)),
         &serde_json::json!({ "option_idx": f.option_idx }),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+// ── Meet lobby (waiting room) — moderator approval ──
+
+/// GET /meet/:id/lobby — waiting users, each resolved to an email for display.
+async fn meet_lobby_list_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{id}/lobby"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or(serde_json::json!({ "waiting": [] }));
+    // Resolve user ids to emails so the moderator sees who's waiting.
+    let mut waiting = Vec::new();
+    if let Some(arr) = v.get("waiting").and_then(|w| w.as_array()) {
+        for entry in arr {
+            if let Some(uid) = entry.get("user_id").and_then(|x| x.as_str()) {
+                let email = resolve_email_by_id(&st, uid, &headers, &t, &u).await;
+                waiting.push(serde_json::json!({ "user_id": uid, "email": email }));
+            }
+        }
+    }
+    Ok(json_response(&serde_json::json!({ "waiting": waiting })))
+}
+
+/// POST /meet/:id/lobby/:user_id/approve — admit a waiting user (moderator).
+async fn meet_lobby_approve_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, user_id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let status = post_empty(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{id}/lobby/approve/{user_id}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// POST /meet/:id/lobby/:user_id/deny — remove a waiting user (moderator).
+async fn meet_lobby_deny_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, user_id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let status = delete_at(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{id}/lobby/{user_id}"),
+        &headers,
+        Some((&t, &u)),
     )
     .await?;
     Ok(StatusCode::from_u16(status)

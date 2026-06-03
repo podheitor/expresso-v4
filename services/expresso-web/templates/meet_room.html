@@ -35,6 +35,7 @@
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')" title="Chat da reunião">💬</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
       <button class="btn btn-ghost btn-sm" onclick="openPollsPanel()" title="Enquetes">📊</button>
+      {% if is_moderator %}<button class="btn btn-ghost btn-sm" onclick="openLobbyPanel()" title="Sala de espera">🚪 <span id="lobby-badge" class="badge" style="display:none"></span></button>{% endif %}
       {% match meeting %}{% when Some with (m) %}{% match m.recording_url %}
         {% when Some with (url) %}<a class="btn btn-ghost btn-sm" href="{{ url }}" target="_blank" title="Ver gravação">▶ Gravação</a>{% when None %}{% endmatch %}{% when None %}{% endmatch %}
       {% if is_moderator %}
@@ -288,6 +289,17 @@
       </div>
       {% endif %}
     </aside>
+
+    {% if is_moderator %}
+    <aside class="meet-side-panel" id="panel-lobby" style="display:none">
+      <div class="meet-side-panel-header">
+        <span>Sala de espera</span>
+        <button class="btn btn-ghost btn-sm" onclick="loadLobby()" title="Atualizar">↻</button>
+        <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-lobby')">✕</button>
+      </div>
+      <div id="meet-lobby-list" style="flex:1;overflow:auto;padding:.5rem"></div>
+    </aside>
+    {% endif %}
   </div>
 </div>
 
@@ -365,6 +377,52 @@ function createPoll() {
       } else alert('Não foi possível criar a enquete.');
     }).catch(function(){ alert('Falha de rede.'); });
 }
+
+// ── Meet lobby / waiting room (moderator) ──
+function openLobbyPanel() {
+  var el = document.getElementById('panel-lobby');
+  if (el) { el.style.display = 'flex'; loadLobby(); }
+}
+function loadLobby() {
+  var box = document.getElementById('meet-lobby-list');
+  if (!box) return;
+  fetch('/meet/' + encodeURIComponent(_pollMeetingId) + '/lobby', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : { waiting: [] }; })
+    .then(function(d) {
+      var w = (d && d.waiting) || [];
+      _updateLobbyBadge(w.length);
+      if (!w.length) { box.innerHTML = '<p class="muted small" style="padding:.5rem">Ninguém aguardando.</p>'; return; }
+      box.innerHTML = w.map(function(e){
+        var who = _escPoll(e.email || e.user_id);
+        return '<div class="subcard" style="padding:.4rem;margin-bottom:.35rem;display:flex;gap:.3rem;align-items:center">' +
+          '<span style="flex:1">' + who + '</span>' +
+          '<button class="btn btn-primary btn-sm" onclick="lobbyAct(\'' + e.user_id + '\',\'approve\')">Admitir</button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="lobbyAct(\'' + e.user_id + '\',\'deny\')">Recusar</button>' +
+          '</div>';
+      }).join('');
+    }).catch(function(){ box.innerHTML = '<p class="muted small">Falha ao carregar.</p>'; });
+}
+function _updateLobbyBadge(n) {
+  var b = document.getElementById('lobby-badge');
+  if (!b) return;
+  if (n > 0) { b.textContent = n; b.style.display = ''; } else { b.style.display = 'none'; }
+}
+function lobbyAct(uid, action) {
+  fetch('/meet/' + encodeURIComponent(_pollMeetingId) + '/lobby/' + encodeURIComponent(uid) + '/' + action,
+    { method: 'POST', credentials: 'include' })
+    .then(function(r){ if (r.ok) loadLobby(); else alert('Ação falhou.'); })
+    .catch(function(){ alert('Falha de rede.'); });
+}
+{% if is_moderator %}
+// Poll the lobby every 15s so the moderator sees a badge for new arrivals.
+setInterval(function(){
+  fetch('/meet/' + encodeURIComponent(_pollMeetingId) + '/lobby', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){ if (d && d.waiting) _updateLobbyBadge(d.waiting.length); })
+    .catch(function(){});
+}, 15000);
+{% endif %}
+
 // Esc closes any open side-panel (chat/participants/whiteboard/recordings)
 document.addEventListener('keydown', function(e) {
   var t = (e.target && e.target.tagName) || '';
