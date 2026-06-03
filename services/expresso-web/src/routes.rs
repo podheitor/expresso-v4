@@ -3273,6 +3273,10 @@ struct EventForm {
     /// "15,60"). Each becomes a VALARM with a relative `-PT{m}M` trigger.
     #[serde(default)]
     reminders: String,
+    /// Comma-separated event categories (RFC 5545 CATEGORIES). The backend
+    /// parses + indexes these from the iCalendar on save.
+    #[serde(default)]
+    categories: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -3328,6 +3332,7 @@ async fn event_new_form(
         attendees: String::new(),
         attendee_pills: Vec::new(),
         reminders: String::new(),
+        categories: String::new(),
         error: None,
     }
     .into_response())
@@ -3423,6 +3428,42 @@ fn parse_neg_duration_minutes(body: &str) -> Option<u32> {
     }
 }
 
+/// Normalize a comma-separated categories input into a single RFC 5545
+/// CATEGORIES value: trim each, drop blanks, escape commas/backslashes/newlines,
+/// cap at 32 to bound the line. Empty when nothing usable.
+fn format_categories(raw: &str) -> String {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .take(32)
+        .map(escape_ical)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// Extract CATEGORIES from an event's iCalendar as a comma-separated string for
+/// the edit form. Joins values across multiple CATEGORIES lines.
+fn categories_from_ical(ical: &str) -> String {
+    let mut cats: Vec<String> = Vec::new();
+    for line in ical.lines() {
+        let line = line.trim_start();
+        if let Some(rest) = line
+            .strip_prefix("CATEGORIES:")
+            .or_else(|| line.strip_prefix("CATEGORIES;"))
+        {
+            // For the `;PARAM:val` shape, take after the first ':'.
+            let val = rest.split_once(':').map_or(rest, |(_, v)| v);
+            for c in val.split(',') {
+                let c = c.trim().replace("\\,", ",").replace("\\\\", "\\");
+                if !c.is_empty() {
+                    cats.push(c);
+                }
+            }
+        }
+    }
+    cats.join(", ")
+}
+
 fn build_vcalendar(
     uid: &str,
     organizer_email: Option<&str>,
@@ -3462,6 +3503,10 @@ fn build_vcalendar(
             "DESCRIPTION:{}\r\n",
             escape_ical(f.description.trim())
         ));
+    }
+    let cats = format_categories(&f.categories);
+    if !cats.is_empty() {
+        ical.push_str(&format!("CATEGORIES:{cats}\r\n"));
     }
     if let Some(email) = organizer_email {
         if !email.is_empty() {
@@ -3621,6 +3666,11 @@ async fn event_edit_form(
             .as_deref()
             .map(valarm_minutes)
             .unwrap_or_default(),
+        categories: event
+            .ical_raw
+            .as_deref()
+            .map(categories_from_ical)
+            .unwrap_or_default(),
         error: None,
     }
     .into_response())
@@ -3764,6 +3814,7 @@ async fn event_delete_action(
                     .unwrap_or_default(),
                 attendees: String::new(),
                 reminders: String::new(),
+                categories: String::new(),
             };
             let organizer = ev.organizer_email.as_deref().or(Some(me.email.as_str()));
             if let Some(itip) =
@@ -6579,6 +6630,23 @@ mod tests {
         assert_eq!(with_obo("/x".into(), None), "/x");
         assert_eq!(with_obo("/x".into(), Some("")), "/x");
         assert_eq!(with_obo("/x".into(), Some("  ")), "/x");
+    }
+
+    #[test]
+    fn format_categories_trims_and_filters() {
+        assert_eq!(format_categories(" work , , personal "), "work,personal");
+        assert_eq!(format_categories(""), "");
+        assert_eq!(format_categories("  ,  ,  "), "");
+        // a semicolon within a category is escaped (it's not a separator here)
+        assert_eq!(format_categories("a;b"), "a\\;b");
+    }
+
+    #[test]
+    fn categories_from_ical_extracts_and_joins() {
+        let ical = "BEGIN:VEVENT\r\nCATEGORIES:work,personal\r\nEND:VEVENT\r\n";
+        assert_eq!(categories_from_ical(ical), "work, personal");
+        assert_eq!(categories_from_ical("CATEGORIES:solo\r\n"), "solo");
+        assert_eq!(categories_from_ical("SUMMARY:x\r\n"), "");
     }
 
     #[test]

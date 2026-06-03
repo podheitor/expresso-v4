@@ -918,6 +918,8 @@ pub struct EventFormTpl {
     /// Reminder lead times in minutes, comma-separated (seeds the form's
     /// reminder rows). Empty on a new event.
     pub reminders: String,
+    /// Comma-separated categories, seeding the form's categories input.
+    pub categories: String,
     pub error: Option<String>,
 }
 

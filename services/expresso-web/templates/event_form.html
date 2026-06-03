@@ -134,6 +134,13 @@
         <input type="hidden" name="reminders" id="reminders-value">
       </div>
 
+      <!-- Categorias -->
+      <label style="display:block;margin-bottom:.75rem">
+        <span style="font-size:.875rem">🏷 Categorias</span>
+        <input type="text" name="categories" value="{{ categories }}"
+               placeholder="trabalho, pessoal, reunião (separadas por vírgula)">
+      </label>
+
       <label>Convidados <span class="muted">(um email por linha ou separados por vírgula)</span>
         <textarea name="attendees" id="event-attendees-ta" rows="3" placeholder="fulano@expresso.local&#10;ciclano@expresso.local"
                   oninput="updateAttendeeCount(this)">{{ attendees }}</textarea>
