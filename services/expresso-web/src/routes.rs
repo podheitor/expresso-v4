@@ -30,11 +30,11 @@ use crate::{
         DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl,
         DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow,
         FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl,
-        LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
-        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MonthCell, Note, Notebook, NotesActivityTpl, NotesTagsTpl, NotesTpl,
-        Resource, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow,
-        TagPairRow, TaskRow, TasksTpl, VersionRow, WorkingHour,
+        LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl,
+        MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl,
+        MessageDetail, MessageListItem, MonthCell, Note, Notebook, NotesActivityTpl, NotesTagsTpl,
+        NotesTpl, Resource, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow,
+        SnoozedRow, TagPairRow, TaskRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -213,7 +213,9 @@ pub fn router(state: AppState) -> Router {
         .route("/flows/:id/delete", post(flow_delete_action))
         .route("/mail/:id/move", post(mail_move_action))
         .route("/mail/:id/delete", post(mail_delete_action))
+        .route("/mail/snoozed", get(mail_snoozed_page))
         .route("/mail/:id/snooze", post(mail_snooze_action))
+        .route("/mail/:id/unsnooze", post(mail_unsnooze_action))
         // mail folder management
         .route("/mail/folders/create", post(mail_folder_create_action))
         .route("/mail/folders/rename", post(mail_folder_rename_action))
@@ -2733,6 +2735,110 @@ async fn mail_snooze_action(
         &SnoozePayload {
             snooze_until: f.snooze_until.trim(),
         },
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+#[derive(Deserialize)]
+struct SnoozeRecord {
+    message_id: String,
+    snooze_until: String,
+}
+
+/// GET /mail/snoozed — list messages snoozed by the current user, each with its
+/// wake time, subject/sender (best-effort fetch), and open/wake-now actions.
+async fn mail_snoozed_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let folders = dedup_folders(
+        get_json::<Vec<Folder>>(
+            &st,
+            &st.backends.mail,
+            "/api/v1/mail/folders",
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default(),
+    );
+    let records = get_json::<Vec<SnoozeRecord>>(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/snoozed",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+
+    let mut rows = Vec::with_capacity(records.len());
+    for rec in records {
+        let enc = utf8_percent_encode(&rec.message_id, NON_ALPHANUMERIC);
+        let detail = get_json::<MessageDetail>(
+            &st,
+            &st.backends.mail,
+            &format!("/api/v1/mail/messages/{enc}"),
+            &headers,
+            Some((&t, &u)),
+        )
+        .await
+        .ok()
+        .flatten();
+        let (subject, from) = detail
+            .map(|d| {
+                (
+                    d.subject.unwrap_or_else(|| "(sem assunto)".into()),
+                    d.from_name.or(d.from_addr).unwrap_or_default(),
+                )
+            })
+            .unwrap_or_else(|| ("(mensagem indisponível)".into(), String::new()));
+        rows.push(SnoozedRow {
+            message_id: rec.message_id,
+            wake_at: rec
+                .snooze_until
+                .replace('T', " ")
+                .chars()
+                .take(16)
+                .collect(),
+            subject,
+            from,
+        });
+    }
+
+    Ok(askama_axum::IntoResponse::into_response(MailSnoozedTpl {
+        me,
+        folders,
+        rows,
+    }))
+}
+
+/// POST /mail/:id/unsnooze — cancel a message's snooze (wake it now).
+async fn mail_unsnooze_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = delete_at(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/messages/{enc}/snooze"),
+        &headers,
+        Some((&t, &u)),
     )
     .await?;
     Ok(StatusCode::from_u16(status)
@@ -8994,6 +9100,17 @@ mod tests {
         let f: BreakoutRemoveForm =
             serde_json::from_value(serde_json::json!({ "user_id": "abc-123" })).expect("parse");
         assert_eq!(f.user_id, "abc-123");
+    }
+
+    #[test]
+    fn snooze_record_deserializes_id_and_until() {
+        let r: SnoozeRecord = serde_json::from_value(serde_json::json!({
+            "message_id": "m-1", "snooze_until": "2026-06-04T09:30:00Z"
+        }))
+        .expect("parse");
+        assert_eq!(r.message_id, "m-1");
+        let wake: String = r.snooze_until.replace('T', " ").chars().take(16).collect();
+        assert_eq!(wake, "2026-06-04 09:30");
     }
 
     #[test]

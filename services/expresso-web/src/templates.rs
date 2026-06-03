@@ -271,6 +271,23 @@ pub struct MailThreadTpl {
     pub pinned: bool,
 }
 
+/// One snoozed message on the `/mail/snoozed` page.
+pub struct SnoozedRow {
+    pub message_id: String,
+    /// "YYYY-MM-DD HH:MM" the message returns to the inbox.
+    pub wake_at: String,
+    pub subject: String,
+    pub from: String,
+}
+
+#[derive(Template)]
+#[template(path = "mail_snoozed.html")]
+pub struct MailSnoozedTpl {
+    pub me: Me,
+    pub folders: Vec<Folder>,
+    pub rows: Vec<SnoozedRow>,
+}
+
 // ─── Drive ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Clone)]
