@@ -42,7 +42,20 @@
       </tbody>
     </table>
     <p class="muted small" style="margin-top:.5rem">{{ rows.len() }} resultado(s) (máx. 100).</p>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="exportArchive()"
+            title="Baixar todas as mensagens correspondentes como ZIP">⬇ Exportar resultados (ZIP)</button>
     {% endif %}
   {% endif %}
 </div>
+<script>
+// Build the export URL from the current filter fields and trigger the download.
+function exportArchive() {
+  var qs = new URLSearchParams();
+  ['subject','from_addr','to_addr'].forEach(function(n){
+    var el = document.querySelector('[name="' + n + '"]');
+    if (el && el.value.trim()) qs.set(n, el.value.trim());
+  });
+  window.location.href = '/compliance/archive/export?' + qs.toString();
+}
+</script>
 {% endblock %}

@@ -249,6 +249,7 @@ pub fn router(state: AppState) -> Router {
         .route("/flows", get(flows_page).post(flow_create_action))
         .route("/flows/reorder", post(flow_reorder_action))
         .route("/compliance/archive", get(compliance_archive_page))
+        .route("/compliance/archive/export", get(compliance_archive_export))
         .route(
             "/flows/:id/edit",
             get(flow_edit_page).post(flow_edit_action),
@@ -3707,6 +3708,61 @@ async fn compliance_archive_page(
             queried,
         },
     ))
+}
+
+/// GET /compliance/archive/export — download a ZIP of the archived messages
+/// matching the current search filters (e-discovery export). Proxies the
+/// compliance backend's ZIP export, streaming the bytes through.
+async fn compliance_archive_export(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<ArchiveQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let mut qs: Vec<String> = Vec::new();
+    for (k, val) in [
+        ("subject", &q.subject),
+        ("from_addr", &q.from_addr),
+        ("to_addr", &q.to_addr),
+    ] {
+        if let Some(v) = val.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            qs.push(format!("{k}={}", utf8_percent_encode(v, NON_ALPHANUMERIC)));
+        }
+    }
+    let query = if qs.is_empty() {
+        String::new()
+    } else {
+        format!("?{}", qs.join("&"))
+    };
+    let (status, ct, _cd, body) = get_bytes(
+        &st,
+        &st.backends.compliance,
+        &format!("/api/v1/compliance/archive/export{query}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    if !(200..300).contains(&status) {
+        return Ok((StatusCode::BAD_GATEWAY, "Falha ao exportar.").into_response());
+    }
+    Ok((
+        [
+            (
+                header::CONTENT_TYPE,
+                ct.unwrap_or_else(|| "application/zip".into()),
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=\"compliance-export.zip\"".to_string(),
+            ),
+        ],
+        body,
+    )
+        .into_response())
 }
 
 // ─── /mail/:id/move ──────────────────────────────────────────────────────────
