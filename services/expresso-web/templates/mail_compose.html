@@ -17,7 +17,16 @@
     <form method="post" action="/mail/compose" class="compose-form" id="compose-form" enctype="multipart/form-data">
       <label>
         <span>De</span>
+        {% if send_as.is_empty() %}
         <input type="email" name="from" value="{{ me.email }}" readonly>
+        {% else %}
+        <select name="from">
+          <option value="{{ me.email }}">{{ me.email }}</option>
+          {% for addr in send_as %}
+          <option value="{{ addr }}">{{ addr }} (em nome de)</option>
+          {% endfor %}
+        </select>
+        {% endif %}
       </label>
       <!-- To field with pill chips -->
       <div class="compose-recipients-row">

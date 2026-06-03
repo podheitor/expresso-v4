@@ -234,6 +234,9 @@ pub struct MailComposeTpl {
     pub prefill_to: String,
     pub prefill_subject: String,
     pub prefill_body: String,
+    /// Additional From addresses the caller may send as (owners who granted a
+    /// SEND delegation). Empty for most users → the From stays a fixed field.
+    pub send_as: Vec<String>,
 }
 
 #[derive(Template)]

@@ -1152,12 +1152,35 @@ async fn mail_compose_page(
             (q.to.unwrap_or_default(), String::new(), String::new())
         };
 
+    // "Send as": owners who granted this user a SEND delegation. Resolve their
+    // ids to emails so they can be picked as the From address.
+    let send_as = {
+        let to_me = get_json::<Vec<DelegationRaw>>(
+            &st,
+            &st.backends.mail,
+            "/api/v1/mail/delegations/to-me",
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default();
+        let mut out = Vec::new();
+        for d in to_me
+            .iter()
+            .filter(|d| d.access.eq_ignore_ascii_case("SEND"))
+        {
+            out.push(resolve_email_by_id(&st, &d.owner_id, &headers, &t, &u).await);
+        }
+        out
+    };
+
     Ok(MailComposeTpl {
         me,
         error: None,
         prefill_to,
         prefill_subject,
         prefill_body,
+        send_as,
     }
     .into_response())
 }
@@ -1207,6 +1230,7 @@ async fn mail_compose_action(
             prefill_to: f.to.clone(),
             prefill_subject: f.subject.clone(),
             prefill_body: f.body_text.clone(),
+            send_as: Vec::new(),
         }
         .into_response());
     }
@@ -1235,6 +1259,7 @@ async fn mail_compose_action(
             prefill_to: String::new(),
             prefill_subject: String::new(),
             prefill_body: String::new(),
+            send_as: Vec::new(),
         }
         .into_response())
     }
