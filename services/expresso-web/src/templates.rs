@@ -671,6 +671,20 @@ pub struct DriveFileTag {
     pub tag: String,
 }
 
+/// A co-occurring tag pair for the notes tag-relations page.
+pub struct TagPairRow {
+    pub tag_a: String,
+    pub tag_b: String,
+    pub count: i64,
+}
+
+#[derive(Template)]
+#[template(path = "notes_tags.html")]
+pub struct NotesTagsTpl {
+    pub me: Me,
+    pub pairs: Vec<TagPairRow>,
+}
+
 /// One activity-log entry for an object (note/contact), pre-formatted.
 pub struct ActivityRow {
     pub action: String,

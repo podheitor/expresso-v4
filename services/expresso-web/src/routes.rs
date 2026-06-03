@@ -26,8 +26,9 @@ use crate::{
         FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
         MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
         MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MonthCell, Note, NotesActivityTpl, NotesTpl, SearchGroup, SearchHit,
-        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TasksTpl, VersionRow, WorkingHour,
+        MessageListItem, MonthCell, Note, NotesActivityTpl, NotesTagsTpl, NotesTpl, SearchGroup,
+        SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TagPairRow, TasksTpl, VersionRow,
+        WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
@@ -247,6 +248,7 @@ pub fn router(state: AppState) -> Router {
         // tasks
         .route("/tasks", get(tasks_page))
         .route("/notes", get(notes_page).post(notes_create_action))
+        .route("/notes/tags", get(notes_tags_page))
         .route("/notes/:id", post(notes_edit_action))
         .route("/notes/:id/delete", post(notes_delete_action))
         .route("/notes/:id/activity", get(notes_activity_page))
@@ -6641,6 +6643,50 @@ fn activity_row_of(e: serde_json::Value) -> ActivityRow {
             .unwrap_or("")
             .to_string(),
     }
+}
+
+/// GET /notes/tags — tag relationships: pairs of tags that appear together on
+/// the caller's notes, most-co-occurring first.
+async fn notes_tags_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let pairs = get_json::<Vec<serde_json::Value>>(
+        &st,
+        &st.backends.notes,
+        "/api/v1/notes/tags/co-occurrence?limit=100",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .into_iter()
+    .map(|p| TagPairRow {
+        tag_a: p
+            .get("tag_a")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        tag_b: p
+            .get("tag_b")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        count: p
+            .get("count")
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(0),
+    })
+    .collect();
+    Ok(askama_axum::IntoResponse::into_response(NotesTagsTpl {
+        me,
+        pairs,
+    }))
 }
 
 /// POST /notes — create a note, then redirect to it.

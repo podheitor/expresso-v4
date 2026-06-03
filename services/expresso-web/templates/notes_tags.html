@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Tags relacionadas · Notas · Expresso{% endblock %}
+{% block nav %}{% let current = "notes" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Tags relacionadas</h1>
+    <a class="btn btn-ghost" href="/notes">← Notas</a>
+  </div>
+  <p class="muted small">Pares de tags que aparecem juntos nas suas notas, dos mais frequentes aos menos.</p>
+  {% if pairs.is_empty() %}
+    <div class="empty-state">Nenhum par de tags ainda — adicione tags às suas notas.</div>
+  {% else %}
+  <table class="data-table">
+    <thead><tr><th>Tag</th><th>Tag</th><th>Juntas em</th></tr></thead>
+    <tbody>
+      {% for p in pairs %}
+      <tr>
+        <td><span class="badge">{{ p.tag_a }}</span></td>
+        <td><span class="badge">{{ p.tag_b }}</span></td>
+        <td class="muted">{{ p.count }} nota(s)</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}
