@@ -940,6 +940,7 @@ function downloadWhiteboard() {
   </div>
 </div>
 <script>
+var _meetIsModerator = {% if is_moderator %}true{% else %}false{% endif %};
 function showRecordingsPanel() {
   var modal = document.getElementById('meet-recordings-modal');
   if (modal) modal.style.display = 'flex';
@@ -959,12 +960,19 @@ function showRecordingsPanel() {
           '<div style="flex:1"><div>' + escRec(r.title || 'Gravação ' + date) + '</div>' +
           '<div class="muted small">' + date + (dur ? ' · ' + dur : '') + '</div></div>' +
           (r.url ? '<a class="btn btn-ghost btn-sm" href="' + escRec(r.url) + '" target="_blank" download>↓ Baixar</a>' : '') +
+          (_meetIsModerator ? '<button class="btn btn-ghost btn-sm" onclick="deleteRecording(\'' + r.id + '\')" title="Remover gravação">🗑</button>' : '') +
           '</li>';
       }).join('');
     }).catch(function() {
       var list = document.getElementById('meet-recordings-list');
       if (list) list.innerHTML = '<li class="muted small" style="color:#ef4444">Erro ao carregar gravações.</li>';
     });
+}
+function deleteRecording(recId) {
+  if (!confirm('Remover esta gravação?')) return;
+  fetch('/meet/{{ room_id }}/recordings/' + encodeURIComponent(recId) + '/delete',
+        { method: 'POST', credentials: 'include' })
+    .then(function(r){ if (r.ok) showRecordingsPanel(); else alert('Falha (HTTP ' + r.status + ').'); });
 }
 function hideRecordingsPanel() {
   var modal = document.getElementById('meet-recordings-modal');
