@@ -152,6 +152,7 @@ pub fn router(state: AppState) -> Router {
             get(contact_edit_form).post(contact_edit_action),
         )
         .route("/contacts/:book_id/:id/delete", post(contact_delete_action))
+        .route("/contacts/:book_id/:id/photo", get(contact_photo))
         .route(
             "/contacts/:book_id/:id/activity",
             get(contact_activity_page),
@@ -5270,6 +5271,44 @@ async fn contact_delete_action(
     )
     .await?;
     Ok(Redirect::to(&format!("/contacts?book_id={enc_b}")).into_response())
+}
+
+/// GET /contacts/:book_id/:id/photo — stream a contact's vCard PHOTO inline,
+/// passing through the upstream content-type. 404 when the contact has no photo
+/// (the `<img>` falls back via onerror). External URI photos are followed by the
+/// HTTP client and streamed through.
+async fn contact_photo(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((book_id, id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc_b = utf8_percent_encode(&book_id, NON_ALPHANUMERIC).to_string();
+    let enc_i = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let (status, ct, _cd, body) = get_bytes(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/addressbooks/{enc_b}/contacts/{enc_i}/photo"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    if !(200..300).contains(&status) {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    }
+    let ct = ct.unwrap_or_else(|| "application/octet-stream".into());
+    Ok((
+        [
+            (header::CONTENT_TYPE, ct),
+            (header::CACHE_CONTROL, "private, max-age=86400".into()),
+        ],
+        body,
+    )
+        .into_response())
 }
 
 /// GET /contacts/:book_id/:id/activity — change history for a contact.
