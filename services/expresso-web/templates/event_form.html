@@ -7,8 +7,11 @@
     <div class="page-header">
       <h1>{% match event_id %}{% when Some with (_) %}Editar evento{% when None %}Novo evento{% endmatch %}</h1>
       <div style="display:flex;gap:.4rem;align-items:center">
-        {% match event_id %}{% when Some with (_) %}
+        {% match event_id %}{% when Some with (eid) %}
           <button type="button" class="btn btn-ghost btn-sm" onclick="saveAsTemplate()" title="Salvar como modelo (local)">★ Modelo</button>
+          {% if !attendees.is_empty() %}
+          <button type="button" class="btn btn-ghost btn-sm" onclick="sendEventInvite('{{ calendar.id }}','{{ eid }}')" title="Enviar convite (iTIP) por email aos participantes">📨 Enviar convite</button>
+          {% endif %}
         {% when None %}
           <button type="button" class="btn btn-ghost btn-sm" onclick="loadTemplate(this)" title="Aplicar modelo salvo">★ Aplicar modelo</button>
         {% endmatch %}
@@ -211,6 +214,18 @@
   {% when None %}{% endmatch %}
 </div>
 <script>
+// Re-send the stored event as an iTIP REQUEST email to its attendees.
+function sendEventInvite(calId, eventId) {
+  if (!confirm('Enviar o convite por email aos participantes deste evento?')) return;
+  fetch('/calendar/' + encodeURIComponent(calId) + '/events/' + encodeURIComponent(eventId) + '/send-invite',
+        { method: 'POST', credentials: 'include' })
+    .then(function(r){
+      if (r.ok) alert('Convite enviado.');
+      else if (r.status === 400) alert('O evento precisa ter participantes e iCal para enviar convite.');
+      else alert('Falha ao enviar convite (HTTP ' + r.status + ').');
+    }).catch(function(){ alert('Erro de rede.'); });
+}
+
 // ── Bookable resources ──────────────────────────────────────────────────────
 function updateResources() {
   var emails = Array.prototype.map.call(

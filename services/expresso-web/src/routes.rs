@@ -143,6 +143,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/calendar/:cal_id/events/:id/rsvp", post(event_rsvp_action))
         .route(
+            "/calendar/:cal_id/events/:id/send-invite",
+            post(event_send_invite_action),
+        )
+        .route(
             "/calendar/:cal_id/share",
             get(calendar_share_page).post(calendar_share_create),
         )
@@ -5463,6 +5467,70 @@ async fn event_edit_form(
         error: None,
     }
     .into_response())
+}
+
+/// POST /calendar/:cal_id/events/:id/send-invite — re-send the event as an iTIP
+/// REQUEST email to its human attendees (via the mail backend's send-itip). The
+/// event's stored iCal is the invitation payload; the organizer (or the caller)
+/// is the From. No-op with a clear status when the event has no attendees.
+async fn event_send_invite_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((cal_id, id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc_c = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC).to_string();
+    let enc_e = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let event: Event = match get_json(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/calendars/{enc_c}/events/{enc_e}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    {
+        Some(e) => e,
+        None => return Ok((StatusCode::NOT_FOUND, "Evento não encontrado").into_response()),
+    };
+    let Some(ics) = event.ical_raw.clone() else {
+        return Ok((StatusCode::BAD_REQUEST, "Evento sem iCal armazenado.").into_response());
+    };
+    let to = crate::ical::attendee_emails_from_ical(&ics);
+    if to.is_empty() {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            "O evento não tem participantes para convidar.",
+        )
+            .into_response());
+    }
+    let from = event
+        .organizer_email
+        .clone()
+        .unwrap_or_else(|| me.email.clone());
+    let subject = format!("Convite: {}", event.title());
+    let status = crate::upstream::post_json(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/send-itip",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({
+            "from": from,
+            "to": to,
+            "subject": subject,
+            "method": "REQUEST",
+            "ics": ics,
+        }),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
 }
 
 async fn event_edit_action(

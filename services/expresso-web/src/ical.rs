@@ -189,6 +189,30 @@ pub fn booked_resources_from_ical(ical: &str) -> Vec<String> {
     out
 }
 
+/// Extract human-attendee emails from an event's iCalendar: every `ATTENDEE`
+/// line that is NOT a room/resource (`CUTYPE=ROOM`/`RESOURCE`), read from the
+/// trailing `mailto:`. Lowercased + deduped. Used to re-send an iTIP invite.
+pub fn attendee_emails_from_ical(ical: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in ical.lines() {
+        let l = line.trim();
+        let upper = l.to_ascii_uppercase();
+        if !upper.starts_with("ATTENDEE") {
+            continue;
+        }
+        if upper.contains("CUTYPE=ROOM") || upper.contains("CUTYPE=RESOURCE") {
+            continue;
+        }
+        if let Some(idx) = upper.rfind("MAILTO:") {
+            let email = l[idx + "MAILTO:".len()..].trim().to_ascii_lowercase();
+            if !email.is_empty() && !out.contains(&email) {
+                out.push(email);
+            }
+        }
+    }
+    out
+}
+
 /// Extract CATEGORIES from an event's iCalendar as a comma-separated string for
 /// the edit form. Joins values across multiple CATEGORIES lines.
 pub fn categories_from_ical(ical: &str) -> String {
@@ -484,5 +508,18 @@ mod tests {
         assert_eq!(r, vec!["sala1@x.com", "projetor@x.com"]);
         // a plain attendee is not a resource
         assert!(!r.contains(&"bob@x.com".to_string()));
+    }
+
+    #[test]
+    fn attendee_emails_skips_rooms_and_dedups() {
+        let ical = "BEGIN:VEVENT\r\n\
+                    ATTENDEE;ROLE=REQ-PARTICIPANT:mailto:Bob@x.com\r\n\
+                    ATTENDEE;ROLE=REQ-PARTICIPANT:mailto:bob@x.com\r\n\
+                    ATTENDEE;CUTYPE=ROOM:mailto:sala1@x.com\r\n\
+                    ATTENDEE;CUTYPE=RESOURCE:mailto:projetor@x.com\r\n\
+                    ATTENDEE:mailto:ana@x.com\r\n\
+                    END:VEVENT\r\n";
+        let a = attendee_emails_from_ical(ical);
+        assert_eq!(a, vec!["bob@x.com", "ana@x.com"]);
     }
 }
