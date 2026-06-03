@@ -298,6 +298,11 @@
         <button class="btn btn-ghost btn-sm" onclick="loadTranscripts()" title="Atualizar">↻</button>
         <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-transcripts')">✕</button>
       </div>
+      <div style="padding:.5rem;border-bottom:1px solid var(--border);display:flex;gap:.3rem">
+        <input type="search" id="transcript-search" class="tasks-add-input" placeholder="Buscar (url/idioma)…" style="flex:1"
+               onkeydown="if(event.key==='Enter')searchTranscripts();" oninput="if(!this.value)loadTranscripts();">
+        <button class="btn btn-ghost btn-sm" onclick="searchTranscripts()" title="Buscar">🔍</button>
+      </div>
       <div id="meet-transcripts-list" style="flex:1;overflow:auto;padding:.5rem"></div>
     </aside>
 
@@ -342,25 +347,39 @@ function openTranscriptsPanel() {
   var el = document.getElementById('panel-transcripts');
   if (el) { el.style.display = 'flex'; loadTranscripts(); }
 }
+function _renderTranscripts(list, emptyMsg) {
+  var box = document.getElementById('meet-transcripts-list');
+  if (!box) return;
+  list = Array.isArray(list) ? list : [];
+  if (!list.length) { box.innerHTML = '<p class="muted small" style="padding:.5rem">' + emptyMsg + '</p>'; return; }
+  box.innerHTML = list.map(function(tr){
+    var lang = tr.language ? ' · ' + _escTr(tr.language) : '';
+    var when = (tr.starts_at || tr.created_at || '').slice(0, 16).replace('T', ' ');
+    var url = _escTr(tr.url || '');
+    return '<div class="subcard" style="padding:.5rem;margin-bottom:.5rem">' +
+      '<div class="small muted">' + _escTr(when) + lang + '</div>' +
+      (url ? '<a class="link" href="' + url + '" target="_blank" rel="noopener">📄 Abrir transcrição</a>'
+           : '<span class="muted small">sem URL</span>') +
+      '</div>';
+  }).join('');
+}
 function loadTranscripts() {
   var box = document.getElementById('meet-transcripts-list');
   if (!box) return;
   fetch('/meet/' + encodeURIComponent(_meetMeetingId) + '/transcripts', { credentials: 'include' })
     .then(function(r){ return r.ok ? r.json() : []; })
-    .then(function(list) {
-      list = Array.isArray(list) ? list : [];
-      if (!list.length) { box.innerHTML = '<p class="muted small" style="padding:.5rem">Nenhuma transcrição disponível.</p>'; return; }
-      box.innerHTML = list.map(function(tr){
-        var lang = tr.language ? ' · ' + _escTr(tr.language) : '';
-        var when = (tr.starts_at || tr.created_at || '').slice(0, 16).replace('T', ' ');
-        var url = _escTr(tr.url || '');
-        return '<div class="subcard" style="padding:.5rem;margin-bottom:.5rem">' +
-          '<div class="small muted">' + _escTr(when) + lang + '</div>' +
-          (url ? '<a class="link" href="' + url + '" target="_blank" rel="noopener">📄 Abrir transcrição</a>'
-               : '<span class="muted small">sem URL</span>') +
-          '</div>';
-      }).join('');
-    }).catch(function(){ box.innerHTML = '<p class="muted small">Falha ao carregar.</p>'; });
+    .then(function(list){ _renderTranscripts(list, 'Nenhuma transcrição disponível.'); })
+    .catch(function(){ box.innerHTML = '<p class="muted small">Falha ao carregar.</p>'; });
+}
+function searchTranscripts() {
+  var inp = document.getElementById('transcript-search');
+  var q = (inp && inp.value || '').trim();
+  if (!q) { loadTranscripts(); return; }
+  var box = document.getElementById('meet-transcripts-list');
+  fetch('/meet/' + encodeURIComponent(_meetMeetingId) + '/transcripts/search?q=' + encodeURIComponent(q), { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(list){ _renderTranscripts(list, 'Nenhum resultado.'); })
+    .catch(function(){ if (box) box.innerHTML = '<p class="muted small">Falha na busca.</p>'; });
 }
 
 // ── Meet breakout rooms (server-backed, moderator) ──

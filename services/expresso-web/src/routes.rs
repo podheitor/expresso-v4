@@ -282,6 +282,10 @@ pub fn router(state: AppState) -> Router {
         .route("/meet/:id/lobby/:user_id/deny", post(meet_lobby_deny_api))
         .route("/meet/:id/transcripts", get(meet_transcripts_list_api))
         .route(
+            "/meet/:id/transcripts/search",
+            get(meet_transcripts_search_api),
+        )
+        .route(
             "/meet/:id/breakouts",
             get(meet_breakouts_list_api).post(meet_breakout_create_api),
         )
@@ -6916,6 +6920,40 @@ async fn meet_transcripts_list_api(
     Ok(json_response(&v))
 }
 
+#[derive(Deserialize)]
+struct TranscriptSearchQuery {
+    #[serde(default)]
+    q: String,
+}
+
+/// GET /meet/:id/transcripts/search?q= — fulltext search over a meeting's
+/// transcripts (proxies the meet backend, participant-gated). JSON for the
+/// transcripts panel search box.
+async fn meet_transcripts_search_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Query(qs): Query<TranscriptSearchQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let qenc = utf8_percent_encode(qs.q.trim(), NON_ALPHANUMERIC);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{enc}/transcript/search?q={qenc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or(serde_json::json!([]));
+    Ok(json_response(&v))
+}
+
 /// GET /meet/:id/breakouts — list breakout rooms (+ participants) as JSON.
 async fn meet_breakouts_list_api(
     State(st): State<AppState>,
@@ -8843,6 +8881,16 @@ mod tests {
         let f: BreakoutRemoveForm =
             serde_json::from_value(serde_json::json!({ "user_id": "abc-123" })).expect("parse");
         assert_eq!(f.user_id, "abc-123");
+    }
+
+    #[test]
+    fn transcript_search_query_defaults_empty() {
+        let q: TranscriptSearchQuery =
+            serde_json::from_value(serde_json::json!({})).expect("parse");
+        assert!(q.q.is_empty());
+        let q2: TranscriptSearchQuery =
+            serde_json::from_value(serde_json::json!({ "q": "hello" })).expect("parse");
+        assert_eq!(q2.q, "hello");
     }
 }
 
