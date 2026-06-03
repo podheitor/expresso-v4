@@ -2,9 +2,11 @@
 
 mod config;
 mod error;
+mod ical;
 mod routes;
 mod templates;
 mod upstream;
+mod vcard;
 mod wopi;
 
 use std::{env, net::SocketAddr, sync::Arc, time::Duration};

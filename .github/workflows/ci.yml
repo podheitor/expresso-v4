@@ -82,19 +82,16 @@ jobs:
       # current max and ratchet down by 5 per refactor. See docs/COMPLEXITY_DEBT.md.
       # -C 37: legacy CCN max, ratcheting toward 25 (72→…→38→37; the two
       # structural blockers are done — handle@session STARTTLS prelude + cmd_fetch
-      # \Seen update both extracted). -L 8000: lizard's Rust tokenizer chokes on
-      # web/routes.rs's iCal string-building fns (build_vcalendar &c emit many
-      # `\r\n` literals) and miscounts the PRECEDING fn's "length" into the
-      # thousands (parse_neg_duration_minutes — really <15 LOC — reads ~4100).
-      # The miscount grows as routes.rs grows; genuine max fn length is ~520, so
-      # the cap is generous headroom over real functions. Real fix when next
-      # touching that code: extract the iCal helpers into their own module so the
-      # miscount can't span into routes.rs. CCN (the real gate, ≤37) is unaffected.
+      # \Seen update both extracted). -L 1000: lizard's default function-length
+      # cap. (The iCal string-building fns that emit many `\r\n` literals — which
+      # used to make lizard's Rust tokenizer miscount the preceding fn's length
+      # into the thousands and forced -L up to 8000 — now live in their own small
+      # web/src/ical.rs module, so the miscount can't span into routes.rs.)
       - name: lizard (CCN ≤ 37, ratcheting toward 25)
         run: |
           pip install lizard --quiet
           find services libs -name '*.rs' -not -path '*/target/*' \
-            | xargs lizard -l rust -C 37 -L 8000 -w
+            | xargs lizard -l rust -C 37 -L 1000 -w
 
       - name: jscpd (duplication < 5%)
         run: |
