@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Relatório do arquivo · Expresso{% endblock %}
+{% block nav %}{% let current = "mail" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>📊 Relatório do arquivo</h1>
+    <a class="btn btn-ghost" href="/compliance/archive">← Busca</a>
+  </div>
+  <p class="muted small">Maiores remetentes, destinatários e domínios nas mensagens arquivadas (e-discovery).</p>
+
+  <form method="get" action="/compliance/stats"
+        style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;margin:1rem 0">
+    <label><span>De</span><input type="date" name="since" value="{{ since }}"></label>
+    <label><span>Até</span><input type="date" name="before" value="{{ before }}"></label>
+    <button type="submit" class="btn btn-primary">Atualizar</button>
+  </form>
+
+  <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
+    <div style="flex:1;min-width:240px">
+      <h3>✉ Remetentes</h3>
+      {% if senders.is_empty() %}<p class="muted small">Sem dados.</p>{% else %}
+      <table class="data-table" style="width:100%"><tbody>
+        {% for r in senders %}<tr><td>{{ r.label }}</td><td class="mono" style="text-align:right">{{ r.count }}</td></tr>{% endfor %}
+      </tbody></table>{% endif %}
+    </div>
+    <div style="flex:1;min-width:240px">
+      <h3>📥 Destinatários</h3>
+      {% if recipients.is_empty() %}<p class="muted small">Sem dados.</p>{% else %}
+      <table class="data-table" style="width:100%"><tbody>
+        {% for r in recipients %}<tr><td>{{ r.label }}</td><td class="mono" style="text-align:right">{{ r.count }}</td></tr>{% endfor %}
+      </tbody></table>{% endif %}
+    </div>
+    <div style="flex:1;min-width:240px">
+      <h3>🌐 Domínios</h3>
+      {% if domains.is_empty() %}<p class="muted small">Sem dados.</p>{% else %}
+      <table class="data-table" style="width:100%"><tbody>
+        {% for r in domains %}<tr><td>{{ r.label }}</td><td class="mono" style="text-align:right">{{ r.count }}</td></tr>{% endfor %}
+      </tbody></table>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

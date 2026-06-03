@@ -999,6 +999,23 @@ pub struct FreeBusyTpl {
     pub queried: bool,
 }
 
+/// One ranked label+count row in the e-discovery analytics report.
+pub struct ArchiveStatRow {
+    pub label: String,
+    pub count: i64,
+}
+
+#[derive(Template)]
+#[template(path = "compliance_stats.html")]
+pub struct ComplianceStatsTpl {
+    pub me: Me,
+    pub since: String,
+    pub before: String,
+    pub senders: Vec<ArchiveStatRow>,
+    pub recipients: Vec<ArchiveStatRow>,
+    pub domains: Vec<ArchiveStatRow>,
+}
+
 /// One archived message in the compliance e-discovery search results.
 pub struct ArchiveRow {
     pub id: String,

@@ -21,21 +21,21 @@ use crate::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
         AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, ArchiveRow,
-        AuditEvent, BulkDeleteEventRow, Calendar, CalendarBulkDeleteTpl, CalendarConflictsTpl,
-        CalendarCountersTpl, CalendarDayTpl, CalendarHistogramTpl, CalendarMonthTpl,
-        CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage,
-        ChatTpl, ComplianceArchiveTpl, ConflictPairRow, Contact, ContactActivityTpl,
-        ContactAddressRow, ContactDiffTpl, ContactEmailRow, ContactFormTpl, ContactGroup,
-        ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl,
-        ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
-        DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow, DriveCommentsTpl,
-        DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag,
-        DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl,
-        DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl,
-        FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl,
-        GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias,
-        MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl,
-        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        ArchiveStatRow, AuditEvent, BulkDeleteEventRow, Calendar, CalendarBulkDeleteTpl,
+        CalendarConflictsTpl, CalendarCountersTpl, CalendarDayTpl, CalendarHistogramTpl,
+        CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment,
+        ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl, ComplianceStatsTpl,
+        ConflictPairRow, Contact, ContactActivityTpl, ContactAddressRow, ContactDiffTpl,
+        ContactEmailRow, ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl,
+        ContactVersionRow, ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw,
+        DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow,
+        DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
+        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
+        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
+        Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow,
+        FreeBusyTpl, GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
+        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me,
+        MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
         MessageListItem, MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
         NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit,
         SearchTpl, SecurityTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow, TagPairRow,
@@ -252,6 +252,7 @@ pub fn router(state: AppState) -> Router {
         .route("/compliance/archive/export", get(compliance_archive_export))
         .route("/compliance/archive/hold", post(compliance_hold_action))
         .route("/compliance/archive/unhold", post(compliance_unhold_action))
+        .route("/compliance/stats", get(compliance_stats_page))
         .route(
             "/flows/:id/edit",
             get(flow_edit_page).post(flow_edit_action),
@@ -3850,6 +3851,121 @@ async fn compliance_unhold_action(
     Ok(StatusCode::from_u16(status)
         .unwrap_or(StatusCode::BAD_GATEWAY)
         .into_response())
+}
+
+#[derive(Deserialize)]
+struct ArchiveStatsQuery {
+    #[serde(default)]
+    since: Option<String>,
+    #[serde(default)]
+    before: Option<String>,
+}
+
+/// Fetch a top-N archive list (`endpoint`) and map it to ranked rows. `key` is
+/// the per-item label field ("sender"/"recipient"/"domain"); `wrap` is the
+/// response array field name.
+async fn archive_top_rows(
+    st: &AppState,
+    headers: &HeaderMap,
+    ctx: (&str, &str),
+    endpoint: &str,
+    wrap: &str,
+    key: &str,
+    range: &str,
+) -> WebResult<Vec<ArchiveStatRow>> {
+    let resp = get_json::<serde_json::Value>(
+        st,
+        &st.backends.compliance,
+        &format!("/api/v1/compliance/archive/{endpoint}?limit=10{range}"),
+        headers,
+        Some(ctx),
+    )
+    .await?
+    .unwrap_or_default();
+    let rows = resp
+        .get(wrap)
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|it| ArchiveStatRow {
+                    label: it
+                        .get(key)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("(?)")
+                        .to_string(),
+                    count: it
+                        .get("count")
+                        .and_then(serde_json::Value::as_i64)
+                        .unwrap_or(0),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(rows)
+}
+
+/// GET /compliance/stats — e-discovery analytics: top senders, recipients and
+/// domains over an optional date range.
+async fn compliance_stats_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<ArchiveStatsQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let since = q.since.unwrap_or_default();
+    let before = q.before.unwrap_or_default();
+    let mut range = String::new();
+    if since.len() == 10 {
+        range.push_str(&format!("&since={since}"));
+    }
+    if before.len() == 10 {
+        range.push_str(&format!("&before={before}"));
+    }
+    let ctx = (t.as_str(), u.as_str());
+    let senders = archive_top_rows(
+        &st,
+        &headers,
+        ctx,
+        "top-senders",
+        "senders",
+        "sender",
+        &range,
+    )
+    .await?;
+    let recipients = archive_top_rows(
+        &st,
+        &headers,
+        ctx,
+        "top-recipients",
+        "recipients",
+        "recipient",
+        &range,
+    )
+    .await?;
+    let domains = archive_top_rows(
+        &st,
+        &headers,
+        ctx,
+        "top-domains",
+        "domains",
+        "domain",
+        &range,
+    )
+    .await?;
+    Ok(askama_axum::IntoResponse::into_response(
+        ComplianceStatsTpl {
+            me,
+            since,
+            before,
+            senders,
+            recipients,
+            domains,
+        },
+    ))
 }
 
 // ─── /mail/:id/move ──────────────────────────────────────────────────────────
@@ -10866,6 +10982,35 @@ mod tests {
         assert!(v.get("cc").is_none());
         assert_eq!(v["undo_seconds"], 10);
         assert_eq!(v["to"], serde_json::json!(["a@x.com"]));
+    }
+
+    #[test]
+    fn archive_stat_rows_map_label_and_count() {
+        let resp = serde_json::json!({
+            "senders": [{"sender": "ana@x.com", "count": 12}, {"sender": "bob@x.com", "count": 3}]
+        });
+        let rows: Vec<ArchiveStatRow> = resp
+            .get("senders")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .map(|it| ArchiveStatRow {
+                        label: it
+                            .get("sender")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("(?)")
+                            .to_string(),
+                        count: it
+                            .get("count")
+                            .and_then(serde_json::Value::as_i64)
+                            .unwrap_or(0),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].label, "ana@x.com");
+        assert_eq!(rows[0].count, 12);
     }
 
     #[test]
