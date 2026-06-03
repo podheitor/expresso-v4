@@ -145,6 +145,9 @@
                     data-locked="{% if f.is_locked() %}1{% else %}0{% endif %}"
                     onclick="toggleDriveLock('{{ f.id }}')"
                     title="{% if f.is_locked() %}Bloqueado{% if f.locked_by_me(me.user_id.as_str()) %} por você — clique p/ liberar{% else %} por outro usuário{% endif %}{% else %}Bloquear para edição exclusiva{% endif %}">{% if f.is_locked() %}🔒{% else %}🔓{% endif %}</button>
+            <button class="btn btn-ghost btn-sm" onclick="copyDriveFile('{{ f.id }}','{{ f.name }}')" title="Duplicar arquivo">⧉ Copiar</button>
+            <button class="btn btn-ghost btn-sm" onclick="setDriveExpiry('{{ f.id }}','{{ f.expiry_human() }}')"
+                    title="{% if f.has_expiry() %}Expira em {{ f.expiry_human() }} — clique p/ alterar/remover{% else %}Definir data de auto-exclusão{% endif %}">{% if f.has_expiry() %}⏳ {{ f.expiry_human() }}{% else %}⏳{% endif %}</button>
           {% endif %}
           <button class="btn btn-ghost btn-sm" onclick="openMoveTo('{{ f.id }}','{{ f.name }}')" title="Mover para">Mover</button>
           <form method="post" action="/drive/{{ f.id }}/trash" style="display:inline">
@@ -671,6 +674,39 @@ function toggleDriveLock(id) {
     })
     .catch(function() { alert('Erro de rede.'); })
     .finally(function() { btn.disabled = false; });
+}
+
+// ── Drive single-file copy ──────────────────────────────────────────────────────
+function copyDriveFile(id, name) {
+  var newName = prompt('Nome da cópia:', name ? name + ' (cópia)' : '');
+  if (newName === null) return;
+  var body = new URLSearchParams(); if (newName.trim()) body.set('name', newName.trim());
+  fetch('/drive/' + encodeURIComponent(id) + '/copy', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r){ if (r.ok) window.location.reload(); else alert('Falha ao copiar (HTTP ' + r.status + ').'); });
+}
+
+// ── Drive file expiry (auto-delete date) ────────────────────────────────────────
+// Empty input clears the expiry; a date "YYYY-MM-DD" becomes midnight UTC.
+function setDriveExpiry(id, current) {
+  var d = prompt('Data de auto-exclusão (YYYY-MM-DD), vazio p/ remover:', (current || '').slice(0, 10));
+  if (d === null) return;
+  var iso = '';
+  if (d.trim()) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) { alert('Use o formato YYYY-MM-DD.'); return; }
+    iso = d.trim() + 'T00:00:00Z';
+  }
+  var body = new URLSearchParams(); body.set('expires_at', iso);
+  fetch('/drive/' + encodeURIComponent(id) + '/expiry', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r){
+    if (r.ok) window.location.reload();
+    else if (r.status === 400) alert('A data deve ser no futuro.');
+    else if (r.status === 403) alert('Apenas o dono pode definir expiração.');
+    else alert('Falha (HTTP ' + r.status + ').');
+  });
 }
 
 // ── File preview modal ────────────────────────────────────────────────────────

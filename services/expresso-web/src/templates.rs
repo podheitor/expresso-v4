@@ -313,6 +313,8 @@ pub struct DriveFile {
     pub locked_by: Option<String>,
     #[serde(default)]
     pub locked_at: Option<String>,
+    #[serde(default)]
+    pub expires_at: Option<String>,
 }
 
 impl DriveFile {
@@ -328,6 +330,16 @@ impl DriveFile {
     /// True when the file is locked by the given user id (the lock holder).
     pub fn locked_by_me(&self, user_id: &str) -> bool {
         self.locked_by.as_deref() == Some(user_id)
+    }
+    pub fn has_expiry(&self) -> bool {
+        self.expires_at.is_some()
+    }
+    /// "YYYY-MM-DD HH:MM" of the expiry instant, or "" when none.
+    pub fn expiry_human(&self) -> String {
+        self.expires_at
+            .as_deref()
+            .map(|s| s.replace('T', " ").chars().take(16).collect())
+            .unwrap_or_default()
     }
     pub fn size_human(&self) -> String {
         if self.is_folder() {
@@ -1925,6 +1937,19 @@ mod tests {
         assert!(f.is_locked());
         assert!(f.locked_by_me("u1"));
         assert!(!f.locked_by_me("u2"));
+    }
+
+    #[test]
+    fn drive_file_expiry_human_truncates() {
+        let mut f: DriveFile = serde_json::from_value(serde_json::json!({
+            "id": "f1", "name": "doc.txt", "kind": "file"
+        }))
+        .expect("parse");
+        assert!(!f.has_expiry());
+        assert_eq!(f.expiry_human(), "");
+        f.expires_at = Some("2026-07-01T00:00:00Z".into());
+        assert!(f.has_expiry());
+        assert_eq!(f.expiry_human(), "2026-07-01 00:00");
     }
 
     #[test]

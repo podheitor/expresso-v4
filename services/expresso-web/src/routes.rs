@@ -74,6 +74,8 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/unstar", post(drive_unstar_action))
         .route("/drive/:id/lock", post(drive_lock_action))
         .route("/drive/:id/unlock", post(drive_unlock_action))
+        .route("/drive/:id/expiry", post(drive_expiry_action))
+        .route("/drive/:id/copy", post(drive_copy_action))
         .route("/drive/upload", post(drive_upload_action))
         .route("/drive/:id/trash", post(drive_trash_action))
         .route("/drive/:id/restore", post(drive_restore_action))
@@ -1262,6 +1264,83 @@ async fn drive_unlock_action(
         &format!("/api/v1/drive/files/{enc}/lock"),
         &headers,
         Some((&t, &u)),
+    )
+    .await?;
+    Ok((StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY)).into_response())
+}
+
+#[derive(Deserialize)]
+struct ExpiryForm {
+    /// RFC3339 instant (e.g. "2026-07-01T00:00:00Z"); empty clears the expiry.
+    #[serde(default)]
+    expires_at: String,
+}
+
+/// POST /drive/:id/expiry — set or clear a file's auto-delete date (owner only,
+/// backend enforces). Empty `expires_at` clears it (PATCH with `null`).
+async fn drive_expiry_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<ExpiryForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let exp = f.expires_at.trim();
+    let body = if exp.is_empty() {
+        serde_json::json!({ "expires_at": null })
+    } else {
+        serde_json::json!({ "expires_at": exp })
+    };
+    let status = patch_json(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{enc}/expiry"),
+        &headers,
+        Some((&t, &u)),
+        &body,
+    )
+    .await?;
+    Ok((StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY)).into_response())
+}
+
+#[derive(Deserialize)]
+struct DriveCopyForm {
+    #[serde(default)]
+    name: String,
+}
+
+/// POST /drive/:id/copy — shallow-copy a single file (optional new name; backend
+/// defaults to "<name> (cópia)"). Copies into the same parent.
+async fn drive_copy_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<DriveCopyForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let name = f.name.trim();
+    let body = if name.is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::json!({ "name": name })
+    };
+    let status = post_json(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{enc}/copy"),
+        &headers,
+        Some((&t, &u)),
+        &body,
     )
     .await?;
     Ok((StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY)).into_response())
