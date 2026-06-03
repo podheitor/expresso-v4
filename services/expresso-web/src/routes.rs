@@ -246,6 +246,7 @@ pub fn router(state: AppState) -> Router {
             get(mail_folder_export_mbox),
         )
         .route("/flows", get(flows_page).post(flow_create_action))
+        .route("/flows/reorder", post(flow_reorder_action))
         .route(
             "/flows/:id/edit",
             get(flow_edit_page).post(flow_edit_action),
@@ -3515,6 +3516,50 @@ async fn flow_toggle_action(
     )
     .await?;
     Ok(Redirect::to("/flows").into_response())
+}
+
+#[derive(Deserialize)]
+struct FlowReorderForm {
+    /// Comma-separated rule ids in the new top-down (priority 1..N) order.
+    ids: String,
+}
+
+/// POST /flows/reorder — assign priorities to rules by the submitted order.
+/// The first id gets priority 1 (highest precedence). Proxies the flows
+/// backend's bulk reorder (a `[{id, priority}]` array).
+async fn flow_reorder_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<FlowReorderForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let entries: Vec<serde_json::Value> = f
+        .ids
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .enumerate()
+        .map(|(i, id)| serde_json::json!({ "id": id, "priority": (i as i64) + 1 }))
+        .collect();
+    if entries.is_empty() {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    }
+    let status = patch_json(
+        &st,
+        &st.backends.flows,
+        "/api/v1/flows/rules/reorder",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::Value::Array(entries),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
 }
 
 /// POST /flows/:id/delete — delete a rule.
@@ -10553,6 +10598,24 @@ mod tests {
         assert!(v.get("cc").is_none());
         assert_eq!(v["undo_seconds"], 10);
         assert_eq!(v["to"], serde_json::json!(["a@x.com"]));
+    }
+
+    #[test]
+    fn flow_reorder_assigns_priority_by_position() {
+        let f = FlowReorderForm {
+            ids: " a , b ,, c ".into(),
+        };
+        let entries: Vec<serde_json::Value> = f
+            .ids
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .enumerate()
+            .map(|(i, id)| serde_json::json!({ "id": id, "priority": (i as i64) + 1 }))
+            .collect();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0], serde_json::json!({"id":"a","priority":1}));
+        assert_eq!(entries[2], serde_json::json!({"id":"c","priority":3}));
     }
 
     #[test]

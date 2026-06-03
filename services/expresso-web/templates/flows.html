@@ -67,7 +67,7 @@
     <thead><tr><th>Nome</th><th>Quando</th><th>Então</th><th>Ativa</th><th></th></tr></thead>
     <tbody>
       {% for r in rules %}
-      <tr>
+      <tr data-id="{{ r.id }}">
         <td>{{ r.name }}</td>
         <td class="muted"><code>{{ r.when }}</code></td>
         <td class="muted"><code>{{ r.then }}</code></td>
@@ -77,6 +77,8 @@
           </form>
         </td>
         <td style="text-align:right">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="moveFlowRule(this,-1)" title="Subir (maior prioridade)">↑</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="moveFlowRule(this,1)" title="Descer (menor prioridade)">↓</button>
           <a class="btn btn-ghost btn-sm" href="/flows/{{ r.id }}/edit">Editar</a>
           <form method="post" action="/flows/{{ r.id }}/delete" style="display:inline"
                 onsubmit="return confirm('Excluir esta regra?')">
@@ -89,4 +91,26 @@
   </table>
   {% endif %}
 </div>
+<script>
+// Reorder mail-filter rules: rules apply in priority order (top = highest
+// precedence). Moving a row swaps it with its neighbour, then the new top-down
+// order is sent as priorities 1..N.
+function moveFlowRule(btn, dir) {
+  var row = btn.closest('tr');
+  var sibling = dir < 0 ? row.previousElementSibling : row.nextElementSibling;
+  if (!sibling) return;
+  if (dir < 0) row.parentNode.insertBefore(row, sibling);
+  else row.parentNode.insertBefore(sibling, row);
+  saveFlowOrder();
+}
+function saveFlowOrder() {
+  var ids = Array.prototype.map.call(
+    document.querySelectorAll('tbody tr[data-id]'), function(tr){ return tr.dataset.id; });
+  var body = new URLSearchParams(); body.set('ids', ids.join(','));
+  fetch('/flows/reorder', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r){ if (!r.ok) alert('Falha ao reordenar (HTTP ' + r.status + ').'); });
+}
+</script>
 {% endblock %}
