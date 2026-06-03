@@ -46,13 +46,33 @@
     <p class="muted small" style="margin-top:.5rem">
       {{ events.len() }} evento(s) listado(s){% if truncated %} (e mais não exibidos — todos no intervalo serão apagados){% endif %}.
     </p>
-    <form method="post" action="/calendar/bulk-delete" style="margin-top:.5rem"
-          onsubmit="return confirm('Apagar TODOS os eventos de {{ from }} a {{ to }} nesta agenda? Esta ação é irreversível.')">
-      <input type="hidden" name="cal_id" value="{{ cal_id }}">
-      <input type="hidden" name="from" value="{{ from }}">
-      <input type="hidden" name="to" value="{{ to }}">
-      <button type="submit" class="btn btn-danger">🗑 Apagar eventos do intervalo</button>
-    </form>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;margin-top:.75rem">
+      <form method="post" action="/calendar/bulk-delete"
+            onsubmit="return confirm('Apagar TODOS os eventos de {{ from }} a {{ to }} nesta agenda? Esta ação é irreversível.')">
+        <input type="hidden" name="cal_id" value="{{ cal_id }}">
+        <input type="hidden" name="from" value="{{ from }}">
+        <input type="hidden" name="to" value="{{ to }}">
+        <button type="submit" class="btn btn-danger">🗑 Apagar eventos do intervalo</button>
+      </form>
+      <form method="post" action="/calendar/bulk-move"
+            style="display:flex;gap:.4rem;align-items:flex-end"
+            onsubmit="if(!this.dst.value){alert('Escolha a agenda de destino.');return false;}return confirm('Mover os eventos de {{ from }} a {{ to }} para a agenda selecionada?')">
+        <input type="hidden" name="cal_id" value="{{ cal_id }}">
+        <input type="hidden" name="from" value="{{ from }}">
+        <input type="hidden" name="to" value="{{ to }}">
+        <label class="small muted">Mover para
+          <select name="dst" class="input">
+            <option value="">— escolher agenda —</option>
+            {% for c in calendars %}
+            {% if c.id.as_str() != cal_id.as_str() %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+            {% endif %}
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit" class="btn btn-ghost">↪ Mover intervalo</button>
+      </form>
+    </div>
     {% endif %}
   {% endif %}
 </div>
