@@ -34,9 +34,9 @@ use crate::{
         MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl,
         MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
         MessageListItem, MonthCell, Note, NoteVersionRow, NoteVersionsTpl, Notebook,
-        NotesActivityTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit, SearchTpl,
-        SecurityTpl, SettingsTpl, ShareRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, VersionRow,
-        WorkingHour,
+        NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit,
+        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow, TagPairRow,
+        TaskRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -334,6 +334,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/notes/:id", post(notes_edit_action))
         .route("/notes/:id/delete", post(notes_delete_action))
+        .route("/notes/shared", get(notes_shared_page))
         .route("/notes/:id/activity", get(notes_activity_page))
         .route("/notes/:id/versions", get(notes_versions_page))
         .route(
@@ -7881,6 +7882,31 @@ async fn notes_activity_page(
         me,
         note_id: id,
         events,
+    }))
+}
+
+/// GET /notes/shared — notes other users have shared with the caller.
+async fn notes_shared_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let rows = get_json::<Vec<SharedNoteRow>>(
+        &st,
+        &st.backends.notes,
+        "/api/v1/notes/shared",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(NotesSharedTpl {
+        me,
+        rows,
     }))
 }
 

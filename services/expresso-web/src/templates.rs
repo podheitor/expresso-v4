@@ -853,6 +853,45 @@ pub struct NoteVersionsTpl {
     pub versions: Vec<NoteVersionRow>,
 }
 
+/// One note shared with the caller by another user.
+#[derive(Deserialize)]
+pub struct SharedNoteRow {
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub privilege: String,
+    #[serde(default)]
+    pub updated_at: String,
+}
+impl SharedNoteRow {
+    pub fn label(&self) -> &str {
+        if self.title.trim().is_empty() {
+            "(sem título)"
+        } else {
+            &self.title
+        }
+    }
+    /// Human label for the grant level.
+    pub fn privilege_label(&self) -> &str {
+        match self.privilege.to_ascii_uppercase().as_str() {
+            "ADMIN" => "Admin",
+            "WRITE" => "Edição",
+            _ => "Leitura",
+        }
+    }
+    pub fn when(&self) -> String {
+        self.updated_at.replace('T', " ").chars().take(16).collect()
+    }
+}
+
+#[derive(Template)]
+#[template(path = "notes_shared.html")]
+pub struct NotesSharedTpl {
+    pub me: Me,
+    pub rows: Vec<SharedNoteRow>,
+}
+
 #[derive(Template)]
 #[template(path = "contact_diff.html")]
 pub struct ContactDiffTpl {
@@ -1995,6 +2034,23 @@ mod tests {
         f.expires_at = Some("2026-07-01T00:00:00Z".into());
         assert!(f.has_expiry());
         assert_eq!(f.expiry_human(), "2026-07-01 00:00");
+    }
+
+    #[test]
+    fn shared_note_row_privilege_and_label() {
+        let r: SharedNoteRow = serde_json::from_value(serde_json::json!({
+            "id": "n1", "title": "Roadmap", "privilege": "write",
+            "updated_at": "2026-06-02T13:45:00Z"
+        }))
+        .expect("parse");
+        assert_eq!(r.label(), "Roadmap");
+        assert_eq!(r.privilege_label(), "Edição");
+        assert_eq!(r.when(), "2026-06-02 13:45");
+        let ro: SharedNoteRow =
+            serde_json::from_value(serde_json::json!({ "id": "n2", "privilege": "read" }))
+                .expect("parse");
+        assert_eq!(ro.label(), "(sem título)");
+        assert_eq!(ro.privilege_label(), "Leitura");
     }
 
     #[test]
