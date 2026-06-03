@@ -22,19 +22,19 @@ use crate::{
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
         AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent,
         BulkDeleteEventRow, Calendar, CalendarBulkDeleteTpl, CalendarConflictsTpl,
-        CalendarCountersTpl, CalendarDayTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl,
-        CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage, ChatTpl, ConflictPairRow,
-        Contact, ContactActivityTpl, ContactAddressRow, ContactDiffTpl, ContactEmailRow,
-        ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow,
-        ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView,
-        DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow,
+        CalendarCountersTpl, CalendarDayTpl, CalendarHistogramTpl, CalendarMonthTpl,
+        CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage,
+        ChatTpl, ConflictPairRow, Contact, ContactActivityTpl, ContactAddressRow, ContactDiffTpl,
+        ContactEmailRow, ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl,
+        ContactVersionRow, ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw,
+        DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow,
         DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
         DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
         DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
         Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow,
-        FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias,
-        MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl,
-        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        FreeBusyTpl, GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
+        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me,
+        MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
         MessageListItem, MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
         NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit,
         SearchTpl, SecurityTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow, TagPairRow,
@@ -116,6 +116,7 @@ pub fn router(state: AppState) -> Router {
             get(calendar_bulk_delete_page).post(calendar_bulk_delete_action),
         )
         .route("/calendar/conflicts", get(calendar_conflicts_page))
+        .route("/calendar/histogram", get(calendar_histogram_page))
         .route("/calendar/counters", get(calendar_counters_page))
         .route(
             "/calendar/counters/:id/:action",
@@ -1611,6 +1612,124 @@ async fn calendar_counter_action(
     Ok(StatusCode::from_u16(status)
         .unwrap_or(StatusCode::BAD_GATEWAY)
         .into_response())
+}
+
+#[derive(Deserialize)]
+struct HistogramQuery {
+    #[serde(default)]
+    cal_id: Option<String>,
+    #[serde(default)]
+    from: Option<String>,
+    #[serde(default)]
+    to: Option<String>,
+    #[serde(default)]
+    bucket: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct HistogramPoint {
+    #[serde(default)]
+    ts: Option<String>,
+    #[serde(default)]
+    count: i64,
+}
+
+/// Trim an rfc3339 `ts` to a bucket label: month → "YYYY-MM", else "YYYY-MM-DD".
+fn histogram_label(ts: &str, bucket: &str) -> String {
+    let take = if bucket == "month" { 7 } else { 10 };
+    ts.chars().take(take).collect()
+}
+
+/// GET /calendar/histogram?cal_id=&from=&to=&bucket= — event-activity histogram
+/// (counts per day/week/month) rendered as CSS bars. Read-only analytics.
+async fn calendar_histogram_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<HistogramQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let calendars = get_json::<Vec<Calendar>>(
+        &st,
+        &st.backends.calendar,
+        "/api/v1/calendars",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let default_cal = calendars
+        .iter()
+        .find(|c| c.is_default)
+        .or_else(|| calendars.first())
+        .map(|c| c.id.clone())
+        .unwrap_or_default();
+    let cal_id = q.cal_id.filter(|s| !s.is_empty()).unwrap_or(default_cal);
+    let from = q.from.unwrap_or_default();
+    let to = q.to.unwrap_or_default();
+    let bucket = match q.bucket.as_deref() {
+        Some("week") => "week",
+        Some("month") => "month",
+        _ => "day",
+    }
+    .to_string();
+
+    let mut bars = Vec::new();
+    let mut total = 0i64;
+    let queried = !cal_id.is_empty() && from.len() == 10 && to.len() == 10 && from <= to;
+    if queried {
+        let enc = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC);
+        let f = format!("{from}T00:00:00Z");
+        let tt = format!("{to}T23:59:59Z");
+        let resp = get_json::<serde_json::Value>(
+            &st,
+            &st.backends.calendar,
+            &format!("/api/v1/calendars/{enc}/events-histogram?from={f}&to={tt}&bucket={bucket}"),
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default();
+        let points: Vec<HistogramPoint> = resp
+            .get("series")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|p| serde_json::from_value(p.clone()).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let max = points.iter().map(|p| p.count).max().unwrap_or(0).max(1);
+        for p in points {
+            total += p.count;
+            let pct = ((p.count * 100) / max) as u32;
+            bars.push(HistogramBar {
+                label: p
+                    .ts
+                    .as_deref()
+                    .map(|s| histogram_label(s, &bucket))
+                    .unwrap_or_default(),
+                count: p.count,
+                pct,
+            });
+        }
+    }
+    Ok(askama_axum::IntoResponse::into_response(
+        CalendarHistogramTpl {
+            me,
+            calendars,
+            cal_id,
+            from,
+            to,
+            bucket,
+            bars,
+            total,
+            queried,
+        },
+    ))
 }
 
 #[derive(Deserialize)]
@@ -10161,6 +10280,21 @@ mod tests {
         assert!(v.get("cc").is_none());
         assert_eq!(v["undo_seconds"], 10);
         assert_eq!(v["to"], serde_json::json!(["a@x.com"]));
+    }
+
+    #[test]
+    fn histogram_label_truncates_by_bucket() {
+        assert_eq!(histogram_label("2026-06-03T00:00:00Z", "day"), "2026-06-03");
+        assert_eq!(
+            histogram_label("2026-06-03T00:00:00Z", "week"),
+            "2026-06-03"
+        );
+        assert_eq!(histogram_label("2026-06-03T00:00:00Z", "month"), "2026-06");
+        let p: HistogramPoint =
+            serde_json::from_value(serde_json::json!({ "ts": "2026-06-03T00:00:00Z", "count": 4 }))
+                .expect("parse");
+        assert_eq!(p.count, 4);
+        assert_eq!(p.ts.as_deref(), Some("2026-06-03T00:00:00Z"));
     }
 
     #[test]

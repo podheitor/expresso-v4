@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Atividade da agenda · Expresso{% endblock %}
+{% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Atividade da agenda</h1>
+    <a class="btn btn-ghost" href="/calendar">← Agenda</a>
+  </div>
+  <p class="muted small">Distribuição de eventos ao longo do tempo, agrupados por dia, semana ou mês.</p>
+
+  <form method="get" action="/calendar/histogram"
+        style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;margin:1rem 0">
+    <label>
+      <span>Agenda</span>
+      <select name="cal_id" class="input">
+        {% for c in calendars %}
+        <option value="{{ c.id }}"{% if c.id.as_str() == cal_id.as_str() %} selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label><span>De</span><input type="date" name="from" value="{{ from }}" required></label>
+    <label><span>Até</span><input type="date" name="to" value="{{ to }}" required></label>
+    <label>
+      <span>Agrupar por</span>
+      <select name="bucket" class="input">
+        <option value="day"{% if bucket.as_str() == "day" %} selected{% endif %}>Dia</option>
+        <option value="week"{% if bucket.as_str() == "week" %} selected{% endif %}>Semana</option>
+        <option value="month"{% if bucket.as_str() == "month" %} selected{% endif %}>Mês</option>
+      </select>
+    </label>
+    <button type="submit" class="btn btn-primary">Ver</button>
+  </form>
+
+  {% if queried %}
+    {% if bars.is_empty() %}
+    <div class="empty-state">Nenhum evento neste intervalo.</div>
+    {% else %}
+    <p class="muted small">{{ total }} evento(s) em {{ bars.len() }} período(s).</p>
+    <div style="display:flex;flex-direction:column;gap:.3rem;margin-top:.5rem">
+      {% for b in bars %}
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span class="mono small" style="width:6.5rem;flex:none;text-align:right">{{ b.label }}</span>
+        <div style="flex:1;background:var(--surface-2,#eee);border-radius:.25rem;overflow:hidden">
+          <div style="width:{{ b.pct }}%;min-width:2px;background:var(--accent,#2563eb);color:#fff;padding:.15rem .4rem;font-size:.75rem;white-space:nowrap">{{ b.count }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

@@ -999,6 +999,29 @@ pub struct FreeBusyTpl {
     pub queried: bool,
 }
 
+/// One bucket in the event-activity histogram.
+pub struct HistogramBar {
+    /// Bucket label (e.g. "2026-06-03" for day, "2026-06" for month).
+    pub label: String,
+    pub count: i64,
+    /// Bar width as a percentage of the busiest bucket (0–100).
+    pub pct: u32,
+}
+
+#[derive(Template)]
+#[template(path = "calendar_histogram.html")]
+pub struct CalendarHistogramTpl {
+    pub me: Me,
+    pub calendars: Vec<Calendar>,
+    pub cal_id: String,
+    pub from: String,
+    pub to: String,
+    pub bucket: String,
+    pub bars: Vec<HistogramBar>,
+    pub total: i64,
+    pub queried: bool,
+}
+
 /// One event in the bulk-delete preview list.
 pub struct BulkDeleteEventRow {
     pub summary: String,
