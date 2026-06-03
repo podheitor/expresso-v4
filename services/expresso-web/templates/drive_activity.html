@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Atividade · {{ file_name }} · Drive{% endblock %}
+{% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Atividade do arquivo</h1>
+      <p class="mono muted">{{ file_name }}</p>
+    </div>
+    <a class="btn btn-ghost" href="/drive/{{ file_id }}/versions">← Versões</a>
+  </div>
+  {% if events.is_empty() %}
+    <div class="empty-state">Sem histórico de atividade para este arquivo.</div>
+  {% else %}
+  <table class="data-table">
+    <thead><tr><th>Quando</th><th>Ação</th><th>Detalhe</th></tr></thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td class="muted">{{ e.when }}</td>
+        <td><code>{{ e.action }}</code></td>
+        <td class="muted">{{ e.detail }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

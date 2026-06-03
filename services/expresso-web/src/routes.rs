@@ -20,14 +20,14 @@ use crate::{
         CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatChannel, ChatMessage,
         ChatTpl, Contact, ContactActivityTpl, ContactFormTpl, ContactGroup, ContactGroupDetailTpl,
         ContactGroupsTpl, ContactsTpl, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
-        DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl,
-        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
-        Event, EventFormTpl, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl,
-        GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl,
-        MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
-        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note,
-        NotesActivityTpl, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl,
-        ShareRow, TasksTpl, VersionRow, WorkingHour,
+        DriveActivityTpl, DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota,
+        DriveShareTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl,
+        DriveVersionsTpl, Event, EventFormTpl, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder,
+        FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
+        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
+        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        MessageListItem, MonthCell, Note, NotesActivityTpl, NotesTpl, SearchGroup, SearchHit,
+        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
@@ -73,6 +73,7 @@ pub fn router(state: AppState) -> Router {
             "/drive/:id/versions/:vno/restore",
             post(drive_version_restore),
         )
+        .route("/drive/:id/activity", get(drive_activity_page))
         .route("/drive/:id/tags/add", post(drive_tag_add_action))
         .route("/drive/:id/tags/remove", post(drive_tag_remove_action))
         .route("/drive/:id/preview", get(drive_preview_page))
@@ -3171,6 +3172,47 @@ async fn drive_version_restore(
     )
     .await;
     Ok(Redirect::to(&format!("/drive/{id}/versions")).into_response())
+}
+
+/// GET /drive/:id/activity — change/audit history for a file.
+async fn drive_activity_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let file_name = get_json::<DriveFile>(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{id}/metadata"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .map(|f| f.name)
+    .unwrap_or_default();
+    let events = get_json::<Vec<serde_json::Value>>(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{id}/activity"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .into_iter()
+    .map(activity_row_of)
+    .collect();
+    Ok(askama_axum::IntoResponse::into_response(DriveActivityTpl {
+        me,
+        file_id: id,
+        file_name,
+        events,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -6578,18 +6620,21 @@ async fn notes_activity_page(
 }
 
 /// Map a backend activity JSON event to a display row (action/detail/when).
+/// `detail` may be a plain string or a JSON object (drive uses JSON) — render a
+/// string either way.
 fn activity_row_of(e: serde_json::Value) -> ActivityRow {
+    let detail = match e.get("detail") {
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(serde_json::Value::Null) | None => String::new(),
+        Some(v) => serde_json::to_string(v).unwrap_or_default(),
+    };
     ActivityRow {
         action: e
             .get("action")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string(),
-        detail: e
-            .get("detail")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
+        detail,
         when: e
             .get("created_at")
             .and_then(|v| v.as_str())

@@ -695,6 +695,15 @@ pub struct ContactActivityTpl {
     pub events: Vec<ActivityRow>,
 }
 
+#[derive(Template)]
+#[template(path = "drive_activity.html")]
+pub struct DriveActivityTpl {
+    pub me: Me,
+    pub file_id: String,
+    pub file_name: String,
+    pub events: Vec<ActivityRow>,
+}
+
 /// A mail flow (automation) rule summarized for display.
 pub struct FlowRuleRow {
     pub id: String,

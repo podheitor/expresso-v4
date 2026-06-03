@@ -8,7 +8,10 @@
       <h1>Versões</h1>
       <p class="mono muted">{{ file.name }}</p>
     </div>
-    <a class="btn btn-ghost" href="/drive">← Drive</a>
+    <div style="display:flex;gap:.5rem">
+      <a class="btn btn-ghost" href="/drive/{{ file.id }}/activity">🕘 Atividade</a>
+      <a class="btn btn-ghost" href="/drive">← Drive</a>
+    </div>
   </div>
 
   <div class="card stack" style="margin-bottom:1rem">
