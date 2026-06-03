@@ -20,10 +20,10 @@ use crate::{
         CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatChannel, ChatMessage, ChatTpl, Contact,
         ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl,
         DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DriveEditTpl, DriveFile,
-        DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
-        Event, EventFormTpl, Folder, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
-        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
-        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTpl, DriveTrashTpl,
+        DriveVersionsTpl, Event, EventFormTpl, Folder, GalContact, HomeDriveFile, HomeEvent,
+        HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl,
+        Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
         MessageListItem, MonthCell, Note, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
         SettingsTpl, ShareRow, TasksTpl, VersionRow,
     },
@@ -71,6 +71,8 @@ pub fn router(state: AppState) -> Router {
             "/drive/:id/versions/:vno/restore",
             post(drive_version_restore),
         )
+        .route("/drive/:id/tags/add", post(drive_tag_add_action))
+        .route("/drive/:id/tags/remove", post(drive_tag_remove_action))
         .route("/drive/:id/preview", get(drive_preview_page))
         .route("/drive/:id/edit", get(drive_edit_page))
         .route("/calendar", get(calendar_page))
@@ -2371,7 +2373,25 @@ async fn drive_versions_page(
     )
     .await?
     .unwrap_or_default();
-    Ok(DriveVersionsTpl { me, file, versions }.into_response())
+    let tags: Vec<String> = get_json::<Vec<DriveFileTag>>(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{id}/tags"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .into_iter()
+    .map(|t| t.tag)
+    .collect();
+    Ok(DriveVersionsTpl {
+        me,
+        file,
+        versions,
+        tags,
+    }
+    .into_response())
 }
 
 async fn drive_version_restore(
@@ -2394,6 +2414,67 @@ async fn drive_version_restore(
         &payload,
     )
     .await;
+    Ok(Redirect::to(&format!("/drive/{id}/versions")).into_response())
+}
+
+#[derive(Deserialize)]
+struct DriveTagForm {
+    tag: String,
+}
+
+#[derive(serde::Serialize)]
+struct DriveTagPayload<'a> {
+    tag: &'a str,
+}
+
+/// POST /drive/:id/tags/add — add a tag to a file.
+async fn drive_tag_add_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<DriveTagForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let tag = f.tag.trim();
+    if !tag.is_empty() {
+        let _ = post_json(
+            &st,
+            &st.backends.drive,
+            &format!("/api/v1/drive/files/{id}/tags"),
+            &headers,
+            Some((&t, &u)),
+            &DriveTagPayload { tag },
+        )
+        .await?;
+    }
+    Ok(Redirect::to(&format!("/drive/{id}/versions")).into_response())
+}
+
+/// POST /drive/:id/tags/remove — remove a tag from a file.
+async fn drive_tag_remove_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<DriveTagForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc_tag = utf8_percent_encode(f.tag.trim(), NON_ALPHANUMERIC).to_string();
+    let _ = delete_at(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{id}/tags/{enc_tag}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
     Ok(Redirect::to(&format!("/drive/{id}/versions")).into_response())
 }
 

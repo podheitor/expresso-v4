@@ -661,6 +661,14 @@ pub struct DriveVersionsTpl {
     pub me: Me,
     pub file: DriveFile,
     pub versions: Vec<VersionRow>,
+    /// Tags currently on the file.
+    pub tags: Vec<String>,
+}
+
+/// A drive file tag link (the `tag` field is what we surface).
+#[derive(Debug, Deserialize, Clone)]
+pub struct DriveFileTag {
+    pub tag: String,
 }
 
 #[derive(Template)]

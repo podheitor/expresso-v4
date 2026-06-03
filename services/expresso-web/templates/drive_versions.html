@@ -11,6 +11,29 @@
     <a class="btn btn-ghost" href="/drive">← Drive</a>
   </div>
 
+  <div class="card stack" style="margin-bottom:1rem">
+    <h2 style="margin:0 0 .4rem">🏷 Tags</h2>
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem">
+      {% if tags.is_empty() %}
+        <span class="muted small">Nenhuma tag.</span>
+      {% else %}
+        {% for tg in tags %}
+        <span class="badge" style="display:inline-flex;gap:.25rem;align-items:center">
+          {{ tg }}
+          <form method="post" action="/drive/{{ file.id }}/tags/remove" style="display:inline">
+            <input type="hidden" name="tag" value="{{ tg }}">
+            <button type="submit" title="Remover" style="border:none;background:none;cursor:pointer;padding:0">✕</button>
+          </form>
+        </span>
+        {% endfor %}
+      {% endif %}
+    </div>
+    <form method="post" action="/drive/{{ file.id }}/tags/add" style="display:flex;gap:.4rem">
+      <input type="text" name="tag" required placeholder="Nova tag" class="input-sm" style="max-width:240px">
+      <button type="submit" class="btn btn-primary btn-sm">+ Adicionar</button>
+    </form>
+  </div>
+
   {% if versions.is_empty() %}
     <div class="empty-state">Nenhuma versão arquivada. Uploads subsequentes do mesmo nome geram versões.</div>
   {% else %}
