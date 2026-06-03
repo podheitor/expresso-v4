@@ -309,6 +309,10 @@ pub struct DriveFile {
     pub deleted_at: Option<String>,
     #[serde(default)]
     pub starred_at: Option<String>,
+    #[serde(default)]
+    pub locked_by: Option<String>,
+    #[serde(default)]
+    pub locked_at: Option<String>,
 }
 
 impl DriveFile {
@@ -317,6 +321,13 @@ impl DriveFile {
     }
     pub fn is_starred(&self) -> bool {
         self.starred_at.is_some()
+    }
+    pub fn is_locked(&self) -> bool {
+        self.locked_at.is_some()
+    }
+    /// True when the file is locked by the given user id (the lock holder).
+    pub fn locked_by_me(&self, user_id: &str) -> bool {
+        self.locked_by.as_deref() == Some(user_id)
     }
     pub fn size_human(&self) -> String {
         if self.is_folder() {
@@ -1899,6 +1910,21 @@ mod tests {
     fn human_size_negative_treated_as_zero_or_shown() {
         // negative sizes shouldn't panic — just verify it doesn't
         let _ = human_size(-1);
+    }
+
+    #[test]
+    fn drive_file_lock_state_and_holder() {
+        let mut f: DriveFile = serde_json::from_value(serde_json::json!({
+            "id": "f1", "name": "doc.txt", "kind": "file"
+        }))
+        .expect("parse");
+        assert!(!f.is_locked());
+        assert!(!f.locked_by_me("u1"));
+        f.locked_at = Some("2026-06-03T10:00:00Z".into());
+        f.locked_by = Some("u1".into());
+        assert!(f.is_locked());
+        assert!(f.locked_by_me("u1"));
+        assert!(!f.locked_by_me("u2"));
     }
 
     #[test]

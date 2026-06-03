@@ -141,6 +141,10 @@
             <button class="btn btn-ghost btn-sm" onclick="openShareModal('{{ f.id }}','{{ f.name }}')" title="Compartilhar">Compartilhar</button>
             <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/versions" title="Versões">Versões</a>
             {% if f.is_editable() %}<a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/edit" title="Editar online">Editar</a>{% endif %}
+            <button class="btn btn-ghost btn-sm drive-lock-btn" data-id="{{ f.id }}"
+                    data-locked="{% if f.is_locked() %}1{% else %}0{% endif %}"
+                    onclick="toggleDriveLock('{{ f.id }}')"
+                    title="{% if f.is_locked() %}Bloqueado{% if f.locked_by_me(me.user_id.as_str()) %} por você — clique p/ liberar{% else %} por outro usuário{% endif %}{% else %}Bloquear para edição exclusiva{% endif %}">{% if f.is_locked() %}🔒{% else %}🔓{% endif %}</button>
           {% endif %}
           <button class="btn btn-ghost btn-sm" onclick="openMoveTo('{{ f.id }}','{{ f.name }}')" title="Mover para">Mover</button>
           <form method="post" action="/drive/{{ f.id }}/trash" style="display:inline">
@@ -639,6 +643,31 @@ function toggleDriveFav(id) {
     .then(function(r) {
       if (r.ok) { setFavButton(btn, !starred); }
       else { alert('Falha ao atualizar favorito (HTTP ' + r.status + ').'); }
+    })
+    .catch(function() { alert('Erro de rede.'); })
+    .finally(function() { btn.disabled = false; });
+}
+
+// ── Drive file lock (server-backed via /drive/:id/lock) ─────────────────────────
+// Acquire/release an exclusive edit lock. The backend rejects acquiring a lock
+// another user holds (409) and releasing a lock you don't hold (403).
+function setLockButton(btn, locked) {
+  btn.dataset.locked = locked ? '1' : '0';
+  btn.textContent = locked ? '🔒' : '🔓';
+  btn.title = locked ? 'Bloqueado por você — clique p/ liberar' : 'Bloquear para edição exclusiva';
+}
+function toggleDriveLock(id) {
+  var btn = document.querySelector('.drive-lock-btn[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+  if (!btn) return;
+  var locked = btn.dataset.locked === '1';
+  var verb = locked ? 'unlock' : 'lock';
+  btn.disabled = true;
+  fetch('/drive/' + encodeURIComponent(id) + '/' + verb, { method: 'POST', credentials: 'include' })
+    .then(function(r) {
+      if (r.ok) { setLockButton(btn, !locked); }
+      else if (r.status === 409) { alert('Arquivo bloqueado por outro usuário.'); }
+      else if (r.status === 403) { alert('Você não detém este bloqueio.'); }
+      else { alert('Falha ao alternar bloqueio (HTTP ' + r.status + ').'); }
     })
     .catch(function() { alert('Erro de rede.'); })
     .finally(function() { btn.disabled = false; });

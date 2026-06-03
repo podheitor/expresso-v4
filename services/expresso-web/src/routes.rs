@@ -72,6 +72,8 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/starred", get(drive_starred_page))
         .route("/drive/:id/star", post(drive_star_action))
         .route("/drive/:id/unstar", post(drive_unstar_action))
+        .route("/drive/:id/lock", post(drive_lock_action))
+        .route("/drive/:id/unlock", post(drive_unlock_action))
         .route("/drive/upload", post(drive_upload_action))
         .route("/drive/:id/trash", post(drive_trash_action))
         .route("/drive/:id/restore", post(drive_restore_action))
@@ -1210,6 +1212,54 @@ async fn drive_unstar_action(
         &st,
         &st.backends.drive,
         &format!("/api/v1/drive/files/{enc}/star"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok((StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY)).into_response())
+}
+
+/// POST /drive/:id/lock — acquire an exclusive edit lock (backend: owner or
+/// first caller; 409 if held by another user).
+async fn drive_lock_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = post_empty(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{enc}/lock"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok((StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY)).into_response())
+}
+
+/// POST /drive/:id/unlock — release the lock (backend DELETE; 403 unless held by
+/// the caller).
+async fn drive_unlock_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = delete_at(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{enc}/lock"),
         &headers,
         Some((&t, &u)),
     )
