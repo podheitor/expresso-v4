@@ -242,41 +242,61 @@ document.getElementById('compose-form').addEventListener('submit', function(e) {
     this.submit();
     return;
   }
-  // Undo-send: hold submission for N seconds in a toast
+  // Undo-send: hand off to the server, which HOLDS the message for N seconds and
+  // relays it via a worker (survives tab close). The toast counts down to the
+  // server's deliver_at; "Desfazer" calls cancel-send within the window.
   var undoSecs = parseInt(localStorage.getItem('expresso_undo_send_secs') || '5', 10);
   if (undoSecs > 0 && !document.getElementById('compose-send-at').value) {
     e.preventDefault();
     var form = this;
     var btn = form.querySelector('button[type=submit]');
-    if (btn) { btn.disabled = true; btn.textContent = 'Enviando em ' + undoSecs + 's…'; }
-    var toast = document.createElement('div');
-    toast.style.cssText = 'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1f2937;color:#fff;padding:.7rem 1rem;border-radius:.5rem;display:flex;gap:.75rem;align-items:center;z-index:2000;box-shadow:0 4px 16px rgba(0,0,0,.3)';
-    toast.innerHTML = '<span>📤 Mensagem será enviada em <strong id="undo-count">' + undoSecs + '</strong>s</span>' +
-      '<button type="button" id="undo-send-btn" style="background:#ef4444;color:#fff;border:none;padding:.3rem .8rem;border-radius:.3rem;cursor:pointer">↶ Desfazer</button>';
-    document.body.appendChild(toast);
-    var remaining = undoSecs;
-    var iv = setInterval(function() {
-      remaining--;
-      var c = document.getElementById('undo-count'); if (c) c.textContent = remaining;
-      if (btn) btn.textContent = 'Enviando em ' + remaining + 's…';
-      if (remaining <= 0) { clearInterval(iv); to(); }
-    }, 1000);
-    function to() {
-      clearInterval(iv);
-      if (toast.parentNode) toast.remove();
-      if (btn) { btn.textContent = 'Enviando…'; }
-      form.submit();
-    }
-    document.getElementById('undo-send-btn').onclick = function() {
-      clearInterval(iv);
-      if (toast.parentNode) toast.remove();
-      if (btn) { btn.disabled = false; btn.textContent = 'Enviar'; }
-    };
+    if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
+    var fd = new URLSearchParams();
+    fd.set('from', (form.elements['from'] && form.elements['from'].value) || '');
+    fd.set('to', document.getElementById('to-hidden').value || '');
+    fd.set('cc', (form.elements['cc'] && form.elements['cc'].value) || '');
+    fd.set('subject', document.getElementById('compose-subject').value || '');
+    fd.set('body_text', document.getElementById('compose-body-text').value || '');
+    fd.set('send_at', String(undoSecs)); // reused as undo_seconds for this path
+    fetch('/mail/send-undo', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd.toString()
+    }).then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function(data){ startUndoToast(data.id, data.deliver_at, btn); })
+      .catch(function(s){ if (btn) { btn.disabled = false; btn.textContent = 'Enviar'; } alert('Falha ao enviar (HTTP ' + s + ').'); });
     return;
   }
   var btn = this.querySelector('button[type=submit]');
   if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
 });
+
+// Toast counting down to the server's deliver_at; "Desfazer" cancels the held
+// message via /mail/:id/cancel-send. On expiry the message relays server-side
+// and we navigate to the inbox.
+function startUndoToast(msgId, deliverAt, btn) {
+  var deadline = deliverAt ? new Date(deliverAt).getTime() : (Date.now() + 5000);
+  var toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1f2937;color:#fff;padding:.7rem 1rem;border-radius:.5rem;display:flex;gap:.75rem;align-items:center;z-index:2000;box-shadow:0 4px 16px rgba(0,0,0,.3)';
+  toast.innerHTML = '<span>📤 Enviando em <strong id="undo-count"></strong>s</span>' +
+    '<button type="button" id="undo-send-btn" style="background:#ef4444;color:#fff;border:none;padding:.3rem .8rem;border-radius:.3rem;cursor:pointer">↶ Desfazer</button>';
+  document.body.appendChild(toast);
+  var done = false;
+  var iv = setInterval(function() {
+    var rem = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    var c = document.getElementById('undo-count'); if (c) c.textContent = rem;
+    if (rem <= 0 && !done) { done = true; clearInterval(iv); if (toast.parentNode) toast.remove(); window.location.href = '/mail'; }
+  }, 250);
+  document.getElementById('undo-send-btn').onclick = function() {
+    if (done) return;
+    done = true; clearInterval(iv);
+    fetch('/mail/' + encodeURIComponent(msgId) + '/cancel-send', { method: 'POST', credentials: 'include' })
+      .then(function(r){
+        if (toast.parentNode) toast.remove();
+        if (r.ok) { if (btn) { btn.disabled = false; btn.textContent = 'Enviar'; } }
+        else { alert('Não foi possível desfazer (já enviado?).'); window.location.href = '/mail'; }
+      });
+  };
+}
 
 // ── Attachments ───────────────────────────────────────────────────────────────
 var _attachFiles = [];

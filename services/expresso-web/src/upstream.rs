@@ -182,6 +182,33 @@ pub async fn post_json<T: serde::Serialize>(
     Ok(req.send().await?.status().as_u16())
 }
 
+/// POST com JSON body → devolve `(status, Option<Value>)`, com o JSON da
+/// resposta quando 2xx (e parseável). Para quando o caller precisa do recurso
+/// criado (ex.: id + deliver_at do undo-send).
+pub async fn post_json_body<T: serde::Serialize>(
+    state: &AppState,
+    base: &str,
+    path: &str,
+    headers: &HeaderMap,
+    ctx: Option<(&str, &str)>,
+    body: &T,
+) -> WebResult<(u16, Option<serde_json::Value>)> {
+    let url = build_url(base, path);
+    let mut req = state.http.post(&url).json(body);
+    req = fwd_cookie(req, headers);
+    if let Some((t, u)) = ctx {
+        req = inject_ctx(req, t, u);
+    }
+    let resp = req.send().await?;
+    let status = resp.status().as_u16();
+    let json = if (200..300).contains(&status) {
+        resp.json::<serde_json::Value>().await.ok()
+    } else {
+        None
+    };
+    Ok((status, json))
+}
+
 /// PUT com JSON body → propaga status.
 pub async fn put_json<T: serde::Serialize>(
     state: &AppState,

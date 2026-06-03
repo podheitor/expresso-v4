@@ -65,6 +65,8 @@ pub fn router(state: AppState) -> Router {
             "/mail/compose",
             get(mail_compose_page).post(mail_compose_action),
         )
+        .route("/mail/send-undo", post(mail_send_undo_action))
+        .route("/mail/:id/cancel-send", post(mail_cancel_send_action))
         .route("/mail/rules", get(mail_rules_page).post(mail_rules_save))
         .route("/mail/thread/:tid", get(mail_thread_page))
         .route("/mail/thread/:tid/mute", post(mail_thread_mute_action))
@@ -2071,6 +2073,89 @@ async fn mail_compose_action(
         }
         .into_response())
     }
+}
+
+#[derive(serde::Serialize)]
+struct UndoSendPayload {
+    from: String,
+    to: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    cc: Vec<String>,
+    subject: String,
+    body_text: String,
+    undo_seconds: i64,
+}
+
+/// POST /mail/send-undo — server-backed undo send. The backend holds the message
+/// `undo_seconds` then relays it; returns `{id, deliver_at}` so the page shows a
+/// countdown toast with a Cancel button. Real hold (survives tab close), unlike
+/// the old client-only delay.
+async fn mail_send_undo_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<ComposeForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let to = split_addrs(&f.to);
+    if to.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "Informe ao menos um destinatário.").into_response());
+    }
+    let undo_seconds = f
+        .send_at
+        .as_deref()
+        .and_then(|s| s.trim().parse::<i64>().ok())
+        .unwrap_or(10)
+        .clamp(5, 30);
+    let (status, body) = crate::upstream::post_json_body(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/send-with-undo",
+        &headers,
+        Some((&t, &u)),
+        &UndoSendPayload {
+            from: f.from,
+            to,
+            cc: split_addrs(&f.cc),
+            subject: f.subject,
+            body_text: f.body_text,
+            undo_seconds,
+        },
+    )
+    .await?;
+    if (200..300).contains(&status) {
+        Ok(json_response(
+            &body.unwrap_or_else(|| serde_json::json!({})),
+        ))
+    } else {
+        Ok((StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY)).into_response())
+    }
+}
+
+/// POST /mail/:id/cancel-send — abort a held undo-send within its window.
+async fn mail_cancel_send_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = post_empty(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/messages/{enc}/cancel-send"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok((StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY)).into_response())
 }
 
 // ─── /search (unified) ───────────────────────────────────────────────────────
@@ -9911,6 +9996,22 @@ mod tests {
             .map(|s| s.replace('T', " ").chars().take(16).collect())
             .unwrap_or_default();
         assert_eq!(when, "2026-06-03 15:20");
+    }
+
+    #[test]
+    fn undo_send_payload_omits_empty_cc() {
+        let p = UndoSendPayload {
+            from: "me@x.com".into(),
+            to: vec!["a@x.com".into()],
+            cc: Vec::new(),
+            subject: "Hi".into(),
+            body_text: "body".into(),
+            undo_seconds: 10,
+        };
+        let v = serde_json::to_value(&p).expect("serialize");
+        assert!(v.get("cc").is_none());
+        assert_eq!(v["undo_seconds"], 10);
+        assert_eq!(v["to"], serde_json::json!(["a@x.com"]));
     }
 
     #[test]
