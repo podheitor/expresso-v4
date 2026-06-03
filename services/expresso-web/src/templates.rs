@@ -726,6 +726,8 @@ pub struct Event {
     pub organizer_email: Option<String>,
     #[serde(default)]
     pub rrule: Option<String>,
+    #[serde(default)]
+    pub ical_raw: Option<String>,
 }
 
 impl Event {
@@ -862,6 +864,9 @@ pub struct EventFormTpl {
     pub dtend: String,
     pub attendees: String, // one email per line / comma-separated
     pub attendee_pills: Vec<AttendeePill>,
+    /// Reminder lead times in minutes, comma-separated (seeds the form's
+    /// reminder rows). Empty on a new event.
+    pub reminders: String,
     pub error: Option<String>,
 }
 

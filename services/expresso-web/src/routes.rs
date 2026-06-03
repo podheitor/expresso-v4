@@ -2715,6 +2715,10 @@ struct EventForm {
     dtend: String,
     #[serde(default)]
     attendees: String, // newline / comma / semicolon separated
+    /// Reminder lead times in minutes before start, comma-separated (e.g.
+    /// "15,60"). Each becomes a VALARM with a relative `-PT{m}M` trigger.
+    #[serde(default)]
+    reminders: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -2769,6 +2773,7 @@ async fn event_new_form(
         dtend: format!("{date}T10:00"),
         attendees: String::new(),
         attendee_pills: Vec::new(),
+        reminders: String::new(),
         error: None,
     }
     .into_response())
@@ -2796,6 +2801,72 @@ fn parse_attendees(raw: &str) -> Vec<String> {
         .filter(|s| !s.is_empty() && s.contains('@'))
         .map(str::to_ascii_lowercase)
         .collect()
+}
+
+/// Parse a comma-separated minutes-before list ("15,60") into VALARM blocks
+/// with a DISPLAY action and a `-PT{m}M` relative trigger. Skips blanks,
+/// non-numbers, and negatives; dedups; caps at 10 to bound the payload.
+fn build_valarms(reminders: &str, summary: &str) -> String {
+    let mut mins: Vec<u32> = reminders
+        .split(',')
+        .filter_map(|s| s.trim().parse::<u32>().ok())
+        .collect();
+    mins.sort_unstable();
+    mins.dedup();
+    mins.truncate(10);
+    let mut out = String::new();
+    for m in mins {
+        out.push_str("BEGIN:VALARM\r\n");
+        out.push_str("ACTION:DISPLAY\r\n");
+        out.push_str(&format!("TRIGGER:-PT{m}M\r\n"));
+        out.push_str(&format!("DESCRIPTION:{}\r\n", escape_ical(summary)));
+        out.push_str("END:VALARM\r\n");
+    }
+    out
+}
+
+/// Extract reminder lead times (minutes) from an event's iCalendar by reading
+/// each VALARM's `TRIGGER:-PT{n}M` / `-PT{n}H` / `-P{n}D`. Returns a sorted,
+/// deduped, comma-separated minutes list to seed the edit form. Best-effort:
+/// triggers it can't parse as a simple negative duration are skipped.
+fn valarm_minutes(ical: &str) -> String {
+    let mut mins: Vec<u32> = ical
+        .lines()
+        .filter_map(|l| {
+            let l = l.trim();
+            let rest = l
+                .strip_prefix("TRIGGER:-P")
+                .or_else(|| l.strip_prefix("TRIGGER:-p"))?;
+            parse_neg_duration_minutes(rest)
+        })
+        .collect();
+    mins.sort_unstable();
+    mins.dedup();
+    mins.iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// Parse the body of a negative iCal duration after the leading `-P`
+/// (e.g. "T15M", "T1H", "1D") into total minutes. Returns None on anything
+/// more exotic than a single D/H/M component.
+fn parse_neg_duration_minutes(body: &str) -> Option<u32> {
+    let b = body.trim().to_ascii_uppercase();
+    if let Some(d) = b.strip_prefix('T') {
+        // Time component: NNh or NNm.
+        if let Some(h) = d.strip_suffix('H') {
+            return h.parse::<u32>().ok().map(|n| n * 60);
+        }
+        if let Some(m) = d.strip_suffix('M') {
+            return m.parse::<u32>().ok();
+        }
+        None
+    } else if let Some(days) = b.strip_suffix('D') {
+        days.parse::<u32>().ok().map(|n| n * 24 * 60)
+    } else {
+        None
+    }
 }
 
 fn build_vcalendar(
@@ -2847,6 +2918,11 @@ fn build_vcalendar(
         ical.push_str(&format!(
             "ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:{a}\r\n"
         ));
+    }
+    // VALARMs carry reminders into the stored event (and to CalDAV clients).
+    // A cancellation does not need them.
+    if method != Some("CANCEL") {
+        ical.push_str(&build_valarms(&f.reminders, f.summary.trim()));
     }
     ical.push_str("END:VEVENT\r\n");
     ical.push_str("END:VCALENDAR\r\n");
@@ -2986,6 +3062,11 @@ async fn event_edit_form(
         dtend: event.dtend.as_deref().map(iso_to_local).unwrap_or_default(),
         attendees: attendees_text,
         attendee_pills,
+        reminders: event
+            .ical_raw
+            .as_deref()
+            .map(valarm_minutes)
+            .unwrap_or_default(),
         error: None,
     }
     .into_response())
@@ -3128,6 +3209,7 @@ async fn event_delete_action(
                     .map(|s| s.get(0..16).unwrap_or("").to_string())
                     .unwrap_or_default(),
                 attendees: String::new(),
+                reminders: String::new(),
             };
             let organizer = ev.organizer_email.as_deref().or(Some(me.email.as_str()));
             if let Some(itip) =
@@ -5487,6 +5569,58 @@ mod tests {
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
         assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn build_valarms_emits_one_block_per_minute() {
+        let out = build_valarms("15,60", "Reunião");
+        assert_eq!(out.matches("BEGIN:VALARM").count(), 2);
+        assert!(out.contains("TRIGGER:-PT15M"));
+        assert!(out.contains("TRIGGER:-PT60M"));
+        assert!(out.contains("ACTION:DISPLAY"));
+    }
+
+    #[test]
+    fn build_valarms_dedups_sorts_and_skips_junk() {
+        let out = build_valarms("60, 15, 15, x, -5", "x");
+        // 15 and 60 survive (dedup); junk and negative dropped.
+        assert_eq!(out.matches("BEGIN:VALARM").count(), 2);
+        let p15 = out.find("PT15M").unwrap();
+        let p60 = out.find("PT60M").unwrap();
+        assert!(p15 < p60, "sorted ascending");
+    }
+
+    #[test]
+    fn build_valarms_empty_is_empty() {
+        assert_eq!(build_valarms("", "x"), "");
+        assert_eq!(build_valarms("  ,  ", "x"), "");
+    }
+
+    #[test]
+    fn valarm_minutes_extracts_from_ical() {
+        let ical = "BEGIN:VALARM\r\nTRIGGER:-PT15M\r\nEND:VALARM\r\n\
+                    BEGIN:VALARM\r\nTRIGGER:-PT1H\r\nEND:VALARM\r\n";
+        assert_eq!(valarm_minutes(ical), "15,60");
+    }
+
+    #[test]
+    fn valarm_minutes_handles_days_and_dedup() {
+        let ical = "TRIGGER:-P1D\r\nTRIGGER:-PT60M\r\nTRIGGER:-PT60M\r\n";
+        assert_eq!(valarm_minutes(ical), "60,1440");
+    }
+
+    #[test]
+    fn valarm_minutes_empty_when_none() {
+        assert_eq!(valarm_minutes("BEGIN:VEVENT\r\nEND:VEVENT\r\n"), "");
+    }
+
+    #[test]
+    fn parse_neg_duration_minutes_variants() {
+        assert_eq!(parse_neg_duration_minutes("T15M"), Some(15));
+        assert_eq!(parse_neg_duration_minutes("T2H"), Some(120));
+        assert_eq!(parse_neg_duration_minutes("1D"), Some(1440));
+        assert_eq!(parse_neg_duration_minutes("T1H30M"), None); // compound unsupported
+        assert_eq!(parse_neg_duration_minutes("xyz"), None);
     }
 
     #[test]

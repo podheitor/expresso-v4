@@ -303,18 +303,14 @@ function syncRemindersValue() {
   if (inp) inp.value = _reminders.join(',');
 }
 (function() {
-  // Persist reminders client-side per event (or "new") in localStorage
-  var evKey = 'expresso_reminders_{% match event_id %}{% when Some with (eid) %}{{ eid }}{% when None %}new{% endmatch %}';
-  try {
-    var raw = localStorage.getItem(evKey);
-    if (raw) _reminders = JSON.parse(raw) || [];
-  } catch(e) {}
+  // Seed reminders from the server (VALARMs stored on the event). The hidden
+  // "reminders" field is posted back and re-encoded as VALARMs server-side.
+  var seed = "{{ reminders }}";
+  if (seed) {
+    _reminders = seed.split(',').map(function(s){ return parseInt(s, 10); })
+                     .filter(function(n){ return !isNaN(n); });
+  }
   renderReminders();
-  // Save on form submit
-  var form = document.querySelector('form.form');
-  if (form) form.addEventListener('submit', function() {
-    try { localStorage.setItem(evKey, JSON.stringify(_reminders)); } catch(e) {}
-  });
 })();
 
 function updateRruleSummary(rule) {
