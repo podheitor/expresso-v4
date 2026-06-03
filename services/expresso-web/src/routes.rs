@@ -159,6 +159,7 @@ pub fn router(state: AppState) -> Router {
         .route("/mail/:id/flag", post(mail_flag_action))
         .route("/mail/:id/move", post(mail_move_action))
         .route("/mail/:id/delete", post(mail_delete_action))
+        .route("/mail/:id/snooze", post(mail_snooze_action))
         // mail folder management
         .route("/mail/folders/create", post(mail_folder_create_action))
         .route("/mail/folders/rename", post(mail_folder_rename_action))
@@ -1743,6 +1744,48 @@ async fn mail_delete_action(
         utf8_percent_encode(&back, NON_ALPHANUMERIC)
     ))
     .into_response())
+}
+
+#[derive(Deserialize)]
+struct SnoozeForm {
+    /// RFC3339 instant to snooze until (computed client-side from a preset).
+    snooze_until: String,
+}
+
+#[derive(serde::Serialize)]
+struct SnoozePayload<'a> {
+    snooze_until: &'a str,
+}
+
+/// POST /mail/:id/snooze — server-backed snooze: the backend hides the message
+/// until `snooze_until`, then a waker returns it to the inbox. Returns the
+/// upstream status so the JS can confirm or report failure.
+async fn mail_snooze_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<SnoozeForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let status = post_json(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/messages/{enc}/snooze"),
+        &headers,
+        Some((&t, &u)),
+        &SnoozePayload {
+            snooze_until: f.snooze_until.trim(),
+        },
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
 }
 
 // ─── mail folder management ──────────────────────────────────────────────────

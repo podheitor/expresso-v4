@@ -456,82 +456,9 @@ function markAllRead() {
   });
 })();
 
-// ── Mail snooze ───────────────────────────────────────────────────────────────
-var SNOOZE_KEY = 'expresso_snooze_{{ me.user_id }}';
-function loadSnooze() {
-  try { return JSON.parse(localStorage.getItem(SNOOZE_KEY) || '[]'); } catch(e) { return []; }
-}
-function saveSnooze(list) { localStorage.setItem(SNOOZE_KEY, JSON.stringify(list)); }
-function snoozeMailPrompt(id, subject) {
-  document.querySelectorAll('.dropdown-menu.open').forEach(function(m){ m.classList.remove('open'); });
-  var opts = [
-    { label: 'Daqui a 1 hora',   mins: 60 },
-    { label: 'Esta tarde (14h)', abs: todayAt(14, 0) },
-    { label: 'Amanhã de manhã',  abs: tomorrowAt(9, 0) },
-    { label: 'Próxima semana',   abs: nextWeekAt(9, 0) },
-  ];
-  var msg = 'Lembrar "' + (subject || id).substring(0, 40) + '" quando?\n\n' +
-    opts.map(function(o, i){ return (i+1) + '. ' + o.label; }).join('\n');
-  var choice = parseInt(prompt(msg), 10);
-  if (!choice || choice < 1 || choice > opts.length) return;
-  var opt = opts[choice - 1];
-  var until = opt.abs || new Date(Date.now() + opt.mins * 60000).toISOString();
-  var list = loadSnooze();
-  list.push({ id: id, subject: subject || '(sem assunto)', until: until });
-  saveSnooze(list);
-  alert('Soneca definida para ' + new Date(until).toLocaleString('pt-BR') + '.');
-}
-function todayAt(h, m) { var d = new Date(); d.setHours(h, m, 0, 0); return d.toISOString(); }
-function tomorrowAt(h, m) { var d = new Date(); d.setDate(d.getDate()+1); d.setHours(h,m,0,0); return d.toISOString(); }
-function nextWeekAt(h, m) { var d = new Date(); d.setDate(d.getDate()+7-d.getDay()+1); d.setHours(h,m,0,0); return d.toISOString(); }
-
-// Check snooze on load + render snooze chips
-(function checkSnoozed() {
-  var now = Date.now();
-  var list = loadSnooze();
-  var due = list.filter(function(s){ return new Date(s.until).getTime() <= now; });
-  if (due.length) {
-    due.forEach(function(s) {
-      if (Notification.permission === 'granted') {
-        new Notification('Expresso — lembrete', { body: s.subject, icon: '/static/favicon.png', tag: 'snooze-' + s.id });
-      }
-      showSnoozeToast(s.subject, s.id);
-    });
-    saveSnooze(list.filter(function(s){ return new Date(s.until).getTime() > now; }));
-  }
-  // Render snooze chips on message rows
-  var remaining = loadSnooze();
-  remaining.forEach(function(s) {
-    var row = document.querySelector('[data-mid="' + s.id + '"]');
-    if (!row) return;
-    var chip = document.createElement('span');
-    chip.className = 'mail-snooze-chip';
-    chip.title = 'Soneca até ' + new Date(s.until).toLocaleString('pt-BR');
-    var dt = new Date(s.until);
-    var label = dt.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) + ' ' +
-                dt.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
-    chip.textContent = '🔔 ' + label;
-    chip.onclick = function(e) {
-      e.preventDefault(); e.stopPropagation();
-      if (confirm('Cancelar soneca desta mensagem?')) {
-        saveSnooze(loadSnooze().filter(function(x){ return x.id !== s.id; }));
-        chip.remove();
-      }
-    };
-    var subj = row.querySelector('.msg-subject');
-    if (subj) subj.appendChild(chip);
-  });
-})();
-
-function showSnoozeToast(subject, msgId) {
-  var toast = document.createElement('div');
-  toast.className = 'snooze-toast';
-  toast.innerHTML = '<div class="snooze-toast-header"><span>🔔 Lembrete</span><button onclick="this.closest(\'.snooze-toast\').remove()" class="btn btn-ghost btn-sm">✕</button></div>' +
-    '<div class="snooze-toast-body">' + String(subject).replace(/&/g,'&amp;').replace(/</g,'&lt;').slice(0,60) + '</div>' +
-    (msgId ? '<a class="btn btn-primary btn-sm" style="margin-top:.25rem" href="/mail/' + encodeURIComponent(msgId) + '">Abrir</a>' : '');
-  document.body.appendChild(toast);
-  setTimeout(function(){ if (toast.parentNode) toast.remove(); }, 8000);
-}
+// Mail snooze is server-backed (the modal-based snoozeMailPrompt below posts to
+// /mail/:id/snooze). Snoozed messages are hidden server-side until the snooze
+// time, then returned to the inbox by the backend waker — no client tracking.
 
 // ── Keyboard shortcuts (j/k navigate, r reply, e archive) ────────────────────
 (function() {
@@ -820,12 +747,18 @@ function confirmSnooze() {
   var val = document.getElementById('snooze-dt-input').value;
   if (!val) return;
   var until = new Date(val).toISOString();
-  var list = loadSnooze();
-  list = list.filter(function(s){ return s.id !== _snoozePendingId; });
-  list.push({ id: _snoozePendingId, subject: _snoozePendingSubj, until: until });
-  saveSnooze(list);
-  closeSnoozeModal();
-  alert('Soneca definida para ' + new Date(until).toLocaleString('pt-BR') + '.');
+  var body = new URLSearchParams({ snooze_until: until });
+  fetch('/mail/' + encodeURIComponent(_snoozePendingId) + '/snooze', { method: 'POST', body: body })
+    .then(function(r) {
+      closeSnoozeModal();
+      if (r.ok) {
+        alert('Soneca definida para ' + new Date(until).toLocaleString('pt-BR') + '.');
+        location.reload();
+      } else {
+        alert('Não foi possível definir a soneca.');
+      }
+    })
+    .catch(function() { closeSnoozeModal(); alert('Não foi possível definir a soneca.'); });
 }
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape' && document.getElementById('snooze-modal').style.display === 'flex') closeSnoozeModal();
