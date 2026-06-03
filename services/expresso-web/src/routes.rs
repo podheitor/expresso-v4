@@ -116,6 +116,7 @@ pub fn router(state: AppState) -> Router {
             get(calendar_bulk_delete_page).post(calendar_bulk_delete_action),
         )
         .route("/calendar/bulk-move", post(calendar_bulk_move_action))
+        .route("/calendar/bulk-status", post(calendar_bulk_status_action))
         .route("/calendar/conflicts", get(calendar_conflicts_page))
         .route("/calendar/histogram", get(calendar_histogram_page))
         .route("/calendar/counters", get(calendar_counters_page))
@@ -2021,6 +2022,53 @@ async fn calendar_bulk_move_action(
         &st.backends.calendar,
         &format!(
             "/api/v1/calendars/{enc}/events-by-range/move?after={after}&before={before}&dst={dst}"
+        ),
+        &headers,
+        Some((&t, &u)),
+        &(),
+    )
+    .await?;
+    let cenc = utf8_percent_encode(&f.cal_id, NON_ALPHANUMERIC);
+    Ok(Redirect::to(&format!(
+        "/calendar/bulk-delete?cal_id={cenc}&from={}&to={}",
+        f.from, f.to
+    ))
+    .into_response())
+}
+
+#[derive(Deserialize)]
+struct BulkStatusForm {
+    cal_id: String,
+    status: String,
+    from: String,
+    to: String,
+}
+
+/// POST /calendar/bulk-status — set the STATUS of every event in the [from, to]
+/// range (CONFIRMED|TENTATIVE|CANCELLED) without deleting them. Back to preview.
+async fn calendar_bulk_status_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<BulkStatusForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let status = f.status.trim();
+    let valid = matches!(status, "CONFIRMED" | "TENTATIVE" | "CANCELLED");
+    if f.cal_id.is_empty() || !valid || f.from.len() != 10 || f.to.len() != 10 || f.from > f.to {
+        return Ok((StatusCode::BAD_REQUEST, "parâmetros inválidos").into_response());
+    }
+    let enc = utf8_percent_encode(&f.cal_id, NON_ALPHANUMERIC);
+    let after = format!("{}T00:00:00Z", f.from);
+    let before = format!("{}T23:59:59Z", f.to);
+    let _ = patch_json(
+        &st,
+        &st.backends.calendar,
+        &format!(
+            "/api/v1/calendars/{enc}/events-by-range/set-status?after={after}&before={before}&status={status}"
         ),
         &headers,
         Some((&t, &u)),
@@ -10401,6 +10449,19 @@ mod tests {
         assert!(v.get("cc").is_none());
         assert_eq!(v["undo_seconds"], 10);
         assert_eq!(v["to"], serde_json::json!(["a@x.com"]));
+    }
+
+    #[test]
+    fn bulk_status_form_parses_and_validates_whitelist() {
+        let f: BulkStatusForm = serde_json::from_value(serde_json::json!({
+            "cal_id": "c", "status": "CANCELLED", "from": "2026-06-01", "to": "2026-06-30"
+        }))
+        .expect("parse");
+        assert!(matches!(
+            f.status.as_str(),
+            "CONFIRMED" | "TENTATIVE" | "CANCELLED"
+        ));
+        assert!(!matches!("BOGUS", "CONFIRMED" | "TENTATIVE" | "CANCELLED"));
     }
 
     #[test]

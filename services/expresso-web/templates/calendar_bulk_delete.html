@@ -72,6 +72,21 @@
         </label>
         <button type="submit" class="btn btn-ghost">↪ Mover intervalo</button>
       </form>
+      <form method="post" action="/calendar/bulk-status"
+            style="display:flex;gap:.4rem;align-items:flex-end"
+            onsubmit="return confirm('Marcar todos os eventos de {{ from }} a {{ to }} com este status?')">
+        <input type="hidden" name="cal_id" value="{{ cal_id }}">
+        <input type="hidden" name="from" value="{{ from }}">
+        <input type="hidden" name="to" value="{{ to }}">
+        <label class="small muted">Marcar status
+          <select name="status" class="input">
+            <option value="CONFIRMED">Confirmado</option>
+            <option value="TENTATIVE">Provisório</option>
+            <option value="CANCELLED">Cancelado</option>
+          </select>
+        </label>
+        <button type="submit" class="btn btn-ghost">✔ Aplicar status</button>
+      </form>
     </div>
     {% endif %}
   {% endif %}
