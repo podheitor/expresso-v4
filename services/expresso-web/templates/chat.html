@@ -188,7 +188,8 @@
                   <button class="chat-action-btn" onclick="toggleReactionPicker('{{ msg.id }}')" title="Reação">😊</button>
                   <button class="chat-action-btn" onclick="pinMessage('{{ msg.id }}', this)" title="Fixar mensagem">📌</button>
                   <button class="chat-action-btn" onclick="copyMsgLink('{{ ch.id }}','{{ msg.id }}', this)" title="Copiar link da mensagem">🔗</button>
-                  {% if msg.is_own(me.user_id.as_str()) %}<button class="chat-action-btn" onclick="startEditMsg('{{ msg.id }}')" title="Editar">✏</button>{% endif %}
+                  {% if msg.is_own(me.user_id.as_str()) %}<button class="chat-action-btn" onclick="startEditMsg('{{ msg.id }}')" title="Editar">✏</button>
+                  <button class="chat-action-btn" onclick="deleteMsg('{{ ch.id }}','{{ msg.id }}')" title="Apagar">🗑</button>{% endif %}
                 </div>
                 <div class="chat-reaction-picker" id="rpicker-{{ msg.id }}" style="display:none">
                   <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','👍')">👍</button>
@@ -1299,11 +1300,22 @@ function saveEditMsg(cid, id) {
     method: 'PATCH', credentials: 'include',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body: 'body=' + encodeURIComponent(body),
-  }).then(function() {
+  }).then(function(r) {
+    if (!r.ok) { alert('Não foi possível editar a mensagem.'); return; }
     var bodyEl = document.getElementById('msgbody-' + id);
     if (bodyEl) bodyEl.textContent = body;
     cancelEditMsg(id);
-  });
+  }).catch(function() { alert('Falha de rede ao editar.'); });
+}
+function deleteMsg(cid, id) {
+  if (!confirm('Apagar esta mensagem? Esta ação não pode ser desfeita.')) return;
+  fetch('/chat/channels/' + encodeURIComponent(cid) + '/messages/' + encodeURIComponent(id), {
+    method: 'DELETE', credentials: 'include',
+  }).then(function(r) {
+    if (!r.ok) { alert('Não foi possível apagar a mensagem.'); return; }
+    var row = document.querySelector('[data-msg-id="' + id + '"]');
+    if (row) row.remove();
+  }).catch(function() { alert('Falha de rede ao apagar.'); });
 }
 
 // ── Thread sidebar ────────────────────────────────────────────────────────────

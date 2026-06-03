@@ -190,6 +190,10 @@ pub fn router(state: AppState) -> Router {
             post(chat_react_message),
         )
         .route(
+            "/chat/channels/:cid/messages/:mid",
+            axum::routing::patch(chat_edit_message).delete(chat_delete_message),
+        )
+        .route(
             "/chat/channels/:cid/pin",
             get(chat_get_pin).post(chat_set_pin).delete(chat_delete_pin),
         )
@@ -5011,6 +5015,68 @@ async fn chat_react_message(
         _ => std::collections::HashMap::new(),
     };
     Ok(axum::Json(ChatReactResp { reactions }).into_response())
+}
+
+// ── Chat message edit / delete ──
+
+#[derive(serde::Deserialize)]
+struct ChatEditForm {
+    body: String,
+}
+
+/// PATCH /chat/channels/:cid/messages/:mid — edit a message (proxies the
+/// backend's PUT, which the homeserver authorizes to the original sender).
+async fn chat_edit_message(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((cid, mid)): Path<(String, String)>,
+    Form(f): Form<ChatEditForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let body = f.body.trim();
+    if body.is_empty() {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    }
+    let url = format!(
+        "{}/api/v1/channels/{cid}/messages/{mid}",
+        st.backends.chat.trim_end_matches('/')
+    );
+    let mut req = st.http.put(&url).json(&serde_json::json!({ "body": body }));
+    req = crate::upstream::fwd_cookie(req, &headers);
+    req = crate::upstream::inject_ctx(req, &t, &u);
+    let status = req.send().await.map(|r| r.status().as_u16()).unwrap_or(502);
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// DELETE /chat/channels/:cid/messages/:mid — redact a message (proxies the
+/// backend's DELETE; the homeserver enforces redaction permission).
+async fn chat_delete_message(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((cid, mid)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let status = delete_at(
+        &st,
+        &st.backends.chat,
+        &format!("/api/v1/channels/{cid}/messages/{mid}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
 }
 
 // ── Chat pin ──
