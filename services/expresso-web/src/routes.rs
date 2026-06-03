@@ -16,20 +16,20 @@ use crate::{
     ical::{build_vcalendar, categories_from_ical, to_rfc3339, valarm_minutes, EventForm},
     templates::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
-        AdminConfigTpl, AdminLoginEvent, AdminMonitoringTpl, AdminTenant, AdminTenantsTpl,
-        AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent, Calendar, CalendarDayTpl,
-        CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatChannel, ChatMessage,
-        ChatTpl, Contact, ContactActivityTpl, ContactFormTpl, ContactGroup, ContactGroupDetailTpl,
-        ContactGroupsTpl, ContactsTpl, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
-        DriveActivityTpl, DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota,
-        DriveShareTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl,
-        DriveVersionsTpl, Event, EventFormTpl, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder,
-        FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
-        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
-        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MonthCell, Note, NotesActivityTpl, NotesTagsTpl, NotesTpl, SearchGroup,
-        SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TagPairRow, TasksTpl, VersionRow,
-        WorkingHour,
+        AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminTenant,
+        AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent, Calendar,
+        CalendarDayTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl,
+        ChatChannel, ChatMessage, ChatTpl, Contact, ContactActivityTpl, ContactFormTpl,
+        ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactsTpl, DayColumn,
+        DelegationRaw, DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl,
+        DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl,
+        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
+        Event, EventFormTpl, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl,
+        GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl,
+        MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
+        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note,
+        NotesActivityTpl, NotesTagsTpl, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
+        SettingsTpl, ShareRow, TagPairRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
@@ -301,6 +301,11 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/tenants/:id/toggle", post(admin_tenants_toggle))
         .route("/admin/monitoring", get(admin_monitoring_page))
         .route("/admin/audit", get(admin_audit_page))
+        .route("/admin/dlq", get(admin_dlq_page))
+        .route("/admin/dlq/purge", post(admin_dlq_purge))
+        .route("/admin/dlq/retry-all", post(admin_dlq_retry_all))
+        .route("/admin/dlq/:id/retry", post(admin_dlq_retry))
+        .route("/admin/dlq/:id/delete", post(admin_dlq_delete))
         .route(
             "/admin/config",
             get(admin_config_page).post(admin_config_save),
@@ -7250,6 +7255,57 @@ mod tests {
     }
 
     #[test]
+    fn require_superadmin_rejects_plain_admin() {
+        let mut me = mk_me("t", "u");
+        me.roles = vec!["admin".into()];
+        assert!(!require_superadmin(&me));
+        me.roles = vec!["superadmin".into()];
+        assert!(require_superadmin(&me));
+        me.roles = vec!["super_admin".into()];
+        assert!(require_superadmin(&me));
+    }
+
+    #[test]
+    fn payload_preview_truncates_long_json() {
+        let long = serde_json::json!({ "x": "y".repeat(300) });
+        let p = payload_preview(&long);
+        assert!(p.chars().count() <= 161);
+        assert!(p.ends_with('…'));
+        // short payloads pass through verbatim
+        let short = serde_json::json!({ "k": 1 });
+        assert_eq!(payload_preview(&short), r#"{"k":1}"#);
+    }
+
+    #[test]
+    fn dlq_entry_from_json_maps_fields_and_defaults() {
+        let v = serde_json::json!({
+            "id": "abc", "kind": "new_mail", "attempts": 5,
+            "last_error": "timeout", "failed_at": "2026-06-03T10:00:00Z",
+            "payload": { "n": 1 }
+        });
+        let e = dlq_entry_from_json(&v);
+        assert_eq!(e.id, "abc");
+        assert_eq!(e.kind, "new_mail");
+        assert_eq!(e.attempts, 5);
+        assert_eq!(e.last_error, "timeout");
+        assert_eq!(e.payload_preview, r#"{"n":1}"#);
+        // absent string fields default to empty (e.g. tenant_id null)
+        assert_eq!(e.tenant_id, "");
+    }
+
+    #[test]
+    fn dlq_redirect_flash_reflects_status() {
+        let ok = dlq_redirect(200, "feito");
+        assert_eq!(ok.status(), StatusCode::SEE_OTHER);
+        let loc = ok.headers().get("location").unwrap().to_str().unwrap();
+        assert!(loc.starts_with("/admin/dlq?flash="));
+        assert!(loc.contains("feito"));
+        let bad = dlq_redirect(503, "feito");
+        let loc = bad.headers().get("location").unwrap().to_str().unwrap();
+        assert!(loc.contains("503"));
+    }
+
+    #[test]
     fn bulk_payload_splits_ids_and_nulls_blank_parent() {
         let v = bulk_payload(" a , b ,, c ", "  ");
         assert_eq!(v["ids"], serde_json::json!(["a", "b", "c"]));
@@ -7915,6 +7971,242 @@ async fn admin_audit_page(
         me,
         events,
     }))
+}
+
+// ─── /admin/dlq (notification dead-letter queue) ───────────────────────────────
+
+/// The notifications DLQ ops require a super-admin (not a plain tenant `admin`),
+/// matching the backend `require_dlq_admin` gate. A page shown to a non-super
+/// admin would only 403 at the backend, so gate the UI the same way.
+fn require_superadmin(me: &Me) -> bool {
+    me.roles
+        .iter()
+        .any(|r| r == "superadmin" || r == "super_admin")
+}
+
+#[derive(Deserialize)]
+struct DlqPageQuery {
+    kind: Option<String>,
+    flash: Option<String>,
+}
+
+/// One-line preview of a DLQ payload for the table cell (compact JSON, capped).
+fn payload_preview(payload: &serde_json::Value) -> String {
+    let s = payload.to_string();
+    if s.chars().count() > 160 {
+        let mut out: String = s.chars().take(160).collect();
+        out.push('…');
+        out
+    } else {
+        s
+    }
+}
+
+fn dlq_entry_from_json(v: &serde_json::Value) -> DlqEntry {
+    let str_of = |k: &str| {
+        v.get(k)
+            .and_then(|x| x.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    DlqEntry {
+        id: str_of("id"),
+        tenant_id: str_of("tenant_id"),
+        user_id: str_of("user_id"),
+        kind: str_of("kind"),
+        attempts: v
+            .get("attempts")
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(0),
+        last_error: str_of("last_error"),
+        failed_at: str_of("failed_at"),
+        payload_preview: v.get("payload").map(payload_preview).unwrap_or_default(),
+    }
+}
+
+async fn admin_dlq_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<DlqPageQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_superadmin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let filter_kind = q.kind.unwrap_or_default();
+    let list_path = if filter_kind.is_empty() {
+        "/api/v1/notifications/dlq?limit=200".to_string()
+    } else {
+        let enc = utf8_percent_encode(&filter_kind, NON_ALPHANUMERIC);
+        format!("/api/v1/notifications/dlq?limit=200&kind={enc}")
+    };
+    let list = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.notifications,
+        &list_path,
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let entries: Vec<DlqEntry> = list
+        .get("items")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().map(dlq_entry_from_json).collect())
+        .unwrap_or_default();
+
+    let stats = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.notifications,
+        "/api/v1/notifications/dlq/stats",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let total = stats
+        .get("total")
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(0);
+    let by_kind: Vec<DlqKindCount> = stats
+        .get("by_kind")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|r| DlqKindCount {
+                    kind: r
+                        .get("kind")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    count: r
+                        .get("count")
+                        .and_then(serde_json::Value::as_i64)
+                        .unwrap_or(0),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(askama_axum::IntoResponse::into_response(AdminDlqTpl {
+        me,
+        total,
+        entries,
+        by_kind,
+        filter_kind,
+        flash: q.flash,
+    }))
+}
+
+/// Resolve a flash message for the DLQ redirect from an upstream status code.
+fn dlq_redirect(status: u16, ok_msg: &str) -> Response {
+    let flash = if (200..300).contains(&status) {
+        ok_msg.to_string()
+    } else {
+        format!("Falha (HTTP {status})")
+    };
+    let enc = utf8_percent_encode(&flash, NON_ALPHANUMERIC);
+    Redirect::to(&format!("/admin/dlq?flash={enc}")).into_response()
+}
+
+async fn admin_dlq_retry(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_superadmin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = post_empty(
+        &st,
+        &st.backends.notifications,
+        &format!("/api/v1/notifications/dlq/{enc}/retry"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(dlq_redirect(status, "Notificação reenviada"))
+}
+
+async fn admin_dlq_delete(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_superadmin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = delete_at(
+        &st,
+        &st.backends.notifications,
+        &format!("/api/v1/notifications/dlq/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(dlq_redirect(status, "Entrada apagada"))
+}
+
+async fn admin_dlq_purge(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_superadmin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let status = delete_at(
+        &st,
+        &st.backends.notifications,
+        "/api/v1/notifications/dlq",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(dlq_redirect(status, "Fila esvaziada"))
+}
+
+async fn admin_dlq_retry_all(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_superadmin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let status = post_empty(
+        &st,
+        &st.backends.notifications,
+        "/api/v1/notifications/dlq/retry-all",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(dlq_redirect(status, "Reenvio de todas disparado"))
 }
 
 // ─── /admin/config ────────────────────────────────────────────────────────────

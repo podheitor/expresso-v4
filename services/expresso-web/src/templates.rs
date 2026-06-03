@@ -1560,6 +1560,39 @@ pub struct AdminConfigTpl {
     pub flash: Option<String>,
 }
 
+/// One dead-lettered notification (a webhook that exhausted its retries).
+#[derive(Debug, Clone)]
+pub struct DlqEntry {
+    pub id: String,
+    pub tenant_id: String,
+    pub user_id: String,
+    pub kind: String,
+    pub attempts: i64,
+    pub last_error: String,
+    pub failed_at: String,
+    /// One-line JSON preview of the saved payload (truncated for the table).
+    pub payload_preview: String,
+}
+
+/// A `(kind, count)` tally from the DLQ stats endpoint.
+#[derive(Debug, Clone)]
+pub struct DlqKindCount {
+    pub kind: String,
+    pub count: i64,
+}
+
+#[derive(Template)]
+#[template(path = "admin_dlq.html")]
+pub struct AdminDlqTpl {
+    pub me: Me,
+    pub total: i64,
+    pub entries: Vec<DlqEntry>,
+    pub by_kind: Vec<DlqKindCount>,
+    /// Active `kind` filter, echoed back into the filter input.
+    pub filter_kind: String,
+    pub flash: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Clone, serde::Serialize, Default)]
 pub struct AdminLoginEvent {
     #[serde(default)]

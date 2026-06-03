@@ -1,0 +1,85 @@
+{% extends "admin_base.html" %}
+{% block title %}Notificações (DLQ) · Admin · Expresso{% endblock %}
+{% block nav_dlq %} active{% endblock %}
+{% block flash %}
+{% match flash %}{% when Some with (m) %}<div class="flash">{{ m }}</div>{% when None %}{% endmatch %}
+{% endblock %}
+{% block body %}
+<div class="admin-page">
+  <div class="admin-page-header">
+    <h1>Fila de notificações falhas <span class="badge" style="vertical-align:middle;font-size:.7rem">{{ total }}</span></h1>
+    <div class="admin-actions" style="display:flex;gap:.4rem;align-items:center">
+      {% if total > 0 %}
+      <form method="post" action="/admin/dlq/retry-all" style="display:inline"
+            onsubmit="return confirm('Reenviar TODAS as {{ total }} notificações falhas?')">
+        <button class="btn btn-sm" type="submit">↻ Reenviar todas</button>
+      </form>
+      <form method="post" action="/admin/dlq/purge" style="display:inline"
+            onsubmit="return confirm('Apagar TODAS as {{ total }} entradas da DLQ? Esta ação não pode ser desfeita.')">
+        <button class="btn btn-ghost btn-sm" type="submit">🗑 Esvaziar fila</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <p class="muted small" style="margin:.25rem 0 .75rem">
+    Notificações cujo webhook esgotou as tentativas de entrega caem aqui para inspeção e reenvio.
+    Operação restrita a super-administradores; abrange todos os tenants.
+  </p>
+
+  {% if !by_kind.is_empty() %}
+  <div class="card" style="margin-bottom:.75rem;padding:.6rem .8rem">
+    <strong class="small">Por tipo:</strong>
+    {% for k in by_kind %}
+      <a class="audit-action-badge" href="/admin/dlq?kind={{ k.kind }}" style="margin:.15rem;text-decoration:none">{{ k.kind }} · {{ k.count }}</a>
+    {% endfor %}
+    {% if !filter_kind.is_empty() %}
+      <a class="link-sm" href="/admin/dlq" style="margin-left:.4rem">× limpar filtro ({{ filter_kind }})</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="card" style="overflow:auto">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Falhou em</th>
+          <th>Tipo</th>
+          <th>Tenant</th>
+          <th>Usuário</th>
+          <th>Tent.</th>
+          <th>Último erro</th>
+          <th>Payload</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if entries.is_empty() %}
+          <tr><td colspan="8" class="muted" style="text-align:center;padding:2rem">Nenhuma notificação na fila.</td></tr>
+        {% else %}
+          {% for e in entries %}
+          <tr>
+            <td class="mono small" title="{{ e.failed_at }}">{{ e.failed_at }}</td>
+            <td><span class="audit-action-badge">{{ e.kind }}</span></td>
+            <td class="mono small muted">{{ e.tenant_id }}</td>
+            <td class="mono small muted">{{ e.user_id }}</td>
+            <td class="small">{{ e.attempts }}</td>
+            <td class="small" style="max-width:18rem;color:#b00">{{ e.last_error }}</td>
+            <td class="mono small muted" style="max-width:20rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ e.payload_preview }}">{{ e.payload_preview }}</td>
+            <td style="white-space:nowrap">
+              <form method="post" action="/admin/dlq/{{ e.id }}/retry" style="display:inline">
+                <button class="btn btn-ghost btn-sm" type="submit" title="Reenviar">↻</button>
+              </form>
+              <form method="post" action="/admin/dlq/{{ e.id }}/delete" style="display:inline"
+                    onsubmit="return confirm('Apagar esta entrada da DLQ?')">
+                <button class="btn btn-ghost btn-sm" type="submit" title="Apagar">🗑</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
