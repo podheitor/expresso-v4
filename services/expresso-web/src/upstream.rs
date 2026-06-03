@@ -113,6 +113,38 @@ pub async fn post_body(
     Ok(req.send().await?.status().as_u16())
 }
 
+/// POST com body + content-type → devolve `(status, body)`, onde `body` é o
+/// JSON da resposta quando 2xx (e parseável), senão None. Para quando o caller
+/// precisa do recurso criado (ex.: o `id` do evento p/ enfileirar alarmes).
+pub async fn post_body_json(
+    state: &AppState,
+    base: &str,
+    path: &str,
+    headers: &HeaderMap,
+    ctx: Option<(&str, &str)>,
+    body: Bytes,
+    content_type: &str,
+) -> WebResult<(u16, Option<serde_json::Value>)> {
+    let url = build_url(base, path);
+    let mut req = state
+        .http
+        .post(&url)
+        .header("content-type", content_type)
+        .body(body);
+    req = fwd_cookie(req, headers);
+    if let Some((t, u)) = ctx {
+        req = inject_ctx(req, t, u);
+    }
+    let resp = req.send().await?;
+    let status = resp.status().as_u16();
+    let json = if (200..300).contains(&status) {
+        resp.json::<serde_json::Value>().await.ok()
+    } else {
+        None
+    };
+    Ok((status, json))
+}
+
 /// POST com JSON body → propaga status.
 pub async fn post_json<T: serde::Serialize>(
     state: &AppState,

@@ -32,8 +32,8 @@ use crate::{
         SettingsTpl, ShareRow, TagPairRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
-        delete_at, get_bytes, get_json, patch_json, post_body, post_empty, post_json, put_body,
-        put_json,
+        delete_at, get_bytes, get_json, patch_json, post_body, post_body_json, post_empty,
+        post_json, put_body, put_json,
     },
     vcard::{build_vcard, ContactForm},
     AppState,
@@ -3900,7 +3900,7 @@ async fn event_new_action(
         return Ok((StatusCode::BAD_REQUEST, "Datas inválidas").into_response());
     };
     let enc = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC).to_string();
-    let status = post_body(
+    let (status, created) = post_body_json(
         &st,
         &st.backends.calendar,
         &format!("/api/v1/calendars/{enc}/events"),
@@ -3912,6 +3912,16 @@ async fn event_new_action(
     .await?;
     if !(200..300).contains(&status) {
         return Ok((StatusCode::BAD_GATEWAY, format!("upstream {status}")).into_response());
+    }
+    // Server-side reminder delivery reads calendar_event_alarms, which the iCal
+    // VALARMs don't populate — enqueue them via the alarms API using the id of
+    // the event we just created (best-effort; failures don't block the create).
+    if let Some(event_id) = created
+        .as_ref()
+        .and_then(|v| v.get("id"))
+        .and_then(|v| v.as_str())
+    {
+        enqueue_reminders(&st, &headers, (&t, &u), &cal_id, event_id, &f.reminders).await;
     }
     if !attendees.is_empty() {
         let Some(itip) = build_vcalendar(&uid, Some(&me.email), &attendees, Some("REQUEST"), &f)
@@ -3930,6 +3940,46 @@ async fn event_new_action(
         .await?;
     }
     Ok(Redirect::to(&format!("/calendar/{cal_id}")).into_response())
+}
+
+/// Parse a comma-separated minutes-before list into sorted, deduped, capped
+/// minutes (mirrors `ical::build_valarms`). Skips blanks/non-numbers.
+fn reminder_minutes(reminders: &str) -> Vec<u32> {
+    let mut mins: Vec<u32> = reminders
+        .split(',')
+        .filter_map(|s| s.trim().parse::<u32>().ok())
+        .collect();
+    mins.sort_unstable();
+    mins.dedup();
+    mins.truncate(10);
+    mins
+}
+
+/// POST one DISPLAY alarm per reminder lead-time to the calendar alarms API so
+/// the server-side delivery worker (which reads `calendar_event_alarms`, not the
+/// stored iCal VALARMs) actually fires them. Best-effort: each failure is
+/// ignored so a flaky alarm enqueue never fails the event create.
+async fn enqueue_reminders(
+    st: &AppState,
+    headers: &HeaderMap,
+    ctx: (&str, &str),
+    cal_id: &str,
+    event_id: &str,
+    reminders: &str,
+) {
+    let cal_enc = utf8_percent_encode(cal_id, NON_ALPHANUMERIC).to_string();
+    let ev_enc = utf8_percent_encode(event_id, NON_ALPHANUMERIC).to_string();
+    let path = format!("/api/v1/calendars/{cal_enc}/events/{ev_enc}/alarms");
+    for m in reminder_minutes(reminders) {
+        let body = serde_json::json!({
+            "action": "DISPLAY",
+            "trigger_rel": format!("-PT{m}M"),
+            "description": "Lembrete",
+        });
+        let _ =
+            crate::upstream::post_json(st, &st.backends.calendar, &path, headers, Some(ctx), &body)
+                .await;
+    }
 }
 
 async fn event_edit_form(
@@ -4078,6 +4128,17 @@ async fn event_edit_action(
     if !(200..300).contains(&status) {
         return Ok((StatusCode::BAD_GATEWAY, format!("upstream {status}")).into_response());
     }
+    // Re-sync server-side alarms to match the edited reminders: drop the event's
+    // existing alarms, then re-enqueue from the form (best-effort).
+    let _ = delete_at(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/calendars/{enc_c}/events/{enc_e}/alarms"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await;
+    enqueue_reminders(&st, &headers, (&t, &u), &cal_id, &id, &f.reminders).await;
     if !attendees.is_empty() {
         let Some(itip) = build_vcalendar(&existing.uid, organizer, &attendees, Some("REQUEST"), &f)
         else {
@@ -7252,6 +7313,15 @@ mod tests {
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
         assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn reminder_minutes_sorts_dedups_and_skips_junk() {
+        assert_eq!(reminder_minutes("60, 15, 15, x, -5"), vec![15, 60]);
+        assert_eq!(reminder_minutes(""), Vec::<u32>::new());
+        assert_eq!(reminder_minutes("  ,  "), Vec::<u32>::new());
+        // caps at 10 entries
+        assert_eq!(reminder_minutes("1,2,3,4,5,6,7,8,9,10,11,12").len(), 10);
     }
 
     #[test]
