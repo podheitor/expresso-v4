@@ -22,7 +22,11 @@
         <td class="mono">#{{ v.version_no }}</td>
         <td>{{ v.name() }}</td>
         <td class="muted small">{{ v.created_at }}</td>
-        <td>
+        <td style="white-space:nowrap">
+          {% if v.version_no != latest %}
+          <a class="btn btn-ghost btn-sm" href="/contacts/{{ book_id }}/{{ contact_id }}/diff/{{ v.version_no }}/{{ latest }}"
+             title="Comparar com a versão mais recente (#{{ latest }})">🔍 Comparar</a>
+          {% endif %}
           <form method="post" action="/contacts/{{ book_id }}/{{ contact_id }}/versions/{{ v.version_no }}/restore"
                 style="display:inline" onsubmit="return confirm('Restaurar a versão #{{ v.version_no }}? O estado atual será salvo como nova versão.')">
             <button class="btn btn-ghost btn-sm" type="submit" title="Restaurar esta versão">↩ Restaurar</button>

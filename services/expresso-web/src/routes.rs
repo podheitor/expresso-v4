@@ -23,13 +23,13 @@ use crate::{
         AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent,
         Calendar, CalendarDayTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl,
         ChatAttachment, ChatChannel, ChatMessage, ChatTpl, Contact, ContactActivityTpl,
-        ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow,
-        ContactVersionsTpl, ContactsTpl, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
-        DlqEntry, DlqKindCount, DriveActivityTpl, DriveContentHit, DriveContentSearchTpl,
-        DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl,
-        DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl,
-        DriveVersionsTpl, Event, EventFormTpl, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder,
-        FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
+        ContactDiffTpl, ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl,
+        ContactVersionRow, ContactVersionsTpl, ContactsTpl, DayColumn, DelegationRaw,
+        DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveContentHit,
+        DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota,
+        DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl,
+        DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlowEditTpl, FlowRuleRow, FlowsTpl,
+        Folder, FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
         MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
         MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
         MessageListItem, MonthCell, Note, Notebook, NotesActivityTpl, NotesTagsTpl, NotesTpl,
@@ -150,6 +150,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/contacts/:book_id/:id/versions/:vno/restore",
             post(contact_version_restore_action),
+        )
+        .route(
+            "/contacts/:book_id/:id/diff/:from/:to",
+            get(contact_diff_page),
         )
         .route(
             "/contacts/:book_id/share",
@@ -4818,12 +4822,15 @@ async fn contact_versions_page(
     )
     .await?
     .unwrap_or_default();
+    // The list is newest-first, so the first row's number is the diff target.
+    let latest = versions.first().map(|v| v.version_no).unwrap_or(0);
     Ok(askama_axum::IntoResponse::into_response(
         ContactVersionsTpl {
             me,
             book_id,
             contact_id: id,
             versions,
+            latest,
         },
     ))
 }
@@ -4850,6 +4857,50 @@ async fn contact_version_restore_action(
     )
     .await?;
     Ok(Redirect::to(&format!("/contacts/{enc_b}/{enc_i}/versions")).into_response())
+}
+
+/// GET /contacts/:book_id/:id/diff/:from/:to — line-level diff between two stored
+/// vCard revisions of a contact (added/removed properties).
+async fn contact_diff_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((book_id, id, from_no, to_no)): Path<(String, String, i32, i32)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc_b = utf8_percent_encode(&book_id, NON_ALPHANUMERIC).to_string();
+    let enc_i = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let diff = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/addressbooks/{enc_b}/contacts/{enc_i}/versions/{from_no}/diff/{to_no}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let lines = |key: &str| {
+        diff.get(key)
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    Ok(askama_axum::IntoResponse::into_response(ContactDiffTpl {
+        me,
+        book_id,
+        contact_id: id,
+        from_no,
+        to_no,
+        added: lines("added"),
+        removed: lines("removed"),
+    }))
 }
 
 async fn contacts_export_vcf(

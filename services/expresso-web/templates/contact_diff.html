@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Comparar versões · Expresso{% endblock %}
+{% block nav %}{% let current = "contacts" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Diferenças: #{{ from_no }} → #{{ to_no }}</h1>
+    <a class="btn btn-ghost" href="/contacts/{{ book_id }}/{{ contact_id }}/versions">← Histórico</a>
+  </div>
+  <p class="muted small" style="margin:.25rem 0 .75rem">
+    Propriedades do vCard adicionadas/removidas entre a versão #{{ from_no }} e a #{{ to_no }}.
+  </p>
+
+  {% if added.is_empty() && removed.is_empty() %}
+    <div class="empty-state">As duas versões são idênticas.</div>
+  {% else %}
+  <div class="card" style="padding:.6rem .8rem;font-family:monospace;font-size:.85rem;line-height:1.6">
+    {% for l in removed %}
+    <div style="color:var(--danger,#b00)">− {{ l }}</div>
+    {% endfor %}
+    {% for l in added %}
+    <div style="color:var(--ok,green)">+ {{ l }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

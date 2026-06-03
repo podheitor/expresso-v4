@@ -777,6 +777,22 @@ pub struct ContactVersionsTpl {
     pub book_id: String,
     pub contact_id: String,
     pub versions: Vec<ContactVersionRow>,
+    /// Highest (most recent) version number — the diff target. 0 when empty.
+    pub latest: i32,
+}
+
+#[derive(Template)]
+#[template(path = "contact_diff.html")]
+pub struct ContactDiffTpl {
+    pub me: Me,
+    pub book_id: String,
+    pub contact_id: String,
+    pub from_no: i32,
+    pub to_no: i32,
+    /// vCard lines present in `to_no` but not `from_no`.
+    pub added: Vec<String>,
+    /// vCard lines present in `from_no` but not `to_no`.
+    pub removed: Vec<String>,
 }
 
 #[derive(Template)]
