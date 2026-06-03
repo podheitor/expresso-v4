@@ -826,6 +826,33 @@ pub struct ContactVersionsTpl {
     pub latest: i32,
 }
 
+/// One past content revision of a note (newest first).
+#[derive(Deserialize)]
+pub struct NoteVersionRow {
+    pub version_no: i32,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub created_at: String,
+}
+impl NoteVersionRow {
+    pub fn label(&self) -> &str {
+        if self.title.trim().is_empty() {
+            "(sem título)"
+        } else {
+            &self.title
+        }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "note_versions.html")]
+pub struct NoteVersionsTpl {
+    pub me: Me,
+    pub note_id: String,
+    pub versions: Vec<NoteVersionRow>,
+}
+
 #[derive(Template)]
 #[template(path = "contact_diff.html")]
 pub struct ContactDiffTpl {
@@ -1968,6 +1995,20 @@ mod tests {
         f.expires_at = Some("2026-07-01T00:00:00Z".into());
         assert!(f.has_expiry());
         assert_eq!(f.expiry_human(), "2026-07-01 00:00");
+    }
+
+    #[test]
+    fn note_version_row_label_falls_back_when_blank() {
+        let v: NoteVersionRow = serde_json::from_value(serde_json::json!({
+            "version_no": 3, "title": "Plano Q3", "created_at": "2026-06-01T08:00:00Z"
+        }))
+        .expect("parse");
+        assert_eq!(v.version_no, 3);
+        assert_eq!(v.label(), "Plano Q3");
+        let blank: NoteVersionRow =
+            serde_json::from_value(serde_json::json!({ "version_no": 1, "title": "  " }))
+                .expect("parse");
+        assert_eq!(blank.label(), "(sem título)");
     }
 
     #[test]

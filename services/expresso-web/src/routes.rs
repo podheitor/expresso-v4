@@ -33,9 +33,10 @@ use crate::{
         FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias,
         MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl,
         MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MonthCell, Note, Notebook, NotesActivityTpl, NotesTagsTpl, NotesTpl,
-        Resource, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow,
-        SnoozedRow, TagPairRow, TaskRow, TasksTpl, VersionRow, WorkingHour,
+        MessageListItem, MonthCell, Note, NoteVersionRow, NoteVersionsTpl, Notebook,
+        NotesActivityTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit, SearchTpl,
+        SecurityTpl, SettingsTpl, ShareRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, VersionRow,
+        WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -334,6 +335,11 @@ pub fn router(state: AppState) -> Router {
         .route("/notes/:id", post(notes_edit_action))
         .route("/notes/:id/delete", post(notes_delete_action))
         .route("/notes/:id/activity", get(notes_activity_page))
+        .route("/notes/:id/versions", get(notes_versions_page))
+        .route(
+            "/notes/:id/versions/:vno/restore",
+            post(notes_version_restore_action),
+        )
         // settings
         .route("/settings", get(settings_page))
         .route("/settings/profile", post(settings_profile_save))
@@ -7876,6 +7882,58 @@ async fn notes_activity_page(
         note_id: id,
         events,
     }))
+}
+
+/// GET /notes/:id/versions — past content revisions of a note (newest first).
+async fn notes_versions_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let versions = get_json::<Vec<NoteVersionRow>>(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/{enc}/versions"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(NoteVersionsTpl {
+        me,
+        note_id: id,
+        versions,
+    }))
+}
+
+/// POST /notes/:id/versions/:vno/restore — restore a prior version's content.
+/// Reversible: the backend snapshots the current content first.
+async fn notes_version_restore_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, vno)): Path<(String, i32)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let _ = post_empty(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/{enc}/versions/{vno}/restore"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to(&format!("/notes/{enc}/versions")).into_response())
 }
 
 /// Map a backend activity JSON event to a display row (action/detail/when).

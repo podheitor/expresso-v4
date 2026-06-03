@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Versões da nota · Expresso{% endblock %}
+{% block nav %}{% let current = "notes" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Versões da nota {% if !versions.is_empty() %}<span class="badge" style="vertical-align:middle">{{ versions.len() }}</span>{% endif %}</h1>
+    <a class="btn btn-ghost" href="/notes?id={{ note_id }}">← Voltar à nota</a>
+  </div>
+  <p class="muted small" style="margin:.25rem 0 .75rem">
+    Cada edição salva guarda o conteúdo anterior. Restaurar uma versão re-aplica aquele
+    conteúdo — e é reversível: o estado atual é gravado como nova versão antes.
+  </p>
+  {% if versions.is_empty() %}
+    <div class="empty-state">Nenhuma versão anterior — esta nota ainda não foi editada.</div>
+  {% else %}
+  <table class="data-table">
+    <thead><tr><th>Versão</th><th>Título</th><th>Salva em</th><th></th></tr></thead>
+    <tbody>
+      {% for v in versions %}
+      <tr>
+        <td class="mono">#{{ v.version_no }}</td>
+        <td>{{ v.label() }}</td>
+        <td class="muted small">{{ v.created_at }}</td>
+        <td style="white-space:nowrap">
+          <form method="post" action="/notes/{{ note_id }}/versions/{{ v.version_no }}/restore"
+                style="display:inline" onsubmit="return confirm('Restaurar a versão #{{ v.version_no }}? O estado atual será salvo como nova versão.')">
+            <button class="btn btn-ghost btn-sm" type="submit" title="Restaurar esta versão">↩ Restaurar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}
