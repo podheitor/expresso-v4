@@ -34,6 +34,7 @@
       <button class="btn btn-ghost btn-sm" onclick="toggleRaiseHand(this)" title="Levantar mão" id="meet-hand-btn">✋</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')" title="Chat da reunião">💬</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
+      <button class="btn btn-ghost btn-sm" onclick="openPollsPanel()" title="Enquetes">📊</button>
       {% match meeting %}{% when Some with (m) %}{% match m.recording_url %}
         {% when Some with (url) %}<a class="btn btn-ghost btn-sm" href="{{ url }}" target="_blank" title="Ver gravação">▶ Gravação</a>{% when None %}{% endmatch %}{% when None %}{% endmatch %}
       {% if is_moderator %}
@@ -271,6 +272,22 @@
         <button class="btn btn-primary btn-sm" onclick="sendMeetChat()">➤</button>
       </div>
     </aside>
+
+    <aside class="meet-side-panel" id="panel-polls" style="display:none">
+      <div class="meet-side-panel-header">
+        <span>Enquetes</span>
+        <button class="btn btn-ghost btn-sm" onclick="loadPolls()" title="Atualizar">↻</button>
+        <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-polls')">✕</button>
+      </div>
+      <div id="meet-polls-list" style="flex:1;overflow:auto;padding:.5rem"></div>
+      {% if is_moderator %}
+      <div class="meet-poll-create" style="padding:.5rem;border-top:1px solid var(--border)">
+        <input type="text" id="poll-question" class="tasks-add-input" placeholder="Pergunta…" style="width:100%;margin-bottom:.3rem">
+        <textarea id="poll-options" class="tasks-add-input" rows="3" placeholder="Uma opção por linha" style="width:100%;margin-bottom:.3rem"></textarea>
+        <button class="btn btn-primary btn-sm" onclick="createPoll()">+ Criar enquete</button>
+      </div>
+      {% endif %}
+    </aside>
   </div>
 </div>
 
@@ -278,6 +295,75 @@
 function togglePanel(id) {
   var el = document.getElementById(id);
   el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+
+// ── Meet polls (server-backed) ──
+var _pollMeetingId = '{{ room_id }}';
+function openPollsPanel() {
+  var el = document.getElementById('panel-polls');
+  if (el) { el.style.display = 'flex'; loadPolls(); }
+}
+function _escPoll(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function loadPolls() {
+  var box = document.getElementById('meet-polls-list');
+  if (!box) return;
+  fetch('/meet/' + encodeURIComponent(_pollMeetingId) + '/polls', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : { polls: [] }; })
+    .then(function(d) {
+      var polls = (d && d.polls) || [];
+      if (!polls.length) { box.innerHTML = '<p class="muted small" style="padding:.5rem">Nenhuma enquete ainda.</p>'; return; }
+      box.innerHTML = '';
+      polls.forEach(function(p){ box.appendChild(_renderPoll(p)); _loadPollDetail(p.id); });
+    }).catch(function(){ box.innerHTML = '<p class="muted small">Falha ao carregar.</p>'; });
+}
+function _renderPoll(p) {
+  var card = document.createElement('div');
+  card.className = 'subcard'; card.id = 'poll-' + p.id;
+  card.style.cssText = 'padding:.5rem;margin-bottom:.5rem';
+  var opts = (p.options || []).map(function(o, i){
+    return '<button class="btn btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin:.15rem 0"' +
+      (p.is_closed ? ' disabled' : '') +
+      ' onclick="votePoll(\'' + p.id + '\',' + i + ')">' + _escPoll(o) +
+      ' <span class="muted" id="tally-' + p.id + '-' + i + '"></span></button>';
+  }).join('');
+  card.innerHTML = '<strong>' + _escPoll(p.question) + '</strong>' +
+    (p.is_closed ? ' <span class="muted small">(encerrada)</span>' : '') + '<div>' + opts + '</div>';
+  return card;
+}
+function _loadPollDetail(pid) {
+  fetch('/meet/' + encodeURIComponent(_pollMeetingId) + '/polls/' + encodeURIComponent(pid), { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d) {
+      if (!d || !d.tallies) return;
+      d.tallies.forEach(function(n, i){
+        var el = document.getElementById('tally-' + pid + '-' + i);
+        if (el) el.textContent = '(' + n + (d.my_vote === i ? ' ✓' : '') + ')';
+      });
+    }).catch(function(){});
+}
+function votePoll(pid, idx) {
+  var body = new URLSearchParams({ option_idx: idx });
+  fetch('/meet/' + encodeURIComponent(_pollMeetingId) + '/polls/' + encodeURIComponent(pid) + '/vote',
+    { method: 'POST', credentials: 'include', body: body })
+    .then(function(r){ if (r.ok) _loadPollDetail(pid); else alert('Não foi possível votar.'); })
+    .catch(function(){ alert('Falha de rede.'); });
+}
+function createPoll() {
+  var q = (document.getElementById('poll-question') || {}).value || '';
+  var opts = (document.getElementById('poll-options') || {}).value || '';
+  if (!q.trim() || opts.split('\n').filter(function(s){ return s.trim(); }).length < 2) {
+    alert('Informe uma pergunta e ao menos 2 opções.'); return;
+  }
+  var body = new URLSearchParams({ question: q.trim(), options: opts });
+  fetch('/meet/' + encodeURIComponent(_pollMeetingId) + '/polls',
+    { method: 'POST', credentials: 'include', body: body })
+    .then(function(r){
+      if (r.ok) {
+        document.getElementById('poll-question').value = '';
+        document.getElementById('poll-options').value = '';
+        loadPolls();
+      } else alert('Não foi possível criar a enquete.');
+    }).catch(function(){ alert('Falha de rede.'); });
 }
 // Esc closes any open side-panel (chat/participants/whiteboard/recordings)
 document.addEventListener('keydown', function(e) {

@@ -217,6 +217,12 @@ pub fn router(state: AppState) -> Router {
         .route("/meet/:id", get(meet_room_page))
         .route("/meet/:id/end", post(meet_end_action))
         .route("/meet/:id/recordings", get(meet_recordings_api))
+        .route(
+            "/meet/:id/polls",
+            get(meet_polls_list_api).post(meet_poll_create_api),
+        )
+        .route("/meet/:id/polls/:poll_id", get(meet_poll_get_api))
+        .route("/meet/:id/polls/:poll_id/vote", post(meet_poll_vote_api))
         // tasks
         .route("/tasks", get(tasks_page))
         .route("/notes", get(notes_page).post(notes_create_action))
@@ -5988,6 +5994,136 @@ async fn meet_recordings_api(
         [(axum::http::header::CONTENT_TYPE, "application/json")],
         serde_json::to_string(&recs).unwrap_or_default(),
     )
+        .into_response())
+}
+
+// ── Meet polls (JSON proxies for the room page's poll panel) ──
+
+fn json_response(v: &serde_json::Value) -> Response {
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        serde_json::to_string(v).unwrap_or_default(),
+    )
+        .into_response()
+}
+
+/// GET /meet/:id/polls — list a meeting's polls.
+async fn meet_polls_list_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{id}/polls"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or(serde_json::json!({ "polls": [] }));
+    Ok(json_response(&v))
+}
+
+#[derive(Deserialize)]
+struct PollCreateForm {
+    question: String,
+    /// Newline-separated option labels.
+    options: String,
+}
+
+/// POST /meet/:id/polls — create a poll (moderator). Options come newline-split.
+async fn meet_poll_create_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<PollCreateForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let options: Vec<String> = f
+        .options
+        .split('\n')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    if f.question.trim().is_empty() || options.len() < 2 {
+        return Ok((StatusCode::BAD_REQUEST, "question + at least 2 options").into_response());
+    }
+    let status = post_json(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{id}/polls"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "question": f.question.trim(), "options": options }),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// GET /meet/:id/polls/:poll_id — poll detail with tallies + my_vote.
+async fn meet_poll_get_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, poll_id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{id}/polls/{poll_id}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or(serde_json::json!({}));
+    Ok(json_response(&v))
+}
+
+#[derive(Deserialize)]
+struct PollVoteForm {
+    option_idx: i32,
+}
+
+/// POST /meet/:id/polls/:poll_id/vote — cast a vote.
+async fn meet_poll_vote_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, poll_id)): Path<(String, String)>,
+    Form(f): Form<PollVoteForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let status = post_json(
+        &st,
+        &st.backends.meet,
+        &format!("/api/v1/meetings/{id}/polls/{poll_id}/vote"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "option_idx": f.option_idx }),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
         .into_response())
 }
 
