@@ -210,6 +210,9 @@ async fn main() -> anyhow::Result<()> {
             "/api/v1/govbr/mappings/:cpf_hash",
             get(govbr::get_one).delete(govbr::delete),
         )
+        .route("/saml.html", get(saml::page))
+        .route("/saml/upsert", post(saml::upsert_action))
+        .route("/saml/delete", post(saml::delete_action))
         .route("/api/v1/saml/idps", get(saml::list).post(saml::upsert))
         .route(
             "/api/v1/saml/idps/:id",

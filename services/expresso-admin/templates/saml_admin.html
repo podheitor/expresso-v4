@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>SAML — Provedores de identidade (IdP)</h1>
+  <p class="hint">
+    Registra o IdP SAML por tenant. O Keycloak faz o brokering da asserção; aqui
+    guardamos a configuração que o provisionamento do Keycloak consome.
+  </p>
+  {% if flash.is_some() %}<p class="flash">{{ flash.as_ref().unwrap() }}</p>{% endif %}
+
+  <form method="get" action="/saml.html" style="display:flex;gap:6px;align-items:center;margin-bottom:1rem">
+    <label>Tenant:</label>
+    <select name="tenant" onchange="this.form.submit()">
+      <option value="">— selecione —</option>
+      {% for t in tenants %}
+      <option value="{{ t.id }}"
+        {% match selected_tenant %}{% when Some with (s) %}{% if s.as_str() == t.id.as_str() %}selected{% endif %}{% when None %}{% endmatch %}>
+        {{ t.name }}
+      </option>
+      {% endfor %}
+    </select>
+    <noscript><button type="submit">Ver</button></noscript>
+  </form>
+</section>
+
+{% match selected_tenant %}
+{% when Some with (tid) %}
+<section class="card">
+  <h2>IdPs configurados</h2>
+  <table class="grid">
+    <thead><tr><th>Alias</th><th>Nome</th><th>Entity ID</th><th>SSO URL</th><th>Ativo</th><th></th></tr></thead>
+    <tbody>
+      {% if idps.is_empty() %}
+        <tr><td colspan="6" class="hint">Nenhum IdP para este tenant.</td></tr>
+      {% else %}
+        {% for i in idps %}
+        <tr>
+          <td><code>{{ i.alias }}</code></td>
+          <td>{{ i.display_name }}</td>
+          <td class="hint">{{ i.entity_id }}</td>
+          <td class="hint">{{ i.sso_url }}</td>
+          <td>{% if i.enabled %}✅{% else %}⛔{% endif %}</td>
+          <td>
+            <form method="post" action="/saml/delete" onsubmit="return confirm('Remover este IdP?')">
+              <input type="hidden" name="id" value="{{ i.id }}">
+              <input type="hidden" name="tenant" value="{{ tid }}">
+              <button type="submit">Remover</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>Adicionar / atualizar IdP</h2>
+  <p class="hint">Reusa o alias para atualizar um IdP existente.</p>
+  <form method="post" action="/saml/upsert" style="display:flex;flex-direction:column;gap:.5rem;max-width:48rem">
+    <input type="hidden" name="tenant" value="{{ tid }}">
+    <label>Alias (id da instância no Keycloak)
+      <input type="text" name="alias" required placeholder="okta">
+    </label>
+    <label>Nome de exibição
+      <input type="text" name="display_name" required placeholder="Okta">
+    </label>
+    <label>Entity ID (metadata do IdP)
+      <input type="text" name="entity_id" required placeholder="https://idp.example/metadata">
+    </label>
+    <label>SSO URL
+      <input type="text" name="sso_url" required placeholder="https://idp.example/sso">
+    </label>
+    <label>SLO URL (opcional)
+      <input type="text" name="slo_url" placeholder="https://idp.example/slo">
+    </label>
+    <label>Atributo de e-mail (opcional)
+      <input type="text" name="attr_email" placeholder="email">
+    </label>
+    <label>Certificado de assinatura (PEM/base64)
+      <textarea name="signing_cert" rows="6" placeholder="MIIC..."></textarea>
+    </label>
+    <div><button type="submit">Salvar IdP</button></div>
+  </form>
+</section>
+{% when None %}
+<section class="card"><p class="hint">Selecione um tenant para gerenciar seus IdPs SAML.</p></section>
+{% endmatch %}
+{% endblock %}

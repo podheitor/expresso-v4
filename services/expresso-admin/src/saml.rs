@@ -14,11 +14,12 @@
 
 use std::sync::Arc;
 
+use askama::Template;
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Json,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Redirect, Response},
+    Form, Json,
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -244,6 +245,196 @@ pub async fn list_mappings(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
     Ok(Json(rows).into_response())
+}
+
+// ─── SSR admin screen ─────────────────────────────────────────────────────────
+
+/// A tenant option for the picker.
+pub struct TenantOpt {
+    pub id: String,
+    pub name: String,
+}
+
+/// An IdP row for the screen.
+pub struct IdpRow {
+    pub id: String,
+    pub alias: String,
+    pub display_name: String,
+    pub entity_id: String,
+    pub sso_url: String,
+    pub enabled: bool,
+}
+
+#[derive(Template)]
+#[template(path = "saml_admin.html")]
+pub struct SamlTpl {
+    pub current: &'static str,
+    pub tenants: Vec<TenantOpt>,
+    pub selected_tenant: Option<String>,
+    pub idps: Vec<IdpRow>,
+    pub flash: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SamlPageQuery {
+    pub tenant: Option<String>,
+    pub flash: Option<String>,
+}
+
+/// GET /saml.html — pick a tenant, list/add/remove its SAML IdP configs.
+pub async fn page(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<SamlPageQuery>,
+) -> Response {
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return r;
+    }
+    let Some(pool) = st.db.as_ref() else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "db unavailable").into_response();
+    };
+
+    let tenants: Vec<TenantOpt> =
+        sqlx::query_as::<_, (Uuid, String)>("SELECT id, name FROM tenants ORDER BY name")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(id, name)| TenantOpt {
+                id: id.to_string(),
+                name,
+            })
+            .collect();
+
+    let idps: Vec<IdpRow> =
+        if let Some(tid) = q.tenant.as_deref().and_then(|s| Uuid::parse_str(s).ok()) {
+            sqlx::query_as::<_, SamlIdpConfig>(&format!(
+                "SELECT {COLS} FROM saml_idp_config WHERE tenant_id = $1 ORDER BY alias"
+            ))
+            .bind(tid)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|c| IdpRow {
+                id: c.id.to_string(),
+                alias: c.alias,
+                display_name: c.display_name,
+                entity_id: c.entity_id,
+                sso_url: c.sso_url,
+                enabled: c.enabled,
+            })
+            .collect()
+        } else {
+            Vec::new()
+        };
+
+    match (SamlTpl {
+        current: "saml",
+        tenants,
+        selected_tenant: q.tenant.clone(),
+        idps,
+        flash: q.flash.clone(),
+    })
+    .render()
+    {
+        Ok(html) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            html,
+        )
+            .into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("template: {e}")).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SamlUpsertForm {
+    pub tenant: String,
+    pub alias: String,
+    pub display_name: String,
+    pub entity_id: String,
+    pub sso_url: String,
+    #[serde(default)]
+    pub slo_url: String,
+    #[serde(default)]
+    pub signing_cert: String,
+    #[serde(default)]
+    pub attr_email: String,
+}
+
+/// POST /saml/upsert — create/update an IdP from the HTML form (super-admin).
+pub async fn upsert_action(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Form(f): Form<SamlUpsertForm>,
+) -> Response {
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return r;
+    }
+    let (Some(tid), Some(pool)) = (Uuid::parse_str(&f.tenant).ok(), st.db.as_ref()) else {
+        return Redirect::to("/saml.html?flash=dados inválidos").into_response();
+    };
+    if f.alias.trim().is_empty() || f.sso_url.trim().is_empty() || f.entity_id.trim().is_empty() {
+        return Redirect::to(&format!(
+            "/saml.html?tenant={tid}&flash=alias, entity_id e sso_url são obrigatórios"
+        ))
+        .into_response();
+    }
+    let attr_email = (!f.attr_email.trim().is_empty()).then(|| f.attr_email.trim().to_string());
+    let slo_url = (!f.slo_url.trim().is_empty()).then(|| f.slo_url.trim().to_string());
+    let _ = sqlx::query(
+        "INSERT INTO saml_idp_config \
+             (tenant_id, alias, display_name, entity_id, sso_url, slo_url, signing_cert, \
+              name_id_format, attr_email, enabled) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true) \
+         ON CONFLICT (tenant_id, alias) DO UPDATE SET \
+             display_name = EXCLUDED.display_name, entity_id = EXCLUDED.entity_id, \
+             sso_url = EXCLUDED.sso_url, slo_url = EXCLUDED.slo_url, \
+             signing_cert = EXCLUDED.signing_cert, attr_email = EXCLUDED.attr_email, \
+             updated_at = now()",
+    )
+    .bind(tid)
+    .bind(f.alias.trim())
+    .bind(f.display_name.trim())
+    .bind(f.entity_id.trim())
+    .bind(f.sso_url.trim())
+    .bind(&slo_url)
+    .bind(f.signing_cert.trim())
+    .bind(DEFAULT_NAME_ID_FORMAT)
+    .bind(&attr_email)
+    .execute(pool)
+    .await;
+    Redirect::to(&format!("/saml.html?tenant={tid}&flash=IdP salvo")).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SamlDeleteForm {
+    pub id: String,
+    pub tenant: String,
+}
+
+/// POST /saml/delete — remove an IdP config (super-admin).
+pub async fn delete_action(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Form(f): Form<SamlDeleteForm>,
+) -> Response {
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return r;
+    }
+    let (Some(id), Some(pool)) = (Uuid::parse_str(&f.id).ok(), st.db.as_ref()) else {
+        return Redirect::to("/saml.html?flash=dados inválidos").into_response();
+    };
+    let _ = sqlx::query("DELETE FROM saml_idp_config WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await;
+    Redirect::to(&format!(
+        "/saml.html?tenant={}&flash=IdP removido",
+        f.tenant
+    ))
+    .into_response()
 }
 
 #[cfg(test)]
