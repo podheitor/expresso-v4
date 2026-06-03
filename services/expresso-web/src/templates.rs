@@ -1556,6 +1556,8 @@ pub struct SettingsTpl {
     pub sieve_script: Option<String>,
     pub sieve_error: Option<String>,
     pub aliases: Vec<MailAlias>,
+    /// User's flag presets (loaded only on the flag_presets tab).
+    pub flag_presets: Vec<FlagPreset>,
     /// One row per weekday (Mon..Sun), with the configured window as HH:MM
     /// strings (empty when that day is off).
     pub working_days: Vec<WorkingDayRow>,
@@ -1591,6 +1593,22 @@ pub struct MailAlias {
     pub target: String,
     #[serde(default)]
     pub is_enabled: bool,
+}
+
+/// A named set of IMAP flags for quick-apply (mail settings → flag presets).
+#[derive(Debug, Clone, Deserialize)]
+pub struct FlagPreset {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub flags: Vec<String>,
+}
+
+impl FlagPreset {
+    pub fn flags_csv(&self) -> String {
+        self.flags.join(", ")
+    }
 }
 
 /// A mailbox delegation grant as deserialized from the mail backend (ids).

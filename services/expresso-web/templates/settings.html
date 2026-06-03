@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{% if tab == "profile" %}Perfil{% else if tab == "signature" %}Assinatura{% else if tab == "autoreply" %}Resposta automática{% else if tab == "notifications" %}Notificações{% else if tab == "security" %}Segurança{% else if tab == "filters" %}Filtros{% else if tab == "aliases" %}Aliases{% else if tab == "working_hours" %}Horário de trabalho{% else if tab == "shortcuts" %}Atalhos{% else if tab == "privacy" %}Privacidade{% else %}Configurações{% endif %} · Configurações · Expresso{% endblock %}
+{% block title %}{% if tab == "profile" %}Perfil{% else if tab == "signature" %}Assinatura{% else if tab == "autoreply" %}Resposta automática{% else if tab == "notifications" %}Notificações{% else if tab == "security" %}Segurança{% else if tab == "filters" %}Filtros{% else if tab == "aliases" %}Aliases{% else if tab == "flag_presets" %}Presets de marcação{% else if tab == "working_hours" %}Horário de trabalho{% else if tab == "shortcuts" %}Atalhos{% else if tab == "privacy" %}Privacidade{% else %}Configurações{% endif %} · Configurações · Expresso{% endblock %}
 {% block nav %}{% let current = "settings" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
 <div class="page settings-page">
@@ -16,6 +16,7 @@
       <a class="settings-nav-item{% if tab == "security" %} active{% endif %}" href="/settings?tab=security">Segurança</a>
       <a class="settings-nav-item{% if tab == "filters" %} active{% endif %}" href="/settings?tab=filters">Filtros de e-mail</a>
       <a class="settings-nav-item{% if tab == "aliases" %} active{% endif %}" href="/settings?tab=aliases">Aliases de e-mail</a>
+      <a class="settings-nav-item{% if tab == "flag_presets" %} active{% endif %}" href="/settings?tab=flag_presets">Presets de marcação</a>
       <a class="settings-nav-item{% if tab == "working_hours" %} active{% endif %}" href="/settings?tab=working_hours">Horário de trabalho</a>
       <a class="settings-nav-item" href="/settings/delegations">Delegação de caixa</a>
       <a class="settings-nav-item{% if tab == "shortcuts" %} active{% endif %}" href="/settings?tab=shortcuts">Atalhos de teclado</a>
@@ -603,6 +604,52 @@
               <td style="text-align:right">
                 <form method="post" action="/settings/aliases/{{ a.id }}/delete" style="display:inline"
                       onsubmit="return confirm('Remover este alias?')">
+                  <button class="btn btn-ghost btn-sm" type="submit">Remover</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+
+      {% else if tab == "flag_presets" %}
+      <div class="card stack">
+        <h2>Presets de marcação</h2>
+        <p class="muted small">
+          Conjuntos nomeados de flags IMAP para aplicar rapidamente a mensagens
+          (ex.: "Urgente" = \Flagged). As flags podem ser padrão (\Flagged, \Seen)
+          ou rótulos personalizados.
+        </p>
+        {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+
+        <form class="compose-form" method="post" action="/settings/flag-presets"
+              style="display:flex;gap:.4rem;align-items:flex-end;flex-wrap:wrap">
+          <label style="flex:1;min-width:160px">
+            <span>Nome</span>
+            <input type="text" name="name" required placeholder="Urgente">
+          </label>
+          <label style="flex:2;min-width:220px">
+            <span>Flags (separadas por vírgula)</span>
+            <input type="text" name="flags" required placeholder="\Flagged, Urgente">
+          </label>
+          <button class="btn btn-primary" type="submit">+ Adicionar</button>
+        </form>
+
+        {% if flag_presets.is_empty() %}
+          <p class="muted">Nenhum preset configurado.</p>
+        {% else %}
+        <table class="data-table">
+          <thead><tr><th>Nome</th><th>Flags</th><th></th></tr></thead>
+          <tbody>
+            {% for p in flag_presets %}
+            <tr>
+              <td>{{ p.name }}</td>
+              <td class="mono small">{{ p.flags_csv() }}</td>
+              <td style="text-align:right">
+                <form method="post" action="/settings/flag-presets/{{ p.id }}/delete" style="display:inline"
+                      onsubmit="return confirm('Remover este preset?')">
                   <button class="btn btn-ghost btn-sm" type="submit">Remover</button>
                 </form>
               </td>

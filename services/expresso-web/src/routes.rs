@@ -28,9 +28,9 @@ use crate::{
         DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveContentHit,
         DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota,
         DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl,
-        DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlowEditTpl, FlowRuleRow, FlowsTpl,
-        Folder, FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
-        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
+        DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow,
+        FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl,
+        LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
         MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
         MessageListItem, MonthCell, Note, Notebook, NotesActivityTpl, NotesTagsTpl, NotesTpl,
         Resource, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow,
@@ -315,6 +315,11 @@ pub fn router(state: AppState) -> Router {
         .route("/settings/aliases", post(settings_alias_create))
         .route("/settings/aliases/:id/toggle", post(settings_alias_toggle))
         .route("/settings/aliases/:id/delete", post(settings_alias_delete))
+        .route("/settings/flag-presets", post(settings_flag_preset_create))
+        .route(
+            "/settings/flag-presets/:id/delete",
+            post(settings_flag_preset_delete),
+        )
         // GAL autocomplete JSON API
         .route("/api/gal/search", get(gal_search_api))
         // Mail attachment list (JSON for JS)
@@ -7495,6 +7500,21 @@ async fn settings_page(
         Vec::new()
     };
 
+    // Load flag presets only on that tab.
+    let flag_presets = if tab == "flag_presets" {
+        get_json::<Vec<FlagPreset>>(
+            &st,
+            &st.backends.mail,
+            "/api/v1/mail/flag-presets",
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
     Ok(askama_axum::IntoResponse::into_response(SettingsTpl {
         tab,
         flash: q.flash,
@@ -7510,6 +7530,7 @@ async fn settings_page(
         sieve_script,
         sieve_error,
         aliases,
+        flag_presets,
         working_days,
         notify_new_mail,
         notify_flags_changed,
@@ -7841,6 +7862,81 @@ async fn settings_alias_delete(
     )
     .await?;
     Ok(Redirect::to("/settings?tab=aliases&flash=Alias+removido").into_response())
+}
+
+// ─── flag presets ─────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct FlagPresetForm {
+    name: String,
+    /// Comma/space-separated IMAP flags (e.g. "\\Flagged, Urgente").
+    #[serde(default)]
+    flags: String,
+}
+
+/// POST /settings/flag-presets — create a named set of IMAP flags.
+async fn settings_flag_preset_create(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<FlagPresetForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let name = f.name.trim();
+    let flags: Vec<String> = f
+        .flags
+        .split([',', ' '])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    if name.is_empty() || flags.is_empty() {
+        return Ok(Redirect::to(
+            "/settings?tab=flag_presets&flash=Informe+nome+e+ao+menos+uma+flag",
+        )
+        .into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let status = post_json(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/flag-presets",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "name": name, "flags": flags }),
+    )
+    .await?;
+    let flash = if (200..300).contains(&status) {
+        "Preset+criado"
+    } else {
+        "Falha+ao+criar+preset"
+    };
+    Ok(Redirect::to(&format!("/settings?tab=flag_presets&flash={flash}")).into_response())
+}
+
+/// POST /settings/flag-presets/:id/delete — remove a flag preset.
+async fn settings_flag_preset_delete(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let _ = delete_at(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/flag-presets/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/settings?tab=flag_presets&flash=Preset+removido").into_response())
 }
 
 // ─── mailbox delegation ──────────────────────────────────────────────────────
