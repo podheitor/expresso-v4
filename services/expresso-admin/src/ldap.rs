@@ -17,11 +17,12 @@
 
 use std::sync::Arc;
 
+use askama::Template;
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Json,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Redirect, Response},
+    Form, Json,
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -225,6 +226,197 @@ pub async fn delete(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
     tracing::info!(target: "audit", event = "ldap.config.delete", id = %id, tenant_id = %tenant_id);
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ─── SSR admin screen ─────────────────────────────────────────────────────────
+
+/// A tenant option for the picker.
+pub struct TenantOpt {
+    pub id: String,
+    pub name: String,
+}
+
+/// An LDAP config row for the screen.
+pub struct LdapRow {
+    pub id: String,
+    pub alias: String,
+    pub vendor: String,
+    pub connection_url: String,
+    pub users_dn: String,
+    pub enabled: bool,
+}
+
+#[derive(Template)]
+#[template(path = "ldap_admin.html")]
+pub struct LdapTpl {
+    pub current: &'static str,
+    pub tenants: Vec<TenantOpt>,
+    pub selected_tenant: Option<String>,
+    pub configs: Vec<LdapRow>,
+    pub flash: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LdapPageQuery {
+    pub tenant: Option<String>,
+    pub flash: Option<String>,
+}
+
+/// GET /ldap.html — pick a tenant, list/add/remove its LDAP/AD configs.
+pub async fn page(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(q): Query<LdapPageQuery>,
+) -> Response {
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return r;
+    }
+    let Some(pool) = st.db.as_ref() else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "db unavailable").into_response();
+    };
+
+    let tenants: Vec<TenantOpt> =
+        sqlx::query_as::<_, (Uuid, String)>("SELECT id, name FROM tenants ORDER BY name")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(id, name)| TenantOpt {
+                id: id.to_string(),
+                name,
+            })
+            .collect();
+
+    let configs: Vec<LdapRow> =
+        if let Some(tid) = q.tenant.as_deref().and_then(|s| Uuid::parse_str(s).ok()) {
+            sqlx::query_as::<_, LdapConfig>(&format!(
+                "SELECT {COLS} FROM ldap_config WHERE tenant_id = $1 ORDER BY alias"
+            ))
+            .bind(tid)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|c| LdapRow {
+                id: c.id.to_string(),
+                alias: c.alias,
+                vendor: c.vendor,
+                connection_url: c.connection_url,
+                users_dn: c.users_dn,
+                enabled: c.enabled,
+            })
+            .collect()
+        } else {
+            Vec::new()
+        };
+
+    match (LdapTpl {
+        current: "ldap",
+        tenants,
+        selected_tenant: q.tenant.clone(),
+        configs,
+        flash: q.flash.clone(),
+    })
+    .render()
+    {
+        Ok(html) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            html,
+        )
+            .into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("template: {e}")).into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LdapUpsertForm {
+    pub tenant: String,
+    pub alias: String,
+    #[serde(default)]
+    pub vendor: String,
+    pub connection_url: String,
+    pub users_dn: String,
+    pub bind_dn: String,
+}
+
+/// POST /ldap/upsert — create/update a config from the HTML form (super-admin).
+/// Note: the bind password is NOT set here — it is write-through to Keycloak via
+/// the internal sync step (this screen manages the registration only).
+pub async fn upsert_action(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Form(f): Form<LdapUpsertForm>,
+) -> Response {
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return r;
+    }
+    let (Some(tid), Some(pool)) = (Uuid::parse_str(&f.tenant).ok(), st.db.as_ref()) else {
+        return Redirect::to("/ldap.html?flash=dados inválidos").into_response();
+    };
+    if f.alias.trim().is_empty()
+        || f.connection_url.trim().is_empty()
+        || f.users_dn.trim().is_empty()
+        || f.bind_dn.trim().is_empty()
+    {
+        return Redirect::to(&format!(
+            "/ldap.html?tenant={tid}&flash=alias, connection_url, users_dn e bind_dn são obrigatórios"
+        ))
+        .into_response();
+    }
+    let vendor = if f.vendor.trim().is_empty() {
+        "other"
+    } else {
+        f.vendor.trim()
+    };
+    let _ = sqlx::query(
+        "INSERT INTO ldap_config \
+             (tenant_id, alias, vendor, connection_url, users_dn, bind_dn, username_attr, \
+              rdn_attr, uuid_attr, user_object_classes, search_scope, enabled) \
+         VALUES ($1, $2, $3, $4, $5, $6, 'uid', 'uid', 'entryUUID', \
+                 'inetOrgPerson, organizationalPerson', 2, true) \
+         ON CONFLICT (tenant_id, alias) DO UPDATE SET \
+             vendor = EXCLUDED.vendor, connection_url = EXCLUDED.connection_url, \
+             users_dn = EXCLUDED.users_dn, bind_dn = EXCLUDED.bind_dn, updated_at = now()",
+    )
+    .bind(tid)
+    .bind(f.alias.trim())
+    .bind(vendor)
+    .bind(f.connection_url.trim())
+    .bind(f.users_dn.trim())
+    .bind(f.bind_dn.trim())
+    .execute(pool)
+    .await;
+    Redirect::to(&format!("/ldap.html?tenant={tid}&flash=config salva")).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LdapDeleteForm {
+    pub id: String,
+    pub tenant: String,
+}
+
+/// POST /ldap/delete — remove a config (super-admin).
+pub async fn delete_action(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Form(f): Form<LdapDeleteForm>,
+) -> Response {
+    if let Some(r) = auth::require_super_admin(&st, &headers).await {
+        return r;
+    }
+    let (Some(id), Some(pool)) = (Uuid::parse_str(&f.id).ok(), st.db.as_ref()) else {
+        return Redirect::to("/ldap.html?flash=dados inválidos").into_response();
+    };
+    let _ = sqlx::query("DELETE FROM ldap_config WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await;
+    Redirect::to(&format!(
+        "/ldap.html?tenant={}&flash=config removida",
+        f.tenant
+    ))
+    .into_response()
 }
 
 #[cfg(test)]

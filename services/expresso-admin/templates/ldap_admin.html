@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>LDAP / Active Directory — Federação</h1>
+  <p class="hint">
+    Registra a federação LDAP/AD por tenant. O Keycloak User Federation faz o
+    bind/sync; aqui guardamos a configuração. A senha de bind NÃO é salva aqui —
+    é write-through para o Keycloak via o passo de sync interno.
+  </p>
+  {% if flash.is_some() %}<p class="flash">{{ flash.as_ref().unwrap() }}</p>{% endif %}
+
+  <form method="get" action="/ldap.html" style="display:flex;gap:6px;align-items:center;margin-bottom:1rem">
+    <label>Tenant:</label>
+    <select name="tenant" onchange="this.form.submit()">
+      <option value="">— selecione —</option>
+      {% for t in tenants %}
+      <option value="{{ t.id }}"
+        {% match selected_tenant %}{% when Some with (s) %}{% if s.as_str() == t.id.as_str() %}selected{% endif %}{% when None %}{% endmatch %}>
+        {{ t.name }}
+      </option>
+      {% endfor %}
+    </select>
+    <noscript><button type="submit">Ver</button></noscript>
+  </form>
+</section>
+
+{% match selected_tenant %}
+{% when Some with (tid) %}
+<section class="card">
+  <h2>Configurações LDAP</h2>
+  <table class="grid">
+    <thead><tr><th>Alias</th><th>Vendor</th><th>Connection URL</th><th>Users DN</th><th>Ativa</th><th></th></tr></thead>
+    <tbody>
+      {% if configs.is_empty() %}
+        <tr><td colspan="6" class="hint">Nenhuma config para este tenant.</td></tr>
+      {% else %}
+        {% for c in configs %}
+        <tr>
+          <td><code>{{ c.alias }}</code></td>
+          <td>{{ c.vendor }}</td>
+          <td class="hint">{{ c.connection_url }}</td>
+          <td class="hint">{{ c.users_dn }}</td>
+          <td>{% if c.enabled %}✅{% else %}⛔{% endif %}</td>
+          <td>
+            <form method="post" action="/ldap/delete" onsubmit="return confirm('Remover esta config?')">
+              <input type="hidden" name="id" value="{{ c.id }}">
+              <input type="hidden" name="tenant" value="{{ tid }}">
+              <button type="submit">Remover</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>Adicionar / atualizar config</h2>
+  <p class="hint">Reusa o alias para atualizar. Atributos/objectClasses usam defaults (uid / inetOrgPerson) — ajuste via API se precisar.</p>
+  <form method="post" action="/ldap/upsert" style="display:flex;flex-direction:column;gap:.5rem;max-width:48rem">
+    <input type="hidden" name="tenant" value="{{ tid }}">
+    <label>Alias
+      <input type="text" name="alias" required placeholder="corp-ad">
+    </label>
+    <label>Vendor
+      <select name="vendor">
+        <option value="other">Outro (OpenLDAP)</option>
+        <option value="ad">Active Directory</option>
+      </select>
+    </label>
+    <label>Connection URL
+      <input type="text" name="connection_url" required placeholder="ldaps://ad.example:636">
+    </label>
+    <label>Users DN
+      <input type="text" name="users_dn" required placeholder="ou=Users,dc=example,dc=com">
+    </label>
+    <label>Bind DN
+      <input type="text" name="bind_dn" required placeholder="cn=svc,dc=example,dc=com">
+    </label>
+    <div><button type="submit">Salvar config</button></div>
+  </form>
+</section>
+{% when None %}
+<section class="card"><p class="hint">Selecione um tenant para gerenciar a federação LDAP/AD.</p></section>
+{% endmatch %}
+{% endblock %}

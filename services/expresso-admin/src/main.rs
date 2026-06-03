@@ -219,6 +219,9 @@ async fn main() -> anyhow::Result<()> {
             get(saml::get_one).delete(saml::delete),
         )
         .route("/api/v1/saml/mappings", get(saml::list_mappings))
+        .route("/ldap.html", get(ldap::page))
+        .route("/ldap/upsert", post(ldap::upsert_action))
+        .route("/ldap/delete", post(ldap::delete_action))
         .route("/api/v1/ldap/configs", get(ldap::list).post(ldap::upsert))
         .route(
             "/api/v1/ldap/configs/:id",
