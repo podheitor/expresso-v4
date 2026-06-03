@@ -163,6 +163,11 @@ pub fn router(state: AppState) -> Router {
         .route("/mail/:id/flag", post(mail_flag_action))
         .route("/mail/:id/read-receipt", post(mail_read_receipt_action))
         // mail flow rules (automation)
+        .route("/notes/export.json", get(notes_export_json))
+        .route(
+            "/mail/folders/:id/export.mbox",
+            get(mail_folder_export_mbox),
+        )
         .route("/flows", get(flows_page).post(flow_create_action))
         .route(
             "/flows/:id/edit",
@@ -1934,6 +1939,82 @@ fn summarize_actions(actions: &serde_json::Value) -> String {
     } else {
         base
     }
+}
+
+// ── Export download proxies (notes JSON, mail folder mbox) ──
+
+/// Proxy a backend download to the browser as an attachment, overriding the
+/// content-type and filename. Returns 502 on upstream failure.
+async fn download_proxy(
+    st: &AppState,
+    base: &str,
+    path: &str,
+    headers: &HeaderMap,
+    ctx: (&str, &str),
+    content_type: &'static str,
+    filename: &str,
+) -> WebResult<Response> {
+    let (status, _ct, _cd, body) = get_bytes(st, base, path, headers, Some((ctx.0, ctx.1))).await?;
+    if !(200..300).contains(&status) {
+        return Ok((StatusCode::BAD_GATEWAY, "Falha ao exportar.").into_response());
+    }
+    Ok((
+        [
+            (header::CONTENT_TYPE, content_type.to_string()),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{filename}\""),
+            ),
+        ],
+        body,
+    )
+        .into_response())
+}
+
+/// GET /notes/export.json — download all of the caller's notes as a JSON backup.
+async fn notes_export_json(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    download_proxy(
+        &st,
+        &st.backends.notes,
+        "/api/v1/notes/export",
+        &headers,
+        (&t, &u),
+        "application/json; charset=utf-8",
+        "notes.json",
+    )
+    .await
+}
+
+/// GET /mail/folders/:id/export.mbox — download a mail folder as an mbox archive.
+async fn mail_folder_export_mbox(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    download_proxy(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/folders/{enc}/export.mbox"),
+        &headers,
+        (&t, &u),
+        "application/mbox",
+        "folder.mbox",
+    )
+    .await
 }
 
 /// GET /flows — list the caller's mail automation rules.

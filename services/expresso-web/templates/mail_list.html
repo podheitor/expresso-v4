@@ -34,6 +34,7 @@
         {% if f.manageable() %}
         <li style="display:flex;gap:.25rem;align-items:center">
           <span style="flex:1;font-size:.8rem">{{ f.name }}</span>
+          <a class="btn btn-ghost btn-sm" href="/mail/folders/{{ f.id }}/export.mbox" title="Exportar pasta (.mbox)">⬇</a>
           <form method="post" action="/mail/folders/rename" style="display:inline"
                 onsubmit="var n=prompt('Novo nome da pasta:', this.old_name.value); if(!n) return false; this.new_name.value=n;">
             <input type="hidden" name="old_name" value="{{ f.name }}">
