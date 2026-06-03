@@ -28,9 +28,9 @@ use crate::{
         FreeBusyRow, FreeBusyTpl, GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
         MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl,
         MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MonthCell, Note, NotesActivityTpl, NotesTagsTpl, NotesTpl, SearchGroup,
-        SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TagPairRow, TasksTpl, VersionRow,
-        WorkingHour,
+        MessageListItem, MonthCell, Note, Notebook, NotesActivityTpl, NotesTagsTpl, NotesTpl,
+        SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, TagPairRow,
+        TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, get_bytes, get_json, patch_json, post_body, post_body_json, post_empty,
@@ -255,6 +255,15 @@ pub fn router(state: AppState) -> Router {
         .route("/tasks", get(tasks_page))
         .route("/notes", get(notes_page).post(notes_create_action))
         .route("/notes/tags", get(notes_tags_page))
+        .route("/notes/notebooks", post(notes_notebook_create_action))
+        .route(
+            "/notes/notebooks/:id/rename",
+            post(notes_notebook_rename_action),
+        )
+        .route(
+            "/notes/notebooks/:id/delete",
+            post(notes_notebook_delete_action),
+        )
         .route("/notes/:id", post(notes_edit_action))
         .route("/notes/:id/delete", post(notes_delete_action))
         .route("/notes/:id/activity", get(notes_activity_page))
@@ -6404,6 +6413,9 @@ async fn tasks_page(
 #[derive(Deserialize)]
 struct NotesQuery {
     id: Option<String>,
+    /// Notebook filter: a notebook id, the literal "none" (loose notes), or
+    /// absent (all notes).
+    notebook: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -6412,6 +6424,15 @@ struct NoteForm {
     title: String,
     #[serde(default)]
     body: String,
+    /// Selected notebook id; empty string means "no notebook".
+    #[serde(default)]
+    notebook_id: String,
+}
+
+#[derive(Deserialize)]
+struct NotebookForm {
+    #[serde(default)]
+    name: String,
 }
 
 /// GET /notes[?id=] — list the caller's notes; when `id` is given, open it in the
@@ -6426,10 +6447,26 @@ async fn notes_page(
         return Ok(login_redirect(&uri).into_response());
     };
     let (t, u) = ctx_of(&me);
+    let current_notebook = q.notebook.clone().unwrap_or_default();
+    let notes_path = if current_notebook.is_empty() {
+        "/api/v1/notes".to_string()
+    } else {
+        let enc = utf8_percent_encode(&current_notebook, NON_ALPHANUMERIC);
+        format!("/api/v1/notes?notebook={enc}")
+    };
     let notes = get_json::<Vec<Note>>(
         &st,
         &st.backends.notes,
-        "/api/v1/notes",
+        &notes_path,
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let notebooks = get_json::<Vec<Notebook>>(
+        &st,
+        &st.backends.notes,
+        "/api/v1/notebooks",
         &headers,
         Some((&t, &u)),
     )
@@ -6444,11 +6481,14 @@ async fn notes_page(
                 body: n.body.clone(),
                 color: n.color.clone(),
                 pinned: n.pinned,
+                notebook_id: n.notebook_id.clone(),
             });
     Ok(askama_axum::IntoResponse::into_response(NotesTpl {
         me,
         notes,
         selected,
+        notebooks,
+        current_notebook,
     }))
 }
 
@@ -6562,7 +6602,11 @@ async fn notes_create_action(
         return Ok(login_redirect(&uri).into_response());
     };
     let (t, u) = ctx_of(&me);
-    let body = serde_json::json!({ "title": f.title, "body": f.body });
+    let mut body = serde_json::json!({ "title": f.title, "body": f.body });
+    // Assign to a notebook only when one was picked (empty = loose note → omit).
+    if !f.notebook_id.is_empty() {
+        body["notebook_id"] = serde_json::json!(f.notebook_id);
+    }
     let status = post_json(
         &st,
         &st.backends.notes,
@@ -6591,7 +6635,14 @@ async fn notes_edit_action(
     };
     let (t, u) = ctx_of(&me);
     let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
-    let body = serde_json::json!({ "title": f.title, "body": f.body });
+    // notebook_id is always sent on edit: a chosen id assigns/moves, empty
+    // detaches (null). UpdateNote.notebook_id is Option<Option<Uuid>>.
+    let notebook = if f.notebook_id.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::json!(f.notebook_id)
+    };
+    let body = serde_json::json!({ "title": f.title, "body": f.body, "notebook_id": notebook });
     let status = patch_json(
         &st,
         &st.backends.notes,
@@ -6623,6 +6674,86 @@ async fn notes_delete_action(
         &st,
         &st.backends.notes,
         &format!("/api/v1/notes/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/notes").into_response())
+}
+
+/// POST /notes/notebooks — create a notebook, then show its notes.
+async fn notes_notebook_create_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<NotebookForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let name = f.name.trim();
+    if name.is_empty() {
+        return Ok(Redirect::to("/notes").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let _ = post_json(
+        &st,
+        &st.backends.notes,
+        "/api/v1/notebooks",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "name": name }),
+    )
+    .await?;
+    Ok(Redirect::to("/notes").into_response())
+}
+
+/// POST /notes/notebooks/:id/rename — rename a notebook.
+async fn notes_notebook_rename_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<NotebookForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let name = f.name.trim();
+    if name.is_empty() {
+        return Ok(Redirect::to(&format!("/notes?notebook={id}")).into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let _ = patch_json(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notebooks/{enc}"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "name": name }),
+    )
+    .await?;
+    Ok(Redirect::to(&format!("/notes?notebook={enc}")).into_response())
+}
+
+/// POST /notes/notebooks/:id/delete — delete a notebook (its notes detach, not
+/// deleted), then back to all notes.
+async fn notes_notebook_delete_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let _ = delete_at(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notebooks/{enc}"),
         &headers,
         Some((&t, &u)),
     )

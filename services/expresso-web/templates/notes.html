@@ -10,6 +10,35 @@
       <a class="btn btn-ghost btn-sm" href="/notes/tags" title="Tags que aparecem juntas">🏷 Tags</a>
       <a class="btn btn-ghost btn-sm" href="/notes/export.json" title="Baixar todas as notas (backup JSON)">⬇ Exportar</a>
     </div>
+
+    <!-- Notebooks (cadernos) -->
+    <div style="padding:.4rem .75rem;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <strong class="small muted">Cadernos</strong>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('nb-create').style.display='flex'" title="Novo caderno">＋</button>
+      </div>
+      <form id="nb-create" action="/notes/notebooks" method="post" style="display:none;gap:.3rem;margin-top:.4rem">
+        <input class="input" type="text" name="name" placeholder="Nome do caderno" required style="font-size:.82rem;padding:.2rem .4rem">
+        <button class="btn btn-primary btn-sm" type="submit">OK</button>
+      </form>
+      <ul style="list-style:none;margin:.3rem 0 0;padding:0;font-size:.85rem">
+        <li><a class="folder-item{% if current_notebook.is_empty() %} active{% endif %}" href="/notes" style="display:block;padding:.25rem .3rem">📒 Todas</a></li>
+        <li><a class="folder-item{% if current_notebook == "none" %} active{% endif %}" href="/notes?notebook=none" style="display:block;padding:.25rem .3rem">📄 Sem caderno</a></li>
+        {% for nb in notebooks %}
+        <li style="display:flex;align-items:center;gap:.2rem">
+          <a class="folder-item{% if current_notebook == nb.id %} active{% endif %}" href="/notes?notebook={{ nb.id }}" style="flex:1;display:block;padding:.25rem .3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📓 {{ nb.name }}</a>
+          <form action="/notes/notebooks/{{ nb.id }}/rename" method="post" style="display:inline" onsubmit="var n=prompt('Novo nome:','{{ nb.name }}');if(!n)return false;this.elements['name'].value=n;return true">
+            <input type="hidden" name="name" value="">
+            <button class="btn btn-ghost btn-sm" type="submit" title="Renomear">✎</button>
+          </form>
+          <form action="/notes/notebooks/{{ nb.id }}/delete" method="post" style="display:inline" onsubmit="return confirm('Excluir o caderno? As notas dentro dele NÃO são apagadas (ficam sem caderno).')">
+            <button class="btn btn-ghost btn-sm" type="submit" title="Excluir caderno">🗑</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+
     <ul style="flex:1;overflow:auto;list-style:none;margin:0;padding:0">
       {% if notes.is_empty() %}
         <li class="muted small" style="padding:1rem">Nenhuma nota ainda.</li>
@@ -40,6 +69,14 @@
           </div>
         </div>
         <input class="input" type="text" name="title" placeholder="Título" value="{{ s.title }}">
+        <label class="small muted">Caderno
+          <select class="input" name="notebook_id">
+            <option value="">— Sem caderno —</option>
+            {% for nb in notebooks %}
+            <option value="{{ nb.id }}"{% match s.notebook_id %}{% when Some with (nid) %}{% if nid.as_str() == nb.id.as_str() %} selected{% endif %}{% when None %}{% endmatch %}>{{ nb.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
         <textarea class="input" name="body" rows="18" placeholder="Escreva sua nota…">{{ s.body }}</textarea>
       </form>
       <form action="/notes/{{ s.id }}/delete" method="post" style="margin-top:.75rem"
@@ -52,6 +89,14 @@
           <button class="btn btn-primary" type="submit">Criar</button>
         </div>
         <input class="input" type="text" name="title" placeholder="Título" autofocus>
+        <label class="small muted">Caderno
+          <select class="input" name="notebook_id">
+            <option value="">— Sem caderno —</option>
+            {% for nb in notebooks %}
+            <option value="{{ nb.id }}"{% if current_notebook == nb.id %} selected{% endif %}>{{ nb.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
         <textarea class="input" name="body" rows="18" placeholder="Escreva sua nota…"></textarea>
       </form>
     {% endmatch %}

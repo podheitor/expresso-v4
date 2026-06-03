@@ -162,6 +162,16 @@ pub struct Note {
     pub color: Option<String>,
     #[serde(default)]
     pub pinned: bool,
+    #[serde(default)]
+    pub notebook_id: Option<String>,
+}
+
+/// A notes notebook (folder). Notes reference one via `notebook_id`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Notebook {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
 }
 
 #[derive(Template)]
@@ -171,6 +181,9 @@ pub struct NotesTpl {
     pub notes: Vec<Note>,
     /// The note open in the editor pane (when one is selected), else None.
     pub selected: Option<Note>,
+    pub notebooks: Vec<Notebook>,
+    /// Active notebook filter: a notebook id, the literal "none", or empty (all).
+    pub current_notebook: String,
 }
 
 #[derive(Template)]
