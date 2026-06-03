@@ -686,6 +686,15 @@ pub struct NotesActivityTpl {
     pub events: Vec<ActivityRow>,
 }
 
+#[derive(Template)]
+#[template(path = "contact_activity.html")]
+pub struct ContactActivityTpl {
+    pub me: Me,
+    pub book_id: String,
+    pub contact_id: String,
+    pub events: Vec<ActivityRow>,
+}
+
 /// A mail flow (automation) rule summarized for display.
 pub struct FlowRuleRow {
     pub id: String,

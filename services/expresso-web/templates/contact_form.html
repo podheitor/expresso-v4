@@ -6,7 +6,10 @@
   <div class="card" style="max-width:640px">
     <div class="page-header">
       <h1>{% match contact_id %}{% when Some with (_) %}Editar contato{% when None %}Novo contato{% endmatch %}</h1>
-      <a class="link-sm" href="/contacts?book_id={{ book.id }}">← voltar</a>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        {% match contact_id %}{% when Some with (cid) %}<a class="link-sm" href="/contacts/{{ book.id }}/{{ cid }}/activity">🕘 Atividade</a>{% when None %}{% endmatch %}
+        <a class="link-sm" href="/contacts?book_id={{ book.id }}">← voltar</a>
+      </div>
     </div>
     <p class="muted" style="font-size:.875rem;margin-bottom:1rem">Catálogo: <strong>{{ book.name }}</strong></p>
 

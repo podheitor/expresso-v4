@@ -18,14 +18,14 @@ use crate::{
         AdminConfigTpl, AdminLoginEvent, AdminMonitoringTpl, AdminTenant, AdminTenantsTpl,
         AdminUser, AdminUserDetailTpl, AdminUsersTpl, AuditEvent, Calendar, CalendarDayTpl,
         CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatChannel, ChatMessage,
-        ChatTpl, Contact, ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl,
-        ContactsTpl, DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DriveEditTpl,
-        DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveTagFilesTpl,
-        DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl,
-        FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact,
-        HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl,
-        MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl,
-        MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note,
+        ChatTpl, Contact, ContactActivityTpl, ContactFormTpl, ContactGroup, ContactGroupDetailTpl,
+        ContactGroupsTpl, ContactsTpl, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
+        DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl,
+        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
+        Event, EventFormTpl, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl,
+        GalContact, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl,
+        MailListTpl, MailSearchTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
+        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MonthCell, Note,
         NotesActivityTpl, NotesTpl, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl,
         ShareRow, TasksTpl, VersionRow, WorkingHour,
     },
@@ -123,6 +123,10 @@ pub fn router(state: AppState) -> Router {
             get(contact_edit_form).post(contact_edit_action),
         )
         .route("/contacts/:book_id/:id/delete", post(contact_delete_action))
+        .route(
+            "/contacts/:book_id/:id/activity",
+            get(contact_activity_page),
+        )
         .route(
             "/contacts/:book_id/share",
             get(addrbook_share_page).post(addrbook_share_create),
@@ -4648,6 +4652,41 @@ async fn contact_delete_action(
     )
     .await?;
     Ok(Redirect::to(&format!("/contacts?book_id={enc_b}")).into_response())
+}
+
+/// GET /contacts/:book_id/:id/activity — change history for a contact.
+async fn contact_activity_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((book_id, id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc_b = utf8_percent_encode(&book_id, NON_ALPHANUMERIC).to_string();
+    let enc_i = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let events = get_json::<Vec<serde_json::Value>>(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/addressbooks/{enc_b}/contacts/{enc_i}/activity"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .into_iter()
+    .map(activity_row_of)
+    .collect();
+    Ok(askama_axum::IntoResponse::into_response(
+        ContactActivityTpl {
+            me,
+            book_id,
+            contact_id: id,
+            events,
+        },
+    ))
 }
 
 async fn contacts_export_vcf(
