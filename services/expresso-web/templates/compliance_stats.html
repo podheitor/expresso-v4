@@ -13,8 +13,29 @@
         style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;margin:1rem 0">
     <label><span>De</span><input type="date" name="since" value="{{ since }}"></label>
     <label><span>Até</span><input type="date" name="before" value="{{ before }}"></label>
+    <label><span>Agrupar por</span>
+      <select name="bucket" class="input">
+        <option value="day"{% if bucket.as_str() == "day" %} selected{% endif %}>Dia</option>
+        <option value="week"{% if bucket.as_str() == "week" %} selected{% endif %}>Semana</option>
+        <option value="month"{% if bucket.as_str() == "month" %} selected{% endif %}>Mês</option>
+      </select>
+    </label>
     <button type="submit" class="btn btn-primary">Atualizar</button>
   </form>
+
+  {% if !volume.is_empty() %}
+  <h3 style="margin-top:0">📈 Volume arquivado</h3>
+  <div style="display:flex;flex-direction:column;gap:.3rem;margin-bottom:1.5rem">
+    {% for b in volume %}
+    <div style="display:flex;align-items:center;gap:.5rem">
+      <span class="mono small" style="width:6.5rem;flex:none;text-align:right">{{ b.label }}</span>
+      <div style="flex:1;background:var(--surface-2,#eee);border-radius:.25rem;overflow:hidden">
+        <div style="width:{{ b.pct }}%;min-width:2px;background:var(--accent,#2563eb);color:#fff;padding:.15rem .4rem;font-size:.75rem;white-space:nowrap">{{ b.count }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
   <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
     <div style="flex:1;min-width:240px">

@@ -1011,9 +1011,12 @@ pub struct ComplianceStatsTpl {
     pub me: Me,
     pub since: String,
     pub before: String,
+    pub bucket: String,
     pub senders: Vec<ArchiveStatRow>,
     pub recipients: Vec<ArchiveStatRow>,
     pub domains: Vec<ArchiveStatRow>,
+    /// Archiving volume over time (CSS bars), reusing HistogramBar.
+    pub volume: Vec<HistogramBar>,
 }
 
 /// One archived message in the compliance e-discovery search results.

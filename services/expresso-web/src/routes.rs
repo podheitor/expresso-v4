@@ -3859,6 +3859,8 @@ struct ArchiveStatsQuery {
     since: Option<String>,
     #[serde(default)]
     before: Option<String>,
+    #[serde(default)]
+    bucket: Option<String>,
 }
 
 /// Fetch a top-N archive list (`endpoint`) and map it to ranked rows. `key` is
@@ -3956,14 +3958,54 @@ async fn compliance_stats_page(
         &range,
     )
     .await?;
+    let bucket = match q.bucket.as_deref() {
+        Some("week") => "week",
+        Some("month") => "month",
+        _ => "day",
+    }
+    .to_string();
+    // Archiving volume over time (reuse the calendar histogram rendering).
+    let hist = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.compliance,
+        &format!("/api/v1/compliance/archive/histogram?bucket={bucket}{range}"),
+        &headers,
+        Some(ctx),
+    )
+    .await?
+    .unwrap_or_default();
+    let points: Vec<HistogramPoint> = hist
+        .get("series")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|p| serde_json::from_value(p.clone()).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    let max = points.iter().map(|p| p.count).max().unwrap_or(0).max(1);
+    let volume: Vec<HistogramBar> = points
+        .into_iter()
+        .map(|p| HistogramBar {
+            label: p
+                .ts
+                .as_deref()
+                .map(|s| histogram_label(s, &bucket))
+                .unwrap_or_default(),
+            pct: ((p.count * 100) / max) as u32,
+            count: p.count,
+        })
+        .collect();
     Ok(askama_axum::IntoResponse::into_response(
         ComplianceStatsTpl {
             me,
             since,
             before,
+            bucket,
             senders,
             recipients,
             domains,
+            volume,
         },
     ))
 }
