@@ -59,6 +59,13 @@
         {% for r in domains %}<tr><td>{{ r.label }}</td><td class="mono" style="text-align:right">{{ r.count }}</td></tr>{% endfor %}
       </tbody></table>{% endif %}
     </div>
+    <div style="flex:1;min-width:240px">
+      <h3>📝 Assuntos</h3>
+      {% if subjects.is_empty() %}<p class="muted small">Sem dados.</p>{% else %}
+      <table class="data-table" style="width:100%"><tbody>
+        {% for r in subjects %}<tr><td>{{ r.label }}</td><td class="mono" style="text-align:right">{{ r.count }}</td></tr>{% endfor %}
+      </tbody></table>{% endif %}
+    </div>
   </div>
 </div>
 {% endblock %}

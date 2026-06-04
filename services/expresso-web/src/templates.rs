@@ -1015,6 +1015,7 @@ pub struct ComplianceStatsTpl {
     pub senders: Vec<ArchiveStatRow>,
     pub recipients: Vec<ArchiveStatRow>,
     pub domains: Vec<ArchiveStatRow>,
+    pub subjects: Vec<ArchiveStatRow>,
     /// Archiving volume over time (CSS bars), reusing HistogramBar.
     pub volume: Vec<HistogramBar>,
 }

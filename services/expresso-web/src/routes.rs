@@ -3958,6 +3958,16 @@ async fn compliance_stats_page(
         &range,
     )
     .await?;
+    let subjects = archive_top_rows(
+        &st,
+        &headers,
+        ctx,
+        "top-subjects",
+        "subjects",
+        "subject",
+        &range,
+    )
+    .await?;
     let bucket = match q.bucket.as_deref() {
         Some("week") => "week",
         Some("month") => "month",
@@ -4005,6 +4015,7 @@ async fn compliance_stats_page(
             senders,
             recipients,
             domains,
+            subjects,
             volume,
         },
     ))
