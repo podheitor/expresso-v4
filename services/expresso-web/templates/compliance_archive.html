@@ -36,7 +36,7 @@
       <button type="button" class="btn btn-ghost btn-sm" onclick="holdSelected('unhold')" title="Liberar as mensagens marcadas">🔓 Liberar selecionadas</button>
     </div>
     <table class="data-table" style="width:100%">
-      <thead><tr><th><input type="checkbox" onclick="toggleAllArchive(this)"></th><th>Assunto</th><th>De</th><th>Para</th><th>Arquivada</th><th>Tamanho</th></tr></thead>
+      <thead><tr><th><input type="checkbox" onclick="toggleAllArchive(this)"></th><th>Assunto</th><th>De</th><th>Para</th><th>Arquivada</th><th>Tamanho</th><th></th></tr></thead>
       <tbody>
         {% for r in rows %}
         <tr>
@@ -46,6 +46,15 @@
           <td class="muted small">{{ r.to_addrs }}</td>
           <td class="mono small">{{ r.archived_at }}</td>
           <td class="mono small">{{ r.size_human }}</td>
+          <td><button type="button" class="btn btn-ghost btn-sm" onclick="toggleArchiveTags('{{ r.id }}', this)" title="Etiquetas">🏷</button></td>
+        </tr>
+        <tr class="arch-tags-row" id="tags-{{ r.id }}" style="display:none">
+          <td colspan="7" style="background:var(--surface-2,#f7f7f7)">
+            <div class="arch-tags-chips" style="display:inline-flex;gap:.3rem;flex-wrap:wrap;margin-right:.5rem"></div>
+            <input type="text" class="input arch-tag-input" style="width:10rem"
+                   placeholder="nova etiqueta…" onkeydown="if(event.key==='Enter'){addArchiveTag('{{ r.id }}');}">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="addArchiveTag('{{ r.id }}')">+ Adicionar</button>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -57,6 +66,42 @@
   {% endif %}
 </div>
 <script>
+// ── Archive tags (per message) ──────────────────────────────────────────────
+function toggleArchiveTags(id, btn) {
+  var row = document.getElementById('tags-' + id);
+  if (!row) return;
+  var show = row.style.display === 'none';
+  row.style.display = show ? '' : 'none';
+  if (show) loadArchiveTags(id);
+}
+function renderArchiveTags(id, tags) {
+  var box = document.querySelector('#tags-' + id + ' .arch-tags-chips');
+  if (!box) return;
+  box.innerHTML = (tags || []).map(function(tg){
+    var safe = String(tg).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    return '<span class="badge">' + safe + ' <a href="#" onclick="removeArchiveTag(\'' + id + '\',\'' + encodeURIComponent(tg) + '\');return false" style="color:inherit">✕</a></span>';
+  }).join('') || '<span class="muted small">sem etiquetas</span>';
+}
+function loadArchiveTags(id) {
+  fetch('/compliance/archive/' + encodeURIComponent(id) + '/tags', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : { tags: [] }; })
+    .then(function(d){ renderArchiveTags(id, d.tags || []); });
+}
+function addArchiveTag(id) {
+  var inp = document.querySelector('#tags-' + id + ' .arch-tag-input');
+  var tag = (inp && inp.value || '').trim();
+  if (!tag) return;
+  var body = new URLSearchParams(); body.set('tag', tag);
+  fetch('/compliance/archive/' + encodeURIComponent(id) + '/tags', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r){ if (r.ok) { if (inp) inp.value=''; loadArchiveTags(id); } else alert('Falha (HTTP ' + r.status + ').'); });
+}
+function removeArchiveTag(id, encTag) {
+  fetch('/compliance/archive/' + encodeURIComponent(id) + '/tags/' + encTag + '/delete',
+        { method: 'POST', credentials: 'include' })
+    .then(function(r){ if (r.ok) loadArchiveTags(id); else alert('Falha (HTTP ' + r.status + ').'); });
+}
 function toggleAllArchive(master) {
   document.querySelectorAll('.arch-cb').forEach(function(cb){ cb.checked = master.checked; });
 }

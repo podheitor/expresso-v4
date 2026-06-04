@@ -254,6 +254,14 @@ pub fn router(state: AppState) -> Router {
         .route("/compliance/archive/unhold", post(compliance_unhold_action))
         .route("/compliance/stats", get(compliance_stats_page))
         .route(
+            "/compliance/archive/:id/tags",
+            get(compliance_tags_get).post(compliance_tag_add),
+        )
+        .route(
+            "/compliance/archive/:id/tags/:tag/delete",
+            post(compliance_tag_remove),
+        )
+        .route(
             "/flows/:id/edit",
             get(flow_edit_page).post(flow_edit_action),
         )
@@ -4019,6 +4027,92 @@ async fn compliance_stats_page(
             volume,
         },
     ))
+}
+
+/// GET /compliance/archive/:id/tags — the tags on one archived message as JSON.
+async fn compliance_tags_get(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.compliance,
+        &format!("/api/v1/compliance/archive/{enc}/tags"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_else(|| serde_json::json!({ "tags": [] }));
+    Ok(json_response(&v))
+}
+
+#[derive(Deserialize)]
+struct ArchiveTagForm {
+    tag: String,
+}
+
+/// POST /compliance/archive/:id/tags — add a tag to an archived message.
+async fn compliance_tag_add(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<ArchiveTagForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let tag = f.tag.trim();
+    if tag.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "tag required").into_response());
+    }
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = crate::upstream::post_json(
+        &st,
+        &st.backends.compliance,
+        &format!("/api/v1/compliance/archive/{enc}/tags"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "tag": tag }),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// POST /compliance/archive/:id/tags/:tag/delete — remove a tag (proxies DELETE).
+async fn compliance_tag_remove(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, tag)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let tenc = utf8_percent_encode(&tag, NON_ALPHANUMERIC);
+    let status = delete_at(
+        &st,
+        &st.backends.compliance,
+        &format!("/api/v1/compliance/archive/{enc}/tags/{tenc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
 }
 
 // ─── /mail/:id/move ──────────────────────────────────────────────────────────
@@ -11064,6 +11158,13 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].label, "ana@x.com");
         assert_eq!(rows[0].count, 12);
+    }
+
+    #[test]
+    fn archive_tag_form_deserializes() {
+        let f: ArchiveTagForm =
+            serde_json::from_value(serde_json::json!({ "tag": "confidencial" })).expect("parse");
+        assert_eq!(f.tag, "confidencial");
     }
 
     #[test]
