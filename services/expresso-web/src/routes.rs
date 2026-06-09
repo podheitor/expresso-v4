@@ -440,6 +440,10 @@ pub fn router(state: AppState) -> Router {
             "/settings/flag-presets/:id/delete",
             post(settings_flag_preset_delete),
         )
+        .route(
+            "/settings/flag-presets/:id/edit",
+            post(settings_flag_preset_edit),
+        )
         // GAL autocomplete JSON API
         .route("/api/gal/search", get(gal_search_api))
         // Mail attachment list (JSON for JS)
@@ -10930,6 +10934,51 @@ async fn settings_flag_preset_delete(
     )
     .await?;
     Ok(Redirect::to("/settings?tab=flag_presets&flash=Preset+removido").into_response())
+}
+
+/// POST /settings/flag-presets/:id/edit — update a preset's name and flags
+/// (PUT upstream; same CSV parsing as create).
+async fn settings_flag_preset_edit(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<FlagPresetForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let name = f.name.trim();
+    let flags: Vec<String> = f
+        .flags
+        .split([',', ' '])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    if name.is_empty() || flags.is_empty() {
+        return Ok(Redirect::to(
+            "/settings?tab=flag_presets&flash=Informe+nome+e+ao+menos+uma+flag",
+        )
+        .into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = put_json(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/flag-presets/{enc}"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "name": name, "flags": flags }),
+    )
+    .await?;
+    let flash = if (200..300).contains(&status) {
+        "Preset+atualizado"
+    } else {
+        "Falha+ao+atualizar+preset"
+    };
+    Ok(Redirect::to(&format!("/settings?tab=flag_presets&flash={flash}")).into_response())
 }
 
 // ─── mailbox delegation ──────────────────────────────────────────────────────

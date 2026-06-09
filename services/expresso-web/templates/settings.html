@@ -648,7 +648,13 @@
             <tr>
               <td>{{ p.name }}</td>
               <td class="mono small">{{ p.flags_csv() }}</td>
-              <td style="text-align:right">
+              <td style="text-align:right;white-space:nowrap">
+                <form method="post" action="/settings/flag-presets/{{ p.id }}/edit" style="display:inline"
+                      onsubmit="var n=prompt('Nome do preset:','{{ p.name }}');if(!n)return false;var fl=prompt('Flags (separadas por vírgula):','{{ p.flags_csv() }}');if(!fl)return false;this.elements['name'].value=n;this.elements['flags'].value=fl;return true">
+                  <input type="hidden" name="name" value="">
+                  <input type="hidden" name="flags" value="">
+                  <button class="btn btn-ghost btn-sm" type="submit">✏ Editar</button>
+                </form>
                 <form method="post" action="/settings/flag-presets/{{ p.id }}/delete" style="display:inline"
                       onsubmit="return confirm('Remover este preset?')">
                   <button class="btn btn-ghost btn-sm" type="submit">Remover</button>
