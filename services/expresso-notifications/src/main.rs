@@ -501,6 +501,54 @@ struct IdentityParams {
     tenant_id: Option<Uuid>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ListNotificationsParams {
+    /// Max rows, default 50, capped 1..=200.
+    limit: Option<i64>,
+    /// Only used in dev mode (no validator). Ignored when JWT is present.
+    user_id: Option<Uuid>,
+    tenant_id: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+struct NotificationRow {
+    id: Uuid,
+    kind: String,
+    folder: Option<String>,
+    message_id: Option<Uuid>,
+    #[serde(with = "time::serde::rfc3339")]
+    created_at: OffsetDateTime,
+}
+
+/// GET /api/v1/notifications?limit= — the caller's unread, non-snoozed
+/// notifications, newest first. The digest endpoint only aggregates counts;
+/// this is the per-item list a bell tray needs so read/snooze (which take a
+/// notification id) become actionable.
+async fn list_notifications(
+    State(st): State<AppState>,
+    MaybeAuthenticated(auth): MaybeAuthenticated,
+    Query(params): Query<ListNotificationsParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let (user_id, tenant_id) = resolve_identity(&st, auth, params.user_id, params.tenant_id)?;
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
+    let pool = st.db.as_ref().ok_or_else(db_unavailable)?;
+    let rows: Vec<NotificationRow> = sqlx::query_as(
+        "SELECT id, kind, folder, message_id, created_at \
+         FROM notifications \
+         WHERE tenant_id = $1 AND user_id = $2 AND is_read = false \
+           AND (snooze_until IS NULL OR snooze_until <= now()) \
+         ORDER BY created_at DESC \
+         LIMIT $3",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(internal_err)?;
+    Ok(Json(json!({ "notifications": rows })))
+}
+
 /// PATCH /api/v1/notifications/:id/read — mark a single notification as read.
 async fn mark_read(
     State(st): State<AppState>,
@@ -3955,6 +4003,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/ready", get(ready))
         .route("/internal/notify", post(internal_notify))
         .route("/notifications/stream", get(notifications_stream))
+        .route("/api/v1/notifications", get(list_notifications))
         .route("/api/v1/notifications/digest", get(digest))
         .route("/api/v1/notifications/:id/read", patch(mark_read))
         .route("/api/v1/notifications/:id/snooze", patch(snooze))
