@@ -218,6 +218,20 @@ window.pushNotification = function(icon, body, link) {
   fetchServerNotifs();
 })();
 
+// ── Impersonation banner ──────────────────────────────────────────────────────
+// The BFF sets a JS-readable marker cookie while a superadmin is impersonating.
+(function() {
+  if (!/(^|;\s*)expresso_impersonating=1/.test(document.cookie)) return;
+  var bar = document.createElement('div');
+  bar.style.cssText = 'position:sticky;top:0;z-index:1000;background:#b45309;color:#fff;' +
+    'padding:.35rem .75rem;display:flex;gap:.75rem;align-items:center;font-size:.85rem';
+  bar.innerHTML = '⚠ Sessão de personificação ativa — você está operando como outro usuário (auditado).' +
+    '<form method="post" action="/impersonate/end" style="margin-left:auto">' +
+    '<button type="submit" style="background:#fff;color:#b45309;border:0;border-radius:.25rem;' +
+    'padding:.15rem .6rem;cursor:pointer;font-weight:600">Encerrar</button></form>';
+  document.body.insertBefore(bar, document.body.firstChild);
+})();
+
 // ── Tasks badge from localStorage ────────────────────────────────────────────
 (function() {
   var n = parseInt(localStorage.getItem('expresso_tasks_today_count') || '0', 10);

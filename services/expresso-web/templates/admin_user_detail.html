@@ -12,7 +12,12 @@
   <div style="margin-left:auto;display:flex;gap:.5rem">
     <a class="btn btn-ghost btn-sm" href="mailto:{{ user.email }}" title="Compor e-mail para este usuário">✉ E-mail</a>
     <a class="btn btn-ghost btn-sm" href="/mail/compose?to={{ user.email }}&subject=Bem-vindo%20ao%20Expresso" title="Enviar email de boas-vindas">📨 Boas-vindas</a>
-    <button class="btn btn-ghost btn-sm" onclick="impersonateHint('{{ user.email }}')" title="Como assumir esta sessão (instruções)">🎭 Personificar</button>
+    {% if me.is_superadmin() %}
+    <form method="post" action="/admin/users/{{ user.id }}/impersonate" style="display:inline"
+          onsubmit="return confirm('Assumir a sessão de {{ user.email }}? A personificação é registrada no audit log.')">
+      <button class="btn btn-ghost btn-sm" type="submit" title="Assumir a sessão deste usuário (auditado)">🎭 Personificar</button>
+    </form>
+    {% endif %}
     <form method="post" action="/admin/users/{{ user.id }}/reset-password">
       <button class="btn btn-ghost btn-sm" type="submit" onclick="return confirm('Enviar e-mail de redefinição de senha?')">🔑 Redefinir senha</button>
     </form>
@@ -227,9 +232,6 @@ function copyToClip(btn, text) {
     btn.textContent = '✓';
     setTimeout(function(){ btn.textContent = prev; }, 1200);
   });
-}
-function impersonateHint(email) {
-  alert('Para personificar ' + email + ':\n\n1. Acesse o console Keycloak admin\n2. Users → ' + email + ' → Impersonate\n\nA personificação é registrada no audit log.');
 }
 </script>
 {% endblock %}

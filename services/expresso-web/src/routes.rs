@@ -472,6 +472,8 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/users/:id/role", post(admin_users_set_role))
         .route("/admin/users/:id/suspend", post(admin_users_suspend))
         .route("/admin/users/:id/activate", post(admin_users_activate))
+        .route("/admin/users/:id/impersonate", post(admin_user_impersonate))
+        .route("/impersonate/end", post(impersonation_end))
         .route(
             "/admin/users/:id/reset-password",
             post(admin_users_reset_password),
@@ -11325,6 +11327,123 @@ async fn settings_token_revoke(
     Ok(Redirect::to("/settings/tokens?flash=Token+revogado").into_response())
 }
 
+// ─── impersonation (superadmin) ──────────────────────────────────────────────
+
+/// Session cookie set by expresso-auth (the auth-client extractor reads it).
+const ACCESS_COOKIE: &str = "expresso_at";
+/// Backup of the operator's own token while impersonating (HttpOnly).
+const ACCESS_BACKUP_COOKIE: &str = "expresso_at_orig";
+/// JS-readable marker so the appnav can show the impersonation banner.
+const IMPERSONATING_COOKIE: &str = "expresso_impersonating";
+
+/// Extract one cookie's value from the request Cookie header(s).
+fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    for raw in headers.get_all(header::COOKIE) {
+        let Ok(s) = raw.to_str() else { continue };
+        for pair in s.split(';') {
+            let Some((k, v)) = pair.split_once('=') else {
+                continue;
+            };
+            if k.trim() == name {
+                return Some(v.trim().to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Append a session-cookie Set-Cookie header (HttpOnly unless `js_readable`).
+fn append_session_cookie(resp: &mut Response, name: &str, value: &str, js_readable: bool) {
+    let http_only = if js_readable { "" } else { " HttpOnly;" };
+    if let Ok(hv) =
+        header::HeaderValue::from_str(&format!("{name}={value}; Path=/;{http_only} SameSite=Lax"))
+    {
+        resp.headers_mut().append(header::SET_COOKIE, hv);
+    }
+}
+
+/// Append a Set-Cookie that expires (deletes) `name`.
+fn append_expired_cookie(resp: &mut Response, name: &str) {
+    if let Ok(hv) =
+        header::HeaderValue::from_str(&format!("{name}=; Path=/; Max-Age=0; SameSite=Lax"))
+    {
+        resp.headers_mut().append(header::SET_COOKIE, hv);
+    }
+}
+
+/// POST /admin/users/:id/impersonate — assume the target user's session
+/// (superadmin only). On token-exchange success the BFF swaps the session
+/// cookie to the target's token, backing up the operator's own token so
+/// /impersonate/end can restore it. Without an exchange client the backend
+/// only audits and returns the Keycloak admin-console URL — surfaced as flash.
+async fn admin_user_impersonate(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_superadmin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let (status, resp) = crate::upstream::post_json_body(
+        &st,
+        &st.backends.auth,
+        &format!("/auth/impersonate/{enc}"),
+        &headers,
+        None,
+        &(),
+    )
+    .await?;
+    let token = resp
+        .as_ref()
+        .and_then(|v| v.get("tokens"))
+        .and_then(|t| t.get("access_token"))
+        .and_then(|t| t.as_str())
+        .map(String::from);
+    let Some(token) = token else {
+        // No exchange client — backend audited and returned instructions.
+        let flash = if (200..300).contains(&status) {
+            "Token-exchange+indispon%C3%ADvel+%E2%80%94+use+o+console+Keycloak+(ver+auditoria)"
+        } else {
+            "Falha+ao+personificar"
+        };
+        return Ok(Redirect::to(&format!("/admin/users/{enc}?flash={flash}")).into_response());
+    };
+    let current = cookie_value(&headers, ACCESS_COOKIE).unwrap_or_default();
+    let mut out = Redirect::to("/").into_response();
+    append_session_cookie(&mut out, ACCESS_BACKUP_COOKIE, &current, false);
+    append_session_cookie(&mut out, ACCESS_COOKIE, &token, false);
+    append_session_cookie(&mut out, IMPERSONATING_COOKIE, "1", true);
+    Ok(out)
+}
+
+/// POST /impersonate/end — restore the operator's own session from the
+/// backup cookie and notify the auth service (audit trail).
+async fn impersonation_end(State(st): State<AppState>, headers: HeaderMap) -> WebResult<Response> {
+    // Audit first (the current cookie still identifies the impersonated
+    // session); restoring the cookie happens in this response.
+    let _ = crate::upstream::post_json_body(
+        &st,
+        &st.backends.auth,
+        "/auth/impersonate/end",
+        &headers,
+        None,
+        &(),
+    )
+    .await;
+    let mut out = Redirect::to("/").into_response();
+    if let Some(orig) = cookie_value(&headers, ACCESS_BACKUP_COOKIE) {
+        append_session_cookie(&mut out, ACCESS_COOKIE, &orig, false);
+    }
+    append_expired_cookie(&mut out, ACCESS_BACKUP_COOKIE);
+    append_expired_cookie(&mut out, IMPERSONATING_COOKIE);
+    Ok(out)
+}
+
 // ─── notification bell tray (server-backed) ──────────────────────────────────
 
 /// GET /notifications/list — the caller's unread, non-snoozed notifications
@@ -11459,6 +11578,23 @@ mod tests {
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
         assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn cookie_value_parses_multi_pair_headers() {
+        let mut h = HeaderMap::new();
+        h.append(
+            header::COOKIE,
+            "theme=dark; expresso_at = abc.def.ghi ;broken"
+                .parse()
+                .unwrap(),
+        );
+        assert_eq!(
+            cookie_value(&h, "expresso_at").as_deref(),
+            Some("abc.def.ghi")
+        );
+        assert_eq!(cookie_value(&h, "theme").as_deref(), Some("dark"));
+        assert_eq!(cookie_value(&h, "missing"), None);
     }
 
     #[test]

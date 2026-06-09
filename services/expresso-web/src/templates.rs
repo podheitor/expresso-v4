@@ -37,6 +37,11 @@ impl Me {
     pub fn is_admin(&self) -> bool {
         self.roles.iter().any(|r| r == "admin" || r == "superadmin")
     }
+
+    /// True only for super-admins (impersonation gate).
+    pub fn is_superadmin(&self) -> bool {
+        self.roles.iter().any(|r| r == "superadmin")
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
