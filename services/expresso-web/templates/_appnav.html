@@ -99,27 +99,68 @@ document.addEventListener('click', function(e) {
 });
 
 // ── Notification bell ─────────────────────────────────────────────────────────
+// Two sources: client-side pushes (chat/meet reminders, localStorage) and the
+// notifications service (unread, non-snoozed rows — server-backed read/snooze).
 var NOTIF_KEY = 'expresso_notifs';
+var serverNotifs = [];
 function loadNotifs() { try { return JSON.parse(localStorage.getItem(NOTIF_KEY) || '[]'); } catch(e) { return []; } }
 function saveNotifs(n) { localStorage.setItem(NOTIF_KEY, JSON.stringify(n)); }
+
+function notifLabel(n) {
+  var f = n.folder ? ' em ' + n.folder : '';
+  switch (n.kind) {
+    case 'new_mail':         return { icon: '📧', body: 'Novo e-mail' + f };
+    case 'event_created':    return { icon: '📅', body: 'Novo evento na agenda' };
+    case 'contact_upserted': return { icon: '👤', body: 'Contato atualizado' };
+    case 'seat_overage':     return { icon: '⚠', body: 'Limite de licenças excedido' };
+    case 'storage_overage':  return { icon: '⚠', body: 'Limite de armazenamento excedido' };
+    default:                 return { icon: '🔔', body: (n.kind || '') + f };
+  }
+}
+
+function fetchServerNotifs(cb) {
+  fetch('/notifications/list', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : { notifications: [] }; })
+    .then(function(d){ serverNotifs = d.notifications || []; updateNotifBadge(); if (cb) cb(); })
+    .catch(function(){ if (cb) cb(); });
+}
+
+function updateNotifBadge() {
+  var badge = document.getElementById('notif-badge');
+  if (!badge) return;
+  var localUnread = loadNotifs().filter(function(n){ return !n.read; }).length;
+  var total = localUnread + serverNotifs.length;
+  badge.textContent = total > 99 ? '99+' : (total || '');
+  badge.style.display = total > 0 ? '' : 'none';
+}
 
 function toggleNotifPanel() {
   var p = document.getElementById('notif-panel');
   if (!p) return;
   var open = p.style.display !== 'none';
   p.style.display = open ? 'none' : '';
-  if (!open) renderNotifList();
+  if (!open) { renderNotifList(); fetchServerNotifs(renderNotifList); }
 }
 
 function renderNotifList() {
   var list = document.getElementById('notif-list');
   if (!list) return;
   var notifs = loadNotifs().slice(0, 20);
-  var badge = document.getElementById('notif-badge');
-  var unread = notifs.filter(function(n){ return !n.read; }).length;
-  if (badge) { badge.textContent = unread > 0 ? unread : ''; badge.style.display = unread > 0 ? '' : 'none'; }
-  if (!notifs.length) { list.innerHTML = '<li class="notif-item muted small">Nenhuma notificação.</li>'; return; }
-  list.innerHTML = notifs.map(function(n, i) {
+  var html = serverNotifs.map(function(n) {
+    var lb = notifLabel(n);
+    return '<li class="notif-item notif-unread">' +
+      '<span class="notif-icon">' + escHtml(lb.icon) + '</span>' +
+      '<div class="notif-content">' +
+        '<span class="notif-body">' + escHtml(lb.body) + '</span>' +
+        '<span class="notif-time muted small">' + (n.created_at ? new Date(n.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '') + '</span>' +
+      '</div>' +
+      '<span style="white-space:nowrap">' +
+        '<a href="#" title="Marcar como lida" onclick="markServerNotifRead(\'' + n.id + '\');return false">✓</a> ' +
+        '<a href="#" title="Adiar por 8 horas" onclick="snoozeServerNotif(\'' + n.id + '\');return false">💤</a>' +
+      '</span>' +
+    '</li>';
+  }).join('');
+  html += notifs.map(function(n, i) {
     return '<li class="notif-item' + (n.read ? '' : ' notif-unread') + '" onclick="markNotifRead(' + i + ')">' +
       '<span class="notif-icon">' + escHtml(n.icon || '🔔') + '</span>' +
       '<div class="notif-content">' +
@@ -128,8 +169,23 @@ function renderNotifList() {
       '</div>' +
     '</li>';
   }).join('');
+  list.innerHTML = html || '<li class="notif-item muted small">Nenhuma notificação.</li>';
   notifs.forEach(function(n){ n.read = true; });
   saveNotifs(notifs);
+  updateNotifBadge();
+}
+
+function markServerNotifRead(id) {
+  fetch('/notifications/' + encodeURIComponent(id) + '/read', { method: 'POST', credentials: 'include' })
+    .then(function(){ fetchServerNotifs(renderNotifList); });
+}
+
+function snoozeServerNotif(id) {
+  var body = new URLSearchParams(); body.set('hours', '8');
+  fetch('/notifications/' + encodeURIComponent(id) + '/snooze', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(){ fetchServerNotifs(renderNotifList); });
 }
 
 function markNotifRead(idx) {
@@ -139,16 +195,27 @@ function markNotifRead(idx) {
   renderNotifList();
 }
 
-function clearNotifs() { saveNotifs([]); renderNotifList(); }
+function clearNotifs() {
+  saveNotifs([]);
+  fetch('/notifications/read-all', { method: 'POST', credentials: 'include' })
+    .then(function(){ fetchServerNotifs(renderNotifList); })
+    .catch(function(){ renderNotifList(); });
+}
 
-// Push a notification from anywhere
-
-// Init badge on page load
-(function() {
+// Push a notification from anywhere (chat/meet reminders call this; the
+// definition was lost in the debloat and the `if (window.pushNotification)`
+// guards made it a silent no-op).
+window.pushNotification = function(icon, body, link) {
   var notifs = loadNotifs();
-  var unread = notifs.filter(function(n){ return !n.read; }).length;
-  var badge = document.getElementById('notif-badge');
-  if (badge) { badge.textContent = unread > 0 ? unread : ''; badge.style.display = unread > 0 ? '' : 'none'; }
+  notifs.unshift({ icon: icon, body: body, link: link || '', ts: Date.now(), read: false });
+  saveNotifs(notifs.slice(0, 50));
+  updateNotifBadge();
+};
+
+// Init badge on page load (cached local first, then the server count).
+(function() {
+  updateNotifBadge();
+  fetchServerNotifs();
 })();
 
 // ── Tasks badge from localStorage ────────────────────────────────────────────

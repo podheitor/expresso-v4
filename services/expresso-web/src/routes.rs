@@ -444,6 +444,17 @@ pub fn router(state: AppState) -> Router {
             "/settings/flag-presets/:id/edit",
             post(settings_flag_preset_edit),
         )
+        // Notification bell tray (server-backed; static before :id)
+        .route("/notifications/list", get(notifications_list_api))
+        .route(
+            "/notifications/read-all",
+            post(notifications_read_all_action),
+        )
+        .route("/notifications/:id/read", post(notification_read_action))
+        .route(
+            "/notifications/:id/snooze",
+            post(notification_snooze_action),
+        )
         // GAL autocomplete JSON API
         .route("/api/gal/search", get(gal_search_api))
         // Mail attachment list (JSON for JS)
@@ -11312,6 +11323,117 @@ async fn settings_token_revoke(
     )
     .await?;
     Ok(Redirect::to("/settings/tokens?flash=Token+revogado").into_response())
+}
+
+// ─── notification bell tray (server-backed) ──────────────────────────────────
+
+/// GET /notifications/list — the caller's unread, non-snoozed notifications
+/// as JSON for the bell tray ({notifications:[…]} passthrough).
+async fn notifications_list_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.notifications,
+        "/api/v1/notifications?limit=20",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_else(|| serde_json::json!({ "notifications": [] }));
+    Ok(json_response(&v))
+}
+
+/// POST /notifications/:id/read — mark one notification read (proxies PATCH).
+async fn notification_read_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = patch_json(
+        &st,
+        &st.backends.notifications,
+        &format!("/api/v1/notifications/{enc}/read"),
+        &headers,
+        Some((&t, &u)),
+        &(),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// POST /notifications/read-all — mark every notification read.
+async fn notifications_read_all_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let status = patch_json(
+        &st,
+        &st.backends.notifications,
+        "/api/v1/notifications/read-all",
+        &headers,
+        Some((&t, &u)),
+        &(),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+#[derive(Deserialize)]
+struct NotifSnoozeForm {
+    /// Snooze window in hours (backend validates 1..=720).
+    hours: i64,
+}
+
+/// POST /notifications/:id/snooze — hide a notification for N hours.
+async fn notification_snooze_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<NotifSnoozeForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !(1..=720).contains(&f.hours) {
+        return Ok((StatusCode::BAD_REQUEST, "hours must be 1..=720").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = patch_json(
+        &st,
+        &st.backends.notifications,
+        &format!("/api/v1/notifications/{enc}/snooze"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "hours": f.hours }),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
 }
 
 #[cfg(test)]
