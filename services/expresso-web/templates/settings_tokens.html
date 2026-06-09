@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Tokens de API · Expresso{% endblock %}
+{% block nav %}{% let current = "settings" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Tokens de API</h1>
+    <a class="btn btn-ghost btn-sm" href="/settings">← Configurações</a>
+  </div>
+  {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+
+  {% match new_token %}{% when Some with (tok) %}
+  <div class="card stack" style="border:2px solid var(--accent,#2563eb)">
+    <h2>🔑 Token criado</h2>
+    <p class="muted small">
+      Copie o token agora — ele é exibido <strong>uma única vez</strong> e não pode ser recuperado depois.
+    </p>
+    <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+      <code id="new-token" class="mono" style="padding:.4rem .6rem;background:var(--surface-2,#f3f3f3);border-radius:.25rem;user-select:all">{{ tok }}</code>
+      <button type="button" class="btn btn-ghost btn-sm"
+              onclick="navigator.clipboard.writeText(document.getElementById('new-token').textContent).then(function(){alert('Token copiado.');})">⧉ Copiar</button>
+    </div>
+  </div>
+  {% when None %}{% endmatch %}
+
+  <div class="card stack">
+    <h2>Criar token</h2>
+    <p class="muted small">
+      Tokens de acesso pessoal autenticam integrações e scripts em seu nome.
+      Máximo de 50 tokens ativos por usuário.
+    </p>
+    <form class="compose-form" method="post" action="/settings/tokens"
+          style="display:flex;gap:.4rem;align-items:flex-end;flex-wrap:wrap">
+      <label style="flex:1;min-width:220px">
+        <span>Nome</span>
+        <input type="text" name="name" required maxlength="128" placeholder="ex: script de backup">
+      </label>
+      <label>
+        <span>Validade</span>
+        <select name="expires_days">
+          <option value="30">30 dias</option>
+          <option value="90" selected>90 dias</option>
+          <option value="365">1 ano</option>
+          <option value="never">Sem expiração</option>
+        </select>
+      </label>
+      <button class="btn btn-primary" type="submit">Criar token</button>
+    </form>
+  </div>
+
+  <div class="card stack">
+    <h2>Meus tokens</h2>
+    {% if rows.is_empty() %}
+      <p class="muted">Nenhum token criado.</p>
+    {% else %}
+    <table class="data-table" style="width:100%">
+      <thead><tr><th>Nome</th><th>Criado</th><th>Último uso</th><th>Expira</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.name }}</td>
+          <td class="mono small">{{ r.created }}</td>
+          <td class="mono small">{% if r.last_used.is_empty() %}<span class="muted">nunca</span>{% else %}{{ r.last_used }}{% endif %}</td>
+          <td class="mono small">{% if r.expires.is_empty() %}<span class="muted">não expira</span>{% else %}{{ r.expires }}{% endif %}</td>
+          <td>{% if r.active %}<span class="badge">ativo</span>{% else %}<span class="muted small">revogado</span>{% endif %}</td>
+          <td style="text-align:right">
+            {% if r.active %}
+            <form method="post" action="/settings/tokens/{{ r.id }}/revoke" style="display:inline"
+                  onsubmit="return confirm('Revogar o token &quot;{{ r.name }}&quot;? Integrações que o usam deixarão de funcionar.')">
+              <button class="btn btn-ghost btn-sm" type="submit">Revogar</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

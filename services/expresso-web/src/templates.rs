@@ -2006,6 +2006,30 @@ pub struct DelegationsTpl {
     pub to_me: Vec<DelegationView>,
 }
 
+/// One personal access token (metadata only — the secret is never listed).
+pub struct ApiTokenRow {
+    pub id: String,
+    pub name: String,
+    /// "YYYY-MM-DD HH:MM"
+    pub created: String,
+    /// Last use, or empty if never used.
+    pub last_used: String,
+    /// Expiry, or empty for non-expiring tokens.
+    pub expires: String,
+    /// False once revoked.
+    pub active: bool,
+}
+
+#[derive(Template)]
+#[template(path = "settings_tokens.html")]
+pub struct SettingsTokensTpl {
+    pub me: Me,
+    pub rows: Vec<ApiTokenRow>,
+    /// Cleartext of a token minted by THIS request — shown exactly once.
+    pub new_token: Option<String>,
+    pub flash: Option<String>,
+}
+
 // ─── Admin panel ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Clone, serde::Serialize)]

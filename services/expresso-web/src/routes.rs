@@ -21,7 +21,7 @@ use crate::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
         AdminRetentionTpl, AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl,
-        AdminUsersTpl, ArchiveRow, ArchiveStatRow, ArchiveTagHistRow, AuditEvent,
+        AdminUsersTpl, ApiTokenRow, ArchiveRow, ArchiveStatRow, ArchiveTagHistRow, AuditEvent,
         BulkDeleteEventRow, Calendar, CalendarBulkDeleteTpl, CalendarConflictsTpl,
         CalendarCountersTpl, CalendarDayTpl, CalendarHistogramTpl, CalendarMonthTpl,
         CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage,
@@ -39,8 +39,8 @@ use crate::{
         MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
         MessageListItem, MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
         NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow,
-        SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, SharedNoteRow,
-        SnoozedRow, TagPairRow, TaskRow, TasksTpl, VersionRow, WorkingHour,
+        SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTokensTpl, SettingsTpl, ShareRow,
+        SharedNoteRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -427,6 +427,11 @@ pub fn router(state: AppState) -> Router {
             "/settings/delegations/:id/revoke",
             post(delegation_revoke_action),
         )
+        .route(
+            "/settings/tokens",
+            get(settings_tokens_page).post(settings_token_create),
+        )
+        .route("/settings/tokens/:id/revoke", post(settings_token_revoke))
         .route("/settings/aliases", post(settings_alias_create))
         .route("/settings/aliases/:id/toggle", post(settings_alias_toggle))
         .route("/settings/aliases/:id/delete", post(settings_alias_delete))
@@ -11108,6 +11113,158 @@ async fn delegation_revoke_action(
     Ok(Redirect::to("/settings/delegations?flash=Delegação+revogada").into_response())
 }
 
+// ─── /settings/tokens (personal access tokens) ───────────────────────────────
+
+/// Map one backend token-info JSON into a table row. Backend list is newest-
+/// first; timestamps come as RFC 3339.
+fn api_token_row(v: &serde_json::Value) -> ApiTokenRow {
+    let short = |key: &str| -> String {
+        v.get(key)
+            .and_then(|x| x.as_str())
+            .map(|s| s.replace('T', " ").chars().take(16).collect())
+            .unwrap_or_default()
+    };
+    ApiTokenRow {
+        id: v
+            .get("id")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string(),
+        name: v
+            .get("name")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string(),
+        created: short("created_at"),
+        last_used: short("last_used_at"),
+        expires: short("expires_at"),
+        active: v
+            .get("revoked_at")
+            .map(serde_json::Value::is_null)
+            .unwrap_or(true),
+    }
+}
+
+/// Fetch the caller's tokens (bare array) as table rows.
+async fn fetch_api_tokens(st: &AppState, headers: &HeaderMap) -> WebResult<Vec<ApiTokenRow>> {
+    Ok(
+        get_json::<Vec<serde_json::Value>>(st, &st.backends.auth, "/auth/tokens", headers, None)
+            .await?
+            .unwrap_or_default()
+            .iter()
+            .map(api_token_row)
+            .collect(),
+    )
+}
+
+/// GET /settings/tokens — list the caller's personal access tokens.
+async fn settings_tokens_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let rows = fetch_api_tokens(&st, &headers).await?;
+    Ok(askama_axum::IntoResponse::into_response(
+        SettingsTokensTpl {
+            me,
+            rows,
+            new_token: None,
+            flash: extract_flash(&uri),
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+struct TokenCreateForm {
+    name: String,
+    /// Lifetime in days as a string; empty or "never" = non-expiring.
+    #[serde(default)]
+    expires_days: String,
+}
+
+/// POST /settings/tokens — mint a token and render the page with the
+/// cleartext shown exactly once (no redirect, or the secret would be lost).
+async fn settings_token_create(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<TokenCreateForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let name = f.name.trim();
+    if name.is_empty() || name.len() > 128 {
+        return Ok((StatusCode::BAD_REQUEST, "nome inválido").into_response());
+    }
+    let expires_in_seconds = f
+        .expires_days
+        .trim()
+        .parse::<i64>()
+        .ok()
+        .filter(|d| (1..=365).contains(d))
+        .map(|d| d * 86400);
+    let mut body = serde_json::json!({ "name": name });
+    if let Some(s) = expires_in_seconds {
+        body["expires_in_seconds"] = serde_json::json!(s);
+    }
+    let (status, resp) = crate::upstream::post_json_body(
+        &st,
+        &st.backends.auth,
+        "/auth/tokens",
+        &headers,
+        None,
+        &body,
+    )
+    .await?;
+    let new_token = resp
+        .as_ref()
+        .and_then(|v| v.get("token"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let flash = if new_token.is_some() {
+        None
+    } else if status == 409 {
+        Some("Limite de tokens atingido (50). Revogue um antes de criar outro.".into())
+    } else {
+        Some(format!("Falha ao criar token (HTTP {status})."))
+    };
+    let rows = fetch_api_tokens(&st, &headers).await?;
+    Ok(askama_axum::IntoResponse::into_response(
+        SettingsTokensTpl {
+            me,
+            rows,
+            new_token,
+            flash,
+        },
+    ))
+}
+
+/// POST /settings/tokens/:id/revoke — revoke one of the caller's tokens.
+async fn settings_token_revoke(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(_me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = delete_at(
+        &st,
+        &st.backends.auth,
+        &format!("/auth/tokens/{enc}"),
+        &headers,
+        None,
+    )
+    .await?;
+    Ok(Redirect::to("/settings/tokens?flash=Token+revogado").into_response())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -11131,6 +11288,30 @@ mod tests {
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
         assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn api_token_row_maps_backend_shape() {
+        let v = serde_json::json!({
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "backup script",
+            "created_at": "2026-06-09T10:30:00Z",
+            "last_used_at": null,
+            "expires_at": "2026-09-07T10:30:00Z",
+            "revoked_at": null
+        });
+        let r = api_token_row(&v);
+        assert_eq!(r.name, "backup script");
+        assert_eq!(r.created, "2026-06-09 10:30");
+        assert!(r.last_used.is_empty());
+        assert_eq!(r.expires, "2026-09-07 10:30");
+        assert!(r.active);
+
+        let revoked = serde_json::json!({
+            "id": "x", "name": "old", "created_at": "2026-01-01T00:00:00Z",
+            "revoked_at": "2026-02-01T00:00:00Z"
+        });
+        assert!(!api_token_row(&revoked).active);
     }
 
     #[test]
