@@ -3623,6 +3623,47 @@ struct ArchiveQuery {
     from_addr: Option<String>,
     #[serde(default)]
     to_addr: Option<String>,
+    /// CSV of tags; when present, tag search replaces the text filters.
+    #[serde(default)]
+    tags: Option<String>,
+    /// "all" (AND, default) or "any" (OR).
+    #[serde(default)]
+    tag_mode: Option<String>,
+    /// CSV of tags to exclude (only honoured with tag_mode "all").
+    #[serde(default)]
+    exclude: Option<String>,
+}
+
+/// Build the backend path for a tag search over the archive. `mode` "any"
+/// uses the OR endpoint (union); anything else means AND (intersect),
+/// switching to intersect-exclude when `exclude` has tags. Returns None when
+/// `tags` has no usable entries (→ caller falls back to the text filters).
+fn archive_tag_search_path(tags: &str, mode: &str, exclude: &str) -> Option<String> {
+    fn enc_csv(raw: &str) -> String {
+        raw.split(',')
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(|t| utf8_percent_encode(t, NON_ALPHANUMERIC).to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+    let t = enc_csv(tags);
+    if t.is_empty() {
+        return None;
+    }
+    if mode == "any" {
+        return Some(format!("/api/v1/compliance/archive/tags/union?tags={t}"));
+    }
+    let ex = enc_csv(exclude);
+    if ex.is_empty() {
+        Some(format!(
+            "/api/v1/compliance/archive/tags/intersect?tags={t}"
+        ))
+    } else {
+        Some(format!(
+            "/api/v1/compliance/archive/tags/intersect-exclude?tags={t}&exclude={ex}"
+        ))
+    }
 }
 
 #[derive(Deserialize)]
@@ -3681,26 +3722,42 @@ async fn compliance_archive_page(
     let subject = q.subject.unwrap_or_default();
     let from_addr = q.from_addr.unwrap_or_default();
     let to_addr = q.to_addr.unwrap_or_default();
-    let queried =
-        !subject.trim().is_empty() || !from_addr.trim().is_empty() || !to_addr.trim().is_empty();
+    let tags = q.tags.unwrap_or_default();
+    let tag_mode = match q.tag_mode.as_deref() {
+        Some("any") => "any",
+        _ => "all",
+    }
+    .to_string();
+    let exclude = q.exclude.unwrap_or_default();
+    let tag_path = archive_tag_search_path(&tags, &tag_mode, &exclude);
+    let queried = tag_path.is_some()
+        || !subject.trim().is_empty()
+        || !from_addr.trim().is_empty()
+        || !to_addr.trim().is_empty();
 
     let mut rows = Vec::new();
     if queried {
-        let mut qs: Vec<String> = vec!["limit=100".into()];
-        for (k, val) in [
-            ("subject", &subject),
-            ("from_addr", &from_addr),
-            ("to_addr", &to_addr),
-        ] {
-            let v = val.trim();
-            if !v.is_empty() {
-                qs.push(format!("{k}={}", utf8_percent_encode(v, NON_ALPHANUMERIC)));
+        // Tag search and text search are distinct backend endpoints; tags win.
+        let path = if let Some(p) = tag_path {
+            p
+        } else {
+            let mut qs: Vec<String> = vec!["limit=100".into()];
+            for (k, val) in [
+                ("subject", &subject),
+                ("from_addr", &from_addr),
+                ("to_addr", &to_addr),
+            ] {
+                let v = val.trim();
+                if !v.is_empty() {
+                    qs.push(format!("{k}={}", utf8_percent_encode(v, NON_ALPHANUMERIC)));
+                }
             }
-        }
+            format!("/api/v1/compliance/archive?{}", qs.join("&"))
+        };
         let resp = get_json::<serde_json::Value>(
             &st,
             &st.backends.compliance,
-            &format!("/api/v1/compliance/archive?{}", qs.join("&")),
+            &path,
             &headers,
             Some((&t, &u)),
         )
@@ -3730,6 +3787,9 @@ async fn compliance_archive_page(
             subject,
             from_addr,
             to_addr,
+            tags,
+            tag_mode,
+            exclude,
             rows,
             queried,
         },
@@ -10974,6 +11034,29 @@ mod tests {
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
         assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn archive_tag_search_path_picks_endpoint_by_mode() {
+        assert_eq!(archive_tag_search_path("", "all", ""), None);
+        assert_eq!(archive_tag_search_path(" , ", "all", "x"), None);
+        assert_eq!(
+            archive_tag_search_path("a, b", "all", "").as_deref(),
+            Some("/api/v1/compliance/archive/tags/intersect?tags=a,b")
+        );
+        assert_eq!(
+            archive_tag_search_path("a", "any", "ignored").as_deref(),
+            Some("/api/v1/compliance/archive/tags/union?tags=a")
+        );
+        assert_eq!(
+            archive_tag_search_path("a", "all", "x, y").as_deref(),
+            Some("/api/v1/compliance/archive/tags/intersect-exclude?tags=a&exclude=x,y")
+        );
+        // Tags are percent-encoded individually; the CSV commas survive.
+        assert_eq!(
+            archive_tag_search_path("é tag", "all", "").as_deref(),
+            Some("/api/v1/compliance/archive/tags/intersect?tags=%C3%A9%20tag")
+        );
     }
 
     #[test]

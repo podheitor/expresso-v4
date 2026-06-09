@@ -1061,6 +1061,10 @@ pub struct ComplianceArchiveTpl {
     pub subject: String,
     pub from_addr: String,
     pub to_addr: String,
+    /// Echoed tag-search fields (CSV tags, "all"/"any", CSV exclude).
+    pub tags: String,
+    pub tag_mode: String,
+    pub exclude: String,
     pub rows: Vec<ArchiveRow>,
     pub queried: bool,
 }

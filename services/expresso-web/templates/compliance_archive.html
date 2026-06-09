@@ -24,8 +24,22 @@
       <input type="text" name="from_addr" value="{{ from_addr }}" placeholder="ex: ana@"></label>
     <label style="flex:1;min-width:180px"><span>Destinatário contém</span>
       <input type="text" name="to_addr" value="{{ to_addr }}" placeholder="ex: @empresa.com"></label>
+    <label style="flex:1;min-width:180px"><span>Etiquetas (vírgula)</span>
+      <input type="text" name="tags" value="{{ tags }}" placeholder="ex: case-x, urgente"></label>
+    <label><span>Modo</span>
+      <select name="tag_mode" class="input">
+        <option value="all"{% if tag_mode.as_str() == "all" %} selected{% endif %}>Todas (E)</option>
+        <option value="any"{% if tag_mode.as_str() == "any" %} selected{% endif %}>Qualquer (OU)</option>
+      </select>
+    </label>
+    <label style="flex:1;min-width:160px"><span>Sem as etiquetas</span>
+      <input type="text" name="exclude" value="{{ exclude }}" placeholder="ex: privilegiado"></label>
     <button type="submit" class="btn btn-primary">Buscar</button>
   </form>
+  <p class="muted small" style="margin-top:-.5rem">
+    Com etiquetas preenchidas, a busca é por etiqueta (os filtros de texto são ignorados);
+    "Sem as etiquetas" só vale no modo "Todas (E)".
+  </p>
 
   {% if queried %}
     {% if rows.is_empty() %}

@@ -20,7 +20,7 @@
     <tbody>
       {% for s in tags %}
       <tr>
-        <td><span class="badge">{{ s.label }}</span></td>
+        <td><a href="/compliance/archive?tags={{ s.label }}" title="Ver mensagens com esta etiqueta"><span class="badge">{{ s.label }}</span></a></td>
         <td class="muted">{{ s.count }}</td>
         <td style="white-space:nowrap">
           <form method="post" action="/compliance/tags/rename" style="display:inline"
