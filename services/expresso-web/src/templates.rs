@@ -1020,6 +1020,28 @@ pub struct ComplianceStatsTpl {
     pub volume: Vec<HistogramBar>,
 }
 
+/// One past tag rename/merge on the compliance archive (the undo-history
+/// lists). `from_tag`→`to_tag` covers both: old→new for renames, src→dst
+/// for merges.
+pub struct ArchiveTagHistRow {
+    pub id: String,
+    pub from_tag: String,
+    pub to_tag: String,
+    pub count: i64,
+    /// "YYYY-MM-DD HH:MM"
+    pub when: String,
+}
+
+#[derive(Template)]
+#[template(path = "compliance_tags.html")]
+pub struct ComplianceTagsTpl {
+    pub me: Me,
+    /// Per-tag usage counts (most-used first), label = tag.
+    pub tags: Vec<ArchiveStatRow>,
+    pub renames: Vec<ArchiveTagHistRow>,
+    pub merges: Vec<ArchiveTagHistRow>,
+}
+
 /// One archived message in the compliance e-discovery search results.
 pub struct ArchiveRow {
     pub id: String,

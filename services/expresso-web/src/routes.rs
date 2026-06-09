@@ -21,21 +21,22 @@ use crate::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
         AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, ArchiveRow,
-        ArchiveStatRow, AuditEvent, BulkDeleteEventRow, Calendar, CalendarBulkDeleteTpl,
-        CalendarConflictsTpl, CalendarCountersTpl, CalendarDayTpl, CalendarHistogramTpl,
-        CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment,
-        ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl, ComplianceStatsTpl,
-        ConflictPairRow, Contact, ContactActivityTpl, ContactAddressRow, ContactDiffTpl,
-        ContactEmailRow, ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl,
-        ContactVersionRow, ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw,
-        DelegationView, DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow,
-        DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
-        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
-        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
-        Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow,
-        FreeBusyTpl, GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
-        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me,
-        MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        ArchiveStatRow, ArchiveTagHistRow, AuditEvent, BulkDeleteEventRow, Calendar,
+        CalendarBulkDeleteTpl, CalendarConflictsTpl, CalendarCountersTpl, CalendarDayTpl,
+        CalendarHistogramTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl,
+        ChatAttachment, ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl,
+        ComplianceStatsTpl, ComplianceTagsTpl, ConflictPairRow, Contact, ContactActivityTpl,
+        ContactAddressRow, ContactDiffTpl, ContactEmailRow, ContactFormTpl, ContactGroup,
+        ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl,
+        ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
+        DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow, DriveCommentsTpl,
+        DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag,
+        DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl,
+        DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl,
+        FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl,
+        GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias,
+        MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl,
+        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
         MessageListItem, MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
         NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit,
         SearchTpl, SecurityTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow, TagPairRow,
@@ -253,6 +254,20 @@ pub fn router(state: AppState) -> Router {
         .route("/compliance/archive/hold", post(compliance_hold_action))
         .route("/compliance/archive/unhold", post(compliance_unhold_action))
         .route("/compliance/stats", get(compliance_stats_page))
+        .route("/compliance/tags", get(compliance_tags_page))
+        .route(
+            "/compliance/tags/rename",
+            post(compliance_tag_rename_action),
+        )
+        .route("/compliance/tags/merge", post(compliance_tag_merge_action))
+        .route(
+            "/compliance/tags/rename-history/:id/undo",
+            post(compliance_tag_rename_undo),
+        )
+        .route(
+            "/compliance/tags/merge-history/:id/undo",
+            post(compliance_tag_merge_undo),
+        )
         .route(
             "/compliance/archive/:id/tags",
             get(compliance_tags_get).post(compliance_tag_add),
@@ -4113,6 +4128,223 @@ async fn compliance_tag_remove(
     Ok(StatusCode::from_u16(status)
         .unwrap_or(StatusCode::BAD_GATEWAY)
         .into_response())
+}
+
+/// Map a tag rename/merge history response (`{entries: [...]}`) into table
+/// rows. `from_key`/`to_key`/`count_key`/`at_key` name the per-entry fields
+/// ("old_tag"/"new_tag"/"renamed_count"/"renamed_at" for renames,
+/// "src_tag"/"dst_tag"/"merged_count"/"merged_at" for merges).
+fn archive_tag_hist_rows(
+    resp: &serde_json::Value,
+    from_key: &str,
+    to_key: &str,
+    count_key: &str,
+    at_key: &str,
+) -> Vec<ArchiveTagHistRow> {
+    resp.get("entries")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|e| ArchiveTagHistRow {
+                    id: e
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    from_tag: e
+                        .get(from_key)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    to_tag: e
+                        .get(to_key)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    count: e
+                        .get(count_key)
+                        .and_then(serde_json::Value::as_i64)
+                        .unwrap_or(0),
+                    when: e
+                        .get(at_key)
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.replace('T', " ").chars().take(16).collect())
+                        .unwrap_or_default(),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// GET /compliance/tags — manage the caller's archive tags: usage counts with
+/// rename/merge actions, plus the rename/merge audit trails with undo.
+async fn compliance_tags_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let tags = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.compliance,
+        "/api/v1/compliance/archive/top-tags?limit=100",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .get("tags")
+    .and_then(|v| v.as_array())
+    .map(|arr| {
+        arr.iter()
+            .map(|it| ArchiveStatRow {
+                label: it
+                    .get("tag")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                count: it
+                    .get("count")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0),
+            })
+            .collect()
+    })
+    .unwrap_or_default();
+    let renames = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.compliance,
+        "/api/v1/compliance/archive/tags/rename-history?limit=20",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .map(|v| archive_tag_hist_rows(&v, "old_tag", "new_tag", "renamed_count", "renamed_at"))
+    .unwrap_or_default();
+    let merges = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.compliance,
+        "/api/v1/compliance/archive/tags/merge-history?limit=20",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .map(|v| archive_tag_hist_rows(&v, "src_tag", "dst_tag", "merged_count", "merged_at"))
+    .unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(
+        ComplianceTagsTpl {
+            me,
+            tags,
+            renames,
+            merges,
+        },
+    ))
+}
+
+/// POST /compliance/tags/rename — rename a tag across the caller's archive.
+async fn compliance_tag_rename_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<TagRenameForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let tag = f.tag.trim();
+    let new = f.new.trim();
+    if tag.is_empty() || new.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "tag and new required").into_response());
+    }
+    let enc = utf8_percent_encode(tag, NON_ALPHANUMERIC);
+    let _ = patch_json(
+        &st,
+        &st.backends.compliance,
+        &format!("/api/v1/compliance/archive/tags/{enc}"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "new_tag": new }),
+    )
+    .await?;
+    Ok(Redirect::to("/compliance/tags").into_response())
+}
+
+/// POST /compliance/tags/merge — merge a tag into another across the archive.
+async fn compliance_tag_merge_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<TagMergeForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let tag = f.tag.trim();
+    let into = f.into.trim();
+    if tag.is_empty() || into.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "tag and into required").into_response());
+    }
+    let _ = post_json(
+        &st,
+        &st.backends.compliance,
+        "/api/v1/compliance/archive/tags/merge",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "src": tag, "dst": into }),
+    )
+    .await?;
+    Ok(Redirect::to("/compliance/tags").into_response())
+}
+
+/// POST /compliance/tags/rename-history/:id/undo — revert a past tag rename.
+async fn compliance_tag_rename_undo(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = post_empty(
+        &st,
+        &st.backends.compliance,
+        &format!("/api/v1/compliance/archive/tags/rename-history/{enc}/undo"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/compliance/tags").into_response())
+}
+
+/// POST /compliance/tags/merge-history/:id/undo — revert a past tag merge.
+async fn compliance_tag_merge_undo(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = post_empty(
+        &st,
+        &st.backends.compliance,
+        &format!("/api/v1/compliance/archive/tags/merge-history/{enc}/undo"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/compliance/tags").into_response())
 }
 
 // ─── /mail/:id/move ──────────────────────────────────────────────────────────
@@ -10742,6 +10974,34 @@ mod tests {
     fn split_addrs_comma_separated() {
         let v = split_addrs("a@ex.com,b@ex.com");
         assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn archive_tag_hist_rows_maps_rename_and_merge_shapes() {
+        let rename = serde_json::json!({"entries": [{
+            "id": "11111111-1111-1111-1111-111111111111",
+            "old_tag": "hold-old", "new_tag": "hold-new",
+            "renamed_count": 7, "renamed_at": "2026-06-09T10:30:00Z"
+        }]});
+        let rows =
+            archive_tag_hist_rows(&rename, "old_tag", "new_tag", "renamed_count", "renamed_at");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].from_tag, "hold-old");
+        assert_eq!(rows[0].to_tag, "hold-new");
+        assert_eq!(rows[0].count, 7);
+        assert_eq!(rows[0].when, "2026-06-09 10:30");
+
+        let merge = serde_json::json!({"entries": [{
+            "id": "x", "src_tag": "a", "dst_tag": "b",
+            "merged_count": 2, "merged_at": "2026-01-02T03:04:05Z"
+        }]});
+        let rows = archive_tag_hist_rows(&merge, "src_tag", "dst_tag", "merged_count", "merged_at");
+        assert_eq!(rows[0].from_tag, "a");
+        assert_eq!(rows[0].to_tag, "b");
+        assert_eq!(rows[0].when, "2026-01-02 03:04");
+
+        // Missing/empty payloads degrade to no rows.
+        assert!(archive_tag_hist_rows(&serde_json::Value::Null, "a", "b", "c", "d").is_empty());
     }
 
     #[test]

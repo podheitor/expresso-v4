@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Tags do arquivo · Expresso{% endblock %}
+{% block nav %}{% let current = "mail" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>🏷 Tags do arquivo</h1>
+    <div style="display:flex;gap:.4rem">
+      <a class="btn btn-ghost btn-sm" href="/compliance/stats" title="Relatório do arquivo">📊 Relatório</a>
+      <a class="btn btn-ghost" href="/compliance/archive">← Busca</a>
+    </div>
+  </div>
+  <p class="muted small">Renomear ou mesclar uma tag afeta todas as suas mensagens arquivadas de uma vez. Toda operação fica no histórico e pode ser desfeita.</p>
+
+  {% if tags.is_empty() %}
+    <div class="empty-state">Nenhuma tag ainda — etiquete mensagens na busca do arquivo.</div>
+  {% else %}
+  <table class="data-table">
+    <thead><tr><th>Tag</th><th>Mensagens</th><th></th></tr></thead>
+    <tbody>
+      {% for s in tags %}
+      <tr>
+        <td><span class="badge">{{ s.label }}</span></td>
+        <td class="muted">{{ s.count }}</td>
+        <td style="white-space:nowrap">
+          <form method="post" action="/compliance/tags/rename" style="display:inline"
+                onsubmit="var n=prompt('Renomear a tag &quot;{{ s.label }}&quot; para:','{{ s.label }}');if(!n)return false;this.new.value=n;return true">
+            <input type="hidden" name="tag" value="{{ s.label }}">
+            <input type="hidden" name="new" value="">
+            <button class="btn btn-ghost btn-sm" type="submit" title="Renomear em todo o arquivo">✏ Renomear</button>
+          </form>
+          <form method="post" action="/compliance/tags/merge" style="display:inline"
+                onsubmit="var d=prompt('Mesclar &quot;{{ s.label }}&quot; em qual tag?');if(!d)return false;this.into.value=d;return confirm('Mesclar &quot;{{ s.label }}&quot; em &quot;'+d+'&quot;? As mensagens passam a usar a tag de destino.')">
+            <input type="hidden" name="tag" value="{{ s.label }}">
+            <input type="hidden" name="into" value="">
+            <button class="btn btn-ghost btn-sm" type="submit" title="Mesclar em outra tag">⇲ Mesclar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-top:1.5rem">
+    <div style="flex:1;min-width:280px">
+      <h3>✏ Renomeações recentes</h3>
+      {% if renames.is_empty() %}<p class="muted small">Nenhuma renomeação ainda.</p>{% else %}
+      <table class="data-table" style="width:100%">
+        <thead><tr><th>Quando</th><th>De → Para</th><th>Msgs</th><th></th></tr></thead>
+        <tbody>
+          {% for r in renames %}
+          <tr>
+            <td class="mono small">{{ r.when }}</td>
+            <td><span class="badge">{{ r.from_tag }}</span> → <span class="badge">{{ r.to_tag }}</span></td>
+            <td class="muted">{{ r.count }}</td>
+            <td>
+              <form method="post" action="/compliance/tags/rename-history/{{ r.id }}/undo" style="display:inline"
+                    onsubmit="return confirm('Desfazer a renomeação &quot;{{ r.from_tag }}&quot; → &quot;{{ r.to_tag }}&quot;?')">
+                <button class="btn btn-ghost btn-sm" type="submit" title="Reverter esta renomeação">↩ Desfazer</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+    <div style="flex:1;min-width:280px">
+      <h3>⇲ Mesclagens recentes</h3>
+      {% if merges.is_empty() %}<p class="muted small">Nenhuma mesclagem ainda.</p>{% else %}
+      <table class="data-table" style="width:100%">
+        <thead><tr><th>Quando</th><th>De → Para</th><th>Msgs</th><th></th></tr></thead>
+        <tbody>
+          {% for m in merges %}
+          <tr>
+            <td class="mono small">{{ m.when }}</td>
+            <td><span class="badge">{{ m.from_tag }}</span> → <span class="badge">{{ m.to_tag }}</span></td>
+            <td class="muted">{{ m.count }}</td>
+            <td>
+              <form method="post" action="/compliance/tags/merge-history/{{ m.id }}/undo" style="display:inline"
+                    onsubmit="return confirm('Desfazer a mesclagem &quot;{{ m.from_tag }}&quot; → &quot;{{ m.to_tag }}&quot;?')">
+                <button class="btn btn-ghost btn-sm" type="submit" title="Reverter esta mesclagem">↩ Desfazer</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
