@@ -1,0 +1,65 @@
+{% extends "admin_base.html" %}
+{% block title %}Retenção · Admin · Expresso{% endblock %}
+{% block nav_retention %} active{% endblock %}
+{% block flash %}
+{% match flash %}{% when Some with (m) %}<div class="flash">{{ m }}</div>{% when None %}{% endmatch %}
+{% endblock %}
+{% block body %}
+<div class="admin-page">
+  <div class="admin-page-header">
+    <h1>🗄 Retenção do arquivo</h1>
+  </div>
+
+  <p class="muted small" style="margin:.25rem 0 .75rem">
+    Define por quanto tempo as mensagens arquivadas (compliance) ficam guardadas neste tenant.
+    Políticas por pasta têm precedência sobre o padrão; ao expirar, a ação "delete" remove a
+    entrada do arquivo definitivamente.
+  </p>
+
+  <h3>Padrão do tenant</h3>
+  <form method="post" action="/admin/retention/default"
+        style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;margin:.5rem 0 1.25rem">
+    <label><span>Reter por (dias)</span>
+      <input type="number" name="retain_days" min="1" max="36500" required value="{{ default_days }}"></label>
+    <button type="submit" class="btn btn-primary">Salvar padrão</button>
+  </form>
+
+  <h3>Políticas por pasta</h3>
+  <form method="post" action="/admin/retention/policies"
+        style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap;margin:.5rem 0 1rem">
+    <label style="flex:1;min-width:180px"><span>Pasta (vazio = todas)</span>
+      <input type="text" name="folder_name" placeholder="ex: INBOX/Projetos"></label>
+    <label><span>Reter por (dias)</span>
+      <input type="number" name="retain_days" min="1" max="36500" required placeholder="365"></label>
+    <button type="submit" class="btn btn-primary">+ Criar política</button>
+  </form>
+
+  {% if policies.is_empty() %}
+    <div class="empty-state">Nenhuma política por pasta — vale o padrão do tenant.</div>
+  {% else %}
+  <table class="data-table" style="width:100%">
+    <thead><tr><th>Pasta</th><th>Dias</th><th>Ação</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+      {% for p in policies %}
+      <tr>
+        <td>{% if p.folder.is_empty() %}<span class="muted">(todas as pastas)</span>{% else %}{{ p.folder }}{% endif %}</td>
+        <td class="mono">{{ p.retain_days }}</td>
+        <td class="mono small">{{ p.action }}</td>
+        <td>{% if p.enabled %}<span class="badge">ativa</span>{% else %}<span class="muted small">inativa</span>{% endif %}</td>
+        <td style="white-space:nowrap">
+          <form method="post" action="/admin/retention/policies/{{ p.id }}/toggle" style="display:inline">
+            <input type="hidden" name="on" value="{% if p.enabled %}false{% else %}true{% endif %}">
+            <button class="btn btn-ghost btn-sm" type="submit">{% if p.enabled %}⏸ Desativar{% else %}▶ Ativar{% endif %}</button>
+          </form>
+          <form method="post" action="/admin/retention/policies/{{ p.id }}/delete" style="display:inline"
+                onsubmit="return confirm('Remover esta política de retenção?')">
+            <button class="btn btn-ghost btn-sm" type="submit">🗑 Remover</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

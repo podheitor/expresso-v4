@@ -20,27 +20,27 @@ use crate::{
     templates::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
-        AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl, AdminUsersTpl, ArchiveRow,
-        ArchiveStatRow, ArchiveTagHistRow, AuditEvent, BulkDeleteEventRow, Calendar,
-        CalendarBulkDeleteTpl, CalendarConflictsTpl, CalendarCountersTpl, CalendarDayTpl,
-        CalendarHistogramTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl,
-        ChatAttachment, ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl,
-        ComplianceStatsTpl, ComplianceTagsTpl, ConflictPairRow, Contact, ContactActivityTpl,
-        ContactAddressRow, ContactDiffTpl, ContactEmailRow, ContactFormTpl, ContactGroup,
-        ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl,
-        ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
-        DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow, DriveCommentsTpl,
-        DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag,
-        DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl,
-        DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl,
-        FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl,
-        GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl, MailAlias,
-        MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl,
-        MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
+        AdminRetentionTpl, AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl,
+        AdminUsersTpl, ArchiveRow, ArchiveStatRow, ArchiveTagHistRow, AuditEvent,
+        BulkDeleteEventRow, Calendar, CalendarBulkDeleteTpl, CalendarConflictsTpl,
+        CalendarCountersTpl, CalendarDayTpl, CalendarHistogramTpl, CalendarMonthTpl,
+        CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage,
+        ChatTpl, ComplianceArchiveTpl, ComplianceStatsTpl, ComplianceTagsTpl, ConflictPairRow,
+        Contact, ContactActivityTpl, ContactAddressRow, ContactDiffTpl, ContactEmailRow,
+        ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow,
+        ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView,
+        DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow,
+        DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
+        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
+        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
+        Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow,
+        FreeBusyTpl, GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
+        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me,
+        MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
         MessageListItem, MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
-        NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, SearchGroup, SearchHit,
-        SearchTpl, SecurityTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow, TagPairRow,
-        TaskRow, TasksTpl, VersionRow, WorkingHour,
+        NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow,
+        SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTpl, ShareRow, SharedNoteRow,
+        SnoozedRow, TagPairRow, TaskRow, TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -473,6 +473,23 @@ pub fn router(state: AppState) -> Router {
             get(admin_resources_page).post(admin_resource_create),
         )
         .route("/admin/resources/:id/delete", post(admin_resource_delete))
+        .route("/admin/retention", get(admin_retention_page))
+        .route(
+            "/admin/retention/default",
+            post(admin_retention_set_default),
+        )
+        .route(
+            "/admin/retention/policies",
+            post(admin_retention_policy_create),
+        )
+        .route(
+            "/admin/retention/policies/:id/toggle",
+            post(admin_retention_policy_toggle),
+        )
+        .route(
+            "/admin/retention/policies/:id/delete",
+            post(admin_retention_policy_delete),
+        )
         .route(
             "/admin/config",
             get(admin_config_page).post(admin_config_save),
@@ -12561,6 +12578,214 @@ async fn admin_resource_delete(
     )
     .await?;
     Ok(Redirect::to("/admin/resources?flash=Recurso+removido").into_response())
+}
+
+// ─── /admin/retention (compliance archive retention) ────────────────────────
+
+/// GET /admin/retention — tenant default retention + per-folder policies.
+async fn admin_retention_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_admin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let default_days = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.compliance,
+        "/api/v1/compliance/retention",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .and_then(|v| v.get("retain_days").and_then(serde_json::Value::as_i64))
+    .unwrap_or(365);
+    let policies = get_json::<Vec<serde_json::Value>>(
+        &st,
+        &st.backends.compliance,
+        "/api/v1/compliance/retention-policies",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .into_iter()
+    .map(|p| RetentionPolicyRow {
+        id: p
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        folder: p
+            .get("folder_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        retain_days: p
+            .get("retain_days")
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(0),
+        action: p
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("delete")
+            .to_string(),
+        enabled: p
+            .get("enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+    })
+    .collect();
+    Ok(askama_axum::IntoResponse::into_response(
+        AdminRetentionTpl {
+            me,
+            default_days,
+            policies,
+            flash: extract_flash(&uri),
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+struct RetentionDefaultForm {
+    retain_days: i64,
+}
+
+/// POST /admin/retention/default — set the tenant-wide archive retention.
+async fn admin_retention_set_default(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<RetentionDefaultForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_admin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    if f.retain_days <= 0 || f.retain_days > 36500 {
+        return Ok((StatusCode::BAD_REQUEST, "retain_days fora do intervalo").into_response());
+    }
+    let _ = put_json(
+        &st,
+        &st.backends.compliance,
+        "/api/v1/compliance/retention",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "retain_days": f.retain_days }),
+    )
+    .await?;
+    Ok(Redirect::to("/admin/retention?flash=Reten%C3%A7%C3%A3o+padr%C3%A3o+salva").into_response())
+}
+
+#[derive(Deserialize)]
+struct RetentionPolicyForm {
+    #[serde(default)]
+    folder_name: String,
+    retain_days: i64,
+}
+
+/// POST /admin/retention/policies — create a per-folder retention policy
+/// (empty folder = all folders).
+async fn admin_retention_policy_create(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<RetentionPolicyForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_admin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    if f.retain_days <= 0 {
+        return Ok((StatusCode::BAD_REQUEST, "retain_days deve ser > 0").into_response());
+    }
+    let folder = f.folder_name.trim();
+    let folder_json = if folder.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::Value::String(folder.to_string())
+    };
+    let _ = post_json(
+        &st,
+        &st.backends.compliance,
+        "/api/v1/compliance/retention-policies",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "folder_name": folder_json, "retain_days": f.retain_days }),
+    )
+    .await?;
+    Ok(Redirect::to("/admin/retention?flash=Pol%C3%ADtica+criada").into_response())
+}
+
+#[derive(Deserialize)]
+struct RetentionToggleForm {
+    /// Desired state: "true" enables, anything else disables.
+    on: String,
+}
+
+/// POST /admin/retention/policies/:id/toggle — enable/disable a policy.
+async fn admin_retention_policy_toggle(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<RetentionToggleForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_admin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = patch_json(
+        &st,
+        &st.backends.compliance,
+        &format!("/api/v1/compliance/retention-policies/{enc}"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "enabled": f.on == "true" }),
+    )
+    .await?;
+    Ok(Redirect::to("/admin/retention?flash=Pol%C3%ADtica+atualizada").into_response())
+}
+
+/// POST /admin/retention/policies/:id/delete — remove a policy.
+async fn admin_retention_policy_delete(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_admin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = delete_at(
+        &st,
+        &st.backends.compliance,
+        &format!("/api/v1/compliance/retention-policies/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/admin/retention?flash=Pol%C3%ADtica+removida").into_response())
 }
 
 // ─── /admin/config ────────────────────────────────────────────────────────────

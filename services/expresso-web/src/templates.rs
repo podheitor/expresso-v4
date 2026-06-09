@@ -2173,6 +2173,26 @@ pub struct AdminDlqTpl {
     pub flash: Option<String>,
 }
 
+/// One folder retention policy in the admin retention page.
+pub struct RetentionPolicyRow {
+    pub id: String,
+    /// Folder name, or empty for "all folders".
+    pub folder: String,
+    pub retain_days: i64,
+    pub action: String,
+    pub enabled: bool,
+}
+
+#[derive(Template)]
+#[template(path = "admin_retention.html")]
+pub struct AdminRetentionTpl {
+    pub me: Me,
+    /// Tenant-wide default archive retention in days (backend default 365).
+    pub default_days: i64,
+    pub policies: Vec<RetentionPolicyRow>,
+    pub flash: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Clone, serde::Serialize, Default)]
 pub struct AdminLoginEvent {
     #[serde(default)]
