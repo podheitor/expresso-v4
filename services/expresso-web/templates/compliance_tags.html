@@ -42,6 +42,23 @@
   </table>
   {% endif %}
 
+  {% if !pairs.is_empty() %}
+  <h3 style="margin-top:1.5rem">🔗 Etiquetas relacionadas</h3>
+  <p class="muted small">Pares de etiquetas que aparecem juntos em mensagens arquivadas — clique para buscar as mensagens que têm ambas.</p>
+  <table class="data-table">
+    <thead><tr><th>Etiqueta</th><th>Etiqueta</th><th>Juntas em</th></tr></thead>
+    <tbody>
+      {% for p in pairs %}
+      <tr>
+        <td><a href="/compliance/archive?tags={{ p.tag_a }},{{ p.tag_b }}" title="Buscar mensagens com ambas"><span class="badge">{{ p.tag_a }}</span></a></td>
+        <td><a href="/compliance/archive?tags={{ p.tag_a }},{{ p.tag_b }}" title="Buscar mensagens com ambas"><span class="badge">{{ p.tag_b }}</span></a></td>
+        <td class="muted">{{ p.count }} mensagem(ns)</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
   <div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-top:1.5rem">
     <div style="flex:1;min-width:280px">
       <h3>✏ Renomeações recentes</h3>

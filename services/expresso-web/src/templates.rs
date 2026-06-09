@@ -1040,6 +1040,8 @@ pub struct ComplianceTagsTpl {
     pub tags: Vec<ArchiveStatRow>,
     pub renames: Vec<ArchiveTagHistRow>,
     pub merges: Vec<ArchiveTagHistRow>,
+    /// Tag pairs that co-occur on archived messages (reuses TagPairRow).
+    pub pairs: Vec<TagPairRow>,
 }
 
 /// One archived message in the compliance e-discovery search results.

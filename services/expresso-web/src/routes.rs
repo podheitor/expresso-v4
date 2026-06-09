@@ -4294,12 +4294,45 @@ async fn compliance_tags_page(
     .await?
     .map(|v| archive_tag_hist_rows(&v, "src_tag", "dst_tag", "merged_count", "merged_at"))
     .unwrap_or_default();
+    let pairs = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.compliance,
+        "/api/v1/compliance/archive/tags/co-occurrence?limit=50",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .get("pairs")
+    .and_then(|v| v.as_array())
+    .map(|arr| {
+        arr.iter()
+            .map(|p| TagPairRow {
+                tag_a: p
+                    .get("tag_a")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                tag_b: p
+                    .get("tag_b")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                count: p
+                    .get("co_count")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0),
+            })
+            .collect()
+    })
+    .unwrap_or_default();
     Ok(askama_axum::IntoResponse::into_response(
         ComplianceTagsTpl {
             me,
             tags,
             renames,
             merges,
+            pairs,
         },
     ))
 }
