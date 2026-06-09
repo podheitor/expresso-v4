@@ -1018,6 +1018,8 @@ pub struct ComplianceStatsTpl {
     pub subjects: Vec<ArchiveStatRow>,
     /// Archiving volume over time (CSS bars), reusing HistogramBar.
     pub volume: Vec<HistogramBar>,
+    /// Message-size distribution (7 fixed buckets, label = "<1KB" … ">25MB").
+    pub sizes: Vec<HistogramBar>,
 }
 
 /// One past tag rename/merge on the compliance archive (the undo-history

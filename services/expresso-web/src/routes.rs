@@ -4106,6 +4106,52 @@ async fn compliance_stats_page(
             count: p.count,
         })
         .collect();
+    // Message-size distribution (7 fixed buckets, <1KB … >25MB).
+    let size_resp = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.compliance,
+        &format!(
+            "/api/v1/compliance/archive/size-histogram?{}",
+            range.trim_start_matches('&')
+        ),
+        &headers,
+        Some(ctx),
+    )
+    .await?
+    .unwrap_or_default();
+    let size_counts: Vec<(String, i64)> = size_resp
+        .get("buckets")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|b| {
+                    (
+                        b.get("bucket")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        b.get("count")
+                            .and_then(serde_json::Value::as_i64)
+                            .unwrap_or(0),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let size_max = size_counts
+        .iter()
+        .map(|(_, c)| *c)
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    let sizes: Vec<HistogramBar> = size_counts
+        .into_iter()
+        .map(|(label, count)| HistogramBar {
+            label,
+            pct: ((count * 100) / size_max) as u32,
+            count,
+        })
+        .collect();
     Ok(askama_axum::IntoResponse::into_response(
         ComplianceStatsTpl {
             me,
@@ -4117,6 +4163,7 @@ async fn compliance_stats_page(
             domains,
             subjects,
             volume,
+            sizes,
         },
     ))
 }
