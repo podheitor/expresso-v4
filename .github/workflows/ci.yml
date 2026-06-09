@@ -94,8 +94,10 @@ jobs:
             | xargs lizard -l rust -C 37 -L 1000 -w
 
       - name: jscpd (duplication < 5%)
+        # Pinned to 4.x — the 5.0.x line (released 2026-06-08) breaks the
+        # global-install step on the runner; bump deliberately, not via latest.
         run: |
-          npm install -g jscpd --silent
+          npm install -g jscpd@4 --silent
           jscpd --min-lines 50 --min-tokens 100 --threshold 5 \
                 --reporters console --silent services/ libs/
 
