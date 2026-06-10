@@ -143,11 +143,13 @@
               disableDeepLinking: true,
               enableClosePage: false,
               prejoinPageEnabled: false,
+              // Live captions / closed captions (Jibri/transcription backend).
+              transcribingEnabled: true,
             },
             interfaceConfigOverwrite: {
               TOOLBAR_BUTTONS: [
                 'microphone','camera','desktop','chat','raisehand',
-                'participants-pane','tileview','recording','hangup'
+                'closedcaptions','participants-pane','tileview','recording','hangup'
               ],
               SHOW_JITSI_WATERMARK: false,
             },
