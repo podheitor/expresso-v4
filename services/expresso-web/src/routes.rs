@@ -764,12 +764,15 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
     };
 
     // Tasks due today or overdue (pending only), from the default calendar.
+    // Default calendar — reused for the tasks widget, reminders, and the
+    // home quick-add-task form (computed once).
+    let tasks_cal_id = default_calendar_id(&st, &headers, &t, &u).await;
     let tasks_due: Vec<TaskRow> = {
-        let cal_id = default_calendar_id(&st, &headers, &t, &u).await;
+        let cal_id = &tasks_cal_id;
         if cal_id.is_empty() {
             Vec::new()
         } else {
-            let enc = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC);
+            let enc = utf8_percent_encode(cal_id, NON_ALPHANUMERIC);
             let all = get_json::<Vec<TaskRow>>(
                 &st,
                 &st.backends.calendar,
@@ -799,11 +802,11 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
 
     // Upcoming calendar reminders (next 24h) from the default calendar.
     let reminders: Vec<HomeReminder> = {
-        let cal_id = default_calendar_id(&st, &headers, &t, &u).await;
+        let cal_id = &tasks_cal_id;
         if cal_id.is_empty() {
             Vec::new()
         } else {
-            let enc = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC);
+            let enc = utf8_percent_encode(cal_id, NON_ALPHANUMERIC);
             get_json::<Vec<serde_json::Value>>(
                 &st,
                 &st.backends.calendar,
@@ -840,6 +843,7 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
         drive_files,
         chat_unread,
         tasks_due,
+        tasks_cal_id,
         reminders,
     }))
 }

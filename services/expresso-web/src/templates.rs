@@ -1385,6 +1385,9 @@ pub struct HomeTpl {
     pub chat_unread: i64,
     /// Pending tasks due today or earlier (max 8), for the home widget.
     pub tasks_due: Vec<TaskRow>,
+    /// Default calendar id — target for the home quick-add-task form (empty
+    /// when the user has no calendar; the quick-add then hides).
+    pub tasks_cal_id: String,
     /// Upcoming calendar reminders within 24h (max 6), for the home widget.
     pub reminders: Vec<HomeReminder>,
 }

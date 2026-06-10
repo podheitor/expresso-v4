@@ -765,22 +765,26 @@ function homeToggleTask(id) {
   }
 }
 
-// ── Quick add task from home ──────────────────────────────────────────────────
+// ── Quick add task from home (server-backed) ──────────────────────────────────
 function homeAddTask() {
   var inp = document.getElementById('home-task-quick-input');
   var title = inp ? inp.value.trim() : '';
   if (!title) return;
-  var key = 'expresso_tasks_{{ me.user_id }}';
-  var tasks = [];
-  try { tasks = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
-  var id = 'ht-' + Date.now();
-  tasks.unshift({ id: id, title: title, done: false, priority: 'normal', due: '', list: 'Geral', created: new Date().toISOString() });
-  localStorage.setItem(key, JSON.stringify(tasks));
-  if (inp) inp.value = '';
-  // Refresh preview
+  var calId = '{{ tasks_cal_id }}';
+  if (!calId) { alert('Crie um calendário primeiro para usar tarefas.'); return; }
+  var body = new URLSearchParams();
+  body.set('summary', title);
+  body.set('cal_id', calId);
   var el = document.getElementById('home-tasks-preview');
-  if (el) el.innerHTML = '<p class="muted small" style="color:var(--accent)">✓ Adicionada: ' + title.slice(0,40) + '</p>';
-  setTimeout(function() { window.location.reload(); }, 1200);
+  fetch('/tasks/create', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r) {
+    if (!r.ok && !r.redirected) throw new Error('HTTP ' + r.status);
+    if (inp) inp.value = '';
+    if (el) el.innerHTML = '<p class="muted small" style="color:var(--accent)">✓ Adicionada: ' + title.slice(0,40) + '</p>';
+    setTimeout(function() { window.location.reload(); }, 800);
+  }).catch(function() { alert('Falha ao adicionar tarefa.'); });
 }
 
 
