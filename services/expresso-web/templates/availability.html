@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Disponibilidade · Expresso{% endblock %}
+{% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>📆 Disponibilidade</h1>
+      <p class="muted small">Veja quando um colega está livre (dentro do expediente, 08h–18h) e agende com um clique. Para encontrar um horário entre vários participantes, use <a href="/calendar/find-time">Encontrar horário</a>.</p>
+    </div>
+    <a class="btn btn-ghost" href="/calendar">◀ Agenda</a>
+  </div>
+
+  <form method="get" action="/availability" class="card"
+        style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1.25rem">
+    <label style="flex:1;min-width:240px">E-mail da pessoa
+      <input type="email" name="email" value="{{ email }}" placeholder="colega@empresa.com" required>
+    </label>
+    <label>Data
+      <input type="date" name="date" value="{{ date }}" required>
+    </label>
+    <label>Duração
+      <select name="duration" class="input">
+        <option value="15"{% if duration == 15 %} selected{% endif %}>15 min</option>
+        <option value="30"{% if duration == 30 %} selected{% endif %}>30 min</option>
+        <option value="45"{% if duration == 45 %} selected{% endif %}>45 min</option>
+        <option value="60"{% if duration == 60 %} selected{% endif %}>1 hora</option>
+        <option value="90"{% if duration == 90 %} selected{% endif %}>1h30</option>
+        <option value="120"{% if duration == 120 %} selected{% endif %}>2 horas</option>
+      </select>
+    </label>
+    <button type="submit" class="btn btn-primary">Ver disponibilidade</button>
+  </form>
+
+  {% if queried %}
+    {% if slots.is_empty() %}
+    <div class="empty-state">{{ email }} não tem horários livres nesse dia dentro do expediente. Tente outra data ou duração menor.</div>
+    {% else %}
+    <h2 style="font-size:1rem">Horários livres de {{ email }} ({{ duration }} min)</h2>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem">
+      {% for s in slots %}
+      <a class="btn btn-ghost"
+         href="/calendar/find-time?attendees={{ email }}&date={{ date }}&duration={{ duration }}"
+         title="Agendar {{ s.start_hhmm }}–{{ s.end_hhmm }} com {{ email }}">🗓 {{ s.start_hhmm }} – {{ s.end_hhmm }}</a>
+      {% endfor %}
+    </div>
+    <p class="muted small" style="margin-top:.75rem">Clique num horário para abrir o assistente de agendamento já com a pessoa e o dia selecionados.</p>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

@@ -1107,6 +1107,19 @@ pub struct FindTimeTpl {
     pub queried: bool,
 }
 
+#[derive(Template)]
+#[template(path = "availability.html")]
+pub struct AvailabilityTpl {
+    pub me: Me,
+    /// The person whose availability is shown (their email).
+    pub email: String,
+    pub date: String,
+    pub duration: u32,
+    /// That person's free slots within working hours.
+    pub slots: Vec<FreeSlotRow>,
+    pub queried: bool,
+}
+
 /// One ranked label+count row in the e-discovery analytics report.
 pub struct ArchiveStatRow {
     pub label: String,

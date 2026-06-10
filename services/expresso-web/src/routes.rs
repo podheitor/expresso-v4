@@ -22,17 +22,17 @@ use crate::{
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
         AdminRetentionTpl, AdminTenant, AdminTenantUsageTpl, AdminTenantsTpl, AdminUser,
         AdminUserDetailTpl, AdminUsersTpl, ApiTokenRow, ArchiveRow, ArchiveStatRow,
-        ArchiveTagHistRow, AuditEvent, BulkDeleteEventRow, Calendar, CalendarBulkDeleteTpl,
-        CalendarConflictsTpl, CalendarCountersTpl, CalendarDayTpl, CalendarHistogramTpl,
-        CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment,
-        ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl, ComplianceStatsTpl,
-        ComplianceTagsTpl, ConflictPairRow, Contact, ContactActivityTpl, ContactAddressRow,
-        ContactDiffTpl, ContactDuplicatesTpl, ContactEmailRow, ContactFormTpl, ContactGroup,
-        ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl,
-        ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
-        DlqEntry, DlqKindCount, DriveAclTpl, DriveActivityTpl, DriveCommentRow, DriveCommentsTpl,
-        DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag,
-        DrivePreviewTpl, DriveQuota, DriveRecentRow, DriveRecentTpl, DriveShareTpl,
+        ArchiveTagHistRow, AuditEvent, AvailabilityTpl, BulkDeleteEventRow, Calendar,
+        CalendarBulkDeleteTpl, CalendarConflictsTpl, CalendarCountersTpl, CalendarDayTpl,
+        CalendarHistogramTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl,
+        ChatAttachment, ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl,
+        ComplianceStatsTpl, ComplianceTagsTpl, ConflictPairRow, Contact, ContactActivityTpl,
+        ContactAddressRow, ContactDiffTpl, ContactDuplicatesTpl, ContactEmailRow, ContactFormTpl,
+        ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow,
+        ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView,
+        DelegationsTpl, DlqEntry, DlqKindCount, DriveAclTpl, DriveActivityTpl, DriveCommentRow,
+        DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
+        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveRecentRow, DriveRecentTpl, DriveShareTpl,
         DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl,
         DriveVersionsTpl, DuplicateGroup, Event, EventFormTpl, FindTimeTpl, FlagPreset,
         FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, FreeSlotRow,
@@ -122,6 +122,7 @@ pub fn router(state: AppState) -> Router {
         .route("/calendar", get(calendar_page))
         .route("/calendar/freebusy", get(freebusy_page))
         .route("/calendar/find-time", get(find_time_page))
+        .route("/availability", get(availability_page))
         .route(
             "/calendar/bulk-delete",
             get(calendar_bulk_delete_page).post(calendar_bulk_delete_action),
@@ -1875,62 +1876,135 @@ async fn find_time_page(
         .collect();
     let cal_id = default_calendar_id(&st, &headers, &t, &u).await;
 
-    const DAY_START: i32 = 8 * 60; // 08:00
-    const DAY_END: i32 = 18 * 60; // 18:00
-    let mut slots: Vec<FreeSlotRow> = Vec::new();
     let queried = !emails.is_empty() && date.len() == 10;
-    if queried {
-        let enc_att = utf8_percent_encode(&emails.join(","), NON_ALPHANUMERIC).to_string();
-        let from = format!("{date}T00:00:00Z");
-        let to = format!("{date}T23:59:59Z");
-        let resp = get_json::<serde_json::Value>(
+    let slots = if queried {
+        compute_free_slots(
             &st,
-            &st.backends.calendar,
-            &format!(
-                "/api/v1/scheduling/freebusy?attendees={enc_att}&from={from}&to={to}&working_hours=true"
-            ),
             &headers,
-            Some((&t, &u)),
+            (t.as_str(), u.as_str()),
+            &emails,
+            &date,
+            duration,
         )
         .await?
-        .unwrap_or_default();
-        // Union every attendee's busy spans into one list (minutes of the day).
-        let mut busy: Vec<(i32, i32)> = Vec::new();
-        if let Some(map) = resp.get("attendees").and_then(|v| v.as_object()) {
-            for iv in map.values().filter_map(|v| v.as_array()).flatten() {
-                if let (Some(s), Some(e)) = (
-                    iv.get("start").and_then(|v| v.as_str()),
-                    iv.get("end").and_then(|v| v.as_str()),
-                ) {
-                    busy.push((minutes_of_rfc3339(s), minutes_of_rfc3339(e)));
-                }
-            }
-        }
-        for (s, e) in free_gaps(busy, DAY_START, DAY_END, duration as i32) {
-            // A gap may fit several back-to-back slots of `duration`.
-            let mut slot_start = s;
-            while slot_start + (duration as i32) <= e {
-                let slot_end = slot_start + duration as i32;
-                slots.push(FreeSlotRow {
-                    start_hhmm: hhmm_of_minutes(slot_start),
-                    end_hhmm: hhmm_of_minutes(slot_end),
-                    start_local: format!("{date}T{}", hhmm_of_minutes(slot_start)),
-                    end_local: format!("{date}T{}", hhmm_of_minutes(slot_end)),
-                });
-                slot_start = slot_end;
-                if slots.len() >= 24 {
-                    break;
-                }
-            }
-            if slots.len() >= 24 {
-                break;
-            }
-        }
-    }
+    } else {
+        Vec::new()
+    };
     Ok(askama_axum::IntoResponse::into_response(FindTimeTpl {
         me,
         cal_id,
         attendees,
+        date,
+        duration,
+        slots,
+        queried,
+    }))
+}
+
+/// Query the freebusy endpoint for `emails` on `date`, union their busy spans,
+/// and return back-to-back free slots of `duration` minutes within the 08–18h
+/// working window (capped at 24). Shared by the find-time and availability
+/// pages.
+async fn compute_free_slots(
+    st: &AppState,
+    headers: &HeaderMap,
+    ctx: (&str, &str),
+    emails: &[String],
+    date: &str,
+    duration: u32,
+) -> WebResult<Vec<FreeSlotRow>> {
+    const DAY_START: i32 = 8 * 60;
+    const DAY_END: i32 = 18 * 60;
+    let enc_att = utf8_percent_encode(&emails.join(","), NON_ALPHANUMERIC).to_string();
+    let from = format!("{date}T00:00:00Z");
+    let to = format!("{date}T23:59:59Z");
+    let resp = get_json::<serde_json::Value>(
+        st,
+        &st.backends.calendar,
+        &format!(
+            "/api/v1/scheduling/freebusy?attendees={enc_att}&from={from}&to={to}&working_hours=true"
+        ),
+        headers,
+        Some(ctx),
+    )
+    .await?
+    .unwrap_or_default();
+    let mut busy: Vec<(i32, i32)> = Vec::new();
+    if let Some(map) = resp.get("attendees").and_then(|v| v.as_object()) {
+        for iv in map.values().filter_map(|v| v.as_array()).flatten() {
+            if let (Some(s), Some(e)) = (
+                iv.get("start").and_then(|v| v.as_str()),
+                iv.get("end").and_then(|v| v.as_str()),
+            ) {
+                busy.push((minutes_of_rfc3339(s), minutes_of_rfc3339(e)));
+            }
+        }
+    }
+    let mut slots: Vec<FreeSlotRow> = Vec::new();
+    for (s, e) in free_gaps(busy, DAY_START, DAY_END, duration as i32) {
+        let mut slot_start = s;
+        while slot_start + (duration as i32) <= e {
+            let slot_end = slot_start + duration as i32;
+            slots.push(FreeSlotRow {
+                start_hhmm: hhmm_of_minutes(slot_start),
+                end_hhmm: hhmm_of_minutes(slot_end),
+                start_local: format!("{date}T{}", hhmm_of_minutes(slot_start)),
+                end_local: format!("{date}T{}", hhmm_of_minutes(slot_end)),
+            });
+            slot_start = slot_end;
+            if slots.len() >= 24 {
+                return Ok(slots);
+            }
+        }
+    }
+    Ok(slots)
+}
+
+#[derive(Deserialize)]
+struct AvailabilityQuery {
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default)]
+    date: Option<String>,
+    #[serde(default)]
+    duration: Option<u32>,
+}
+
+/// GET /availability?email=&date=&duration= — show one colleague's free slots
+/// on a day so anyone in the tenant can find a time *with them* (the inverse of
+/// find-time, where the organizer picks the attendees). Each slot links to the
+/// new-event form with that person and the time prefilled. Auth required — this
+/// is the internal view, not a public booking link.
+async fn availability_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<AvailabilityQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let email = q.email.unwrap_or_default().trim().to_ascii_lowercase();
+    let date = q.date.unwrap_or_default();
+    let duration = q.duration.unwrap_or(30).clamp(15, 480);
+    let queried = email.contains('@') && date.len() == 10;
+    let slots = if queried {
+        compute_free_slots(
+            &st,
+            &headers,
+            (t.as_str(), u.as_str()),
+            std::slice::from_ref(&email),
+            &date,
+            duration,
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
+    Ok(askama_axum::IntoResponse::into_response(AvailabilityTpl {
+        me,
+        email,
         date,
         duration,
         slots,
