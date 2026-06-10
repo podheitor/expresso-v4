@@ -20,9 +20,39 @@ use expresso_auth_client::{MultiRealmValidator, OidcConfig, OidcValidator, Tenan
 
 use expresso_core::{
     config::{DatabaseConfig, TelemetryConfig},
-    create_db_pool, init_tracing,
+    create_db_pool, init_tracing, DbPool,
 };
 use state::AppState;
+
+/// How often the auto-end reaper sweeps for ended meetings.
+const REAPER_INTERVAL_SECS: u64 = 300;
+
+/// Background loop: every few minutes, archive meetings whose `ends_at` has
+/// passed and that aren't already archived. Recurring meetings are left alone
+/// (their `ends_at` marks one instance, not the series).
+async fn meeting_reaper(pool: DbPool) {
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(REAPER_INTERVAL_SECS));
+    loop {
+        tick.tick().await;
+        let res = sqlx::query(
+            "UPDATE meetings SET is_archived = TRUE \
+             WHERE is_archived = FALSE AND is_recurring = FALSE \
+               AND ends_at IS NOT NULL AND ends_at < now()",
+        )
+        .execute(&pool)
+        .await;
+        match res {
+            Ok(r) if r.rows_affected() > 0 => {
+                info!(
+                    count = r.rows_affected(),
+                    "auto-ended meetings past ends_at"
+                )
+            }
+            Ok(_) => {}
+            Err(e) => warn!(error = %e, "meeting reaper sweep failed"),
+        }
+    }
+}
 
 const DEFAULT_HOST: &str = "0.0.0.0";
 const DEFAULT_PORT: u16 = 8011;
@@ -200,6 +230,11 @@ async fn main() -> anyhow::Result<()> {
         info!("invite mailer enabled (MEET__SMTP_HOST)");
     }
     let state = AppState::new(db, jitsi, webhook, invite_mailer);
+    // Auto-end reaper: periodically archive meetings whose scheduled end has
+    // passed, so stale rooms don't linger in the active list.
+    if let Some(pool) = state.db().cloned() {
+        tokio::spawn(async move { meeting_reaper(pool).await });
+    }
     let app = api::router(state, oidc, multi, resolver, resolve_pat());
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 
