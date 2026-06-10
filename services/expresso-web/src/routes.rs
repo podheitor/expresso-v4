@@ -7110,8 +7110,49 @@ async fn drive_comment_create(
             &serde_json::json!({ "body": body }),
         )
         .await?;
+        // Notify any @mentioned users (resolve each address, send drive_mention).
+        for addr in mentioned_addresses(body) {
+            if let Some(uid) =
+                resolve_user_id(&st, &st.backends.drive, &addr, &headers, &t, &u).await?
+            {
+                if uid != me.user_id {
+                    let _ = post_json(
+                        &st,
+                        &st.backends.notifications,
+                        "/internal/notify",
+                        &headers,
+                        Some((&t, &u)),
+                        &serde_json::json!({
+                            "kind": "drive_mention",
+                            "user_id": uid,
+                            "tenant_id": me.tenant_id,
+                        }),
+                    )
+                    .await;
+                }
+            }
+        }
     }
     Ok(Redirect::to(&format!("/drive/{enc}/comments")).into_response())
+}
+
+/// Extract `@email` mentions from a comment body. Matches `@` followed by a
+/// plausible email address; dedups. Used to notify mentioned users.
+fn mentioned_addresses(body: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for tok in body.split(|c: char| c.is_whitespace() || c == ',' || c == ';') {
+        let Some(rest) = tok.strip_prefix('@') else {
+            continue;
+        };
+        let addr = rest.trim_end_matches(|c: char| !c.is_ascii_alphanumeric());
+        if addr.contains('@') && addr.contains('.') && addr.len() >= 5 {
+            let lower = addr.to_ascii_lowercase();
+            if !out.contains(&lower) {
+                out.push(lower);
+            }
+        }
+    }
+    out
 }
 
 /// POST /drive/:id/comments/:comment_id/delete — delete a comment (author only,
@@ -14272,6 +14313,17 @@ mod tests {
         );
         assert_eq!(duplicate_key(&mk(Some("  "), None)), None);
         assert_eq!(duplicate_key(&mk(None, None)), None);
+    }
+
+    #[test]
+    fn mentioned_addresses_extracts_and_dedups() {
+        let got = mentioned_addresses("oi @Ana@ex.com e @bob@ex.com, de novo @ana@ex.com!");
+        assert_eq!(
+            got,
+            vec!["ana@ex.com".to_string(), "bob@ex.com".to_string()]
+        );
+        assert!(mentioned_addresses("sem mencao aqui").is_empty());
+        assert!(mentioned_addresses("@naoemail").is_empty());
     }
 
     #[test]

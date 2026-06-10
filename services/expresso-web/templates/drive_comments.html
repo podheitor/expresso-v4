@@ -34,7 +34,7 @@
   {% endif %}
 
   <form method="post" action="/drive/{{ file_id }}/comments" class="stack" style="max-width:640px">
-    <textarea class="input" name="body" rows="3" maxlength="4096" required placeholder="Escreva um comentário…"></textarea>
+    <textarea class="input" name="body" rows="3" maxlength="4096" required placeholder="Escreva um comentário… (use @email para mencionar alguém)"></textarea>
     <div style="display:flex;justify-content:flex-end">
       <button class="btn btn-primary" type="submit">Comentar</button>
     </div>
