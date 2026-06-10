@@ -74,8 +74,8 @@
       <div class="contacts-card-grid">
         {% for c in contacts %}
         {% match selected_book %}{% when Some with (bid) %}
-        <div class="contact-card" data-name="{{ c.name_display() }}" data-cid="{{ c.id }}" style="position:relative">
-          <button class="contact-fav-btn" onclick="toggleContactFav(this, '{{ c.id }}')" title="Favoritar"
+        <div class="contact-card" data-name="{{ c.name_display() }}" data-cid="{{ c.id }}" data-book="{{ bid }}" style="position:relative">
+          <button class="contact-fav-btn" onclick="toggleContactFav(this)" title="Favoritar"
                   style="position:absolute;top:.3rem;right:.4rem;background:none;border:none;cursor:pointer;font-size:1rem;opacity:.4">☆</button>
           <div class="contact-card-avatar">{{ c.avatar_initial() }}</div>
           <div class="contact-card-name">{{ c.name_display() }}</div>
@@ -545,27 +545,34 @@ function exportVisibleContactsVcf() {
   document.body.appendChild(a); a.click();
   setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(a.href); }, 500);
 }
-// ── Favorites (localStorage) ────────────────────────────────────────────────
-var CONTACT_FAV_KEY = 'expresso_contact_favs_{{ me.user_id }}';
-function loadContactFavs() {
-  try { return JSON.parse(localStorage.getItem(CONTACT_FAV_KEY) || '{}'); } catch(e){ return {}; }
+// ── Favorites (server-backed via /contact-favorites) ────────────────────────
+function _markFav(btn, on) {
+  if (on) { btn.textContent = '★'; btn.style.opacity = '1'; btn.style.color = '#f59e0b'; }
+  else { btn.textContent = '☆'; btn.style.opacity = '.4'; btn.style.color = ''; }
 }
-function saveContactFavs(f) {
-  try { localStorage.setItem(CONTACT_FAV_KEY, JSON.stringify(f)); } catch(e){}
-}
-function toggleContactFav(btn, cid) {
-  var favs = loadContactFavs();
-  if (favs[cid]) { delete favs[cid]; btn.textContent = '☆'; btn.style.opacity = '.4'; btn.style.color = ''; }
-  else { favs[cid] = 1; btn.textContent = '★'; btn.style.opacity = '1'; btn.style.color = '#f59e0b'; }
-  saveContactFavs(favs);
+function toggleContactFav(btn) {
+  var card = btn.closest('.contact-card');
+  if (!card) return;
+  var cid = card.dataset.cid, book = card.dataset.book;
+  if (!cid || !book) return;
+  var on = btn.textContent.trim() === '★';
+  var url = '/contacts/' + encodeURIComponent(book) + '/' + encodeURIComponent(cid) + '/favorite';
+  _markFav(btn, !on); // optimistic
+  fetch(url, { method: on ? 'DELETE' : 'PUT', credentials: 'include' })
+    .then(function(r){ if (!r.ok) _markFav(btn, on); })
+    .catch(function(){ _markFav(btn, on); });
 }
 (function applyContactFavs() {
-  var favs = loadContactFavs();
-  document.querySelectorAll('.contact-fav-btn').forEach(function(b) {
-    var card = b.closest('.contact-card');
-    var cid = card && card.dataset.cid;
-    if (cid && favs[cid]) { b.textContent = '★'; b.style.opacity = '1'; b.style.color = '#f59e0b'; }
-  });
+  fetch('/contact-favorites', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(ids){
+      var set = {}; (Array.isArray(ids) ? ids : []).forEach(function(id){ set[id] = 1; });
+      document.querySelectorAll('.contact-fav-btn').forEach(function(b) {
+        var card = b.closest('.contact-card');
+        var cid = card && card.dataset.cid;
+        if (cid && set[cid]) _markFav(b, true);
+      });
+    }).catch(function(){});
 })();
 (function contactsKeyNav() {
   var idx = -1;

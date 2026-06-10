@@ -203,6 +203,11 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/contacts/:book_id/:id/delete", post(contact_delete_action))
         .route("/contacts/:book_id/:id/export.vcf", get(contact_export_vcf))
+        .route("/contact-favorites", get(contact_favorites_api))
+        .route(
+            "/contacts/:book_id/:id/favorite",
+            put(contact_favorite_add).delete(contact_favorite_remove),
+        )
         .route("/contacts/:book_id/:id/photo", get(contact_photo))
         .route(
             "/contacts/:book_id/:id/activity",
@@ -8734,6 +8739,82 @@ async fn contacts_export_vcf(
 /// GET /contacts/:book_id/:id/export.vcf — download a single contact as a .vcf
 /// file. The backend has no per-contact export, but the contact GET already
 /// returns `vcard_raw`, so we serve that directly.
+/// GET /contact-favorites — the caller's favorite contact ids (JSON array),
+/// for the contacts page to render stars (server-backed, was localStorage).
+async fn contact_favorites_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.contacts,
+        "/api/v1/contact-favorites",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_else(|| serde_json::json!([]));
+    Ok(json_response(&v))
+}
+
+/// PUT /contacts/:book_id/:id/favorite — star a contact.
+async fn contact_favorite_add(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((book_id, id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let benc = utf8_percent_encode(&book_id, NON_ALPHANUMERIC);
+    let ienc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = put_json(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/contacts/{benc}/{ienc}/favorite"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({}),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// DELETE /contacts/:book_id/:id/favorite — unstar a contact.
+async fn contact_favorite_remove(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((book_id, id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let benc = utf8_percent_encode(&book_id, NON_ALPHANUMERIC);
+    let ienc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let status = delete_at(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/contacts/{benc}/{ienc}/favorite"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
 async fn contact_export_vcf(
     State(st): State<AppState>,
     headers: HeaderMap,

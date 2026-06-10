@@ -4,6 +4,7 @@ mod activity;
 mod addressbooks;
 mod contacts;
 pub mod context;
+mod favorites;
 mod gal;
 mod groups;
 mod health;
@@ -24,6 +25,7 @@ pub fn router(state: AppState) -> Router {
         .merge(expresso_observability::metrics_router())
         .merge(addressbooks::routes())
         .merge(contacts::routes())
+        .merge(favorites::routes())
         .merge(activity::routes())
         .merge(internal::routes())
         .merge(gal::routes())
