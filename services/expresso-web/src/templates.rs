@@ -1845,11 +1845,25 @@ pub struct TaskRow {
     pub priority: i16,
     #[serde(default)]
     pub due: Option<String>,
+    /// RFC 5545 recurrence rule, when the task repeats.
+    #[serde(default)]
+    pub rrule: Option<String>,
 }
 
 impl TaskRow {
     pub fn is_done(&self) -> bool {
         self.status == "COMPLETED" || self.status == "CANCELLED"
+    }
+
+    /// Compact PT label for the recurrence badge ("" when one-off).
+    pub fn repeat_label(&self) -> &'static str {
+        match self.rrule.as_deref() {
+            Some(r) if r.contains("FREQ=DAILY") => "diária",
+            Some(r) if r.contains("FREQ=WEEKLY") => "semanal",
+            Some(r) if r.contains("FREQ=MONTHLY") => "mensal",
+            Some(_) => "recorrente",
+            None => "",
+        }
     }
     /// Date portion of the RFC3339 due, for compact display ("YYYY-MM-DD").
     pub fn due_date(&self) -> &str {

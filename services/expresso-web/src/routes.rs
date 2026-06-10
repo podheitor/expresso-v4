@@ -9658,6 +9658,9 @@ struct TaskCreateForm {
     due: String,
     #[serde(default)]
     priority: String,
+    /// Recurrence: "" (one-off) / "daily" / "weekly" / "monthly".
+    #[serde(default)]
+    repeat: String,
     cal_id: String,
 }
 
@@ -9685,6 +9688,16 @@ async fn tasks_create_action(
         if (1..=9).contains(&p) {
             payload["priority"] = serde_json::json!(p);
         }
+    }
+    // Recurrence (RFC 5545, expanded server-side via the instances endpoint).
+    let rrule = match f.repeat.as_str() {
+        "daily" => Some("FREQ=DAILY"),
+        "weekly" => Some("FREQ=WEEKLY"),
+        "monthly" => Some("FREQ=MONTHLY"),
+        _ => None,
+    };
+    if let Some(r) = rrule {
+        payload["rrule"] = serde_json::json!(r);
     }
     let (t, u) = ctx_of(&me);
     let enc = utf8_percent_encode(cal_id, NON_ALPHANUMERIC);
@@ -11859,7 +11872,20 @@ mod tests {
             status: status.into(),
             priority: prio,
             due: due.map(String::from),
+            rrule: None,
         };
+        let recurring = |r: &str| crate::templates::TaskRow {
+            rrule: Some(r.into()),
+            ..mk("", 0, None)
+        };
+        assert_eq!(recurring("FREQ=DAILY").repeat_label(), "diária");
+        assert_eq!(
+            recurring("FREQ=WEEKLY;INTERVAL=2").repeat_label(),
+            "semanal"
+        );
+        assert_eq!(recurring("FREQ=MONTHLY").repeat_label(), "mensal");
+        assert_eq!(recurring("FREQ=YEARLY").repeat_label(), "recorrente");
+        assert_eq!(mk("", 0, None).repeat_label(), "");
         assert!(mk("COMPLETED", 0, None).is_done());
         assert!(mk("CANCELLED", 0, None).is_done());
         assert!(!mk("NEEDS-ACTION", 0, None).is_done());

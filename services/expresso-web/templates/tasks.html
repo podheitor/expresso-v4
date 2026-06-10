@@ -34,6 +34,14 @@
         <option value="9">Baixa</option>
       </select>
     </label>
+    <label class="small">Repetir
+      <select class="input" name="repeat">
+        <option value="">Nunca</option>
+        <option value="daily">Diariamente</option>
+        <option value="weekly">Semanalmente</option>
+        <option value="monthly">Mensalmente</option>
+      </select>
+    </label>
     <button class="btn btn-primary" type="submit">＋ Adicionar</button>
   </form>
 
@@ -55,6 +63,7 @@
       <span style="flex:1{% if t.is_done() %};text-decoration:line-through;color:var(--muted){% endif %}">{{ t.summary }}</span>
       {% if !t.priority_label().is_empty() %}<span class="muted small">{{ t.priority_label() }}</span>{% endif %}
       {% if !t.due_date().is_empty() %}<span class="muted small">📅 {{ t.due_date() }}</span>{% endif %}
+      {% if !t.repeat_label().is_empty() %}<span class="muted small" title="Tarefa recorrente">↻ {{ t.repeat_label() }}</span>{% endif %}
       <form method="post" action="/tasks/{{ t.id }}/delete" style="display:inline"
             onsubmit="return confirm('Excluir esta tarefa?')">
         <input type="hidden" name="cal_id" value="{{ cal_id }}">
