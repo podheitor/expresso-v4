@@ -1608,6 +1608,14 @@ impl CalendarDayTpl {
 }
 
 #[derive(Template)]
+#[template(path = "event_print.html")]
+pub struct EventPrintTpl {
+    pub me: Me,
+    pub calendar_name: String,
+    pub event: Event,
+}
+
+#[derive(Template)]
 #[template(path = "event_form.html")]
 pub struct EventFormTpl {
     pub me: Me,

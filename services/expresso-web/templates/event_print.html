@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ event.title() }} · Impressão{% endblock %}
+{% block nav %}{% endblock %}
+{% block body %}
+<div class="page" style="max-width:640px">
+  <div class="no-print" style="display:flex;gap:.5rem;margin-bottom:1rem">
+    <button class="btn btn-primary btn-sm" onclick="window.print()">🖨 Imprimir</button>
+    <a class="btn btn-ghost btn-sm" href="/calendar/{{ event.calendar_id }}/events/{{ event.id }}/edit">◀ Voltar</a>
+  </div>
+
+  <article class="event-print">
+    <h1 style="margin:0 0 .5rem">{{ event.title() }}</h1>
+    <p class="muted small" style="margin:0 0 1rem">{{ calendar_name }}</p>
+
+    <table style="border-collapse:collapse;width:100%">
+      <tbody>
+        {% match event.dtstart %}{% when Some with (d) %}
+        <tr><th style="text-align:left;padding:.3rem .6rem .3rem 0;vertical-align:top">Início</th><td style="padding:.3rem 0">{{ d }}</td></tr>
+        {% when None %}{% endmatch %}
+        {% match event.dtend %}{% when Some with (d) %}
+        <tr><th style="text-align:left;padding:.3rem .6rem .3rem 0;vertical-align:top">Fim</th><td style="padding:.3rem 0">{{ d }}</td></tr>
+        {% when None %}{% endmatch %}
+        {% match event.location %}{% when Some with (l) %}
+        <tr><th style="text-align:left;padding:.3rem .6rem .3rem 0;vertical-align:top">Local</th><td style="padding:.3rem 0">{{ l }}</td></tr>
+        {% when None %}{% endmatch %}
+        {% match event.organizer_email %}{% when Some with (o) %}
+        <tr><th style="text-align:left;padding:.3rem .6rem .3rem 0;vertical-align:top">Organizador</th><td style="padding:.3rem 0">{{ o }}</td></tr>
+        {% when None %}{% endmatch %}
+        {% match event.status %}{% when Some with (s) %}
+        <tr><th style="text-align:left;padding:.3rem .6rem .3rem 0;vertical-align:top">Status</th><td style="padding:.3rem 0">{{ s }}</td></tr>
+        {% when None %}{% endmatch %}
+      </tbody>
+    </table>
+
+    {% match event.description %}{% when Some with (d) %}
+    <h2 style="font-size:1rem;margin:1.2rem 0 .4rem">Descrição</h2>
+    <p style="white-space:pre-wrap;margin:0">{{ d }}</p>
+    {% when None %}{% endmatch %}
+  </article>
+</div>
+<style>
+@media print {
+  .no-print, nav, header, .topbar, .app-nav { display: none !important; }
+  .page { max-width: none; margin: 0; padding: 0; }
+}
+</style>
+<script>window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 300); });</script>
+{% endblock %}

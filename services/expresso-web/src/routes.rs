@@ -35,18 +35,18 @@ use crate::{
         DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
         DriveFileTag, DrivePreviewTpl, DriveQuota, DriveRecentRow, DriveRecentTpl, DriveShareTpl,
         DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl,
-        DriveVersionsTpl, DuplicateGroup, Event, EventFormTpl, FindTimeTpl, FlagPreset,
-        FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, FreeSlotRow,
-        GalContact, HistogramBar, HomeBirthday, HomeDriveFile, HomeEvent, HomeReminder, HomeTpl,
-        LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailScheduledTpl, MailSearchTpl,
-        MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl,
-        MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MessageTemplateRow, MfaFactorRow,
-        MonthCell, Note, NoteAclTpl, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
-        NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow,
-        ScheduledRow, SearchFacet, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
-        SettingsBlockedSendersTpl, SettingsSignaturesTpl, SettingsTemplatesTpl, SettingsTokensTpl,
-        SettingsTpl, ShareRow, SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow,
-        TasksTpl, TenantUsageRow, VersionRow, WebhookLogRow, WorkingHour,
+        DriveVersionsTpl, DuplicateGroup, Event, EventFormTpl, EventPrintTpl, FindTimeTpl,
+        FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl,
+        FreeSlotRow, GalContact, HistogramBar, HomeBirthday, HomeDriveFile, HomeEvent,
+        HomeReminder, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailScheduledTpl,
+        MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
+        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MessageTemplateRow,
+        MfaFactorRow, MonthCell, Note, NoteAclTpl, NoteTagStat, NoteVersionRow, NoteVersionsTpl,
+        Notebook, NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource,
+        RetentionPolicyRow, ScheduledRow, SearchFacet, SearchGroup, SearchHit, SearchTpl,
+        SecurityTpl, SettingsBlockedSendersTpl, SettingsSignaturesTpl, SettingsTemplatesTpl,
+        SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow, SignatureRow, SnoozedRow,
+        TagPairRow, TaskRow, TasksTpl, TenantUsageRow, VersionRow, WebhookLogRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -165,6 +165,7 @@ pub fn router(state: AppState) -> Router {
             "/calendar/:cal_id/events/:id/edit",
             get(event_edit_form).post(event_edit_action),
         )
+        .route("/calendar/:cal_id/events/:id/print", get(event_print_page))
         .route(
             "/calendar/:cal_id/events/:id/delete",
             post(event_delete_action),
@@ -8129,6 +8130,54 @@ async fn enqueue_reminders(
             crate::upstream::post_json(st, &st.backends.calendar, &path, headers, Some(ctx), &body)
                 .await;
     }
+}
+
+/// GET /calendar/:cal_id/events/:id/print — a clean, print-friendly single-
+/// event page (Outlook event print). Read-only; opens the browser print
+/// dialog on load.
+async fn event_print_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((cal_id, id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let calendars = get_json::<Vec<Calendar>>(
+        &st,
+        &st.backends.calendar,
+        "/api/v1/calendars",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let calendar_name = calendars
+        .iter()
+        .find(|c| c.id == cal_id)
+        .map(|c| c.name.clone())
+        .unwrap_or_default();
+    let enc_c = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC).to_string();
+    let enc_e = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let event: Event = match get_json(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/calendars/{enc_c}/events/{enc_e}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    {
+        Some(e) => e,
+        None => return Ok((StatusCode::NOT_FOUND, "Evento não encontrado").into_response()),
+    };
+    Ok(askama_axum::IntoResponse::into_response(EventPrintTpl {
+        me,
+        calendar_name,
+        event,
+    }))
 }
 
 async fn event_edit_form(
