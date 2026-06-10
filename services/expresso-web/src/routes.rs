@@ -192,6 +192,7 @@ pub fn router(state: AppState) -> Router {
             get(contact_edit_form).post(contact_edit_action),
         )
         .route("/contacts/:book_id/:id/delete", post(contact_delete_action))
+        .route("/contacts/:book_id/:id/export.vcf", get(contact_export_vcf))
         .route("/contacts/:book_id/:id/photo", get(contact_photo))
         .route(
             "/contacts/:book_id/:id/activity",
@@ -8154,6 +8155,48 @@ async fn contacts_export_vcf(
         }
         _ => Ok((StatusCode::BAD_GATEWAY, "Falha ao exportar contatos.").into_response()),
     }
+}
+
+/// GET /contacts/:book_id/:id/export.vcf — download a single contact as a .vcf
+/// file. The backend has no per-contact export, but the contact GET already
+/// returns `vcard_raw`, so we serve that directly.
+async fn contact_export_vcf(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((book_id, id)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let benc = utf8_percent_encode(&book_id, NON_ALPHANUMERIC);
+    let ienc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let contact = get_json::<Contact>(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/addressbooks/{benc}/contacts/{ienc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    let Some(raw) = contact.and_then(|c| c.vcard_raw).filter(|s| !s.is_empty()) else {
+        return Ok((StatusCode::NOT_FOUND, "Contato não encontrado.").into_response());
+    };
+    Ok((
+        [
+            (
+                header::CONTENT_TYPE,
+                "text/vcard; charset=utf-8".to_string(),
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{id}.vcf\""),
+            ),
+        ],
+        raw,
+    )
+        .into_response())
 }
 
 async fn contacts_import_vcf(
