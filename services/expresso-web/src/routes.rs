@@ -421,6 +421,7 @@ pub fn router(state: AppState) -> Router {
         .route("/settings/autoreply", post(settings_autoreply_save))
         .route("/settings/notifications", post(settings_notifications_save))
         .route("/settings/filters", post(settings_filters_save))
+        .route("/settings/filters/test", post(settings_filters_test))
         .route("/settings/working-hours", post(settings_working_hours_save))
         .route(
             "/settings/delegations",
@@ -10895,6 +10896,45 @@ async fn settings_filters_save(
     )
     .await;
     Ok(Redirect::to("/settings?tab=filters&flash=Filtros+salvos").into_response())
+}
+
+#[derive(Deserialize)]
+struct SieveTestForm {
+    script: String,
+    raw_message: String,
+}
+
+/// POST /settings/filters/test — evaluate a Sieve script against a sample
+/// message without saving (proxies the mail sieve/test endpoint). Returns the
+/// backend JSON ({actions:[…]}) on success, or the upstream status+body so the
+/// JS can surface a syntax/validation error.
+async fn settings_filters_test(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    axum::Json(f): axum::Json<SieveTestForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let (status, resp) = crate::upstream::post_json_body(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/sieve/test",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "script": f.script, "raw_message": f.raw_message }),
+    )
+    .await?;
+    match resp {
+        Some(v) if (200..300).contains(&status) => Ok(json_response(&v)),
+        _ => Ok((
+            StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+            "Script inválido ou serviço indisponível.",
+        )
+            .into_response()),
+    }
 }
 
 #[derive(serde::Serialize)]

@@ -639,12 +639,50 @@
           <form class="compose-form" method="post" action="/settings/filters">
             <label>
               <span>Script Sieve</span>
-              <textarea name="script" rows="16" class="mono" placeholder="require [&quot;fileinto&quot;];">{% match sieve_script %}{% when Some with (s) %}{{ s }}{% when None %}{% endmatch %}</textarea>
+              <textarea id="sieve-script" name="script" rows="16" class="mono" placeholder="require [&quot;fileinto&quot;];">{% match sieve_script %}{% when Some with (s) %}{{ s }}{% when None %}{% endmatch %}</textarea>
             </label>
             <div class="form-actions">
               <button class="btn btn-primary" type="submit">Salvar filtros</button>
             </div>
           </form>
+
+          <div class="subcard stack" style="margin-top:1rem">
+            <h3>Testar regras</h3>
+            <p class="muted small">Cole uma mensagem de exemplo (cabeçalhos + corpo, formato RFC 2822) e veja quais ações o script acima produziria — sem salvar nada.</p>
+            <label>
+              <span>Mensagem de teste</span>
+              <textarea id="sieve-test-msg" rows="6" class="mono" placeholder="From: alguem@exemplo.com&#10;Subject: Promoção&#10;&#10;Corpo da mensagem"></textarea>
+            </label>
+            <div class="form-actions">
+              <button type="button" class="btn btn-ghost" onclick="testSieve()">▶ Testar regras</button>
+            </div>
+            <div id="sieve-test-result" style="margin-top:.5rem"></div>
+          </div>
+          <script>
+          function testSieve() {
+            var script = document.getElementById('sieve-script').value;
+            var msg = document.getElementById('sieve-test-msg').value;
+            var out = document.getElementById('sieve-test-result');
+            if (!msg.trim()) { out.innerHTML = '<div class="alert alert-warn">Cole uma mensagem de teste.</div>'; return; }
+            out.innerHTML = '<span class="muted small">Avaliando…</span>';
+            fetch('/settings/filters/test', {
+              method: 'POST', credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ script: script, raw_message: msg })
+            }).then(function(r){ return r.ok ? r.json() : r.text().then(function(t){ throw new Error(t || ('HTTP ' + r.status)); }); })
+              .then(function(d){
+                var acts = d.actions || [];
+                if (!acts.length) { out.innerHTML = '<div class="alert alert-ok">Nenhuma ação — a mensagem cairia na caixa de entrada.</div>'; return; }
+                var rows = acts.map(function(a){
+                  var detail = a.folder ? (' → ' + a.folder) : (a.address ? (' → ' + a.address) : (a.reason ? (' (' + a.reason + ')') : ''));
+                  return '<li><code>' + escHtmlS(a.action) + '</code>' + escHtmlS(detail) + '</li>';
+                }).join('');
+                out.innerHTML = '<div class="alert alert-ok">Ações resultantes:</div><ul class="mono small">' + rows + '</ul>';
+              })
+              .catch(function(e){ out.innerHTML = '<div class="alert alert-warn">' + escHtmlS(String(e.message || e)) + '</div>'; });
+          }
+          function escHtmlS(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+          </script>
         {% endmatch %}
       </div>
 
