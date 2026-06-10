@@ -209,6 +209,27 @@ pub struct SendRequest {
     pub body_text: Option<String>,
     pub body_html: Option<String>,
     pub reply_to_id: Option<Uuid>,
+    /// When true, request a read receipt: add a `Disposition-Notification-To`
+    /// header pointing back at the sender (RFC 8098 MDN request).
+    #[serde(default)]
+    pub request_read_receipt: bool,
+}
+
+/// `Disposition-Notification-To` header (RFC 8098) — asks the recipient's
+/// client to send a read receipt to the given address.
+#[derive(Clone)]
+struct DispositionNotificationTo(String);
+
+impl lettre::message::header::Header for DispositionNotificationTo {
+    fn name() -> lettre::message::header::HeaderName {
+        lettre::message::header::HeaderName::new_from_ascii_str("Disposition-Notification-To")
+    }
+    fn parse(s: &str) -> std::result::Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(Self(s.to_string()))
+    }
+    fn display(&self) -> lettre::message::header::HeaderValue {
+        lettre::message::header::HeaderValue::new(Self::name(), self.0.clone())
+    }
 }
 
 /// POST /api/v1/mail/send
@@ -234,6 +255,10 @@ pub async fn send_message(
     let mut builder = Message::builder()
         .from(Mailbox::new(None, from_addr))
         .subject(&req.subject);
+
+    if req.request_read_receipt {
+        builder = builder.header(DispositionNotificationTo(req.from.clone()));
+    }
 
     for addr_str in &to {
         let a: Address = addr_str
@@ -388,6 +413,10 @@ async fn persist_for_delivery(
         .from(Mailbox::new(None, from_addr))
         .subject(&req.subject);
 
+    if req.request_read_receipt {
+        builder = builder.header(DispositionNotificationTo(req.from.clone()));
+    }
+
     for addr_str in &req.to {
         let a: Address = addr_str
             .parse()
@@ -510,6 +539,8 @@ pub struct ScheduleRequest {
     pub body_text: Option<String>,
     pub body_html: Option<String>,
     pub reply_to_id: Option<Uuid>,
+    #[serde(default)]
+    pub request_read_receipt: bool,
     /// RFC 3339 timestamp — must be at least 60 s in the future.
     #[serde(with = "time::serde::rfc3339")]
     pub deliver_at: OffsetDateTime,
@@ -540,6 +571,7 @@ pub async fn schedule_message(
         body_text: req.body_text.clone(),
         body_html: req.body_html.clone(),
         reply_to_id: req.reply_to_id,
+        request_read_receipt: req.request_read_receipt,
     };
     validate_send_request(&send_req)?;
     assert_from_is_authenticated_user(&state, &ctx, &req.from).await?;
@@ -577,6 +609,8 @@ pub struct UndoSendRequest {
     pub body_text: Option<String>,
     pub body_html: Option<String>,
     pub reply_to_id: Option<Uuid>,
+    #[serde(default)]
+    pub request_read_receipt: bool,
     /// Seconds to hold before relaying (clamped to [UNDO_MIN, UNDO_MAX]).
     /// Omitted → UNDO_DEFAULT_SECONDS.
     pub undo_seconds: Option<i64>,
@@ -602,6 +636,7 @@ pub async fn send_with_undo(
         body_text: req.body_text.clone(),
         body_html: req.body_html.clone(),
         reply_to_id: req.reply_to_id,
+        request_read_receipt: req.request_read_receipt,
     };
     validate_send_request(&send_req)?;
     assert_from_is_authenticated_user(&state, &ctx, &req.from).await?;
@@ -1213,6 +1248,7 @@ mod tests {
             body_text: Some("hello".into()),
             body_html: None,
             reply_to_id: None,
+            request_read_receipt: false,
         }
     }
 

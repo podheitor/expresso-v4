@@ -3231,6 +3231,9 @@ struct ComposeForm {
     /// hidden field), schedule the message instead of sending immediately.
     #[serde(default)]
     send_at: Option<String>,
+    /// "1" when the "request read receipt" checkbox is ticked.
+    #[serde(default)]
+    request_read_receipt: String,
 }
 
 #[derive(serde::Serialize)]
@@ -3241,6 +3244,7 @@ struct SendPayload {
     cc: Vec<String>,
     subject: String,
     body_text: String,
+    request_read_receipt: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -3252,6 +3256,7 @@ struct SchedulePayload {
     subject: String,
     body_text: String,
     deliver_at: String,
+    request_read_receipt: bool,
 }
 
 /// Normalize a browser `datetime-local` value ("YYYY-MM-DDTHH:MM") to RFC3339
@@ -3289,6 +3294,7 @@ async fn mail_compose_action(
     // Schedule for later when a (future) deliver_at is supplied; else send now.
     let cc = split_addrs(&f.cc);
     let deliver_at = f.send_at.as_deref().and_then(to_rfc3339);
+    let request_read_receipt = f.request_read_receipt == "1";
     let status = if let Some(deliver_at) = deliver_at {
         crate::upstream::post_json(
             &st,
@@ -3303,6 +3309,7 @@ async fn mail_compose_action(
                 subject: f.subject,
                 body_text: f.body_text,
                 deliver_at,
+                request_read_receipt,
             },
         )
         .await?
@@ -3319,6 +3326,7 @@ async fn mail_compose_action(
                 cc,
                 subject: f.subject,
                 body_text: f.body_text,
+                request_read_receipt,
             },
         )
         .await?
