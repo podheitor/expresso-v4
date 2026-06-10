@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Contatos duplicados · Expresso{% endblock %}
+{% block nav %}{% let current = "contacts" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>👯 Contatos duplicados</h1>
+      <p class="muted small">Contatos que compartilham o mesmo e-mail (ou nome). Revise cada grupo e remova ou edite os repetidos — não há mesclagem automática para não perder dados do vCard.</p>
+    </div>
+    <a class="btn btn-ghost" href="/contacts">◀ Contatos</a>
+  </div>
+
+  {% if groups.is_empty() %}
+    <div class="empty-state">Nenhum contato duplicado encontrado nesta agenda. 🎉</div>
+  {% else %}
+  <p class="muted small">{{ groups.len() }} grupo(s) de possíveis duplicados.</p>
+  {% for g in groups %}
+  <div class="card stack" style="margin-bottom:1rem">
+    <h2 style="font-size:.95rem">🔑 {{ g.key }} <span class="muted small">— {{ g.contacts.len() }} contatos</span></h2>
+    <table class="data-table" style="width:100%">
+      <thead><tr><th>Nome</th><th>E-mail</th><th></th></tr></thead>
+      <tbody>
+        {% for c in g.contacts %}
+        <tr>
+          <td>{{ c.name_display() }}</td>
+          <td class="muted small">{% match c.email %}{% when Some with (e) %}{{ e }}{% when None %}—{% endmatch %}</td>
+          <td style="text-align:right;white-space:nowrap">
+            <a class="btn btn-ghost btn-sm" href="/contacts/{{ book_id }}/{{ c.id }}/edit">Editar</a>
+            <form method="post" action="/contacts/{{ book_id }}/{{ c.id }}/delete" style="display:inline"
+                  onsubmit="return confirm('Remover este contato duplicado?')">
+              <button class="btn btn-ghost btn-sm" type="submit">Remover</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

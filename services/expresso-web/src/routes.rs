@@ -27,23 +27,24 @@ use crate::{
         CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment,
         ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl, ComplianceStatsTpl,
         ComplianceTagsTpl, ConflictPairRow, Contact, ContactActivityTpl, ContactAddressRow,
-        ContactDiffTpl, ContactEmailRow, ContactFormTpl, ContactGroup, ContactGroupDetailTpl,
-        ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl, ContactsTpl, CounterRow,
-        DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DlqEntry, DlqKindCount,
-        DriveAclTpl, DriveActivityTpl, DriveCommentRow, DriveCommentsTpl, DriveContentHit,
-        DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota,
-        DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl,
-        DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FindTimeTpl, FlagPreset, FlowEditTpl,
-        FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, FreeSlotRow, GalContact,
-        HistogramBar, HomeDriveFile, HomeEvent, HomeReminder, HomeTpl, LoginTpl, MailAlias,
-        MailComposeTpl, MailListTpl, MailScheduledTpl, MailSearchTpl, MailSnoozedTpl,
-        MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl,
-        MessageDetail, MessageListItem, MfaFactorRow, MonthCell, Note, NoteAclTpl, NoteTagStat,
-        NoteVersionRow, NoteVersionsTpl, Notebook, NotesActivityTpl, NotesSharedTpl, NotesTagsTpl,
-        NotesTpl, Resource, RetentionPolicyRow, ScheduledRow, SearchFacet, SearchGroup, SearchHit,
-        SearchTpl, SecurityTpl, SettingsSignaturesTpl, SettingsTokensTpl, SettingsTpl, ShareRow,
-        SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow,
-        VersionRow, WebhookLogRow, WorkingHour,
+        ContactDiffTpl, ContactDuplicatesTpl, ContactEmailRow, ContactFormTpl, ContactGroup,
+        ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl,
+        ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
+        DlqEntry, DlqKindCount, DriveAclTpl, DriveActivityTpl, DriveCommentRow, DriveCommentsTpl,
+        DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag,
+        DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl,
+        DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, DuplicateGroup,
+        Event, EventFormTpl, FindTimeTpl, FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder,
+        FreeBusyRow, FreeBusyTpl, FreeSlotRow, GalContact, HistogramBar, HomeDriveFile, HomeEvent,
+        HomeReminder, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailScheduledTpl,
+        MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
+        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MfaFactorRow,
+        MonthCell, Note, NoteAclTpl, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
+        NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow,
+        ScheduledRow, SearchFacet, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
+        SettingsSignaturesTpl, SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow,
+        SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow, VersionRow,
+        WebhookLogRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -218,6 +219,7 @@ pub fn router(state: AppState) -> Router {
         .route("/contacts/:book_id/export.vcf", get(contacts_export_vcf))
         .route("/contacts/:book_id/import", post(contacts_import_vcf))
         .route("/contacts/import-csv", post(contacts_import_csv))
+        .route("/contacts/duplicates", get(contacts_duplicates_page))
         // contact groups (distribution lists) — server-backed
         .route(
             "/contacts/groups",
@@ -8131,6 +8133,91 @@ async fn contacts_import_vcf(
 /// file) to the contacts CSV importer, which parses server-side (proper
 /// quoting, validation, 4 MiB cap) — replaces the old fragile client-side
 /// comma-split→vCard conversion. Returns the backend JSON ({imported: N}).
+/// Normalize a contact's grouping key: lowercased email if present, else the
+/// lowercased trimmed full name. Returns None when neither is usable.
+fn duplicate_key(c: &Contact) -> Option<String> {
+    if let Some(e) = c.email.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        return Some(e.to_ascii_lowercase());
+    }
+    c.full_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_ascii_lowercase)
+}
+
+/// GET /contacts/duplicates — find likely-duplicate contacts in a book by
+/// grouping on shared email (or name when no email), showing only clusters of
+/// 2+. Read-only: the user reviews each group and deletes/edits as they see
+/// fit (no automatic merge — vCard field-merge is lossy).
+async fn contacts_duplicates_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<ContactsQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let books = get_json::<Vec<AddressBook>>(
+        &st,
+        &st.backends.contacts,
+        "/api/v1/addressbooks",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let book_id = q
+        .book_id
+        .clone()
+        .or_else(|| books.first().map(|b| b.id.clone()))
+        .unwrap_or_default();
+    let mut groups: Vec<DuplicateGroup> = Vec::new();
+    if !book_id.is_empty() {
+        let enc = utf8_percent_encode(&book_id, NON_ALPHANUMERIC).to_string();
+        let contacts = get_json::<Vec<Contact>>(
+            &st,
+            &st.backends.contacts,
+            &format!("/api/v1/addressbooks/{enc}/contacts"),
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default();
+        // Group by key, preserving first-seen order for stable display.
+        let mut order: Vec<String> = Vec::new();
+        let mut by_key: std::collections::HashMap<String, Vec<Contact>> =
+            std::collections::HashMap::new();
+        for c in contacts {
+            if let Some(k) = duplicate_key(&c) {
+                if !by_key.contains_key(&k) {
+                    order.push(k.clone());
+                }
+                by_key.entry(k).or_default().push(c);
+            }
+        }
+        for k in order {
+            if let Some(v) = by_key.remove(&k) {
+                if v.len() >= 2 {
+                    groups.push(DuplicateGroup {
+                        key: k,
+                        contacts: v,
+                    });
+                }
+            }
+        }
+    }
+    Ok(askama_axum::IntoResponse::into_response(
+        ContactDuplicatesTpl {
+            me,
+            book_id,
+            groups,
+        },
+    ))
+}
+
 async fn contacts_import_csv(
     State(st): State<AppState>,
     headers: HeaderMap,
@@ -12921,6 +13008,31 @@ mod tests {
         assert!(rows[1].label.is_empty());
         assert!(rows[1].created.is_empty());
         assert!(mfa_factor_rows(&serde_json::Value::Null).is_empty());
+    }
+
+    #[test]
+    fn duplicate_key_prefers_email_then_name() {
+        let mk = |email: Option<&str>, full: Option<&str>| crate::templates::Contact {
+            id: "1".into(),
+            uid: None,
+            full_name: full.map(String::from),
+            given_name: None,
+            family_name: None,
+            email: email.map(String::from),
+            phone: None,
+            organization: None,
+            vcard_raw: None,
+        };
+        assert_eq!(
+            duplicate_key(&mk(Some("Ana@Ex.com"), Some("Ana"))).as_deref(),
+            Some("ana@ex.com")
+        );
+        assert_eq!(
+            duplicate_key(&mk(None, Some("  João Silva "))).as_deref(),
+            Some("joão silva")
+        );
+        assert_eq!(duplicate_key(&mk(Some("  "), None)), None);
+        assert_eq!(duplicate_key(&mk(None, None)), None);
     }
 
     #[test]

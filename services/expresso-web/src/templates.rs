@@ -725,6 +725,22 @@ pub struct ContactsTpl {
     pub contacts: Vec<Contact>,
 }
 
+/// One cluster of likely-duplicate contacts (shared email or name) on the
+/// duplicate-finder page.
+pub struct DuplicateGroup {
+    /// What they share (the normalized email or name), for the heading.
+    pub key: String,
+    pub contacts: Vec<Contact>,
+}
+
+#[derive(Template)]
+#[template(path = "contacts_duplicates.html")]
+pub struct ContactDuplicatesTpl {
+    pub me: Me,
+    pub book_id: String,
+    pub groups: Vec<DuplicateGroup>,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct ContactGroup {
     pub id: String,
