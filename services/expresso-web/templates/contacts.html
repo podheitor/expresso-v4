@@ -47,6 +47,7 @@
           <button class="btn btn-ghost btn-sm" onclick="exportGoogleContactsCsv()" title="Exportar como CSV compatível com Google Contacts">⬇ Google CSV</button>
           <a class="btn btn-ghost btn-sm" href="/contacts/groups" title="Grupos de contatos (listas de distribuição)">👥 Grupos</a>
           <a class="btn btn-ghost btn-sm" href="/contacts/duplicates?book_id={{ bid }}" title="Encontrar contatos duplicados">👯 Duplicados</a>
+          <button class="btn btn-ghost btn-sm" id="contacts-fav-filter" onclick="toggleFavFilter(this)" title="Mostrar só favoritos">⭐ Favoritos</button>
           <div class="view-switch" style="gap:0">
             <button class="btn btn-primary btn-sm" id="contacts-view-list" onclick="setContactsView('list')">☰</button>
             <button class="btn btn-ghost btn-sm" id="contacts-view-cards" onclick="setContactsView('cards')">⊞</button>
@@ -562,18 +563,29 @@ function toggleContactFav(btn) {
     .then(function(r){ if (!r.ok) _markFav(btn, on); })
     .catch(function(){ _markFav(btn, on); });
 }
+var _favSet = {};
 (function applyContactFavs() {
   fetch('/contact-favorites', { credentials: 'include' })
     .then(function(r){ return r.ok ? r.json() : []; })
     .then(function(ids){
-      var set = {}; (Array.isArray(ids) ? ids : []).forEach(function(id){ set[id] = 1; });
+      _favSet = {}; (Array.isArray(ids) ? ids : []).forEach(function(id){ _favSet[id] = 1; });
       document.querySelectorAll('.contact-fav-btn').forEach(function(b) {
         var card = b.closest('.contact-card');
         var cid = card && card.dataset.cid;
-        if (cid && set[cid]) _markFav(b, true);
+        if (cid && _favSet[cid]) _markFav(b, true);
       });
     }).catch(function(){});
 })();
+var _favFilterOn = false;
+function toggleFavFilter(btn) {
+  _favFilterOn = !_favFilterOn;
+  btn.classList.toggle('btn-primary', _favFilterOn);
+  btn.classList.toggle('btn-ghost', !_favFilterOn);
+  document.querySelectorAll('.contact-card').forEach(function(card) {
+    var show = !_favFilterOn || _favSet[card.dataset.cid];
+    card.style.display = show ? '' : 'none';
+  });
+}
 (function contactsKeyNav() {
   var idx = -1;
   var cards = function() { return document.querySelectorAll('.contact-card[data-name]'); };
