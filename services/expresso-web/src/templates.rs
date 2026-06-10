@@ -726,6 +726,10 @@ pub struct AddressBook {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Contact {
     pub id: String,
+    /// Owning addressbook id — needed to build /contacts/:book/:id links from
+    /// list endpoints that span books (e.g. recents).
+    #[serde(default)]
+    pub addressbook_id: Option<String>,
     #[serde(default)]
     pub uid: Option<String>,
     #[serde(default)]
@@ -791,6 +795,14 @@ pub struct ContactDuplicatesTpl {
     pub me: Me,
     pub book_id: String,
     pub groups: Vec<DuplicateGroup>,
+}
+
+#[derive(Template)]
+#[template(path = "contacts_recents.html")]
+pub struct ContactRecentsTpl {
+    pub me: Me,
+    /// Recently-viewed contacts, most recent first.
+    pub contacts: Vec<Contact>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

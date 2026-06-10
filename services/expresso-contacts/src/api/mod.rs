@@ -9,6 +9,7 @@ mod gal;
 mod groups;
 mod health;
 mod internal;
+mod recents;
 mod search_index;
 mod sharing;
 mod users;
@@ -26,6 +27,7 @@ pub fn router(state: AppState) -> Router {
         .merge(addressbooks::routes())
         .merge(contacts::routes())
         .merge(favorites::routes())
+        .merge(recents::routes())
         .merge(activity::routes())
         .merge(internal::routes())
         .merge(gal::routes())

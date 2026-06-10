@@ -29,11 +29,11 @@ use crate::{
         ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl, ComplianceStatsTpl,
         ComplianceTagsTpl, ConflictPairRow, Contact, ContactActivityTpl, ContactAddressRow,
         ContactDiffTpl, ContactDuplicatesTpl, ContactEmailRow, ContactFormTpl, ContactGroup,
-        ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl,
-        ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
-        DlqEntry, DlqKindCount, DriveAclTpl, DriveActivityTpl, DriveCommentRow, DriveCommentsTpl,
-        DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag,
-        DrivePreviewTpl, DriveQuota, DriveRecentRow, DriveRecentTpl, DriveShareTpl,
+        ContactGroupDetailTpl, ContactGroupsTpl, ContactRecentsTpl, ContactVersionRow,
+        ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView,
+        DelegationsTpl, DlqEntry, DlqKindCount, DriveAclTpl, DriveActivityTpl, DriveCommentRow,
+        DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
+        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveRecentRow, DriveRecentTpl, DriveShareTpl,
         DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl,
         DriveVersionsTpl, DuplicateGroup, Event, EventFormTpl, FindTimeTpl, FlagPreset,
         FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, FreeSlotRow,
@@ -237,6 +237,7 @@ pub fn router(state: AppState) -> Router {
         .route("/contacts/:book_id/import", post(contacts_import_vcf))
         .route("/contacts/import-csv", post(contacts_import_csv))
         .route("/contacts/duplicates", get(contacts_duplicates_page))
+        .route("/contacts/recents", get(contacts_recents_page))
         // contact groups (distribution lists) — server-backed
         .route(
             "/contacts/groups",
@@ -8597,6 +8598,16 @@ async fn contact_edit_form(
     else {
         return Ok((StatusCode::NOT_FOUND, "Contato não encontrado").into_response());
     };
+    // Record this view for the "recents" list (best-effort; never blocks).
+    let _ = post_json(
+        &st,
+        &st.backends.contacts,
+        &format!("/api/v1/contacts/{enc_b}/{enc_i}/touch"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({}),
+    )
+    .await;
     let emails = get_json::<Vec<ContactEmailRow>>(
         &st,
         &st.backends.contacts,
@@ -9082,6 +9093,32 @@ fn duplicate_key(c: &Contact) -> Option<String> {
 /// grouping on shared email (or name when no email), showing only clusters of
 /// 2+. Read-only: the user reviews each group and deletes/edits as they see
 /// fit (no automatic merge — vCard field-merge is lossy).
+/// GET /contacts/recents — the caller's recently-viewed contacts (People
+/// "recents"), most recent first. Each touch is recorded when opening a
+/// contact's edit form.
+async fn contacts_recents_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let contacts = get_json::<Vec<Contact>>(
+        &st,
+        &st.backends.contacts,
+        "/api/v1/contact-recents",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(
+        ContactRecentsTpl { me, contacts },
+    ))
+}
+
 async fn contacts_duplicates_page(
     State(st): State<AppState>,
     headers: HeaderMap,
@@ -14214,6 +14251,7 @@ mod tests {
     fn duplicate_key_prefers_email_then_name() {
         let mk = |email: Option<&str>, full: Option<&str>| crate::templates::Contact {
             id: "1".into(),
+            addressbook_id: None,
             uid: None,
             full_name: full.map(String::from),
             given_name: None,

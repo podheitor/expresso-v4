@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Contatos recentes · Expresso{% endblock %}
+{% block nav %}{% let current = "contacts" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>🕘 Contatos recentes</h1>
+    <a class="btn btn-ghost" href="/contacts">◀ Contatos</a>
+  </div>
+  <p class="muted small">Os contatos que você abriu mais recentemente.</p>
+
+  {% if contacts.is_empty() %}
+    <div class="empty-state">Nenhum contato aberto ainda.</div>
+  {% else %}
+  <ul class="card-list">
+    {% for c in contacts %}
+    <li class="subcard">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          {% match c.addressbook_id %}
+          {% when Some with (bid) %}
+            <a class="link" href="/contacts/{{ bid }}/{{ c.id }}/edit"><strong>{{ c.name_display() }}</strong></a>
+          {% when None %}
+            <strong>{{ c.name_display() }}</strong>
+          {% endmatch %}
+          {% if !c.email_display().is_empty() %}<span class="muted small"> · {{ c.email_display() }}</span>{% endif %}
+        </div>
+        {% match c.organization %}{% when Some with (o) %}<span class="muted small">{{ o }}</span>{% when None %}{% endmatch %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endblock %}
