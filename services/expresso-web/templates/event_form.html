@@ -452,10 +452,19 @@ function updateAttendeeCount(ta) {
 function useMeetForLocation() {
   var inp = document.getElementById('event-location-input');
   if (!inp) return;
-  var rid = 'exp-' + Math.random().toString(36).slice(2, 10);
-  var origin = window.location.origin;
-  inp.value = origin + '/meet/' + rid;
-  inp.focus();
+  // Create a real meeting server-side so the room exists with a moderator,
+  // instead of fabricating a slug that 404s until first visit.
+  var title = (document.querySelector('input[name="summary"]') || {}).value || '';
+  var body = new URLSearchParams(); body.set('title', title);
+  inp.value = 'Criando reunião…';
+  fetch('/meet/quick-create', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if (d && d.id) { inp.value = window.location.origin + '/meet/' + d.id; inp.focus(); }
+      else { inp.value = ''; alert('Falha ao criar a reunião.'); }
+    }).catch(function(){ inp.value = ''; alert('Falha ao criar a reunião.'); });
 }
 function clearLocation() {
   var inp = document.getElementById('event-location-input');

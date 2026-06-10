@@ -377,6 +377,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/meet", get(meet_page))
         .route("/meet/new", get(meet_new_page).post(meet_create_action))
+        .route("/meet/quick-create", post(meet_quick_create_api))
         .route(
             "/meet/schedule",
             get(meet_schedule_page).post(meet_schedule_action),
@@ -10337,6 +10338,55 @@ struct MeetTokenResp {
     token: String,
 }
 
+#[derive(Deserialize)]
+struct QuickMeetForm {
+    #[serde(default)]
+    title: String,
+}
+
+/// POST /meet/quick-create — create a meeting and return `{url}` as JSON, for
+/// the event form's "📹 Reunião Meet" button (which used to fabricate a
+/// client-side slug that never created a real room).
+async fn meet_quick_create_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<QuickMeetForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let title = if f.title.trim().is_empty() {
+        format!(
+            "Reunião de {}",
+            me.display_name.as_deref().unwrap_or(&me.email)
+        )
+    } else {
+        f.title.trim().to_string()
+    };
+    let (status, resp) = crate::upstream::post_json_body(
+        &st,
+        &st.backends.meet,
+        "/api/v1/meetings",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "title": title }),
+    )
+    .await?;
+    let id = resp
+        .as_ref()
+        .filter(|_| (200..300).contains(&status))
+        .and_then(|v| v.get("meeting"))
+        .and_then(|m| m.get("id"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    match id {
+        Some(id) => Ok(json_response(&serde_json::json!({ "id": id }))),
+        None => Ok((StatusCode::BAD_GATEWAY, "Falha ao criar reunião.").into_response()),
+    }
+}
+
 async fn meet_create_action(
     State(st): State<AppState>,
     headers: HeaderMap,
@@ -10347,28 +10397,32 @@ async fn meet_create_action(
         return Ok(login_redirect(&uri).into_response());
     };
     let (t, u) = ctx_of(&me);
-    let name = f.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| {
+    let title = f.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| {
         format!(
             "Reunião de {}",
             me.display_name.as_deref().unwrap_or(&me.email)
         )
     });
-    let payload = serde_json::json!({ "name": name });
-    let meeting: Option<MeetCreated> = {
-        let url = format!("{}/api/v1/meetings", st.backends.meet.trim_end_matches('/'));
-        let mut req = st.http.post(&url).json(&payload);
-        req = crate::upstream::fwd_cookie(req, &headers);
-        req = crate::upstream::inject_ctx(req, &t, &u);
-        let resp = req.send().await?;
-        if resp.status().is_success() {
-            resp.json().await.ok()
-        } else {
-            None
-        }
-    };
-    match meeting {
-        Some(m) => Ok(Redirect::to(&format!("/meet/{}", m.id)).into_response()),
-        None => Ok(Redirect::to("/meet").into_response()),
+    // Backend CreateBody wants `title`; the response wraps the row in {meeting}.
+    let (status, resp) = crate::upstream::post_json_body(
+        &st,
+        &st.backends.meet,
+        "/api/v1/meetings",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "title": title }),
+    )
+    .await?;
+    let id = resp
+        .as_ref()
+        .filter(|_| (200..300).contains(&status))
+        .and_then(|v| v.get("meeting"))
+        .and_then(|m| m.get("id"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    match id {
+        Some(id) => Ok(Redirect::to(&format!("/meet/{id}")).into_response()),
+        None => Ok(Redirect::to("/meet?flash=Falha+ao+criar+reuni%C3%A3o").into_response()),
     }
 }
 
@@ -10412,10 +10466,11 @@ async fn meet_schedule_action(
         }));
     }
     let (t, u) = ctx_of(&me);
+    // Backend CreateBody uses `title` + `scheduled_for`/`ends_at` (RFC3339).
     let payload = serde_json::json!({
-        "name": f.name.trim(),
-        "scheduled_at": format!("{}:00+00:00", f.scheduled_at.trim()),
-        "scheduled_end": f.scheduled_end.filter(|s| !s.trim().is_empty())
+        "title": f.name.trim(),
+        "scheduled_for": format!("{}:00+00:00", f.scheduled_at.trim()),
+        "ends_at": f.scheduled_end.filter(|s| !s.trim().is_empty())
             .map(|s| format!("{}:00+00:00", s.trim())),
         "description": f.description.filter(|s| !s.trim().is_empty()),
     });
