@@ -117,6 +117,52 @@
       <a class="btn btn-ghost btn-sm" href="/admin/audit?q={{ user.email }}" title="Ver auditoria deste usuário">📋 Auditoria</a>
     </form>
   </div>
+
+  {% if me.is_superadmin() %}
+  <!-- Fatores MFA (superadmin) -->
+  <div class="card stack">
+    <h3>🔐 Autenticação em duas etapas (MFA)</h3>
+    {% match mfa %}
+    {% when Some with (factors) %}
+      {% if factors.is_empty() %}
+        <p class="muted small">Nenhum fator MFA cadastrado.</p>
+      {% else %}
+      <table class="data-table">
+        <thead><tr><th>Tipo</th><th>Dispositivo</th><th>Cadastrado</th><th></th></tr></thead>
+        <tbody>
+          {% for f in factors %}
+          <tr>
+            <td class="mono small">{{ f.kind }}</td>
+            <td>{% if f.label.is_empty() %}<span class="muted">—</span>{% else %}{{ f.label }}{% endif %}</td>
+            <td class="mono small">{{ f.created }}</td>
+            <td style="text-align:right">
+              <form method="post" action="/admin/users/{{ user.id }}/mfa/{{ f.id }}/delete" style="display:inline"
+                    onsubmit="return confirm('Remover este fator MFA? O usuário poderá entrar sem ele.')">
+                <button class="btn btn-ghost btn-sm" type="submit">🗑 Remover</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+        <form method="post" action="/admin/users/{{ user.id }}/mfa/require" style="display:inline"
+              onsubmit="return confirm('Enviar e-mail exigindo cadastro de TOTP no próximo login?')">
+          <input type="hidden" name="factor" value="totp">
+          <button class="btn btn-ghost btn-sm" type="submit">📱 Exigir TOTP</button>
+        </form>
+        <form method="post" action="/admin/users/{{ user.id }}/mfa/require" style="display:inline"
+              onsubmit="return confirm('Enviar e-mail exigindo cadastro de chave de segurança (WebAuthn) no próximo login?')">
+          <input type="hidden" name="factor" value="webauthn">
+          <button class="btn btn-ghost btn-sm" type="submit">🔑 Exigir WebAuthn</button>
+        </form>
+      </div>
+    {% when None %}
+      <p class="muted small">Indisponível — o serviço de auth não tem o cliente admin do Keycloak configurado (KC_ADMIN_*).</p>
+    {% endmatch %}
+  </div>
+  {% endif %}
 </div>
 
 <!-- Notas internas do admin sobre este usuário -->

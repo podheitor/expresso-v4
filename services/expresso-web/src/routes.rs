@@ -37,10 +37,11 @@ use crate::{
         FreeBusyTpl, GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
         MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me,
         MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
-        NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow,
-        SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsTokensTpl, SettingsTpl, ShareRow,
-        SharedNoteRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, VersionRow, WorkingHour,
+        MessageListItem, MfaFactorRow, MonthCell, Note, NoteTagStat, NoteVersionRow,
+        NoteVersionsTpl, Notebook, NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl,
+        Resource, RetentionPolicyRow, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
+        SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow, TagPairRow, TaskRow,
+        TasksTpl, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -485,6 +486,11 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/users/:id/suspend", post(admin_users_suspend))
         .route("/admin/users/:id/activate", post(admin_users_activate))
         .route("/admin/users/:id/impersonate", post(admin_user_impersonate))
+        .route("/admin/users/:id/mfa/require", post(admin_user_mfa_require))
+        .route(
+            "/admin/users/:id/mfa/:cred/delete",
+            post(admin_user_mfa_delete),
+        )
         .route("/impersonate/end", post(impersonation_end))
         .route(
             "/admin/users/:id/reset-password",
@@ -11695,6 +11701,23 @@ mod tests {
     }
 
     #[test]
+    fn mfa_factor_rows_maps_kc_credentials() {
+        let v = serde_json::json!({"user_id": "u", "factors": [
+            {"id": "c1", "type": "otp", "user_label": "Meu celular", "created_date": 1765295400000i64},
+            {"id": "c2", "type": "webauthn"}
+        ]});
+        let rows = mfa_factor_rows(&v);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].kind, "otp");
+        assert_eq!(rows[0].label, "Meu celular");
+        assert_eq!(rows[0].created, "2025-12-09 15:50");
+        assert_eq!(rows[1].kind, "webauthn");
+        assert!(rows[1].label.is_empty());
+        assert!(rows[1].created.is_empty());
+        assert!(mfa_factor_rows(&serde_json::Value::Null).is_empty());
+    }
+
+    #[test]
     fn cookie_value_parses_multi_pair_headers() {
         let mut h = HeaderMap::new();
         h.append(
@@ -12517,15 +12540,153 @@ async fn admin_user_detail_page(
     )
     .await?
     .unwrap_or_default();
+    // MFA factors — superadmin only; best-effort (auth answers 503 when no
+    // Keycloak admin client is configured → section shows as unavailable).
+    let mfa = if require_superadmin(&me) {
+        let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+        match get_json::<serde_json::Value>(
+            &st,
+            &st.backends.auth,
+            &format!("/auth/admin/users/{enc}/mfa"),
+            &headers,
+            None,
+        )
+        .await
+        {
+            Ok(Some(v)) => Some(mfa_factor_rows(&v)),
+            _ => None,
+        }
+    } else {
+        None
+    };
     let flash = extract_flash(&uri);
     Ok(askama_axum::IntoResponse::into_response(
         AdminUserDetailTpl {
             me,
             user,
             logins,
+            mfa,
             flash,
         },
     ))
+}
+
+/// Map the auth MFA list ({factors:[{id,type,user_label?,created_date?}]},
+/// created_date in epoch millis) into table rows.
+fn mfa_factor_rows(v: &serde_json::Value) -> Vec<MfaFactorRow> {
+    v.get("factors")
+        .and_then(|f| f.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|c| MfaFactorRow {
+                    id: c
+                        .get("id")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    kind: c
+                        .get("type")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    label: c
+                        .get("user_label")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    created: c
+                        .get("created_date")
+                        .and_then(serde_json::Value::as_i64)
+                        .and_then(|ms| time::OffsetDateTime::from_unix_timestamp(ms / 1000).ok())
+                        .map(|dt| {
+                            format!(
+                                "{:04}-{:02}-{:02} {:02}:{:02}",
+                                dt.year(),
+                                dt.month() as u8,
+                                dt.day(),
+                                dt.hour(),
+                                dt.minute()
+                            )
+                        })
+                        .unwrap_or_default(),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[derive(Deserialize)]
+struct MfaRequireForm {
+    /// "totp" or "webauthn".
+    factor: String,
+}
+
+/// POST /admin/users/:id/mfa/require — email the user a required-action to
+/// enroll an MFA factor on next login (superadmin only).
+async fn admin_user_mfa_require(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<MfaRequireForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_superadmin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let factor = match f.factor.as_str() {
+        "webauthn" => "webauthn",
+        _ => "totp",
+    };
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let (status, _) = crate::upstream::post_json_body(
+        &st,
+        &st.backends.auth,
+        &format!("/auth/admin/users/{enc}/mfa/require"),
+        &headers,
+        None,
+        &serde_json::json!({ "factor": factor }),
+    )
+    .await?;
+    let flash = if (200..300).contains(&status) {
+        "Inscri%C3%A7%C3%A3o+MFA+solicitada+por+e-mail"
+    } else {
+        "Falha+ao+exigir+MFA+(Keycloak+admin+indispon%C3%ADvel%3F)"
+    };
+    Ok(Redirect::to(&format!("/admin/users/{enc}?flash={flash}")).into_response())
+}
+
+/// POST /admin/users/:id/mfa/:cred/delete — remove (reset) one MFA factor.
+async fn admin_user_mfa_delete(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, cred)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_superadmin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let cenc = utf8_percent_encode(&cred, NON_ALPHANUMERIC);
+    let status = delete_at(
+        &st,
+        &st.backends.auth,
+        &format!("/auth/admin/users/{enc}/mfa/{cenc}"),
+        &headers,
+        None,
+    )
+    .await?;
+    let flash = if (200..300).contains(&status) {
+        "Fator+MFA+removido"
+    } else {
+        "Falha+ao+remover+fator+MFA"
+    };
+    Ok(Redirect::to(&format!("/admin/users/{enc}?flash={flash}")).into_response())
 }
 
 #[derive(Deserialize)]

@@ -2236,12 +2236,26 @@ pub struct AdminLoginEvent {
     pub success: bool,
 }
 
+/// One MFA credential of a user (the admin MFA panel).
+pub struct MfaFactorRow {
+    pub id: String,
+    /// Keycloak credential type: "otp" / "webauthn" / "webauthn-passwordless".
+    pub kind: String,
+    /// User-given device label, or empty.
+    pub label: String,
+    /// "YYYY-MM-DD HH:MM" or empty.
+    pub created: String,
+}
+
 #[derive(Template)]
 #[template(path = "admin_user_detail.html")]
 pub struct AdminUserDetailTpl {
     pub me: Me,
     pub user: AdminUser,
     pub logins: Vec<AdminLoginEvent>,
+    /// MFA factors (superadmin only). None = unavailable (not superadmin,
+    /// or the auth service has no Keycloak admin client configured).
+    pub mfa: Option<Vec<MfaFactorRow>>,
     pub flash: Option<String>,
 }
 
