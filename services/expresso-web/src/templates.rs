@@ -609,6 +609,22 @@ pub struct DriveStarredTpl {
     pub files: Vec<DriveFile>,
 }
 
+/// One recently-modified file on the drive "Recentes" page.
+pub struct DriveRecentRow {
+    pub id: String,
+    pub name: String,
+    pub size_human: String,
+    /// "YYYY-MM-DD HH:MM" last-modified.
+    pub modified: String,
+}
+
+#[derive(Template)]
+#[template(path = "drive_recent.html")]
+pub struct DriveRecentTpl {
+    pub me: Me,
+    pub rows: Vec<DriveRecentRow>,
+}
+
 /// One full-text content-search hit: the matched file plus a snippet of the
 /// matching passage from its extracted text.
 #[derive(Debug, Clone)]

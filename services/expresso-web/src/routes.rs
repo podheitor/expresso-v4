@@ -32,19 +32,19 @@ use crate::{
         ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
         DlqEntry, DlqKindCount, DriveAclTpl, DriveActivityTpl, DriveCommentRow, DriveCommentsTpl,
         DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag,
-        DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl,
-        DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl, DuplicateGroup,
-        Event, EventFormTpl, FindTimeTpl, FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder,
-        FreeBusyRow, FreeBusyTpl, FreeSlotRow, GalContact, HistogramBar, HomeDriveFile, HomeEvent,
-        HomeReminder, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailScheduledTpl,
-        MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
-        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MfaFactorRow,
-        MonthCell, Note, NoteAclTpl, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
-        NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow,
-        ScheduledRow, SearchFacet, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
-        SettingsSignaturesTpl, SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow,
-        SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow, VersionRow,
-        WebhookLogRow, WorkingHour,
+        DrivePreviewTpl, DriveQuota, DriveRecentRow, DriveRecentTpl, DriveShareTpl,
+        DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl,
+        DriveVersionsTpl, DuplicateGroup, Event, EventFormTpl, FindTimeTpl, FlagPreset,
+        FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, FreeSlotRow,
+        GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeReminder, HomeTpl, LoginTpl,
+        MailAlias, MailComposeTpl, MailListTpl, MailScheduledTpl, MailSearchTpl, MailSnoozedTpl,
+        MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl,
+        MessageDetail, MessageListItem, MfaFactorRow, MonthCell, Note, NoteAclTpl, NoteTagStat,
+        NoteVersionRow, NoteVersionsTpl, Notebook, NotesActivityTpl, NotesSharedTpl, NotesTagsTpl,
+        NotesTpl, Resource, RetentionPolicyRow, ScheduledRow, SearchFacet, SearchGroup, SearchHit,
+        SearchTpl, SecurityTpl, SettingsSignaturesTpl, SettingsTokensTpl, SettingsTpl, ShareRow,
+        SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow,
+        VersionRow, WebhookLogRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -82,6 +82,7 @@ pub fn router(state: AppState) -> Router {
         .route("/drive", get(drive_page))
         .route("/drive/trash", get(drive_trash_page))
         .route("/drive/starred", get(drive_starred_page))
+        .route("/drive/recent", get(drive_recent_page))
         .route("/drive/folders/:id/download", get(drive_folder_download))
         .route("/drive/:id/star", post(drive_star_action))
         .route("/drive/:id/unstar", post(drive_unstar_action))
@@ -1423,6 +1424,62 @@ async fn drive_starred_page(
     Ok(askama_axum::IntoResponse::into_response(DriveStarredTpl {
         me,
         files,
+    }))
+}
+
+/// GET /drive/recent — files modified most recently across the whole drive
+/// (server-backed; distinct from the home page's locally-cached "recently
+/// opened"). Proxies the drive stats/recent endpoint ({files:[…]}).
+async fn drive_recent_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let rows = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.drive,
+        "/api/v1/drive/files/stats/recent?limit=30",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .get("files")
+    .and_then(|v| v.as_array())
+    .map(|arr| {
+        arr.iter()
+            .map(|f| DriveRecentRow {
+                id: f
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                name: f
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                size_human: archive_size(
+                    f.get("size_bytes")
+                        .and_then(serde_json::Value::as_i64)
+                        .unwrap_or(0),
+                ),
+                modified: f
+                    .get("updated_at")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.replace('T', " ").chars().take(16).collect())
+                    .unwrap_or_default(),
+            })
+            .collect()
+    })
+    .unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(DriveRecentTpl {
+        me,
+        rows,
     }))
 }
 
