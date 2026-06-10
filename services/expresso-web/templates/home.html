@@ -276,14 +276,23 @@
     })();
     </script>
 
-    <!-- Aniversários -->
-    <div class="home-widget" id="home-bday-widget" style="display:none">
+    <!-- Aniversários (server-backed: contatos com BDAY nos próximos 30 dias) -->
+    {% if !birthdays.is_empty() %}
+    <div class="home-widget">
       <div class="home-widget-header">
         <span class="home-widget-icon">🎂</span>
         <a class="home-widget-title" href="/contacts">Aniversários</a>
       </div>
-      <ul id="home-bday-list" style="list-style:none;padding:0;margin:0"></ul>
+      <ul class="home-event-list">
+        {% for b in birthdays %}
+        <li class="home-event-item">
+          <span class="home-event-name">{{ b.name }}</span>
+          <span class="home-event-time" style="margin-left:auto">🎂 {{ b.when }}{% if b.days == 0 %} (hoje!){% else if b.days == 1 %} (amanhã){% else %} (em {{ b.days }} dias){% endif %}</span>
+        </li>
+        {% endfor %}
+      </ul>
     </div>
+    {% endif %}
 
     <!-- Clima / utilitário -->
     <div class="home-widget" id="home-weather-widget">
@@ -357,23 +366,6 @@
       <div id="home-tasks-today-count" style="font-size:.78rem;color:var(--accent);margin-top:.2rem"></div>
       <div id="home-pomo-today" style="font-size:.72rem;color:var(--muted);margin-top:.15rem"></div>
       <div id="home-snoozed-mails" style="font-size:.72rem;color:#ef4444;margin-top:.15rem;display:none"></div>
-      <div id="home-birthdays-month" style="font-size:.72rem;color:var(--accent);margin-top:.15rem;display:none"></div>
-      <script>(function(){
-        try {
-          var raw = JSON.parse(localStorage.getItem('expresso_birthdays') || '{}');
-          var mm = String(new Date().getMonth() + 1).padStart(2, '0');
-          var hits = [];
-          Object.keys(raw).forEach(function(name){
-            var d = raw[name] || '';
-            if (d.length >= 5 && d.substr(d.length === 5 ? 0 : 5, 2) === mm) hits.push(name);
-          });
-          if (hits.length) {
-            var el = document.getElementById('home-birthdays-month');
-            el.textContent = '🎂 Aniversariantes do mês: ' + hits.slice(0, 3).join(', ') + (hits.length > 3 ? ' +' + (hits.length - 3) : '');
-            el.style.display = 'block';
-          }
-        } catch(_) {}
-      })();</script>
       <script>(function(){
         try {
           var arr = JSON.parse(localStorage.getItem('expresso_snoozed_threads') || '[]');
@@ -884,38 +876,7 @@ function toggleFocusMode() {
 }
 (function() { if (localStorage.getItem(FOCUS_KEY) === '1') applyFocusMode(true); })();
 
-// ── Birthdays widget ───────────────────────────────────────────────────────
-(function() {
-  var raw;
-  try { raw = JSON.parse(localStorage.getItem('expresso_birthdays') || '{}'); } catch(e) { return; }
-  var ids = Object.keys(raw);
-  if (!ids.length) return;
-  var today = new Date(); today.setHours(0,0,0,0);
-  var year = today.getFullYear();
-  var upcoming = ids.map(function(id) {
-    var entry = raw[id];
-    if (!entry || !entry.date) return null;
-    var parts = entry.date.split('-');
-    if (parts.length < 3) return null;
-    var bd = new Date(year, parseInt(parts[1],10) - 1, parseInt(parts[2],10));
-    if (bd < today) bd.setFullYear(year + 1);
-    var diff = Math.floor((bd - today) / 86400000);
-    if (diff > 30) return null;
-    return { name: entry.name || id, date: bd, days: diff };
-  }).filter(Boolean).sort(function(a,b){ return a.days - b.days; }).slice(0, 5);
-  if (!upcoming.length) return;
-  var w = document.getElementById('home-bday-widget');
-  var ul = document.getElementById('home-bday-list');
-  if (!w || !ul) return;
-  w.style.display = '';
-  ul.innerHTML = upcoming.map(function(b) {
-    var dStr = b.days === 0 ? 'Hoje!' : b.days === 1 ? 'Amanhã' : 'Em ' + b.days + ' dias';
-    var dateStr = b.date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-    return '<li style="padding:.35rem 0;border-bottom:1px solid var(--border-subtle)">' +
-      '<strong>' + b.name.replace(/</g,'&lt;') + '</strong> · ' +
-      '<span class="muted small">' + dateStr + ' (' + dStr + ')</span></li>';
-  }).join('');
-})();
+// Birthdays widget is now server-rendered (see the Aniversários block above).
 
 // ── Weather widget (city only, link out — no API needed) ───────────────────
 var WEATHER_KEY = 'expresso_weather_city';

@@ -710,6 +710,10 @@ pub struct Contact {
     pub organization: Option<String>,
     #[serde(default)]
     pub vcard_raw: Option<String>,
+    /// vCard BDAY verbatim (may be full date, "YYYY-MM-DD", or partial
+    /// "--MMDD"). Parsed into month/day for the home birthdays widget.
+    #[serde(default)]
+    pub birthday: Option<String>,
 }
 
 impl Contact {
@@ -1390,6 +1394,17 @@ pub struct HomeTpl {
     pub tasks_cal_id: String,
     /// Upcoming calendar reminders within 24h (max 6), for the home widget.
     pub reminders: Vec<HomeReminder>,
+    /// Contacts with a birthday in the next 30 days (max 5), soonest first.
+    pub birthdays: Vec<HomeBirthday>,
+}
+
+/// One upcoming contact birthday for the home widget.
+pub struct HomeBirthday {
+    pub name: String,
+    /// "DD/MM" of the birthday.
+    pub when: String,
+    /// Days until it (0 = today).
+    pub days: i64,
 }
 
 /// One upcoming calendar alarm shown in the home reminders widget.

@@ -36,15 +36,15 @@ use crate::{
         DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl,
         DriveVersionsTpl, DuplicateGroup, Event, EventFormTpl, FindTimeTpl, FlagPreset,
         FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, FreeSlotRow,
-        GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeReminder, HomeTpl, LoginTpl,
-        MailAlias, MailComposeTpl, MailListTpl, MailScheduledTpl, MailSearchTpl, MailSnoozedTpl,
-        MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl,
-        MessageDetail, MessageListItem, MfaFactorRow, MonthCell, Note, NoteAclTpl, NoteTagStat,
-        NoteVersionRow, NoteVersionsTpl, Notebook, NotesActivityTpl, NotesSharedTpl, NotesTagsTpl,
-        NotesTpl, Resource, RetentionPolicyRow, ScheduledRow, SearchFacet, SearchGroup, SearchHit,
-        SearchTpl, SecurityTpl, SettingsSignaturesTpl, SettingsTokensTpl, SettingsTpl, ShareRow,
-        SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow,
-        VersionRow, WebhookLogRow, WorkingHour,
+        GalContact, HistogramBar, HomeBirthday, HomeDriveFile, HomeEvent, HomeReminder, HomeTpl,
+        LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailScheduledTpl, MailSearchTpl,
+        MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl,
+        MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MfaFactorRow, MonthCell, Note,
+        NoteAclTpl, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook, NotesActivityTpl,
+        NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow, ScheduledRow,
+        SearchFacet, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsSignaturesTpl,
+        SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow, SignatureRow, SnoozedRow,
+        TagPairRow, TaskRow, TasksTpl, TenantUsageRow, VersionRow, WebhookLogRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -835,6 +835,55 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
         }
     };
 
+    // Upcoming contact birthdays (next 30 days) from the first addressbook —
+    // server-backed (vCard BDAY), replacing the old localStorage widget.
+    let birthdays: Vec<HomeBirthday> = {
+        let book = get_json::<Vec<AddressBook>>(
+            &st,
+            &st.backends.contacts,
+            "/api/v1/addressbooks",
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default()
+        .into_iter()
+        .next();
+        if let Some(book) = book {
+            let enc = utf8_percent_encode(&book.id, NON_ALPHANUMERIC);
+            let contacts = get_json::<Vec<Contact>>(
+                &st,
+                &st.backends.contacts,
+                &format!("/api/v1/addressbooks/{enc}/contacts"),
+                &headers,
+                Some((&t, &u)),
+            )
+            .await?
+            .unwrap_or_default();
+            let today = time::OffsetDateTime::now_utc().date();
+            let mut rows: Vec<HomeBirthday> = contacts
+                .into_iter()
+                .filter_map(|c| {
+                    let (m, d) = birthday_month_day(c.birthday.as_deref()?)?;
+                    let days = days_until_md(today, m, d)?;
+                    if days > 30 {
+                        return None;
+                    }
+                    Some(HomeBirthday {
+                        name: c.name_display().to_string(),
+                        when: format!("{d:02}/{m:02}"),
+                        days,
+                    })
+                })
+                .collect();
+            rows.sort_by_key(|b| b.days);
+            rows.truncate(5);
+            rows
+        } else {
+            Vec::new()
+        }
+    };
+
     Ok(askama_axum::IntoResponse::into_response(HomeTpl {
         me,
         mail_unread,
@@ -845,6 +894,7 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
         tasks_due,
         tasks_cal_id,
         reminders,
+        birthdays,
     }))
 }
 
@@ -1806,6 +1856,44 @@ struct FreeBusyQuery {
 /// Extract "HH:MM" from an RFC3339 instant (chars 11..16), best-effort.
 fn hhmm_of_rfc3339(s: &str) -> &str {
     s.get(11..16).unwrap_or(s)
+}
+
+/// Parse (month, day) from a vCard BDAY value: accepts "YYYY-MM-DD",
+/// "YYYYMMDD", "--MM-DD", "--MMDD" (RFC 6350 partial dates). Returns None for
+/// anything it can't read as a month+day pair.
+fn birthday_month_day(raw: &str) -> Option<(u8, u8)> {
+    let digits: Vec<char> = raw.chars().filter(char::is_ascii_digit).collect();
+    let s: String = digits.into_iter().collect();
+    // After stripping non-digits: "YYYYMMDD" (8) or "MMDD" (4, from --MMDD).
+    let (mm, dd) = match s.len() {
+        8 => (&s[4..6], &s[6..8]),
+        4 => (&s[0..2], &s[2..4]),
+        _ => return None,
+    };
+    let m: u8 = mm.parse().ok()?;
+    let d: u8 = dd.parse().ok()?;
+    if (1..=12).contains(&m) && (1..=31).contains(&d) {
+        Some((m, d))
+    } else {
+        None
+    }
+}
+
+/// Days from `today` until the next occurrence of (month, day), 0..=365.
+/// Uses ordinal-day arithmetic on a fixed non-leap calendar (good enough for
+/// a "next 30 days" widget; Feb 29 maps to the 60th day).
+fn days_until_md(today: time::Date, m: u8, d: u8) -> Option<i64> {
+    let month = time::Month::try_from(m).ok()?;
+    let year = today.year();
+    let target = time::Date::from_calendar_date(year, month, d)
+        .or_else(|_| time::Date::from_calendar_date(year, month, 28))
+        .ok()?;
+    let target = if target < today {
+        target.replace_year(year + 1).ok()?
+    } else {
+        target
+    };
+    Some((target - today).whole_days())
 }
 
 /// Find `email`'s RSVP status in an event's iCalendar by reading the matching
@@ -13297,6 +13385,7 @@ mod tests {
             phone: None,
             organization: None,
             vcard_raw: None,
+            birthday: None,
         };
         assert_eq!(
             duplicate_key(&mk(Some("Ana@Ex.com"), Some("Ana"))).as_deref(),
@@ -13308,6 +13397,26 @@ mod tests {
         );
         assert_eq!(duplicate_key(&mk(Some("  "), None)), None);
         assert_eq!(duplicate_key(&mk(None, None)), None);
+    }
+
+    #[test]
+    fn birthday_month_day_parses_full_and_partial() {
+        assert_eq!(birthday_month_day("1990-03-25"), Some((3, 25)));
+        assert_eq!(birthday_month_day("19900325"), Some((3, 25)));
+        assert_eq!(birthday_month_day("--0325"), Some((3, 25)));
+        assert_eq!(birthday_month_day("--03-25"), Some((3, 25)));
+        assert_eq!(birthday_month_day("2026-13-40"), None); // invalid m/d
+        assert_eq!(birthday_month_day("not a date"), None);
+    }
+
+    #[test]
+    fn days_until_md_wraps_to_next_year() {
+        let jun10 = time::Date::from_calendar_date(2026, time::Month::June, 10).unwrap();
+        assert_eq!(days_until_md(jun10, 6, 10), Some(0)); // today
+        assert_eq!(days_until_md(jun10, 6, 12), Some(2)); // soon
+                                                          // A date earlier in the year rolls to next year (≈ 360 days out).
+        let d = days_until_md(jun10, 1, 1).unwrap();
+        assert!((200..=366).contains(&d));
     }
 
     #[test]
