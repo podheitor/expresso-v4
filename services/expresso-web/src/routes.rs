@@ -358,6 +358,7 @@ pub fn router(state: AppState) -> Router {
         .route("/contacts/gal/save", post(contacts_gal_save_action))
         // chat / meet
         .route("/chat", get(chat_page))
+        .route("/chat/search", get(chat_global_search_api))
         .route("/chat/channels", post(chat_create_channel))
         .route("/chat/channels/:cid", get(chat_channel_page))
         .route("/chat/channels/:cid/send", post(chat_send_message))
@@ -9903,6 +9904,43 @@ async fn chat_fetch_messages(
         Ok(r) if r.status().is_success() => r.json::<Vec<ChatMessage>>().await.unwrap_or_default(),
         _ => Vec::new(),
     }
+}
+
+#[derive(Deserialize)]
+struct ChatSearchQuery {
+    #[serde(default)]
+    q: String,
+}
+
+/// GET /chat/search?q= — proxy the chat global cross-channel search as JSON for
+/// the chat sidebar search box (was DOM-only, so it missed unloaded channels).
+async fn chat_global_search_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<ChatSearchQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let needle = q.q.trim();
+    if needle.is_empty() {
+        return Ok(json_response(
+            &serde_json::json!({ "chunk": [], "count": 0 }),
+        ));
+    }
+    let enc = utf8_percent_encode(needle, NON_ALPHANUMERIC);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.chat,
+        &format!("/api/v1/messages/search?q={enc}&limit=20"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_else(|| serde_json::json!({ "chunk": [], "count": 0 }));
+    Ok(json_response(&v))
 }
 
 async fn chat_page(

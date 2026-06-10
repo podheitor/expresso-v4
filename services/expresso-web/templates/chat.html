@@ -818,29 +818,31 @@ function chatGlobalSearch(q) {
   if (!q.trim()) { res.style.display = 'none'; res.innerHTML = ''; return; }
   clearTimeout(_chatSearchTimer);
   _chatSearchTimer = setTimeout(function() {
-    // Search each channel's recent messages client-side (from rendered DOM)
-    var msgs = document.querySelectorAll('.chat-msg');
-    var ql = q.trim().toLowerCase();
-    var found = [];
-    msgs.forEach(function(el) {
-      var body = (el.querySelector('.chat-msg-body') || {}).textContent || '';
-      var sender = (el.querySelector('.chat-msg-sender') || {}).textContent || '';
-      if (body.toLowerCase().includes(ql) || sender.toLowerCase().includes(ql)) {
-        found.push({ body: body.trim().substring(0, 80), sender: sender.trim(), id: el.dataset.msgId });
-      }
-    });
-    res.innerHTML = '';
-    if (!found.length) {
-      res.innerHTML = '<li class="chat-global-result muted small">Nenhum resultado.</li>';
-    } else {
-      found.slice(0, 8).forEach(function(f) {
-        res.innerHTML += '<li class="chat-global-result" onclick="scrollToMsg(\'' + escHtml(f.id) + '\')">' +
-          '<span class="chat-msg-sender" style="font-size:.78rem">' + escHtml(f.sender) + '</span>' +
-          '<span class="muted small">' + escHtml(f.body) + '</span></li>';
-      });
-    }
-    res.style.display = 'block';
+    // Server-side search across ALL the user's channels (not just the open one).
+    fetch('/chat/search?q=' + encodeURIComponent(q.trim()), { credentials: 'include' })
+      .then(function(r){ return r.ok ? r.json() : { chunk: [] }; })
+      .then(function(data) {
+        var hits = (data && data.chunk) || [];
+        res.innerHTML = '';
+        if (!hits.length) {
+          res.innerHTML = '<li class="chat-global-result muted small">Nenhum resultado.</li>';
+        } else {
+          hits.slice(0, 12).forEach(function(ev) {
+            var body = ((ev.content && ev.content.body) || '').trim().substring(0, 80);
+            var sender = ev.sender || '';
+            var chan = ev.channel_name || '';
+            var cid = ev.channel_id || '';
+            res.innerHTML += '<li class="chat-global-result" onclick="openChannel(\'' + escHtml(cid) + '\')">' +
+              '<span class="chat-msg-sender" style="font-size:.78rem">' + escHtml(sender) + ' · #' + escHtml(chan) + '</span>' +
+              '<span class="muted small">' + escHtml(body) + '</span></li>';
+          });
+        }
+        res.style.display = 'block';
+      }).catch(function(){ res.innerHTML = '<li class="chat-global-result muted small">Erro na busca.</li>'; res.style.display = 'block'; });
   }, 250);
+}
+function openChannel(cid) {
+  if (cid) window.location.href = '/chat/channels/' + encodeURIComponent(cid);
 }
 function scrollToMsg(id) {
   var el = document.querySelector('[data-msg-id="' + id + '"]');

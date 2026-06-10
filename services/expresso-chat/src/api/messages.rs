@@ -39,6 +39,8 @@ pub const DEFAULT_LIST_LIMIT: u32 = 50;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/channels/:id/messages", post(send).get(list))
+        // Global cross-channel search (own prefix, not under :id).
+        .route("/api/v1/messages/search", get(search_global))
         // `search` is a static segment — register before `:event_id` so matchit
         // doesn't capture it as an event id.
         .route("/api/v1/channels/:id/messages/search", get(search))
@@ -123,6 +125,53 @@ async fn search_inner(
         .search_messages(&acting_as, &ch.matrix_room_id, q.q.trim(), q.limit)
         .await?;
     Ok(Json(value))
+}
+
+/// GET /api/v1/messages/search?q=&limit= — search the caller's messages across
+/// ALL channels they belong to (Teams-style global search). Fans the
+/// per-channel search over the membership list and merges, annotating each hit
+/// with its channel. `limit` caps the per-channel scan window.
+async fn search_global(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Query(mut q): Query<SearchQuery>,
+) -> Result<Json<Value>> {
+    if q.q.trim().is_empty() {
+        return Err(ChatError::BadRequest("q must not be empty".into()));
+    }
+    if q.limit == 0 || q.limit > MAX_LIST_LIMIT {
+        q.limit = q.limit.clamp(1, MAX_LIST_LIMIT);
+    }
+    let pool = state.db_or_unavailable()?;
+    let matrix = state.matrix_or_unavailable()?;
+    let channels = ChannelRepo::new(pool)
+        .list_for_user(ctx.tenant_id, ctx.user_id)
+        .await?;
+    let acting_as = matrix.mxid_for(ctx.user_id);
+    let needle = q.q.trim();
+    let mut hits: Vec<Value> = Vec::new();
+    for ch in channels {
+        // A failed per-channel search shouldn't sink the whole query.
+        let Ok(res) = matrix
+            .search_messages(&acting_as, &ch.matrix_room_id, needle, q.limit)
+            .await
+        else {
+            continue;
+        };
+        if let Some(chunk) = res.get("chunk").and_then(Value::as_array) {
+            for ev in chunk {
+                let mut hit = ev.clone();
+                if let Some(obj) = hit.as_object_mut() {
+                    obj.insert("channel_id".into(), serde_json::json!(ch.id.to_string()));
+                    obj.insert("channel_name".into(), serde_json::json!(ch.name.clone()));
+                }
+                hits.push(hit);
+            }
+        }
+    }
+    Ok(Json(
+        serde_json::json!({ "chunk": hits, "count": hits.len() }),
+    ))
 }
 
 async fn send(
