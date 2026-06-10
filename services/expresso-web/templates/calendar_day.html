@@ -89,6 +89,10 @@
          title="{{ ev.title() }}">
         <span class="cal-day-event-time">{{ ev.time_label() }}</span>
         <span class="cal-day-event-title">{{ ev.title() }}</span>
+        {% if ev.is_recurring() %}
+        <button type="button" class="cal-occ-del" title="Apagar só esta ocorrência"
+                onclick="cancelOccurrence(event, '{{ selected.id }}', '{{ ev.id }}', '{% match ev.dtstart %}{% when Some with (s) %}{{ s }}{% when None %}{% endmatch %}')">↻✕</button>
+        {% endif %}
         {% match ev.location %}{% when Some with (loc) %}{% if !loc.is_empty() %}
           <span class="cal-day-event-loc muted small">📍 {{ loc }}</span>
         {% endif %}{% when None %}{% endmatch %}
@@ -110,6 +114,18 @@
 }
 </style>
 <script>
+// Delete a single occurrence of a recurring event (adds an EXDATE server-side).
+function cancelOccurrence(e, calId, eventId, instance) {
+  e.preventDefault(); e.stopPropagation();
+  if (!instance) { alert('Ocorrência sem data.'); return; }
+  if (!confirm('Apagar somente esta ocorrência? As demais da série permanecem.')) return;
+  var fd = new URLSearchParams(); fd.set('instance', instance);
+  fetch('/calendar/' + encodeURIComponent(calId) + '/events/' + encodeURIComponent(eventId) + '/cancel-instance', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd.toString()
+  }).then(function(r){ if (r.ok || r.redirected) window.location.reload(); else alert('Falha ao apagar a ocorrência.'); })
+    .catch(function(){ alert('Falha ao apagar a ocorrência.'); });
+}
 (function positionDayEvents() {
   var ROW_HEIGHT = 30;
   var COL_LEFT   = 64;

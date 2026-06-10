@@ -168,6 +168,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/calendar/:cal_id/events/:id/print", get(event_print_page))
         .route(
+            "/calendar/:cal_id/events/:id/cancel-instance",
+            post(event_cancel_instance_action),
+        )
+        .route(
             "/calendar/:cal_id/events/:id/delete",
             post(event_delete_action),
         )
@@ -8339,6 +8343,44 @@ async fn enqueue_reminders(
             crate::upstream::post_json(st, &st.backends.calendar, &path, headers, Some(ctx), &body)
                 .await;
     }
+}
+
+#[derive(Deserialize)]
+struct CancelInstanceForm {
+    /// The occurrence's start (RFC3339), from the grid event's data-start.
+    instance: String,
+}
+
+/// POST /calendar/:cal_id/events/:id/cancel-instance — delete just one
+/// occurrence of a recurring event (adds an EXDATE via the backend). The grid
+/// supplies the occurrence start; the master event and other occurrences stay.
+async fn event_cancel_instance_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((cal_id, id)): Path<(String, String)>,
+    Form(f): Form<CancelInstanceForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let instant = match to_rfc3339(f.instance.trim()) {
+        Some(v) => v,
+        None => return Ok((StatusCode::BAD_REQUEST, "data inválida").into_response()),
+    };
+    let (t, u) = ctx_of(&me);
+    let enc_c = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC);
+    let enc_e = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = post_json(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/calendars/{enc_c}/events/{enc_e}/cancel-instance"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "instance": instant }),
+    )
+    .await?;
+    Ok(Redirect::to(&format!("/calendar/{cal_id}")).into_response())
 }
 
 /// GET /calendar/:cal_id/events/:id/print — a clean, print-friendly single-
