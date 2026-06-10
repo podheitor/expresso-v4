@@ -1,0 +1,25 @@
+{% extends "admin_base.html" %}
+{% block title %}Uso do tenant · Admin · Expresso{% endblock %}
+{% block nav_tenants %} active{% endblock %}
+{% block body %}
+<div class="admin-page">
+  <div class="admin-page-header">
+    <h1>📊 Uso do tenant</h1>
+    <a class="btn btn-ghost btn-sm" href="/admin/tenants">← Tenants</a>
+  </div>
+  <p class="muted small" style="margin:.25rem 0 .75rem">
+    Contadores e tamanhos agregados deste tenant
+    (<span class="mono small">{{ tenant_id }}</span>). Tabelas ausentes contam como zero.
+  </p>
+  <table class="data-table" style="max-width:34rem">
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.label }}</td>
+        <td class="mono" style="text-align:right">{{ r.value }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

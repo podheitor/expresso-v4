@@ -20,28 +20,28 @@ use crate::{
     templates::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
-        AdminRetentionTpl, AdminTenant, AdminTenantsTpl, AdminUser, AdminUserDetailTpl,
-        AdminUsersTpl, ApiTokenRow, ArchiveRow, ArchiveStatRow, ArchiveTagHistRow, AuditEvent,
-        BulkDeleteEventRow, Calendar, CalendarBulkDeleteTpl, CalendarConflictsTpl,
-        CalendarCountersTpl, CalendarDayTpl, CalendarHistogramTpl, CalendarMonthTpl,
-        CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage,
-        ChatTpl, ComplianceArchiveTpl, ComplianceStatsTpl, ComplianceTagsTpl, ConflictPairRow,
-        Contact, ContactActivityTpl, ContactAddressRow, ContactDiffTpl, ContactEmailRow,
-        ContactFormTpl, ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow,
-        ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView,
-        DelegationsTpl, DlqEntry, DlqKindCount, DriveActivityTpl, DriveCommentRow,
-        DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
-        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveShareTpl, DriveStarredTpl,
-        DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl, DriveVersionsTpl,
-        Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow,
-        FreeBusyTpl, GalContact, HistogramBar, HomeDriveFile, HomeEvent, HomeTpl, LoginTpl,
-        MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me,
-        MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail,
-        MessageListItem, MfaFactorRow, MonthCell, Note, NoteTagStat, NoteVersionRow,
-        NoteVersionsTpl, Notebook, NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl,
-        Resource, RetentionPolicyRow, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
-        SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow, TagPairRow, TaskRow,
-        TasksTpl, VersionRow, WorkingHour,
+        AdminRetentionTpl, AdminTenant, AdminTenantUsageTpl, AdminTenantsTpl, AdminUser,
+        AdminUserDetailTpl, AdminUsersTpl, ApiTokenRow, ArchiveRow, ArchiveStatRow,
+        ArchiveTagHistRow, AuditEvent, BulkDeleteEventRow, Calendar, CalendarBulkDeleteTpl,
+        CalendarConflictsTpl, CalendarCountersTpl, CalendarDayTpl, CalendarHistogramTpl,
+        CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment,
+        ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl, ComplianceStatsTpl,
+        ComplianceTagsTpl, ConflictPairRow, Contact, ContactActivityTpl, ContactAddressRow,
+        ContactDiffTpl, ContactEmailRow, ContactFormTpl, ContactGroup, ContactGroupDetailTpl,
+        ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl, ContactsTpl, CounterRow,
+        DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DlqEntry, DlqKindCount,
+        DriveActivityTpl, DriveCommentRow, DriveCommentsTpl, DriveContentHit,
+        DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota,
+        DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl,
+        DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow,
+        FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HistogramBar, HomeDriveFile,
+        HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl,
+        MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl,
+        MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MfaFactorRow, MonthCell, Note,
+        NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook, NotesActivityTpl, NotesSharedTpl,
+        NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow, SearchGroup, SearchHit, SearchTpl,
+        SecurityTpl, SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow,
+        TagPairRow, TaskRow, TasksTpl, TenantUsageRow, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -485,6 +485,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/users/:id/role", post(admin_users_set_role))
         .route("/admin/users/:id/suspend", post(admin_users_suspend))
         .route("/admin/users/:id/activate", post(admin_users_activate))
+        .route("/admin/tenants/:id/usage", get(admin_tenant_usage_page))
         .route("/admin/users/:id/impersonate", post(admin_user_impersonate))
         .route("/admin/users/:id/mfa/require", post(admin_user_mfa_require))
         .route(
@@ -13388,6 +13389,82 @@ async fn admin_resource_delete(
     )
     .await?;
     Ok(Redirect::to("/admin/resources?flash=Recurso+removido").into_response())
+}
+
+// ─── /admin/tenants/:id/usage ────────────────────────────────────────────────
+
+/// GET /admin/tenants/:id/usage — per-tenant usage report (users, mail,
+/// drive, calendar, contacts) from the expresso-admin service. The backend
+/// scopes access: tenant-admins see their own tenant, superadmins any.
+async fn admin_tenant_usage_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_admin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.admin,
+        &format!("/api/v1/admin/tenants/{enc}/usage"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let count = |key: &str| -> String {
+        v.get(key)
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(0)
+            .to_string()
+    };
+    let size = |key: &str| -> String {
+        archive_size(v.get(key).and_then(serde_json::Value::as_i64).unwrap_or(0))
+    };
+    let rows = vec![
+        TenantUsageRow {
+            label: "👥 Usuários".into(),
+            value: count("user_count"),
+        },
+        TenantUsageRow {
+            label: "✉ Mensagens de e-mail".into(),
+            value: count("message_count"),
+        },
+        TenantUsageRow {
+            label: "✉ Tamanho das caixas".into(),
+            value: size("mailbox_size_bytes"),
+        },
+        TenantUsageRow {
+            label: "💾 Arquivos no drive".into(),
+            value: count("file_count"),
+        },
+        TenantUsageRow {
+            label: "💾 Tamanho do drive".into(),
+            value: size("file_size_bytes"),
+        },
+        TenantUsageRow {
+            label: "📅 Eventos de agenda".into(),
+            value: count("calendar_event_count"),
+        },
+        TenantUsageRow {
+            label: "👤 Contatos".into(),
+            value: count("contact_count"),
+        },
+    ];
+    Ok(askama_axum::IntoResponse::into_response(
+        AdminTenantUsageTpl {
+            me,
+            tenant_id: id,
+            rows,
+        },
+    ))
 }
 
 // ─── /admin/retention (compliance archive retention) ────────────────────────

@@ -19,6 +19,8 @@ pub struct Backends {
     pub notifications: String,
     pub flows: String,
     pub compliance: String,
+    /// expresso-admin service (tenant usage stats etc.), port 8101.
+    pub admin: String,
 }
 
 impl Backends {
@@ -37,6 +39,7 @@ impl Backends {
             flows: envs("BACKEND__FLOWS").unwrap_or_else(|| "http://localhost:8005".into()),
             compliance: envs("BACKEND__COMPLIANCE")
                 .unwrap_or_else(|| "http://localhost:8009".into()),
+            admin: envs("BACKEND__ADMIN").unwrap_or_else(|| "http://localhost:8101".into()),
         }
     }
 }
@@ -175,6 +178,7 @@ mod tests {
             notifications: "http://localhost:8006".into(),
             flows: "http://localhost:8005".into(),
             compliance: "http://localhost:8009".into(),
+            admin: "http://localhost:8101".into(),
         };
         assert_eq!(_b.auth, "http://localhost:8012");
     }
@@ -225,6 +229,7 @@ mod tests {
             notifications: "http://notifications:8006".into(),
             flows: "http://flows:8005".into(),
             compliance: "http://compliance:8009".into(),
+            admin: "http://admin:8101".into(),
         }
     }
 

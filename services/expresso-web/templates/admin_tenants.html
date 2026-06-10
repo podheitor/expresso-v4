@@ -57,6 +57,7 @@
               <div class="admin-row-actions">
                 <a class="btn btn-ghost btn-sm" href="/admin/tenants/{{ t.id }}">Detalhes</a>
                 <a class="btn btn-ghost btn-sm" href="/admin/users?tenant={{ t.id }}" title="Ver usuários deste tenant">👥</a>
+                <a class="btn btn-ghost btn-sm" href="/admin/tenants/{{ t.id }}/usage" title="Relatório de uso (usuários/mail/drive/agenda/contatos)">📊</a>
                 <form method="post" action="/admin/tenants/{{ t.id }}/toggle" style="display:contents">
                   <button class="btn btn-ghost btn-sm" type="submit">{% if t.active %}Desativar{% else %}Ativar{% endif %}</button>
                 </form>

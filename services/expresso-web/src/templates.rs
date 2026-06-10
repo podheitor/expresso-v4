@@ -2236,6 +2236,21 @@ pub struct AdminLoginEvent {
     pub success: bool,
 }
 
+/// One metric line in the per-tenant usage report.
+pub struct TenantUsageRow {
+    pub label: String,
+    /// Pre-formatted value (count or human-readable size).
+    pub value: String,
+}
+
+#[derive(Template)]
+#[template(path = "admin_tenant_usage.html")]
+pub struct AdminTenantUsageTpl {
+    pub me: Me,
+    pub tenant_id: String,
+    pub rows: Vec<TenantUsageRow>,
+}
+
 /// One MFA credential of a user (the admin MFA panel).
 pub struct MfaFactorRow {
     pub id: String,
