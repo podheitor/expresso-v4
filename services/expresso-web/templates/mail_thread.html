@@ -73,7 +73,7 @@
       {% endif %}
       <div class="thread-list">
         {% for msg in messages %}
-        <div class="thread-msg thread-msg-item{% if msg.is_unread() %} thread-msg-unread{% endif %}" id="tmsg-{{ msg.id }}">
+        <div class="thread-msg thread-msg-item{% if msg.is_unread() %} thread-msg-unread{% endif %}" id="tmsg-{{ msg.id }}" data-msg-id="{{ msg.id }}">
           <div class="thread-msg-header" onclick="toggleThreadMsg('{{ msg.id }}')">
             <div class="thread-msg-avatar">{{ msg.sender_display().chars().next().unwrap_or('?').to_uppercase() }}</div>
             <div class="thread-msg-meta">
@@ -440,23 +440,28 @@ function snoozeThread(presetHrs) {
   if (typeof presetHrs === 'number' && presetHrs > 0) {
     hrs = presetHrs;
   } else {
-    var when = prompt('Lembrar desta conversa em quantas horas? (ex: 2, 8, 24)', '4');
+    var when = prompt('Adiar esta conversa por quantas horas? (ex: 2, 8, 24)', '4');
     if (!when) return;
     hrs = parseFloat(when);
     if (!isFinite(hrs) || hrs <= 0) { alert('Valor inválido.'); return; }
   }
-  var firstMsg = document.querySelector('.thread-msg');
-  var tid = (firstMsg && firstMsg.dataset && firstMsg.dataset.msgId) || window.location.pathname.split('/').pop();
-  var subj = (document.querySelector('h1, .thread-subject') || {}).textContent || 'Conversa';
-  var due = Date.now() + Math.round(hrs * 3600 * 1000);
-  try {
-    var key = 'expresso_snoozed_threads';
-    var arr = JSON.parse(localStorage.getItem(key) || '[]');
-    arr.push({ id: tid, subject: subj.trim().slice(0, 80), due: due, url: window.location.pathname + window.location.search });
-    localStorage.setItem(key, JSON.stringify(arr));
-    alert('Conversa adiada por ' + hrs + 'h. Você verá um lembrete na home.');
+  // Server-backed snooze: hide every message in the thread until `until`,
+  // then the backend waker returns them to the inbox.
+  var ids = Array.prototype.map.call(
+    document.querySelectorAll('.thread-msg'),
+    function(m){ return m.dataset && m.dataset.msgId; }
+  ).filter(Boolean);
+  if (!ids.length) { alert('Conversa vazia.'); return; }
+  var until = new Date(Date.now() + Math.round(hrs * 3600 * 1000)).toISOString();
+  Promise.all(ids.map(function(id) {
+    var body = new URLSearchParams(); body.set('snooze_until', until);
+    return fetch('/mail/' + encodeURIComponent(id) + '/snooze', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+    });
+  })).then(function() {
     window.location.href = '/mail';
-  } catch(e) { alert('Falha ao adiar: ' + e.message); }
+  }).catch(function() { alert('Falha ao adiar a conversa.'); });
 }
 function findInThread(q) {
   q = (q || '').trim().toLowerCase();

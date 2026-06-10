@@ -365,23 +365,6 @@
       </div>
       <div id="home-tasks-today-count" style="font-size:.78rem;color:var(--accent);margin-top:.2rem"></div>
       <div id="home-pomo-today" style="font-size:.72rem;color:var(--muted);margin-top:.15rem"></div>
-      <div id="home-snoozed-mails" style="font-size:.72rem;color:#ef4444;margin-top:.15rem;display:none"></div>
-      <script>(function(){
-        try {
-          var arr = JSON.parse(localStorage.getItem('expresso_snoozed_threads') || '[]');
-          var now = Date.now();
-          var due = arr.filter(function(s){ return s.due <= now; });
-          var future = arr.filter(function(s){ return s.due > now; });
-          if (due.length) {
-            var el = document.getElementById('home-snoozed-mails');
-            if (el) {
-              el.style.display = '';
-              el.innerHTML = '⏰ ' + due.length + ' conversa(s) adiada(s) vencida(s) — <a href="' + due[0].url + '" class="link">abrir primeira</a>';
-            }
-            try { localStorage.setItem('expresso_snoozed_threads', JSON.stringify(future)); } catch(e){}
-          }
-        } catch(e){}
-      })();</script>
       <script>(function(){
         try {
           var s = JSON.parse(localStorage.getItem('expresso_pomodoro_stats') || '{}');
