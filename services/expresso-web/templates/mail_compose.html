@@ -682,15 +682,36 @@ function checkComposeRecipients() {
   if (dups.length) alert('⚠ Duplicado(s) entre To/CC/BCC:\n\n' + dups.join('\n') + '\n\nTotal: ' + total + ' (' + (total-dups.length) + ' únicos)');
   else alert('✓ Sem duplicados. ' + total + ' destinatário(s) no total.');
 }
+// Tracks the server draft id so repeated saves update one draft (PUT) instead
+// of piling up new ones (POST).
+var _composeDraftId = null;
+function splitComposeAddrs(v) {
+  return String(v || '').split(/[,;\s]+/).map(function(s){ return s.trim(); }).filter(Boolean);
+}
 function saveComposeDraft(btn) {
   var f = document.getElementById('compose-form');
   if (!f) return;
-  var fd = new FormData(f);
-  fd.append('save_draft', '1');
+  var val = function(n){ var el = f.querySelector('[name="' + n + '"]'); return el ? el.value : ''; };
+  var payload = {
+    from: val('from'),
+    to: splitComposeAddrs(val('to')),
+    cc: splitComposeAddrs(val('cc')),
+    bcc: splitComposeAddrs(val('bcc')),
+    subject: val('subject'),
+    body_text: val('body_text')
+  };
   if (btn) { btn.disabled = true; btn.textContent = '💾 Salvando…'; }
-  fetch('/mail/drafts', { method: 'POST', body: fd, credentials: 'include' })
-    .then(function(r){
-      if (btn) { btn.disabled = false; btn.textContent = r.ok ? '✓ Salvo' : '💾 Rascunho'; }
+  var url = _composeDraftId ? ('/mail/drafts/' + encodeURIComponent(_composeDraftId)) : '/mail/drafts';
+  fetch(url, {
+    method: _composeDraftId ? 'PUT' : 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(function(r){ return r.ok ? r.json().catch(function(){ return {}; }) : null; })
+    .then(function(d){
+      if (d && d.id) _composeDraftId = d.id;
+      if (btn) { btn.disabled = false; btn.textContent = d ? '✓ Salvo' : '💾 Rascunho'; }
+      if (!d) alert('Falha ao salvar rascunho.');
       setTimeout(function(){ if (btn) btn.textContent = '💾 Rascunho'; }, 1500);
     })
     .catch(function(){ if (btn) { btn.disabled = false; btn.textContent = '💾 Rascunho'; } alert('Falha ao salvar rascunho'); });

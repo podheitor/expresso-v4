@@ -5,7 +5,7 @@ use axum::{
     extract::{Form, Path, Query, State},
     http::{header, HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
@@ -45,7 +45,7 @@ use crate::{
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
-        post_empty, post_json, put_body, put_json,
+        post_empty, post_json, put_body, put_json, put_json_body,
     },
     vcard::{build_vcard, ContactForm},
     AppState,
@@ -287,6 +287,8 @@ pub fn router(state: AppState) -> Router {
         .route("/mail/:id/move", post(mail_move_action))
         .route("/mail/:id/delete", post(mail_delete_action))
         .route("/mail/snoozed", get(mail_snoozed_page))
+        .route("/mail/drafts", post(mail_draft_save))
+        .route("/mail/drafts/:id", put(mail_draft_update))
         .route("/mail/:id/snooze", post(mail_snooze_action))
         .route("/mail/:id/unsnooze", post(mail_unsnooze_action))
         // mail folder management
@@ -4738,6 +4740,96 @@ struct SnoozeRecord {
 
 /// GET /mail/snoozed — list messages snoozed by the current user, each with its
 /// wake time, subject/sender (best-effort fetch), and open/wake-now actions.
+/// One compose draft as the backend expects it (JSON, address arrays).
+#[derive(Deserialize)]
+struct DraftPayload {
+    #[serde(default)]
+    from: String,
+    #[serde(default)]
+    to: Vec<String>,
+    #[serde(default)]
+    cc: Vec<String>,
+    #[serde(default)]
+    bcc: Vec<String>,
+    #[serde(default)]
+    subject: String,
+    #[serde(default)]
+    body_text: String,
+}
+
+impl DraftPayload {
+    fn to_backend(&self) -> serde_json::Value {
+        serde_json::json!({
+            "from": self.from,
+            "to": self.to,
+            "cc": self.cc,
+            "bcc": self.bcc,
+            "subject": self.subject,
+            "body_text": self.body_text,
+        })
+    }
+}
+
+/// POST /mail/drafts — save a new compose draft (proxies JSON to the mail
+/// service). The compose page's "💾 Rascunho" button used to POST FormData to
+/// a non-existent route (404 → drafts never saved); this is the missing proxy.
+async fn mail_draft_save(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    axum::Json(d): axum::Json<DraftPayload>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let (status, resp) = crate::upstream::post_json_body(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/drafts",
+        &headers,
+        Some((&t, &u)),
+        &d.to_backend(),
+    )
+    .await?;
+    match resp {
+        Some(v) if (200..300).contains(&status) => Ok(json_response(&v)),
+        _ => Ok(StatusCode::from_u16(status)
+            .unwrap_or(StatusCode::BAD_GATEWAY)
+            .into_response()),
+    }
+}
+
+/// PUT /mail/drafts/:id — replace an existing draft (proxies JSON).
+async fn mail_draft_update(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    axum::Json(d): axum::Json<DraftPayload>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let (status, resp) = put_json_body(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/drafts/{enc}"),
+        &headers,
+        Some((&t, &u)),
+        &d.to_backend(),
+    )
+    .await?;
+    match resp {
+        Some(v) if (200..300).contains(&status) => Ok(json_response(&v)),
+        _ => Ok(StatusCode::from_u16(status)
+            .unwrap_or(StatusCode::BAD_GATEWAY)
+            .into_response()),
+    }
+}
+
 async fn mail_snoozed_page(
     State(st): State<AppState>,
     headers: HeaderMap,
