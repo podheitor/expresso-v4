@@ -139,6 +139,25 @@
       {% endif %}
     </div>
 
+    <!-- Lembretes — próximas 24h -->
+    {% if !reminders.is_empty() %}
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">⏰</span>
+        <a class="home-widget-title" href="/calendar">Lembretes</a>
+        <a class="btn btn-ghost btn-sm" href="/calendar">Agenda</a>
+      </div>
+      <ul class="home-event-list">
+        {% for r in reminders %}
+        <li class="home-event-item">
+          <span class="home-event-name">{{ r.text }}</span>
+          <span class="home-event-time" style="margin-left:auto">⏰ {{ r.when }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
     <!-- Drive — arquivos recentes -->
     <div class="home-widget">
       <div class="home-widget-header">

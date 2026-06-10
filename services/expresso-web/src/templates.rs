@@ -1260,6 +1260,16 @@ pub struct HomeTpl {
     pub chat_unread: i64,
     /// Pending tasks due today or earlier (max 8), for the home widget.
     pub tasks_due: Vec<TaskRow>,
+    /// Upcoming calendar reminders within 24h (max 6), for the home widget.
+    pub reminders: Vec<HomeReminder>,
+}
+
+/// One upcoming calendar alarm shown in the home reminders widget.
+pub struct HomeReminder {
+    /// Reminder text (VALARM description) or a fallback.
+    pub text: String,
+    /// "YYYY-MM-DD HH:MM" trigger time.
+    pub when: String,
 }
 
 // ─── Calendar events ─────────────────────────────────────────────────────────

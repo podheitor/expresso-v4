@@ -35,14 +35,14 @@ use crate::{
         DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl,
         DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow,
         FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HistogramBar, HomeDriveFile,
-        HomeEvent, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailSearchTpl,
-        MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl,
-        MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MfaFactorRow, MonthCell, Note,
-        NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook, NotesActivityTpl, NotesSharedTpl,
-        NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow, SearchFacet, SearchGroup, SearchHit,
-        SearchTpl, SecurityTpl, SettingsSignaturesTpl, SettingsTokensTpl, SettingsTpl, ShareRow,
-        SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow,
-        VersionRow, WorkingHour,
+        HomeEvent, HomeReminder, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl,
+        MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
+        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MfaFactorRow,
+        MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook, NotesActivityTpl,
+        NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow, SearchFacet,
+        SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsSignaturesTpl, SettingsTokensTpl,
+        SettingsTpl, ShareRow, SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow,
+        TasksTpl, TenantUsageRow, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -774,6 +774,41 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
         }
     };
 
+    // Upcoming calendar reminders (next 24h) from the default calendar.
+    let reminders: Vec<HomeReminder> = {
+        let cal_id = default_calendar_id(&st, &headers, &t, &u).await;
+        if cal_id.is_empty() {
+            Vec::new()
+        } else {
+            let enc = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC);
+            get_json::<Vec<serde_json::Value>>(
+                &st,
+                &st.backends.calendar,
+                &format!("/api/v1/calendars/{enc}/alarms/upcoming?within_hours=24"),
+                &headers,
+                Some((&t, &u)),
+            )
+            .await?
+            .unwrap_or_default()
+            .into_iter()
+            .take(6)
+            .map(|a| HomeReminder {
+                text: a
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("Lembrete")
+                    .to_string(),
+                when: a
+                    .get("trigger_abs")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.replace('T', " ").chars().take(16).collect())
+                    .unwrap_or_default(),
+            })
+            .collect()
+        }
+    };
+
     Ok(askama_axum::IntoResponse::into_response(HomeTpl {
         me,
         mail_unread,
@@ -782,6 +817,7 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
         drive_files,
         chat_unread,
         tasks_due,
+        reminders,
     }))
 }
 
