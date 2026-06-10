@@ -687,6 +687,30 @@ pub struct CalendarManageTpl {
     pub flash: Option<String>,
 }
 
+/// One event row in the agenda (list) view.
+pub struct AgendaRow {
+    pub id: String,
+    pub calendar_id: String,
+    pub summary: String,
+    /// "HH:MM" start, or "dia todo".
+    pub time: String,
+    pub location: String,
+}
+
+/// One day section of the agenda view.
+pub struct AgendaDay {
+    /// "Seg, 10/06" style label.
+    pub label: String,
+    pub rows: Vec<AgendaRow>,
+}
+
+#[derive(Template)]
+#[template(path = "calendar_agenda.html")]
+pub struct CalendarAgendaTpl {
+    pub me: Me,
+    pub days: Vec<AgendaDay>,
+}
+
 // ─── Contacts ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Clone)]

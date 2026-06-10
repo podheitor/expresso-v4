@@ -21,18 +21,19 @@ use crate::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
         AdminConfigTpl, AdminDlqTpl, AdminLoginEvent, AdminMonitoringTpl, AdminResourcesTpl,
         AdminRetentionTpl, AdminTenant, AdminTenantUsageTpl, AdminTenantsTpl, AdminUser,
-        AdminUserDetailTpl, AdminUsersTpl, ApiTokenRow, ArchiveRow, ArchiveStatRow,
-        ArchiveTagHistRow, AuditEvent, AvailabilityTpl, BulkDeleteEventRow, Calendar,
-        CalendarBulkDeleteTpl, CalendarConflictsTpl, CalendarCountersTpl, CalendarDayTpl,
-        CalendarHistogramTpl, CalendarManageTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl,
-        CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl,
-        ComplianceStatsTpl, ComplianceTagsTpl, ConflictPairRow, Contact, ContactActivityTpl,
-        ContactAddressRow, ContactDiffTpl, ContactDuplicatesTpl, ContactEmailRow, ContactFormTpl,
-        ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow,
-        ContactVersionsTpl, ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView,
-        DelegationsTpl, DlqEntry, DlqKindCount, DriveAclTpl, DriveActivityTpl, DriveCommentRow,
-        DriveCommentsTpl, DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile,
-        DriveFileTag, DrivePreviewTpl, DriveQuota, DriveRecentRow, DriveRecentTpl, DriveShareTpl,
+        AdminUserDetailTpl, AdminUsersTpl, AgendaDay, AgendaRow, ApiTokenRow, ArchiveRow,
+        ArchiveStatRow, ArchiveTagHistRow, AuditEvent, AvailabilityTpl, BulkDeleteEventRow,
+        Calendar, CalendarAgendaTpl, CalendarBulkDeleteTpl, CalendarConflictsTpl,
+        CalendarCountersTpl, CalendarDayTpl, CalendarHistogramTpl, CalendarManageTpl,
+        CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl, ChatAttachment,
+        ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl, ComplianceStatsTpl,
+        ComplianceTagsTpl, ConflictPairRow, Contact, ContactActivityTpl, ContactAddressRow,
+        ContactDiffTpl, ContactDuplicatesTpl, ContactEmailRow, ContactFormTpl, ContactGroup,
+        ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl,
+        ContactsTpl, CounterRow, DayColumn, DelegationRaw, DelegationView, DelegationsTpl,
+        DlqEntry, DlqKindCount, DriveAclTpl, DriveActivityTpl, DriveCommentRow, DriveCommentsTpl,
+        DriveContentHit, DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag,
+        DrivePreviewTpl, DriveQuota, DriveRecentRow, DriveRecentTpl, DriveShareTpl,
         DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl, DriveTrashTpl,
         DriveVersionsTpl, DuplicateGroup, Event, EventFormTpl, FindTimeTpl, FlagPreset,
         FlowEditTpl, FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, FreeSlotRow,
@@ -155,6 +156,7 @@ pub fn router(state: AppState) -> Router {
         .route("/calendar/:cal_id", get(calendar_month_page))
         .route("/calendar/:cal_id/week", get(calendar_week_page))
         .route("/calendar/:cal_id/day", get(calendar_day_page))
+        .route("/calendar/agenda", get(calendar_agenda_page))
         .route(
             "/calendar/:cal_id/events/new",
             get(event_new_form).post(event_new_action),
@@ -7553,6 +7555,76 @@ async fn calendar_day_page(
         events,
         hours: (0u8..24).collect(),
     }))
+}
+
+/// GET /calendar/agenda — a flat list view of the next 14 days across all the
+/// caller's calendars, grouped by day (Outlook's "agenda" view; complements
+/// day/week/month).
+async fn calendar_agenda_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let calendars = get_json::<Vec<Calendar>>(
+        &st,
+        &st.backends.calendar,
+        "/api/v1/calendars",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let today = OffsetDateTime::now_utc().date();
+    let end = today.saturating_add(time::Duration::days(14));
+    let from = format!("{today}T00:00:00Z");
+    let to = format!("{end}T23:59:59Z");
+    // Merge events from every calendar, then sort by start.
+    let mut events: Vec<Event> = Vec::new();
+    for c in &calendars {
+        events.extend(fetch_events(&st, &headers, &t, &u, &c.id, &from, &to).await?);
+    }
+    events.sort_by(|a, b| a.dtstart.cmp(&b.dtstart));
+    // Group by date (the YYYY-MM-DD prefix of dtstart).
+    let mut days: Vec<AgendaDay> = Vec::new();
+    for e in events {
+        let Some(dt) = e.dtstart.as_deref() else {
+            continue;
+        };
+        let date_key = &dt[..10.min(dt.len())];
+        let time = if e.is_all_day() {
+            "dia todo".to_string()
+        } else {
+            hhmm_of_rfc3339(dt).to_string()
+        };
+        let row = AgendaRow {
+            id: e.id,
+            calendar_id: e.calendar_id,
+            summary: e.summary.unwrap_or_else(|| "(sem título)".into()),
+            time,
+            location: e.location.unwrap_or_default(),
+        };
+        // Label like "Seg, 10/06" — best-effort from the date prefix.
+        let label = time::Date::parse(
+            date_key,
+            time::macros::format_description!("[year]-[month]-[day]"),
+        )
+        .map(|d| format!("{}, {:02}/{:02}", weekday_pt(d), d.day(), d.month() as u8))
+        .unwrap_or_else(|_| date_key.to_string());
+        match days.last_mut() {
+            Some(last) if last.label == label => last.rows.push(row),
+            _ => days.push(AgendaDay {
+                label,
+                rows: vec![row],
+            }),
+        }
+    }
+    Ok(askama_axum::IntoResponse::into_response(
+        CalendarAgendaTpl { me, days },
+    ))
 }
 
 // ─── event create/edit/delete ───────────────────────────────────────────────

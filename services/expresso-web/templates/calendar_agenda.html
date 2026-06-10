@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Agenda · Expresso{% endblock %}
+{% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>📋 Agenda</h1>
+    <a class="btn btn-ghost" href="/calendar">◀ Calendário</a>
+  </div>
+  <p class="muted small">Seus próximos 14 dias em todas as agendas.</p>
+
+  {% if days.is_empty() %}
+    <div class="empty-state">Nenhum evento nos próximos 14 dias.</div>
+  {% else %}
+  {% for d in days %}
+  <div class="card stack" style="margin-bottom:.75rem">
+    <h2 style="font-size:.95rem">{{ d.label }}</h2>
+    <ul style="list-style:none;padding:0;margin:0">
+      {% for r in d.rows %}
+      <li style="display:flex;align-items:center;gap:.6rem;padding:.4rem 0;border-bottom:1px solid var(--border-subtle)">
+        <span class="mono small" style="width:5rem;flex:none">{{ r.time }}</span>
+        <a class="link" style="flex:1" href="/calendar/{{ r.calendar_id }}/events/{{ r.id }}/edit">{{ r.summary }}</a>
+        {% if !r.location.is_empty() %}<span class="muted small">📍 {{ r.location }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}
