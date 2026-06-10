@@ -679,6 +679,14 @@ pub struct CalendarTpl {
     pub calendars: Vec<Calendar>,
 }
 
+#[derive(Template)]
+#[template(path = "calendar_manage.html")]
+pub struct CalendarManageTpl {
+    pub me: Me,
+    pub calendars: Vec<Calendar>,
+    pub flash: Option<String>,
+}
+
 // ─── Contacts ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Clone)]

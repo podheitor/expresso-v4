@@ -24,8 +24,8 @@ use crate::{
         AdminUserDetailTpl, AdminUsersTpl, ApiTokenRow, ArchiveRow, ArchiveStatRow,
         ArchiveTagHistRow, AuditEvent, AvailabilityTpl, BulkDeleteEventRow, Calendar,
         CalendarBulkDeleteTpl, CalendarConflictsTpl, CalendarCountersTpl, CalendarDayTpl,
-        CalendarHistogramTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl, CalendarWeekTpl,
-        ChatAttachment, ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl,
+        CalendarHistogramTpl, CalendarManageTpl, CalendarMonthTpl, CalendarShareTpl, CalendarTpl,
+        CalendarWeekTpl, ChatAttachment, ChatChannel, ChatMessage, ChatTpl, ComplianceArchiveTpl,
         ComplianceStatsTpl, ComplianceTagsTpl, ConflictPairRow, Contact, ContactActivityTpl,
         ContactAddressRow, ContactDiffTpl, ContactDuplicatesTpl, ContactEmailRow, ContactFormTpl,
         ContactGroup, ContactGroupDetailTpl, ContactGroupsTpl, ContactVersionRow,
@@ -121,6 +121,12 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/preview", get(drive_preview_page))
         .route("/drive/:id/edit", get(drive_edit_page))
         .route("/calendar", get(calendar_page))
+        .route(
+            "/calendar/manage",
+            get(calendar_manage_page).post(calendar_create_action),
+        )
+        .route("/calendar/manage/:id/update", post(calendar_update_action))
+        .route("/calendar/manage/:id/delete", post(calendar_delete_action))
         .route("/calendar/freebusy", get(freebusy_page))
         .route("/calendar/find-time", get(find_time_page))
         .route("/availability", get(availability_page))
@@ -1857,6 +1863,134 @@ async fn calendar_page(
         me,
         calendars,
     }))
+}
+
+/// GET /calendar/manage — manage calendars: create, rename, recolor, delete.
+async fn calendar_manage_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let calendars = get_json::<Vec<Calendar>>(
+        &st,
+        &st.backends.calendar,
+        "/api/v1/calendars",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(
+        CalendarManageTpl {
+            me,
+            calendars,
+            flash: extract_flash(&uri),
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+struct CalendarForm {
+    name: String,
+    #[serde(default)]
+    color: String,
+}
+
+/// POST /calendar/manage — create a calendar.
+async fn calendar_create_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<CalendarForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let name = f.name.trim();
+    if name.is_empty() {
+        return Ok(Redirect::to("/calendar/manage?flash=Informe+um+nome").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let color = normalize_hex_color(&f.color);
+    let _ = post_json(
+        &st,
+        &st.backends.calendar,
+        "/api/v1/calendars",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "name": name, "color": color }),
+    )
+    .await?;
+    Ok(Redirect::to("/calendar/manage?flash=Agenda+criada").into_response())
+}
+
+/// POST /calendar/manage/:id/update — rename and/or recolor a calendar.
+async fn calendar_update_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<CalendarForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let name = f.name.trim();
+    if name.is_empty() {
+        return Ok(Redirect::to("/calendar/manage?flash=Informe+um+nome").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let color = normalize_hex_color(&f.color);
+    let _ = patch_json(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/calendars/{enc}"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "name": name, "color": color }),
+    )
+    .await?;
+    Ok(Redirect::to("/calendar/manage?flash=Agenda+atualizada").into_response())
+}
+
+/// POST /calendar/manage/:id/delete — delete a calendar.
+async fn calendar_delete_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = delete_at(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/calendars/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/calendar/manage?flash=Agenda+removida").into_response())
+}
+
+/// Validate a "#rrggbb" hex color; returns it lowercased, or a default blue
+/// when blank/invalid (so the backend always gets a sane value).
+fn normalize_hex_color(raw: &str) -> String {
+    let s = raw.trim();
+    let ok = s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit());
+    if ok {
+        s.to_ascii_lowercase()
+    } else {
+        "#3498db".to_string()
+    }
 }
 
 #[derive(Deserialize)]
@@ -13573,6 +13707,15 @@ mod tests {
         );
         assert_eq!(duplicate_key(&mk(Some("  "), None)), None);
         assert_eq!(duplicate_key(&mk(None, None)), None);
+    }
+
+    #[test]
+    fn normalize_hex_color_validates_and_defaults() {
+        assert_eq!(normalize_hex_color("#3498DB"), "#3498db");
+        assert_eq!(normalize_hex_color("  #ff0000 "), "#ff0000");
+        assert_eq!(normalize_hex_color("blue"), "#3498db"); // invalid → default
+        assert_eq!(normalize_hex_color("#fff"), "#3498db"); // wrong length
+        assert_eq!(normalize_hex_color(""), "#3498db");
     }
 
     #[test]

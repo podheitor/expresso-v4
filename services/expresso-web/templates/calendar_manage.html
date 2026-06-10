@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Gerenciar agendas · Expresso{% endblock %}
+{% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>🗂 Gerenciar agendas</h1>
+    <a class="btn btn-ghost" href="/calendar">◀ Agenda</a>
+  </div>
+  {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+
+  <div class="card stack">
+    <h2>Nova agenda</h2>
+    <form method="post" action="/calendar/manage" style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap">
+      <label style="flex:1;min-width:200px"><span>Nome</span>
+        <input type="text" name="name" required maxlength="120" placeholder="ex: Trabalho">
+      </label>
+      <label><span>Cor</span>
+        <input type="color" name="color" value="#3498db" style="width:3rem;height:2.2rem;padding:0">
+      </label>
+      <button type="submit" class="btn btn-primary">Criar agenda</button>
+    </form>
+  </div>
+
+  <div class="card stack">
+    <h2>Minhas agendas</h2>
+    {% if calendars.is_empty() %}
+      <p class="muted">Nenhuma agenda.</p>
+    {% else %}
+    <table class="data-table" style="width:100%">
+      <thead><tr><th>Cor</th><th>Nome</th><th></th></tr></thead>
+      <tbody>
+        {% for c in calendars %}
+        <tr>
+          <td><span style="display:inline-block;width:1rem;height:1rem;border-radius:.2rem;background:{% match c.color %}{% when Some with (col) %}{{ col }}{% when None %}#3498db{% endmatch %}"></span></td>
+          <td>{{ c.name }}{% if c.is_default %} <span class="badge">padrão</span>{% endif %}</td>
+          <td style="text-align:right;white-space:nowrap">
+            <form method="post" action="/calendar/manage/{{ c.id }}/update" style="display:inline-flex;gap:.3rem;align-items:center">
+              <input type="text" name="name" value="{{ c.name }}" maxlength="120" style="width:9rem">
+              <input type="color" name="color" value="{% match c.color %}{% when Some with (col) %}{{ col }}{% when None %}#3498db{% endmatch %}" style="width:2.4rem;height:2rem;padding:0">
+              <button type="submit" class="btn btn-ghost btn-sm">Salvar</button>
+            </form>
+            {% if !c.is_default %}
+            <form method="post" action="/calendar/manage/{{ c.id }}/delete" style="display:inline"
+                  onsubmit="return confirm('Remover a agenda &quot;{{ c.name }}&quot; e todos os seus eventos?')">
+              <button type="submit" class="btn btn-ghost btn-sm">Remover</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
