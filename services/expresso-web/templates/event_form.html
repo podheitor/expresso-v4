@@ -144,6 +144,14 @@
                placeholder="trabalho, pessoal, reunião (separadas por vírgula)">
       </label>
 
+      <!-- Anexos por link (ATTACH) -->
+      <label style="display:block;margin-bottom:.75rem">
+        <span style="font-size:.875rem">📎 Anexos (links)</span>
+        <textarea name="attachments" rows="2"
+                  placeholder="https://… (um link por linha — ex.: arquivo do Drive ou documento externo)">{{ attachments }}</textarea>
+        <span class="muted small">Apenas links http(s); não há upload de arquivos no evento.</span>
+      </label>
+
       {% if !resources.is_empty() %}
       <!-- Recursos reserváveis (salas / equipamento) -->
       <fieldset style="display:block;margin-bottom:.75rem;border:1px solid var(--border);border-radius:.4rem;padding:.5rem .75rem">

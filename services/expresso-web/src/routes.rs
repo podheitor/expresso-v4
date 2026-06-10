@@ -14,8 +14,8 @@ use serde::Deserialize;
 use crate::{
     error::WebResult,
     ical::{
-        booked_resources_from_ical, build_vcalendar, categories_from_ical, to_rfc3339,
-        valarm_minutes, EventForm,
+        attachments_from_ical, booked_resources_from_ical, build_vcalendar, categories_from_ical,
+        to_rfc3339, valarm_minutes, EventForm,
     },
     templates::{
         AclRow, ActivityRow, AddrbookShareTpl, AddressBook, AdminAuditTpl, AdminConfig,
@@ -6989,6 +6989,7 @@ async fn event_new_form(
         categories: String::new(),
         resources,
         booked_resources: Vec::new(),
+        attachments: String::new(),
         error: None,
     }
     .into_response())
@@ -7220,6 +7221,11 @@ async fn event_edit_form(
             .as_deref()
             .map(booked_resources_from_ical)
             .unwrap_or_default(),
+        attachments: event
+            .ical_raw
+            .as_deref()
+            .map(attachments_from_ical)
+            .unwrap_or_default(),
         error: None,
     }
     .into_response())
@@ -7440,6 +7446,7 @@ async fn event_delete_action(
                 reminders: String::new(),
                 categories: String::new(),
                 resources: String::new(),
+                attachments: String::new(),
             };
             let organizer = ev.organizer_email.as_deref().or(Some(me.email.as_str()));
             if let Some(itip) =

@@ -1474,6 +1474,9 @@ pub struct EventFormTpl {
     /// Emails of resources already booked on this event (seeds the checkboxes on
     /// edit). Empty on a new event.
     pub booked_resources: Vec<String>,
+    /// Newline-separated attachment URLs (ATTACH), seeding the form. Empty on
+    /// a new event.
+    pub attachments: String,
     pub error: Option<String>,
 }
 

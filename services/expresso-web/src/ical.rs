@@ -32,6 +32,30 @@ pub struct EventForm {
     /// booking and detects double-bookings.
     #[serde(default)]
     pub resources: String,
+    /// Newline/comma-separated attachment URLs (RFC 5545 ATTACH). Each becomes
+    /// an `ATTACH:<uri>` line; the backend indexes them. Files aren't uploaded —
+    /// only links (e.g. a drive file URL or an external doc).
+    #[serde(default)]
+    pub attachments: String,
+}
+
+/// Split attachment URLs (newline/comma/whitespace-separated), keeping only
+/// http(s) and known URI schemes, deduped, capped to bound output.
+pub fn parse_attachment_uris(raw: &str) -> Vec<String> {
+    let mut out: Vec<String> = raw
+        .split(['\n', ',', ' ', '\t'])
+        .map(str::trim)
+        .filter(|s| {
+            s.starts_with("http://")
+                || s.starts_with("https://")
+                || s.starts_with("mailto:")
+                || s.starts_with("cid:")
+        })
+        .map(str::to_string)
+        .collect();
+    out.dedup();
+    out.truncate(20);
+    out
 }
 
 /// Split a comma/semicolon/whitespace-separated list of resource emails into a
@@ -236,6 +260,23 @@ pub fn categories_from_ical(ical: &str) -> String {
     cats.join(", ")
 }
 
+/// Extract ATTACH URIs from an event's iCalendar as a newline-separated string
+/// for the edit form. Skips inline binary attachments (`ATTACH;ENCODING=…`),
+/// keeping only plain URI links.
+pub fn attachments_from_ical(ical: &str) -> String {
+    let mut uris: Vec<String> = Vec::new();
+    for line in ical.lines() {
+        let line = line.trim_start();
+        if let Some(uri) = line.strip_prefix("ATTACH:") {
+            let uri = uri.trim();
+            if !uri.is_empty() {
+                uris.push(uri.to_string());
+            }
+        }
+    }
+    uris.join("\n")
+}
+
 /// Build a complete VCALENDAR document for an event create/update/cancel.
 /// Returns None when the start/end timestamps can't be normalized.
 pub fn build_vcalendar(
@@ -281,6 +322,9 @@ pub fn build_vcalendar(
     let cats = format_categories(&f.categories);
     if !cats.is_empty() {
         ical.push_str(&format!("CATEGORIES:{cats}\r\n"));
+    }
+    for uri in parse_attachment_uris(&f.attachments) {
+        ical.push_str(&format!("ATTACH:{uri}\r\n"));
     }
     if let Some(email) = organizer_email {
         if !email.is_empty() {
@@ -328,6 +372,20 @@ mod tests {
         assert_eq!(categories_from_ical(ical), "work, personal");
         assert_eq!(categories_from_ical("CATEGORIES:solo\r\n"), "solo");
         assert_eq!(categories_from_ical("SUMMARY:x\r\n"), "");
+    }
+
+    #[test]
+    fn parse_attachment_uris_keeps_only_known_schemes() {
+        let v = parse_attachment_uris("https://a/x\nhttp://b\nnotaurl\nftp://c\nmailto:d@e");
+        assert_eq!(v, vec!["https://a/x", "http://b", "mailto:d@e"]);
+        assert!(parse_attachment_uris("  , , ").is_empty());
+    }
+
+    #[test]
+    fn attachments_from_ical_extracts_uri_lines() {
+        let ical = "BEGIN:VEVENT\r\nATTACH:https://a/x\r\nATTACH:https://b/y\r\nSUMMARY:s\r\n";
+        assert_eq!(attachments_from_ical(ical), "https://a/x\nhttps://b/y");
+        assert_eq!(attachments_from_ical("SUMMARY:x\r\n"), "");
     }
 
     #[test]
@@ -394,6 +452,7 @@ mod tests {
             reminders: "15".into(),
             categories: "work".into(),
             resources: String::new(),
+            attachments: String::new(),
         };
         let ical = build_vcalendar("uid-1@x", Some("a@ex.com"), &["b@ex.com".into()], None, &f)
             .expect("valid dates");
@@ -420,6 +479,7 @@ mod tests {
             reminders: "15".into(),
             categories: String::new(),
             resources: String::new(),
+            attachments: String::new(),
         };
         let ical = build_vcalendar("u", None, &[], Some("CANCEL"), &f).expect("valid dates");
         assert!(ical.contains("METHOD:CANCEL"));
@@ -465,6 +525,7 @@ mod tests {
             reminders: String::new(),
             categories: String::new(),
             resources: String::new(),
+            attachments: String::new(),
         };
         assert!(build_vcalendar("u", None, &[], None, &f).is_none());
     }
@@ -491,6 +552,7 @@ mod tests {
             reminders: String::new(),
             categories: String::new(),
             resources: "sala1@x.com".into(),
+            attachments: String::new(),
         };
         let ical = build_vcalendar("u", None, &[], None, &f).expect("valid");
         assert!(ical
