@@ -2053,6 +2053,24 @@ pub struct DelegationsTpl {
     pub to_me: Vec<DelegationView>,
 }
 
+/// One email signature in the multi-signature manager.
+pub struct SignatureRow {
+    pub id: String,
+    pub name: String,
+    pub content: String,
+    /// "html" or "plain".
+    pub format: String,
+    pub is_default: bool,
+}
+
+#[derive(Template)]
+#[template(path = "settings_signatures.html")]
+pub struct SettingsSignaturesTpl {
+    pub me: Me,
+    pub rows: Vec<SignatureRow>,
+    pub flash: Option<String>,
+}
+
 /// One personal access token (metadata only — the secret is never listed).
 pub struct ApiTokenRow {
     pub id: String,

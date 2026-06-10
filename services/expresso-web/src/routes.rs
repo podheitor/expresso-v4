@@ -40,8 +40,9 @@ use crate::{
         MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MfaFactorRow, MonthCell, Note,
         NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook, NotesActivityTpl, NotesSharedTpl,
         NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow, SearchFacet, SearchGroup, SearchHit,
-        SearchTpl, SecurityTpl, SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow,
-        SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow, VersionRow, WorkingHour,
+        SearchTpl, SecurityTpl, SettingsSignaturesTpl, SettingsTokensTpl, SettingsTpl, ShareRow,
+        SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow,
+        VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -444,6 +445,18 @@ pub fn router(state: AppState) -> Router {
             get(settings_tokens_page).post(settings_token_create),
         )
         .route("/settings/tokens/:id/revoke", post(settings_token_revoke))
+        .route(
+            "/settings/signatures",
+            get(settings_signatures_page).post(settings_signature_create),
+        )
+        .route(
+            "/settings/signatures/:id/delete",
+            post(settings_signature_delete),
+        )
+        .route(
+            "/settings/signatures/:id/default",
+            post(settings_signature_set_default),
+        )
         .route("/settings/aliases", post(settings_alias_create))
         .route("/settings/aliases/:id/toggle", post(settings_alias_toggle))
         .route("/settings/aliases/:id/delete", post(settings_alias_delete))
@@ -11572,6 +11585,177 @@ async fn delegation_revoke_action(
     )
     .await?;
     Ok(Redirect::to("/settings/delegations?flash=Delegação+revogada").into_response())
+}
+
+// ─── /settings/signatures (multiple email signatures) ────────────────────────
+
+/// GET /settings/signatures — list the caller's signatures (the mail service
+/// allows several, with one default; the single-signature settings tab only
+/// covers the legacy one-signature endpoint).
+async fn settings_signatures_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let rows = get_json::<Vec<serde_json::Value>>(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/signatures",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .into_iter()
+    .map(|s| SignatureRow {
+        id: s
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        name: s
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        content: s
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        format: s
+            .get("format")
+            .and_then(|v| v.as_str())
+            .unwrap_or("plain")
+            .to_string(),
+        is_default: s
+            .get("is_default")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+    })
+    .collect();
+    Ok(askama_axum::IntoResponse::into_response(
+        SettingsSignaturesTpl {
+            me,
+            rows,
+            flash: extract_flash(&uri),
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+struct MultiSignatureForm {
+    name: String,
+    content: String,
+    #[serde(default)]
+    format: String,
+    #[serde(default)]
+    is_default: String,
+}
+
+/// POST /settings/signatures — create a signature.
+async fn settings_signature_create(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<MultiSignatureForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let name = f.name.trim();
+    let content = f.content.trim();
+    if name.is_empty() || content.is_empty() {
+        return Ok(
+            Redirect::to("/settings/signatures?flash=Informe+nome+e+conte%C3%BAdo").into_response(),
+        );
+    }
+    let format = if f.format == "html" { "html" } else { "plain" };
+    let (t, u) = ctx_of(&me);
+    let _ = post_json(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/signatures",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({
+            "name": name,
+            "content": content,
+            "format": format,
+            "is_default": f.is_default == "1",
+        }),
+    )
+    .await?;
+    Ok(Redirect::to("/settings/signatures?flash=Assinatura+criada").into_response())
+}
+
+/// POST /settings/signatures/:id/delete — remove a signature.
+async fn settings_signature_delete(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = delete_at(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/signatures/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/settings/signatures?flash=Assinatura+removida").into_response())
+}
+
+#[derive(Deserialize)]
+struct SignatureDefaultForm {
+    /// Current name/content/format are re-sent because the update endpoint
+    /// replaces the whole record (name + content required).
+    name: String,
+    content: String,
+    #[serde(default)]
+    format: String,
+}
+
+/// POST /settings/signatures/:id/default — make this signature the default
+/// (PUT with is_default=true; the backend clears the flag on the others).
+async fn settings_signature_set_default(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<SignatureDefaultForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let format = if f.format == "html" { "html" } else { "plain" };
+    let _ = put_json(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/signatures/{enc}"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({
+            "name": f.name,
+            "content": f.content,
+            "format": format,
+            "is_default": true,
+        }),
+    )
+    .await?;
+    Ok(Redirect::to("/settings/signatures?flash=Assinatura+padr%C3%A3o+definida").into_response())
 }
 
 // ─── /settings/tokens (personal access tokens) ───────────────────────────────

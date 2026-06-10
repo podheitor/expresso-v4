@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Assinaturas · Expresso{% endblock %}
+{% block nav %}{% let current = "settings" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Assinaturas de e-mail</h1>
+    <a class="btn btn-ghost btn-sm" href="/settings">← Configurações</a>
+  </div>
+  {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+
+  <div class="card stack">
+    <h2>Nova assinatura</h2>
+    <p class="muted small">Você pode manter várias assinaturas; a padrão é sugerida ao compor.</p>
+    <form class="compose-form" method="post" action="/settings/signatures">
+      <label><span>Nome</span>
+        <input type="text" name="name" required maxlength="120" placeholder="ex: Trabalho">
+      </label>
+      <label><span>Conteúdo</span>
+        <textarea name="content" rows="5" required placeholder="Atenciosamente,&#10;Seu Nome"></textarea>
+      </label>
+      <label><span>Formato</span>
+        <select name="format" class="input">
+          <option value="plain">Texto simples</option>
+          <option value="html">HTML</option>
+        </select>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" name="is_default" value="1"> <span>Definir como padrão</span>
+      </label>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Criar assinatura</button></div>
+    </form>
+  </div>
+
+  <div class="card stack">
+    <h2>Minhas assinaturas</h2>
+    {% if rows.is_empty() %}
+      <p class="muted">Nenhuma assinatura criada.</p>
+    {% else %}
+    <table class="data-table" style="width:100%">
+      <thead><tr><th>Nome</th><th>Formato</th><th>Padrão</th><th></th></tr></thead>
+      <tbody>
+        {% for s in rows %}
+        <tr>
+          <td>{{ s.name }}</td>
+          <td class="mono small">{{ s.format }}</td>
+          <td>{% if s.is_default %}<span class="badge">padrão</span>{% else %}
+            <form method="post" action="/settings/signatures/{{ s.id }}/default" style="display:inline">
+              <input type="hidden" name="name" value="{{ s.name }}">
+              <input type="hidden" name="content" value="{{ s.content }}">
+              <input type="hidden" name="format" value="{{ s.format }}">
+              <button class="btn btn-ghost btn-sm" type="submit" title="Tornar padrão">Tornar padrão</button>
+            </form>
+          {% endif %}</td>
+          <td style="text-align:right">
+            <form method="post" action="/settings/signatures/{{ s.id }}/delete" style="display:inline"
+                  onsubmit="return confirm('Remover a assinatura &quot;{{ s.name }}&quot;?')">
+              <button class="btn btn-ghost btn-sm" type="submit">Remover</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
