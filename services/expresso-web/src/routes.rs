@@ -44,9 +44,10 @@ use crate::{
         MfaFactorRow, MonthCell, Note, NoteAclTpl, NoteTagStat, NoteVersionRow, NoteVersionsTpl,
         Notebook, NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource,
         RetentionPolicyRow, ScheduledRow, SearchFacet, SearchGroup, SearchHit, SearchTpl,
-        SecurityTpl, SettingsBlockedSendersTpl, SettingsSignaturesTpl, SettingsTemplatesTpl,
-        SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow, SignatureRow, SnoozedRow,
-        TagPairRow, TaskRow, TasksTpl, TenantUsageRow, VersionRow, WebhookLogRow, WorkingHour,
+        SecurityTpl, SettingsBlockedSendersTpl, SettingsSignaturesTpl, SettingsSweepTpl,
+        SettingsTemplatesTpl, SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow,
+        SignatureRow, SnoozedRow, SweepRuleRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow,
+        VersionRow, WebhookLogRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -334,6 +335,11 @@ pub fn router(state: AppState) -> Router {
             "/settings/safe-senders/:address/delete",
             post(settings_safe_remove),
         )
+        .route(
+            "/settings/sweep",
+            get(settings_sweep_page).post(settings_sweep_add),
+        )
+        .route("/settings/sweep/:id/delete", post(settings_sweep_remove))
         .route("/mail/snoozed", get(mail_snoozed_page))
         .route("/mail/scheduled", get(mail_scheduled_page))
         .route(
@@ -5778,6 +5784,126 @@ async fn settings_safe_remove(
         Redirect::to("/settings/blocked-senders?flash=Removido+da+lista+confi%C3%A1vel")
             .into_response(),
     )
+}
+
+/// GET /settings/sweep — manage Sweep rules (auto-move old mail from a sender).
+async fn settings_sweep_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let raw = get_json::<Vec<serde_json::Value>>(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/sweep-rules",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    let rows = raw
+        .into_iter()
+        .map(|r| SweepRuleRow {
+            id: r
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            sender_address: r
+                .get("sender_address")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            older_than_days: r
+                .get("older_than_days")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(7),
+            target_folder: r
+                .get("target_folder")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Trash")
+                .to_string(),
+        })
+        .collect();
+    Ok(askama_axum::IntoResponse::into_response(SettingsSweepTpl {
+        me,
+        rows,
+        flash: extract_flash(&uri),
+    }))
+}
+
+#[derive(Deserialize)]
+struct SweepRuleForm {
+    sender_address: String,
+    #[serde(default)]
+    older_than_days: String,
+    #[serde(default)]
+    target_folder: String,
+}
+
+/// POST /settings/sweep — create a Sweep rule.
+async fn settings_sweep_add(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<SweepRuleForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let sender = f.sender_address.trim().to_ascii_lowercase();
+    if !sender.contains('@') {
+        return Ok(
+            Redirect::to("/settings/sweep?flash=Informe+um+e-mail+v%C3%A1lido").into_response(),
+        );
+    }
+    let days: i64 = f.older_than_days.trim().parse().unwrap_or(7).clamp(0, 3650);
+    let folder = match f.target_folder.trim() {
+        "" => "Trash",
+        other => other,
+    };
+    let (t, u) = ctx_of(&me);
+    let _ = post_json(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/sweep-rules",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({
+            "sender_address": sender,
+            "older_than_days": days,
+            "target_folder": folder,
+        }),
+    )
+    .await?;
+    Ok(Redirect::to("/settings/sweep?flash=Regra+criada").into_response())
+}
+
+/// POST /settings/sweep/:id/delete — delete a Sweep rule.
+async fn settings_sweep_remove(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = delete_at(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/sweep-rules/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/settings/sweep?flash=Regra+removida").into_response())
 }
 
 /// POST /settings/blocked-senders — block an address.

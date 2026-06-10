@@ -20,6 +20,7 @@ pub mod safe_senders;
 pub mod sieve;
 pub mod signatures;
 pub mod snooze;
+pub mod sweep;
 pub mod threads;
 pub mod vacation;
 
@@ -90,5 +91,6 @@ fn api_routes(_state: AppState) -> Router<AppState> {
         .merge(labels::routes())
         .merge(blocked_senders::routes())
         .merge(safe_senders::routes())
+        .merge(sweep::routes())
         .merge(threads::routes())
 }

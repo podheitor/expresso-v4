@@ -211,6 +211,16 @@ pub async fn run() -> anyhow::Result<()> {
         api::snooze::spawn_waker(snooze_pool, snooze_interval);
     }
 
+    // Sweep worker — applies user Sweep rules (move old mail from a sender).
+    {
+        let sweep_interval = std::env::var("MAIL_SWEEP_WORKER_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(300u64);
+        tracing::info!(interval_secs = sweep_interval, "spawning sweep worker");
+        api::sweep::spawn_worker(state.db().clone(), sweep_interval);
+    }
+
     // Vacation auto-deactivation worker — hourly, deactivates when deactivate_at <= now()
     api::vacation::spawn_deactivation_worker(state.db().clone());
 

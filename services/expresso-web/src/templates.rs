@@ -2327,6 +2327,22 @@ pub struct SettingsBlockedSendersTpl {
     pub flash: Option<String>,
 }
 
+/// One Sweep rule for the settings page.
+pub struct SweepRuleRow {
+    pub id: String,
+    pub sender_address: String,
+    pub older_than_days: i64,
+    pub target_folder: String,
+}
+
+#[derive(Template)]
+#[template(path = "settings_sweep.html")]
+pub struct SettingsSweepTpl {
+    pub me: Me,
+    pub rows: Vec<SweepRuleRow>,
+    pub flash: Option<String>,
+}
+
 /// One personal access token (metadata only — the secret is never listed).
 pub struct ApiTokenRow {
     pub id: String,
