@@ -135,6 +135,9 @@
                   title="{% if f.is_starred() %}Remover dos favoritos{% else %}Adicionar aos favoritos{% endif %}">⭐</button>
           <button class="btn btn-ghost btn-sm drive-color-btn" data-id="{{ f.id }}"
                   onclick="cycleDriveColor('{{ f.id }}', this)" title="Cor (clique p/ alternar)">●</button>
+          {% if f.is_folder() %}
+            <a class="btn btn-ghost btn-sm" href="/drive/folders/{{ f.id }}/download" title="Baixar pasta como ZIP">⬇ ZIP</a>
+          {% endif %}
           {% if f.is_folder() == false %}
             {% if f.is_previewable() %}<button class="btn btn-ghost btn-sm" onclick="openDrivePreview('{{ f.id }}','{{ f.name }}')" title="Visualizar">👁 Ver</button>{% endif %}
             <a class="btn btn-ghost btn-sm" href="/api/v1/drive/files/{{ f.id }}" title="Download">↓</a>

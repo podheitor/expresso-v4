@@ -93,7 +93,7 @@
               <a class="btn btn-ghost btn-sm" href="/mail/compose?forward={{ msg.id }}&folder=INBOX">→ Encaminhar</a>
               <button type="button" class="btn btn-ghost btn-sm" onclick="printOneMsg('{{ msg.id }}')" title="Imprimir só esta mensagem">🖨</button>
               <button type="button" class="btn btn-ghost btn-sm" onclick="markMsgSpam('{{ msg.id }}', this)" title="Marcar como spam e mover">🚫 Spam</button>
-              <a class="btn btn-ghost btn-sm" href="/api/v1/mail/{{ msg.id }}/raw" download="message-{{ msg.id }}.eml" title="Baixar mensagem original (.eml)">📥 .eml</a>
+              <a class="btn btn-ghost btn-sm" href="/mail/{{ msg.id }}/raw" download="message-{{ msg.id }}.eml" title="Baixar mensagem original (.eml)">📥 .eml</a>
             </div>
             <div id="thread-body-content-{{ msg.id }}" class="thread-body-content">
               {% if !msg.preview_display().is_empty() %}

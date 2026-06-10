@@ -81,6 +81,7 @@ pub fn router(state: AppState) -> Router {
         .route("/drive", get(drive_page))
         .route("/drive/trash", get(drive_trash_page))
         .route("/drive/starred", get(drive_starred_page))
+        .route("/drive/folders/:id/download", get(drive_folder_download))
         .route("/drive/:id/star", post(drive_star_action))
         .route("/drive/:id/unstar", post(drive_unstar_action))
         .route("/drive/:id/lock", post(drive_lock_action))
@@ -290,6 +291,7 @@ pub fn router(state: AppState) -> Router {
         .route("/flows/:id/delete", post(flow_delete_action))
         .route("/mail/:id/move", post(mail_move_action))
         .route("/mail/:id/delete", post(mail_delete_action))
+        .route("/mail/:id/raw", get(mail_message_raw))
         .route("/mail/snoozed", get(mail_snoozed_page))
         .route("/mail/scheduled", get(mail_scheduled_page))
         .route(
@@ -4930,6 +4932,82 @@ async fn mail_draft_update(
             .unwrap_or(StatusCode::BAD_GATEWAY)
             .into_response()),
     }
+}
+
+/// GET /mail/:id/raw — download a message as a raw RFC 5822 .eml file
+/// (backup/archival), streaming the bytes from the mail service.
+async fn mail_message_raw(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let (status, _ct, _cd, body) = get_bytes(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/messages/{enc}/raw"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    if !(200..300).contains(&status) {
+        return Ok((StatusCode::BAD_GATEWAY, "Falha ao exportar.").into_response());
+    }
+    Ok((
+        [
+            (header::CONTENT_TYPE, "message/rfc822".to_string()),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{id}.eml\""),
+            ),
+        ],
+        body,
+    )
+        .into_response())
+}
+
+/// GET /drive/folders/:id/download — download a folder and its contents as a
+/// ZIP, streaming the bytes from the drive service.
+async fn drive_folder_download(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let (status, ct, cd, body) = get_bytes(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/folders/{enc}/download"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    if !(200..300).contains(&status) {
+        return Ok((StatusCode::BAD_GATEWAY, "Falha ao baixar a pasta.").into_response());
+    }
+    // Honour the backend's filename (Content-Disposition) when present.
+    let disposition = cd.unwrap_or_else(|| "attachment; filename=\"folder.zip\"".to_string());
+    Ok((
+        [
+            (
+                header::CONTENT_TYPE,
+                ct.unwrap_or_else(|| "application/zip".into()),
+            ),
+            (header::CONTENT_DISPOSITION, disposition),
+        ],
+        body,
+    )
+        .into_response())
 }
 
 /// GET /mail/scheduled — pending scheduled-send messages with delivery times.
