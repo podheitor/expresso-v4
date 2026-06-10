@@ -2322,6 +2322,8 @@ pub struct SettingsBlockedSendersTpl {
     pub me: Me,
     /// Blocked email addresses, sorted.
     pub addresses: Vec<String>,
+    /// Safe (allow-listed) email addresses, sorted.
+    pub safe_addresses: Vec<String>,
     pub flash: Option<String>,
 }
 

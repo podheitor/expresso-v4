@@ -1,13 +1,40 @@
 {% extends "base.html" %}
-{% block title %}Remetentes bloqueados · Expresso{% endblock %}
+{% block title %}Remetentes bloqueados e confiáveis · Expresso{% endblock %}
 {% block nav %}{% let current = "settings" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
 <div class="page">
   <div class="page-header">
-    <h1>Remetentes bloqueados</h1>
+    <h1>Remetentes bloqueados e confiáveis</h1>
     <a class="btn btn-ghost btn-sm" href="/settings">← Configurações</a>
   </div>
   {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+
+  <div class="card stack">
+    <h2>Remetentes confiáveis</h2>
+    <p class="muted small">Mensagens destes endereços vão sempre para a Caixa de entrada (têm prioridade sobre bloqueio e filtro de spam).</p>
+    <form method="post" action="/settings/safe-senders" style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap">
+      <label style="flex:1;min-width:240px"><span>E-mail</span>
+        <input type="email" name="address" required placeholder="amigo@exemplo.com">
+      </label>
+      <button class="btn btn-primary" type="submit">Marcar confiável</button>
+    </form>
+    {% if !safe_addresses.is_empty() %}
+    <table class="data-table" style="width:100%">
+      <tbody>
+        {% for a in safe_addresses %}
+        <tr>
+          <td>{{ a }}</td>
+          <td style="text-align:right">
+            <form method="post" action="/settings/safe-senders/{{ a }}/delete" style="display:inline">
+              <button class="btn btn-ghost btn-sm" type="submit">Remover</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
 
   <div class="card stack">
     <p class="muted small">Mensagens recebidas destes endereços vão direto para o Spam.</p>

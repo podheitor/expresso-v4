@@ -329,6 +329,11 @@ pub fn router(state: AppState) -> Router {
             "/settings/blocked-senders/:address/delete",
             post(settings_blocked_remove),
         )
+        .route("/settings/safe-senders", post(settings_safe_add))
+        .route(
+            "/settings/safe-senders/:address/delete",
+            post(settings_safe_remove),
+        )
         .route("/mail/snoozed", get(mail_snoozed_page))
         .route("/mail/scheduled", get(mail_scheduled_page))
         .route(
@@ -5683,10 +5688,20 @@ async fn settings_blocked_page(
     )
     .await?
     .unwrap_or_default();
+    let safe_addresses = get_json::<Vec<String>>(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/safe-senders",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
     Ok(askama_axum::IntoResponse::into_response(
         SettingsBlockedSendersTpl {
             me,
             addresses,
+            safe_addresses,
             flash: extract_flash(&uri),
         },
     ))
@@ -5695,6 +5710,66 @@ async fn settings_blocked_page(
 #[derive(Deserialize)]
 struct BlockedSenderForm {
     address: String,
+}
+
+/// POST /settings/safe-senders — mark an address safe.
+async fn settings_safe_add(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<BlockedSenderForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let addr = f.address.trim().to_ascii_lowercase();
+    if !addr.contains('@') {
+        return Ok(
+            Redirect::to("/settings/blocked-senders?flash=Informe+um+e-mail+v%C3%A1lido")
+                .into_response(),
+        );
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&addr, NON_ALPHANUMERIC);
+    let _ = put_json(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/safe-senders/{enc}"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({}),
+    )
+    .await?;
+    Ok(
+        Redirect::to("/settings/blocked-senders?flash=Remetente+confi%C3%A1vel+adicionado")
+            .into_response(),
+    )
+}
+
+/// POST /settings/safe-senders/:address/delete — remove a safe address.
+async fn settings_safe_remove(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(address): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&address, NON_ALPHANUMERIC);
+    let _ = delete_at(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/safe-senders/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(
+        Redirect::to("/settings/blocked-senders?flash=Removido+da+lista+confi%C3%A1vel")
+            .into_response(),
+    )
 }
 
 /// POST /settings/blocked-senders — block an address.

@@ -101,10 +101,17 @@ pub async fn process(
             }
         };
 
-        // Blocked-senders override: divert to Spam when the From is blocked,
-        // unless Sieve already discarded/rejected it.
+        // Sender allow/deny overrides (after Sieve, which already ran). A safe
+        // sender wins — it forces the Inbox and skips the blocked check;
+        // otherwise a blocked sender is diverted to Spam.
         if let Some(from) = parsed.from_addr.as_deref() {
-            if crate::api::blocked_senders::is_blocked(&mut tx, tenant_id, user_id, from)
+            if crate::api::safe_senders::is_safe(&mut tx, tenant_id, user_id, from)
+                .await
+                .unwrap_or(false)
+            {
+                tracing::info!(rcpt = %rcpt, from = %from, "safe sender → Inbox");
+                target_folder = "INBOX".to_string();
+            } else if crate::api::blocked_senders::is_blocked(&mut tx, tenant_id, user_id, from)
                 .await
                 .unwrap_or(false)
             {
