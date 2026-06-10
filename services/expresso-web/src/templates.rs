@@ -327,6 +327,23 @@ pub struct MailSnoozedTpl {
     pub rows: Vec<SnoozedRow>,
 }
 
+/// One pending scheduled-send message on the `/mail/scheduled` page.
+pub struct ScheduledRow {
+    pub id: String,
+    pub subject: String,
+    pub to: String,
+    /// "YYYY-MM-DD HH:MM" the message will be delivered.
+    pub deliver_at: String,
+}
+
+#[derive(Template)]
+#[template(path = "mail_scheduled.html")]
+pub struct MailScheduledTpl {
+    pub me: Me,
+    pub folders: Vec<Folder>,
+    pub rows: Vec<ScheduledRow>,
+}
+
 // ─── Drive ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Clone)]

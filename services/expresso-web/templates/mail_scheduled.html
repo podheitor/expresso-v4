@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Agendadas · Expresso Mail{% endblock %}
+{% block nav %}{% let current = "mail" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="mail-shell">
+  <aside class="sidebar">
+    <header class="sidebar-header">
+      <span class="app-name">Mail</span>
+      <a class="btn btn-primary btn-sm" href="/mail/compose">✎ Nova mensagem</a>
+    </header>
+
+    <nav class="folder-list" aria-label="Pastas">
+      {% for f in folders %}
+      <a class="folder-item" href="/mail?folder={{ f.name }}">
+        <span class="folder-icon">{{ f.icon() }}</span>
+        <span class="folder-name">{{ f.name }}</span>
+        {% if f.unseen_count > 0 %}
+          <span class="badge">{{ f.unseen_count }}</span>
+        {% endif %}
+      </a>
+      {% endfor %}
+      <a class="folder-item" href="/mail/scheduled" aria-current="page">
+        <span class="folder-icon">🕒</span>
+        <span class="folder-name">Agendadas</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <a class="link-sm" href="/me">{{ me.email }}</a>
+    </div>
+  </aside>
+
+  <main class="mail-main">
+    <section class="msg-list" aria-label="Mensagens agendadas" style="flex:1 1 100%">
+      <div class="list-toolbar">
+        <a class="link-sm" href="/mail">← Voltar</a>
+        <h1 class="folder-title">🕒 Agendadas</h1>
+        <span class="muted small">{{ rows.len() }} mensagem(ns)</span>
+        {% if !rows.is_empty() %}
+        <form method="post" action="/mail/scheduled/cancel-all" style="margin-left:auto"
+              onsubmit="return confirm('Cancelar TODOS os envios agendados? As mensagens voltam para rascunhos.')">
+          <button class="btn btn-ghost btn-sm" type="submit">🗑 Cancelar todas</button>
+        </form>
+        {% endif %}
+      </div>
+
+      {% if rows.is_empty() %}
+      <p class="muted" style="padding:1rem">Nenhuma mensagem agendada. Ao compor, use "Agendar envio" para programar uma data.</p>
+      {% else %}
+      <ul style="list-style:none;padding:0;margin:0">
+        {% for r in rows %}
+        <li style="display:flex;align-items:center;gap:.6rem;padding:.55rem .75rem;border-bottom:1px solid var(--border)">
+          <span class="mono small" title="Será enviada em">🕒 {{ r.deliver_at }}</span>
+          <div style="flex:1;min-width:0">
+            <span style="font-weight:600">{{ r.subject }}</span>
+            {% if !r.to.is_empty() %}<div class="muted small">Para: {{ r.to }}</div>{% endif %}
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="cancelScheduled('{{ r.id }}')" title="Cancelar este envio">✕ Cancelar</button>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+  </main>
+</div>
+<script>
+function cancelScheduled(id) {
+  if (!confirm('Cancelar este envio agendado?')) return;
+  fetch('/mail/' + encodeURIComponent(id) + '/cancel-send', { method: 'POST', credentials: 'include' })
+    .then(function(r){ if (r.ok) window.location.reload(); else alert('Falha (HTTP ' + r.status + ').'); });
+}
+</script>
+{% endblock %}

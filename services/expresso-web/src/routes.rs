@@ -36,13 +36,14 @@ use crate::{
         DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow,
         FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HistogramBar, HomeDriveFile,
         HomeEvent, HomeReminder, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl,
-        MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom,
-        MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MfaFactorRow,
-        MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook, NotesActivityTpl,
-        NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow, SearchFacet,
-        SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsSignaturesTpl, SettingsTokensTpl,
-        SettingsTpl, ShareRow, SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow,
-        TasksTpl, TenantUsageRow, VersionRow, WebhookLogRow, WorkingHour,
+        MailScheduledTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant,
+        MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem,
+        MfaFactorRow, MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
+        NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow,
+        ScheduledRow, SearchFacet, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
+        SettingsSignaturesTpl, SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow,
+        SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow, VersionRow,
+        WebhookLogRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -290,6 +291,11 @@ pub fn router(state: AppState) -> Router {
         .route("/mail/:id/move", post(mail_move_action))
         .route("/mail/:id/delete", post(mail_delete_action))
         .route("/mail/snoozed", get(mail_snoozed_page))
+        .route("/mail/scheduled", get(mail_scheduled_page))
+        .route(
+            "/mail/scheduled/cancel-all",
+            post(mail_scheduled_cancel_all),
+        )
         .route("/mail/drafts", post(mail_draft_save))
         .route("/mail/drafts/:id", put(mail_draft_update))
         .route("/mail/:id/snooze", post(mail_snooze_action))
@@ -4924,6 +4930,86 @@ async fn mail_draft_update(
             .unwrap_or(StatusCode::BAD_GATEWAY)
             .into_response()),
     }
+}
+
+/// GET /mail/scheduled — pending scheduled-send messages with delivery times.
+/// Cancel a single one via the existing /mail/:id/cancel-send, or all at once.
+async fn mail_scheduled_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let folders = dedup_folders(
+        get_json::<Vec<Folder>>(
+            &st,
+            &st.backends.mail,
+            "/api/v1/mail/folders",
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default(),
+    );
+    let rows = get_json::<Vec<serde_json::Value>>(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/messages/scheduled",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .into_iter()
+    .map(|m| ScheduledRow {
+        id: m
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        subject: m
+            .get("subject")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("(sem assunto)")
+            .to_string(),
+        to: join_to_addrs(m.get("to_addrs").unwrap_or(&serde_json::Value::Null)),
+        deliver_at: m
+            .get("deliver_at")
+            .and_then(|v| v.as_str())
+            .map(|s| s.replace('T', " ").chars().take(16).collect())
+            .unwrap_or_default(),
+    })
+    .collect();
+    Ok(askama_axum::IntoResponse::into_response(MailScheduledTpl {
+        me,
+        folders,
+        rows,
+    }))
+}
+
+/// POST /mail/scheduled/cancel-all — cancel every pending scheduled send.
+async fn mail_scheduled_cancel_all(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let _ = post_empty(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/messages/scheduled/cancel-all",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/mail/scheduled").into_response())
 }
 
 async fn mail_snoozed_page(
