@@ -319,6 +319,12 @@ pub fn router(state: AppState) -> Router {
             get(chat_attachment_download),
         )
         .route("/chat/channels/:cid/mark-read", post(chat_mark_read))
+        .route("/chat/channels/:cid/typing", post(chat_typing))
+        .route(
+            "/chat/channels/:cid/presence/heartbeat",
+            post(chat_presence_heartbeat),
+        )
+        .route("/chat/channels/:cid/presence", get(chat_presence_roster))
         .route(
             "/chat/channels/:cid/messages/:mid/react",
             post(chat_react_message),
@@ -8563,6 +8569,79 @@ async fn chat_mark_read(
     )
     .await;
     Ok((StatusCode::OK, "ok").into_response())
+}
+
+/// POST /chat/channels/:cid/typing — broadcast a "typing…" event to the
+/// channel (proxies the chat service; body-less). The compose JS already
+/// called this path — there was no web route, so the indicator never fired.
+async fn chat_typing(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(cid): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&cid, NON_ALPHANUMERIC);
+    let _ = post_empty(
+        &st,
+        &st.backends.chat,
+        &format!("/api/v1/channels/{enc}/typing"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await;
+    Ok((StatusCode::OK, "ok").into_response())
+}
+
+/// POST /chat/channels/:cid/presence/heartbeat — mark the caller present in
+/// the channel (proxies the chat service; body-less).
+async fn chat_presence_heartbeat(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(cid): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&cid, NON_ALPHANUMERIC);
+    let _ = post_empty(
+        &st,
+        &st.backends.chat,
+        &format!("/api/v1/channels/{enc}/presence/heartbeat"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await;
+    Ok((StatusCode::OK, "ok").into_response())
+}
+
+/// GET /chat/channels/:cid/presence — the channel's online roster as JSON.
+async fn chat_presence_roster(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(cid): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&cid, NON_ALPHANUMERIC);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.chat,
+        &format!("/api/v1/channels/{enc}/presence"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_else(|| serde_json::json!({ "online": [] }));
+    Ok(json_response(&v))
 }
 
 #[derive(serde::Serialize)]

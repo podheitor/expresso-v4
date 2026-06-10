@@ -1320,28 +1320,36 @@ function savePresenceMsg(text) {
     }
   }, 30000);
 
-  // Poll channel member presence
+  // Presence: heartbeat (mark myself present) + poll the channel roster.
+  // Backend roster shape is { online: [user_id, …] } per channel.
+  function presenceHeartbeat() {
+    {% match active_channel %}{% when Some with (ch) %}
+    fetch('/chat/channels/' + encodeURIComponent('{{ ch.id }}') + '/presence/heartbeat',
+          { method: 'POST', credentials: 'include' }).catch(function(){});
+    {% when None %}{% endmatch %}
+  }
   function pollMemberPresence() {
     {% match active_channel %}{% when Some with (ch) %}
     var chId = '{{ ch.id }}';
-    fetch('/api/v1/presence/channel/' + encodeURIComponent(chId), { credentials: 'include' })
-      .then(function(r){ return r.ok ? r.json() : []; })
-      .then(function(members) {
+    fetch('/chat/channels/' + encodeURIComponent(chId) + '/presence', { credentials: 'include' })
+      .then(function(r){ return r.ok ? r.json() : { online: [] }; })
+      .then(function(data) {
         var el = document.getElementById('chat-members-online');
         if (!el) return;
-        var online = (members || []).filter(function(m){ return m.status === 'online'; });
-        el.innerHTML = online.slice(0,8).map(function(m) {
-          var init = ((m.display_name || m.user_id || '?')[0]).toUpperCase();
-          var color = PRESENCE_COLORS[m.status] || '#94a3b8';
-          return '<span class="chat-member-avatar" title="' + escHtml(m.display_name || m.user_id) + ' · Online">' +
+        var online = (data && data.online) || [];
+        el.innerHTML = online.slice(0,8).map(function(uid) {
+          var init = String(uid || '?')[0].toUpperCase();
+          return '<span class="chat-member-avatar" title="Online">' +
             '<span class="chat-member-avatar-letter">' + escHtml(init) + '</span>' +
-            '<span class="presence-dot" style="background:' + color + ';width:.55rem;height:.55rem;position:absolute;bottom:0;right:0"></span>' +
+            '<span class="presence-dot" style="background:#22c55e;width:.55rem;height:.55rem;position:absolute;bottom:0;right:0"></span>' +
             '</span>';
         }).join('') + (online.length > 8 ? '<span class="muted small">+' + (online.length-8) + '</span>' : '');
       }).catch(function(){});
     {% when None %}{% endmatch %}
   }
+  presenceHeartbeat();
   pollMemberPresence();
+  setInterval(presenceHeartbeat, 25000);
   setInterval(pollMemberPresence, 30000);
 })();
 
