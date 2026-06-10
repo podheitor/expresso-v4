@@ -24,6 +24,9 @@ ignore = [
   "RUSTSEC-2026-0099", # rustls-webpki wildcard name-constraint — same pinned old copies
   "RUSTSEC-2026-0104", # rustls-webpki CRL panic — same pinned old copies
   "RUSTSEC-2026-0049", # rustls-webpki CRL authority — limited impact (signed CRL required)
+  "RUSTSEC-2023-0071", # rsa Marvin timing attack — transitive (web-push→jwt-simple→superboring);
+                       # VAPID signs ES256 only, the RSA path is never driven; no fix released.
+                       # Already ignored in audit.toml (same advisory via sqlx-mysql).
 ]
 
 [licenses]
