@@ -33,15 +33,15 @@ use crate::{
         DriveAclTpl, DriveActivityTpl, DriveCommentRow, DriveCommentsTpl, DriveContentHit,
         DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota,
         DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl,
-        DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow,
-        FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, GalContact, HistogramBar, HomeDriveFile,
-        HomeEvent, HomeReminder, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl,
-        MailScheduledTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant,
-        MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem,
-        MfaFactorRow, MonthCell, Note, NoteAclTpl, NoteTagStat, NoteVersionRow, NoteVersionsTpl,
-        Notebook, NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource,
-        RetentionPolicyRow, ScheduledRow, SearchFacet, SearchGroup, SearchHit, SearchTpl,
-        SecurityTpl, SettingsSignaturesTpl, SettingsTokensTpl, SettingsTpl, ShareRow,
+        DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FindTimeTpl, FlagPreset, FlowEditTpl,
+        FlowRuleRow, FlowsTpl, Folder, FreeBusyRow, FreeBusyTpl, FreeSlotRow, GalContact,
+        HistogramBar, HomeDriveFile, HomeEvent, HomeReminder, HomeTpl, LoginTpl, MailAlias,
+        MailComposeTpl, MailListTpl, MailScheduledTpl, MailSearchTpl, MailSnoozedTpl,
+        MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl,
+        MessageDetail, MessageListItem, MfaFactorRow, MonthCell, Note, NoteAclTpl, NoteTagStat,
+        NoteVersionRow, NoteVersionsTpl, Notebook, NotesActivityTpl, NotesSharedTpl, NotesTagsTpl,
+        NotesTpl, Resource, RetentionPolicyRow, ScheduledRow, SearchFacet, SearchGroup, SearchHit,
+        SearchTpl, SecurityTpl, SettingsSignaturesTpl, SettingsTokensTpl, SettingsTpl, ShareRow,
         SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow,
         VersionRow, WebhookLogRow, WorkingHour,
     },
@@ -119,6 +119,7 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/edit", get(drive_edit_page))
         .route("/calendar", get(calendar_page))
         .route("/calendar/freebusy", get(freebusy_page))
+        .route("/calendar/find-time", get(find_time_page))
         .route(
             "/calendar/bulk-delete",
             get(calendar_bulk_delete_page).post(calendar_bulk_delete_action),
@@ -1733,6 +1734,147 @@ struct FreeBusyQuery {
 /// Extract "HH:MM" from an RFC3339 instant (chars 11..16), best-effort.
 fn hhmm_of_rfc3339(s: &str) -> &str {
     s.get(11..16).unwrap_or(s)
+}
+
+#[derive(Deserialize)]
+struct FindTimeQuery {
+    #[serde(default)]
+    attendees: Option<String>,
+    #[serde(default)]
+    date: Option<String>,
+    #[serde(default)]
+    duration: Option<u32>,
+}
+
+/// Minutes-since-midnight of an RFC3339 "…THH:MM…" timestamp (0 on parse fail).
+fn minutes_of_rfc3339(s: &str) -> i32 {
+    let hh: i32 = s.get(11..13).and_then(|x| x.parse().ok()).unwrap_or(0);
+    let mm: i32 = s.get(14..16).and_then(|x| x.parse().ok()).unwrap_or(0);
+    hh * 60 + mm
+}
+
+/// Within `[day_start, day_end)` minutes, find gaps not covered by any `busy`
+/// interval (each `(start_min, end_min)`) that are at least `dur` minutes long.
+/// Returns each gap's [start, end) clamped to the working window; busy
+/// intervals are merged first so adjacent/overlapping ones don't split slots.
+fn free_gaps(mut busy: Vec<(i32, i32)>, day_start: i32, day_end: i32, dur: i32) -> Vec<(i32, i32)> {
+    busy.sort_by_key(|b| b.0);
+    let mut merged: Vec<(i32, i32)> = Vec::new();
+    for (s, e) in busy {
+        match merged.last_mut() {
+            Some(last) if s <= last.1 => last.1 = last.1.max(e),
+            _ => merged.push((s, e)),
+        }
+    }
+    let mut gaps = Vec::new();
+    let mut cursor = day_start;
+    for (s, e) in merged {
+        if s > cursor && s - cursor >= dur {
+            gaps.push((cursor, s.min(day_end)));
+        }
+        cursor = cursor.max(e);
+        if cursor >= day_end {
+            break;
+        }
+    }
+    if day_end - cursor >= dur {
+        gaps.push((cursor, day_end));
+    }
+    gaps
+}
+
+/// Format minutes-since-midnight as "HH:MM".
+fn hhmm_of_minutes(m: i32) -> String {
+    format!("{:02}:{:02}", m / 60, m % 60)
+}
+
+/// GET /calendar/find-time — suggest meeting slots common to all attendees on a
+/// day. Pulls each attendee's busy intervals (with working-hours overlay) from
+/// the freebusy endpoint, unions them, and computes the free gaps ≥ the chosen
+/// duration within a 08:00–18:00 working window. Each slot links to the new-
+/// event form with the time prefilled.
+async fn find_time_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Query(q): Query<FindTimeQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let attendees = q.attendees.unwrap_or_default();
+    let date = q.date.unwrap_or_default();
+    let duration = q.duration.unwrap_or(30).clamp(15, 480);
+    let emails: Vec<String> = attendees
+        .split(['\n', ',', ';', ' '])
+        .map(str::trim)
+        .filter(|s| s.contains('@'))
+        .map(str::to_ascii_lowercase)
+        .collect();
+    let cal_id = default_calendar_id(&st, &headers, &t, &u).await;
+
+    const DAY_START: i32 = 8 * 60; // 08:00
+    const DAY_END: i32 = 18 * 60; // 18:00
+    let mut slots: Vec<FreeSlotRow> = Vec::new();
+    let queried = !emails.is_empty() && date.len() == 10;
+    if queried {
+        let enc_att = utf8_percent_encode(&emails.join(","), NON_ALPHANUMERIC).to_string();
+        let from = format!("{date}T00:00:00Z");
+        let to = format!("{date}T23:59:59Z");
+        let resp = get_json::<serde_json::Value>(
+            &st,
+            &st.backends.calendar,
+            &format!(
+                "/api/v1/scheduling/freebusy?attendees={enc_att}&from={from}&to={to}&working_hours=true"
+            ),
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default();
+        // Union every attendee's busy spans into one list (minutes of the day).
+        let mut busy: Vec<(i32, i32)> = Vec::new();
+        if let Some(map) = resp.get("attendees").and_then(|v| v.as_object()) {
+            for iv in map.values().filter_map(|v| v.as_array()).flatten() {
+                if let (Some(s), Some(e)) = (
+                    iv.get("start").and_then(|v| v.as_str()),
+                    iv.get("end").and_then(|v| v.as_str()),
+                ) {
+                    busy.push((minutes_of_rfc3339(s), minutes_of_rfc3339(e)));
+                }
+            }
+        }
+        for (s, e) in free_gaps(busy, DAY_START, DAY_END, duration as i32) {
+            // A gap may fit several back-to-back slots of `duration`.
+            let mut slot_start = s;
+            while slot_start + (duration as i32) <= e {
+                let slot_end = slot_start + duration as i32;
+                slots.push(FreeSlotRow {
+                    start_hhmm: hhmm_of_minutes(slot_start),
+                    end_hhmm: hhmm_of_minutes(slot_end),
+                    start_local: format!("{date}T{}", hhmm_of_minutes(slot_start)),
+                    end_local: format!("{date}T{}", hhmm_of_minutes(slot_end)),
+                });
+                slot_start = slot_end;
+                if slots.len() >= 24 {
+                    break;
+                }
+            }
+            if slots.len() >= 24 {
+                break;
+            }
+        }
+    }
+    Ok(askama_axum::IntoResponse::into_response(FindTimeTpl {
+        me,
+        cal_id,
+        attendees,
+        date,
+        duration,
+        slots,
+        queried,
+    }))
 }
 
 /// GET /calendar/freebusy — look up attendees' busy intervals for a day so the
@@ -6942,6 +7084,13 @@ struct AttendeeRow {
 #[derive(Deserialize)]
 struct NewQuery {
     date: Option<String>,
+    /// Prefill from the find-a-time page: "YYYY-MM-DDTHH:MM" local values.
+    #[serde(default)]
+    dtstart: Option<String>,
+    #[serde(default)]
+    dtend: Option<String>,
+    #[serde(default)]
+    attendees: Option<String>,
 }
 
 async fn event_new_form(
@@ -6974,6 +7123,18 @@ async fn event_new_form(
             .unwrap()
     });
     let resources = fetch_resources(&st, &headers, &t, &u).await;
+    // Honour explicit dtstart/dtend prefill (from find-a-time); else 09–10 on
+    // the chosen date. A bare "YYYY-MM-DDTHH:MM" is a valid datetime-local.
+    let valid_dt = |s: &str| s.len() == 16 && s.as_bytes().get(10) == Some(&b'T');
+    let dtstart = q
+        .dtstart
+        .filter(|s| valid_dt(s))
+        .unwrap_or_else(|| format!("{date}T09:00"));
+    let dtend = q
+        .dtend
+        .filter(|s| valid_dt(s))
+        .unwrap_or_else(|| format!("{date}T10:00"));
+    let attendees = q.attendees.unwrap_or_default();
     Ok(EventFormTpl {
         me,
         calendar,
@@ -6981,9 +7142,9 @@ async fn event_new_form(
         summary: String::new(),
         location: String::new(),
         description: String::new(),
-        dtstart: format!("{date}T09:00"),
-        dtend: format!("{date}T10:00"),
-        attendees: String::new(),
+        dtstart,
+        dtend,
+        attendees,
         attendee_pills: Vec::new(),
         reminders: String::new(),
         categories: String::new(),
@@ -12760,6 +12921,28 @@ mod tests {
         assert!(rows[1].label.is_empty());
         assert!(rows[1].created.is_empty());
         assert!(mfa_factor_rows(&serde_json::Value::Null).is_empty());
+    }
+
+    #[test]
+    fn free_gaps_finds_slots_between_merged_busy() {
+        // Working window 08:00–18:00 (480–1080). Busy 09–10 and overlapping
+        // 12:30–13:00 / 12:45–14:00 (merge to 12:30–14:00). dur=30.
+        let busy = vec![(540, 600), (750, 780), (765, 840)];
+        let gaps = free_gaps(busy, 480, 1080, 30);
+        // 08:00–09:00, 10:00–12:30, 14:00–18:00
+        assert_eq!(gaps, vec![(480, 540), (600, 750), (840, 1080)]);
+    }
+
+    #[test]
+    fn free_gaps_skips_gaps_shorter_than_duration() {
+        // Only a 20-min hole (600–620) — too short for a 30-min meeting.
+        let gaps = free_gaps(vec![(480, 600), (620, 1080)], 480, 1080, 30);
+        assert!(gaps.is_empty());
+    }
+
+    #[test]
+    fn free_gaps_whole_window_when_no_busy() {
+        assert_eq!(free_gaps(vec![], 480, 1080, 60), vec![(480, 1080)]);
     }
 
     #[test]

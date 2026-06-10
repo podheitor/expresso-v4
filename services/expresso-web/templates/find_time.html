@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Encontrar horário · Expresso{% endblock %}
+{% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>🔎 Encontrar horário</h1>
+      <p class="muted small">Veja os horários livres comuns a todos os participantes (dentro do expediente, 08h–18h) e agende com um clique.</p>
+    </div>
+    <a class="btn btn-ghost" href="/calendar">◀ Agenda</a>
+  </div>
+
+  <form method="get" action="/calendar/find-time" class="card"
+        style="display:flex;gap:.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1.25rem">
+    <label style="flex:1;min-width:240px">Participantes (e-mails)
+      <textarea name="attendees" rows="2" placeholder="ana@empresa.com, joao@empresa.com">{{ attendees }}</textarea>
+    </label>
+    <label>Data
+      <input type="date" name="date" value="{{ date }}" required>
+    </label>
+    <label>Duração
+      <select name="duration" class="input">
+        <option value="15"{% if duration == 15 %} selected{% endif %}>15 min</option>
+        <option value="30"{% if duration == 30 %} selected{% endif %}>30 min</option>
+        <option value="45"{% if duration == 45 %} selected{% endif %}>45 min</option>
+        <option value="60"{% if duration == 60 %} selected{% endif %}>1 hora</option>
+        <option value="90"{% if duration == 90 %} selected{% endif %}>1h30</option>
+        <option value="120"{% if duration == 120 %} selected{% endif %}>2 horas</option>
+      </select>
+    </label>
+    <button type="submit" class="btn btn-primary">Buscar horários</button>
+  </form>
+
+  {% if queried %}
+    {% if slots.is_empty() %}
+    <div class="empty-state">Nenhum horário livre comum nesse dia dentro do expediente. Tente outra data ou duração menor.</div>
+    {% else %}
+    <h2 style="font-size:1rem">Horários livres ({{ duration }} min)</h2>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem">
+      {% for s in slots %}
+      <a class="btn btn-ghost"
+         href="/calendar/{{ cal_id }}/events/new?dtstart={{ s.start_local }}&dtend={{ s.end_local }}&attendees={{ attendees }}"
+         title="Agendar {{ s.start_hhmm }}–{{ s.end_hhmm }}">🗓 {{ s.start_hhmm }} – {{ s.end_hhmm }}</a>
+      {% endfor %}
+    </div>
+    <p class="muted small" style="margin-top:.75rem">Clique num horário para abrir o formulário de evento já preenchido com a data, hora e participantes.</p>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

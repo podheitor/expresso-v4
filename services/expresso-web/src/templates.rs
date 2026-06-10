@@ -1049,6 +1049,32 @@ pub struct FreeBusyTpl {
     pub queried: bool,
 }
 
+/// One free time-slot common to every attendee, on the find-a-time page.
+pub struct FreeSlotRow {
+    /// "HH:MM" start, for display and the prefilled event-form dtstart.
+    pub start_hhmm: String,
+    /// "HH:MM" end.
+    pub end_hhmm: String,
+    /// "YYYY-MM-DDTHH:MM" datetime-local values to prefill the new-event form.
+    pub start_local: String,
+    pub end_local: String,
+}
+
+#[derive(Template)]
+#[template(path = "find_time.html")]
+pub struct FindTimeTpl {
+    pub me: Me,
+    /// Default calendar id (the link target for creating the event).
+    pub cal_id: String,
+    pub attendees: String,
+    pub date: String,
+    /// Meeting length in minutes, echoed back.
+    pub duration: u32,
+    /// Common free slots within working hours; empty before the first query.
+    pub slots: Vec<FreeSlotRow>,
+    pub queried: bool,
+}
+
 /// One ranked label+count row in the e-discovery analytics report.
 pub struct ArchiveStatRow {
     pub label: String,
