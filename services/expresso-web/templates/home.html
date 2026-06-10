@@ -117,6 +117,28 @@
       {% endif %}
     </div>
 
+    <!-- Tarefas — vencendo hoje / atrasadas -->
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">✅</span>
+        <a class="home-widget-title" href="/tasks">Tarefas</a>
+        <a class="btn btn-ghost btn-sm" href="/tasks">Abrir</a>
+      </div>
+      {% if tasks_due.is_empty() %}
+        <p class="muted small home-widget-empty">Nada vencendo hoje. 🎉</p>
+      {% else %}
+        <ul class="home-event-list">
+          {% for t in tasks_due %}
+          <li class="home-event-item">
+            <span class="home-event-name">{{ t.summary }}</span>
+            <span class="home-event-time" style="margin-left:auto">📅 {{ t.due_date() }}</span>
+            {% if !t.repeat_label().is_empty() %}<span class="muted small">↻</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+
     <!-- Drive — arquivos recentes -->
     <div class="home-widget">
       <div class="home-widget-header">

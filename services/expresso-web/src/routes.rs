@@ -386,6 +386,7 @@ pub fn router(state: AppState) -> Router {
         .route("/tasks", get(tasks_page))
         .route("/tasks/create", post(tasks_create_action))
         .route("/tasks/:id/complete", post(tasks_complete_action))
+        .route("/tasks/:id/repeat", post(tasks_repeat_action))
         .route("/tasks/:id/delete", post(tasks_delete_action))
         .route("/notes", get(notes_page).post(notes_create_action))
         .route("/notes/tags", get(notes_tags_page))
@@ -715,6 +716,40 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
         channels.iter().map(|c| c.unread_count).sum()
     };
 
+    // Tasks due today or overdue (pending only), from the default calendar.
+    let tasks_due: Vec<TaskRow> = {
+        let cal_id = default_calendar_id(&st, &headers, &t, &u).await;
+        if cal_id.is_empty() {
+            Vec::new()
+        } else {
+            let enc = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC);
+            let all = get_json::<Vec<TaskRow>>(
+                &st,
+                &st.backends.calendar,
+                &format!("/api/v1/calendars/{enc}/tasks"),
+                &headers,
+                Some((&t, &u)),
+            )
+            .await?
+            .unwrap_or_default();
+            let now = time::OffsetDateTime::now_utc();
+            let today_date = format!(
+                "{:04}-{:02}-{:02}",
+                now.year(),
+                now.month() as u8,
+                now.day()
+            );
+            all.into_iter()
+                .filter(|task| {
+                    !task.is_done()
+                        && !task.due_date().is_empty()
+                        && task.due_date() <= today_date.as_str()
+                })
+                .take(8)
+                .collect()
+        }
+    };
+
     Ok(askama_axum::IntoResponse::into_response(HomeTpl {
         me,
         mail_unread,
@@ -722,6 +757,7 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
         events,
         drive_files,
         chat_unread,
+        tasks_due,
     }))
 }
 
@@ -9756,6 +9792,51 @@ async fn tasks_complete_action(
     Ok(Redirect::to("/tasks").into_response())
 }
 
+#[derive(Deserialize)]
+struct TaskRepeatForm {
+    cal_id: String,
+    /// "" (one-off / clear) / "daily" / "weekly" / "monthly".
+    #[serde(default)]
+    repeat: String,
+}
+
+/// POST /tasks/:id/repeat — change a task's recurrence (PATCH rrule; ""
+/// clears it back to one-off via a JSON null, the backend's doubly-optional).
+async fn tasks_repeat_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<TaskRepeatForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let cal_id = f.cal_id.trim();
+    if cal_id.is_empty() {
+        return Ok(Redirect::to("/tasks").into_response());
+    }
+    let rrule = match f.repeat.as_str() {
+        "daily" => serde_json::json!("FREQ=DAILY"),
+        "weekly" => serde_json::json!("FREQ=WEEKLY"),
+        "monthly" => serde_json::json!("FREQ=MONTHLY"),
+        _ => serde_json::Value::Null,
+    };
+    let (t, u) = ctx_of(&me);
+    let cenc = utf8_percent_encode(cal_id, NON_ALPHANUMERIC);
+    let ienc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = patch_json(
+        &st,
+        &st.backends.calendar,
+        &format!("/api/v1/calendars/{cenc}/tasks/{ienc}"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "rrule": rrule }),
+    )
+    .await?;
+    Ok(Redirect::to("/tasks").into_response())
+}
+
 /// POST /tasks/:id/delete — delete a task.
 async fn tasks_delete_action(
     State(st): State<AppState>,
@@ -11886,6 +11967,12 @@ mod tests {
         assert_eq!(recurring("FREQ=MONTHLY").repeat_label(), "mensal");
         assert_eq!(recurring("FREQ=YEARLY").repeat_label(), "recorrente");
         assert_eq!(mk("", 0, None).repeat_label(), "");
+        // repeat_value round-trips the inline-edit select options.
+        assert_eq!(recurring("FREQ=DAILY").repeat_value(), "daily");
+        assert_eq!(recurring("FREQ=WEEKLY;INTERVAL=2").repeat_value(), "weekly");
+        assert_eq!(recurring("FREQ=MONTHLY").repeat_value(), "monthly");
+        assert_eq!(recurring("FREQ=YEARLY").repeat_value(), "");
+        assert_eq!(mk("", 0, None).repeat_value(), "");
         assert!(mk("COMPLETED", 0, None).is_done());
         assert!(mk("CANCELLED", 0, None).is_done());
         assert!(!mk("NEEDS-ACTION", 0, None).is_done());

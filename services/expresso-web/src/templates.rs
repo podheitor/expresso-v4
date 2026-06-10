@@ -1244,6 +1244,8 @@ pub struct HomeTpl {
     pub events: Vec<HomeEvent>,
     pub drive_files: Vec<HomeDriveFile>,
     pub chat_unread: i64,
+    /// Pending tasks due today or earlier (max 8), for the home widget.
+    pub tasks_due: Vec<TaskRow>,
 }
 
 // ─── Calendar events ─────────────────────────────────────────────────────────
@@ -1865,6 +1867,18 @@ impl TaskRow {
             None => "",
         }
     }
+
+    /// Form value matching the recurrence (for the inline edit select):
+    /// "daily"/"weekly"/"monthly", or "" for one-off / unsupported rules.
+    pub fn repeat_value(&self) -> &'static str {
+        match self.rrule.as_deref() {
+            Some(r) if r.contains("FREQ=DAILY") => "daily",
+            Some(r) if r.contains("FREQ=WEEKLY") => "weekly",
+            Some(r) if r.contains("FREQ=MONTHLY") => "monthly",
+            _ => "",
+        }
+    }
+
     /// Date portion of the RFC3339 due, for compact display ("YYYY-MM-DD").
     pub fn due_date(&self) -> &str {
         match &self.due {
