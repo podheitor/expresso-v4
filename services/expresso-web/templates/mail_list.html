@@ -649,51 +649,55 @@ function sendInlineReply(replyTo, folder) {
 }
 
 // ── Mail labels ───────────────────────────────────────────────────────────────
-var LABELS_KEY = 'expresso_mail_labels_{{ me.user_id }}';
-function loadLabels() { try { return JSON.parse(localStorage.getItem(LABELS_KEY) || '{}'); } catch(e) { return {}; } }
-function saveLabels(m) { localStorage.setItem(LABELS_KEY, JSON.stringify(m)); }
-function toggleMailLabel(msgId, name, icon) {
-  var map = loadLabels();
-  var tags = map[msgId] || [];
-  var idx = tags.findIndex(function(t){ return t.name === name; });
-  if (idx >= 0) { tags.splice(idx, 1); } else { tags.push({name: name, icon: icon}); }
-  map[msgId] = tags;
-  saveLabels(map);
-  renderAllLabels();
-}
-function clearMailLabels(msgId) {
-  var map = loadLabels();
-  delete map[msgId];
-  saveLabels(map);
-  renderAllLabels();
-}
+// ── Mail labels (server-backed via /mail/labels) ────────────────────────────
+// The label set is a fixed preset; the backend stores names per message, the
+// icon/color mapping stays here.
 var LABEL_COLORS = {
   'importante': '#ef4444',
   'trabalho':   '#3b82f6',
   'pessoal':    '#22c55e',
   'aguardando': '#f59e0b',
 };
+var LABEL_ICONS = {
+  'importante': '🔴', 'trabalho': '🔵', 'pessoal': '🟢', 'aguardando': '🟡',
+};
+var _mailLabels = {}; // { msgId: [name, …] }
+function toggleMailLabel(msgId, name, icon) {
+  var cur = _mailLabels[msgId] || [];
+  var has = cur.indexOf(name) >= 0;
+  if (has) _mailLabels[msgId] = cur.filter(function(n){ return n !== name; });
+  else _mailLabels[msgId] = cur.concat([name]); // optimistic
+  renderAllLabels();
+  var url = '/mail/messages/' + encodeURIComponent(msgId) + '/labels/' + encodeURIComponent(name);
+  fetch(url, { method: has ? 'DELETE' : 'PUT', credentials: 'include' })
+    .then(function(r){ if (!r.ok) loadMailLabels(); })
+    .catch(function(){ loadMailLabels(); });
+}
+function clearMailLabels(msgId) {
+  (_mailLabels[msgId] || []).slice().forEach(function(name){ toggleMailLabel(msgId, name); });
+}
 function renderAllLabels() {
-  var map = loadLabels();
+  function tagHtml(name, extraClass) {
+    var color = LABEL_COLORS[name] || '#6b7280';
+    var icon = LABEL_ICONS[name] || '🏷';
+    return '<span class="mail-label-tag' + extraClass + '" title="' + name + '" style="background:' + color + ';color:#fff">' + icon + ' ' + name + '</span>';
+  }
   document.querySelectorAll('.msg-labels[data-mid]').forEach(function(el) {
-    var tags = map[el.dataset.mid] || [];
-    el.innerHTML = tags.map(function(t) {
-      var color = LABEL_COLORS[t.name] || '#6b7280';
-      return '<span class="mail-label-tag" title="' + t.name + '" style="background:' + color + ';color:#fff">' + t.icon + ' ' + t.name + '</span>';
-    }).join('');
+    el.innerHTML = (_mailLabels[el.dataset.mid] || []).map(function(n){ return tagHtml(n, ''); }).join('');
   });
-  // Also render in detail header if open
   var detailLabels = document.getElementById('mail-detail-labels');
   if (detailLabels) {
     var mid = detailLabels.dataset.mid;
-    var tags = mid ? (map[mid] || []) : [];
-    detailLabels.innerHTML = tags.map(function(t) {
-      var color = LABEL_COLORS[t.name] || '#6b7280';
-      return '<span class="mail-label-tag mail-label-detail" style="background:' + color + ';color:#fff">' + t.icon + ' ' + t.name + '</span>';
-    }).join('');
+    detailLabels.innerHTML = (mid ? (_mailLabels[mid] || []) : []).map(function(n){ return tagHtml(n, ' mail-label-detail'); }).join('');
   }
 }
-renderAllLabels();
+function loadMailLabels() {
+  fetch('/mail/labels', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : {}; })
+    .then(function(map){ _mailLabels = map || {}; renderAllLabels(); })
+    .catch(function(){});
+}
+loadMailLabels();
 
 // ── Mail quick actions & multi-select ─────────────────────────────────────────
 var _mailSelIds = [];

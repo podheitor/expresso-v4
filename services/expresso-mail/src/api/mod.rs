@@ -11,6 +11,7 @@ pub mod flag_presets;
 pub mod flows;
 pub mod folders;
 pub mod health;
+pub mod labels;
 pub mod message_templates;
 pub mod messages;
 pub mod quota;
@@ -84,5 +85,6 @@ fn api_routes(_state: AppState) -> Router<AppState> {
         .merge(snooze::routes())
         .merge(signatures::routes())
         .merge(message_templates::routes())
+        .merge(labels::routes())
         .merge(threads::routes())
 }
