@@ -442,6 +442,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/notes/:id", post(notes_edit_action))
         .route("/notes/:id/delete", post(notes_delete_action))
+        .route("/notes/:id/duplicate", post(notes_duplicate_action))
         .route("/notes/shared", get(notes_shared_page))
         .route("/notes/:id/activity", get(notes_activity_page))
         .route(
@@ -12050,6 +12051,42 @@ async fn notes_delete_action(
     )
     .await?;
     Ok(Redirect::to("/notes").into_response())
+}
+
+/// POST /notes/:id/duplicate — clone a note and open the copy.
+async fn notes_duplicate_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let (status, resp) = crate::upstream::post_json_body(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/{enc}/duplicate"),
+        &headers,
+        Some((&t, &u)),
+        &(),
+    )
+    .await?;
+    // Open the new copy when we got its id back; else fall back to the list.
+    let new_id = resp
+        .as_ref()
+        .filter(|_| (200..300).contains(&status))
+        .and_then(|v| v.get("id"))
+        .and_then(|v| v.as_str());
+    match new_id {
+        Some(nid) => {
+            let nenc = utf8_percent_encode(nid, NON_ALPHANUMERIC);
+            Ok(Redirect::to(&format!("/notes?id={nenc}")).into_response())
+        }
+        None => Ok(Redirect::to("/notes").into_response()),
+    }
 }
 
 /// POST /notes/notebooks — create a notebook, then show its notes.

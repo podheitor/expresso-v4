@@ -68,6 +68,7 @@
             <a class="btn btn-ghost btn-sm" href="/notes/{{ s.id }}/activity" title="Histórico de alterações">🕘 Atividade</a>
             <a class="btn btn-ghost btn-sm" href="/notes/{{ s.id }}/versions" title="Versões anteriores do conteúdo">📜 Versões</a>
             <a class="btn btn-ghost btn-sm" href="/notes/{{ s.id }}/acl" title="Compartilhar com usuários do tenant">👥 Compartilhar</a>
+            <button class="btn btn-ghost btn-sm" type="submit" formaction="/notes/{{ s.id }}/duplicate" formmethod="post" title="Duplicar esta nota">⧉ Duplicar</button>
             <button class="btn btn-primary" type="submit">Salvar</button>
           </div>
         </div>

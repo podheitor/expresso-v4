@@ -64,6 +64,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/notes/:id",
             patch(update).get(get_one).delete(delete),
         )
+        .route(
+            "/api/v1/notes/:id/duplicate",
+            axum::routing::post(duplicate),
+        )
         .route("/api/v1/notes/:id/tags", get(get_tags).put(set_tags))
         .route("/api/v1/notes/:id/versions", get(list_versions))
         .route(
@@ -197,6 +201,36 @@ async fn get_one(
     assert_can_read(&repo, ctx.tenant_id, id, ctx.user_id).await?;
     let note = repo.get(ctx.tenant_id, id).await?;
     Ok(Json(note))
+}
+
+/// POST /api/v1/notes/:id/duplicate — clone a readable note into a new note
+/// owned by the caller (title gets a " (cópia)" suffix; body/color/notebook
+/// copied). View state (pinned/archived) and tags/versions are not carried.
+async fn duplicate(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+) -> Result<(StatusCode, Json<Note>)> {
+    let pool = state.db_or_unavailable()?;
+    let repo = NoteRepo::new(pool);
+    assert_can_read(&repo, ctx.tenant_id, id, ctx.user_id).await?;
+    let src = repo.get(ctx.tenant_id, id).await?;
+    // Only copy the notebook when the caller owns it (else detach to None).
+    let notebook_id = match src.notebook_id {
+        Some(nb) if assert_owns_notebook(pool, &ctx, Some(nb)).await.is_ok() => Some(nb),
+        _ => None,
+    };
+    let copy = NewNote {
+        title: Some(format!("{} (cópia)", src.title)),
+        body: Some(src.body),
+        color: src.color,
+        pinned: Some(false),
+        notebook_id,
+    };
+    let note = repo.create(ctx.tenant_id, ctx.user_id, copy).await?;
+    index_note(&state, &note);
+    super::activity::record(pool, ctx.tenant_id, note.id, ctx.user_id, "create", None).await;
+    Ok((StatusCode::CREATED, Json(note)))
 }
 
 async fn update(
