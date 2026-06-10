@@ -976,31 +976,37 @@ function toggleGroupBySender(btn) {
     groups[s].forEach(function(r){ ul.appendChild(r); });
   });
 }
+// Collect every message id currently listed (each row has a .mail-row-check).
+function allListedMailIds() {
+  return Array.prototype.map.call(
+    document.querySelectorAll('.mail-row-check, .msg-checkbox, .row-checkbox'),
+    function(cb){ return cb.dataset.mid || cb.value || cb.dataset.id; }
+  ).filter(Boolean);
+}
+// Hard-delete the given ids via the bulk-delete proxy (DELETE mail/messages/bulk).
+function bulkDeleteMailIds(ids) {
+  var body = new URLSearchParams(); body.set('ids', ids.join(','));
+  return fetch('/mail/messages/bulk-delete', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  });
+}
 function emptyTrashFolder(btn) {
   if (!confirm('Apagar PERMANENTEMENTE todos os e-mails da lixeira? Esta ação não pode ser desfeita.')) return;
+  var ids = allListedMailIds();
+  if (!ids.length) { alert('A lixeira já está vazia.'); return; }
   if (btn) { btn.disabled = true; btn.textContent = '🗑 Esvaziando…'; }
-  fetch('/api/v1/mail/folders/Trash/empty', { method: 'POST', credentials: 'include' })
-    .then(function(r) {
-      if (r.ok) { window.location.reload(); return; }
-      // fallback: select all + delete batch
-      var ids = Array.prototype.map.call(document.querySelectorAll('.msg-checkbox,.row-checkbox'), function(cb){ return cb.value || cb.dataset.id; }).filter(Boolean);
-      if (!ids.length) { alert('Nada a apagar.'); if (btn){btn.disabled=false;btn.textContent='🗑 Esvaziar lixeira';} return; }
-      return fetch('/api/v1/mail/messages/batch-delete', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({ids: ids, permanent: true}) })
-        .then(function(){ window.location.reload(); });
-    })
+  bulkDeleteMailIds(ids)
+    .then(function(r){ if (r.ok) window.location.reload(); else throw new Error('HTTP ' + r.status); })
     .catch(function(){ alert('Falha ao esvaziar lixeira.'); if (btn){btn.disabled=false;btn.textContent='🗑 Esvaziar lixeira';} });
 }
 function emptySpamFolder(btn) {
   if (!confirm('Apagar PERMANENTEMENTE todos os e-mails do spam? Esta ação não pode ser desfeita.')) return;
+  var ids = allListedMailIds();
+  if (!ids.length) { alert('A pasta de spam já está vazia.'); return; }
   if (btn) { btn.disabled = true; btn.textContent = '🗑 Esvaziando…'; }
-  fetch('/api/v1/mail/folders/Spam/empty', { method: 'POST', credentials: 'include' })
-    .then(function(r) {
-      if (r.ok) { window.location.reload(); return; }
-      var ids = Array.prototype.map.call(document.querySelectorAll('.msg-checkbox,.row-checkbox'), function(cb){ return cb.value || cb.dataset.id; }).filter(Boolean);
-      if (!ids.length) { alert('Nada a apagar.'); if (btn){btn.disabled=false;btn.textContent='🗑 Esvaziar spam';} return; }
-      return fetch('/api/v1/mail/messages/batch-delete', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({ids: ids, permanent: true}) })
-        .then(function(){ window.location.reload(); });
-    })
+  bulkDeleteMailIds(ids)
+    .then(function(r){ if (r.ok) window.location.reload(); else throw new Error('HTTP ' + r.status); })
     .catch(function(){ alert('Falha ao esvaziar spam.'); if (btn){btn.disabled=false;btn.textContent='🗑 Esvaziar spam';} });
 }
 (function updateFolderUnreadCount(){

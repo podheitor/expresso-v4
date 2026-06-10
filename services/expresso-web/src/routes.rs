@@ -297,6 +297,7 @@ pub fn router(state: AppState) -> Router {
         .route("/mail/:id/move", post(mail_move_action))
         .route("/mail/:id/delete", post(mail_delete_action))
         .route("/mail/:id/raw", get(mail_message_raw))
+        .route("/mail/messages/bulk-delete", post(mail_bulk_delete))
         .route("/mail/snoozed", get(mail_snoozed_page))
         .route("/mail/scheduled", get(mail_scheduled_page))
         .route(
@@ -5136,6 +5137,49 @@ async fn mail_draft_update(
             .unwrap_or(StatusCode::BAD_GATEWAY)
             .into_response()),
     }
+}
+
+#[derive(Deserialize)]
+struct MailBulkDeleteForm {
+    /// Comma-separated message ids to hard-delete.
+    ids: String,
+}
+
+/// POST /mail/messages/bulk-delete — hard-delete a set of messages in one
+/// request (proxies DELETE /api/v1/mail/messages/bulk {ids:[…]}). The mail
+/// "empty trash/spam" and multi-select delete buttons used to fetch a
+/// non-existent /messages/batch-delete path (404); this is the real proxy.
+async fn mail_bulk_delete(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<MailBulkDeleteForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let ids: Vec<&str> = f
+        .ids
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if ids.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "nenhuma mensagem").into_response());
+    }
+    let status = delete_json(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/messages/bulk",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "ids": ids }),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
 }
 
 /// GET /mail/:id/raw — download a message as a raw RFC 5822 .eml file
