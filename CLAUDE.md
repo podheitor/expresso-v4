@@ -1,9 +1,9 @@
 # User Preferences
 
 ## Language
-- Use concise english.
+- Communicate with me in concise English (chat replies included).
 - Code, identifiers, comments, commits, and internal technical notes stay in English.
-- User-facing UI text and end-user documentation are English.
+- User-facing UI text and end-user documentation are English (note: the existing Expresso v4 UI strings are Portuguese — match the surrounding language when editing existing templates; new standalone surfaces default to English unless the file's siblings are Portuguese).
 
 ## Workflow (what diverges from defaults)
 - Target 200–300 line files; justify going over 500.
