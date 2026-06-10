@@ -80,6 +80,20 @@ struct AppState {
     webhook: Option<(Arc<str>, reqwest::Client)>,
     /// PostgreSQL pool for persisting and querying notifications. None when DATABASE__URL is unset.
     db: Option<Arc<DbPool>>,
+    /// WebPush VAPID keys + sender client. None when the key env vars are unset.
+    vapid: Option<Arc<VapidConfig>>,
+}
+
+/// WebPush (VAPID) sender configuration, from env:
+/// `NOTIFICATIONS__VAPID_PRIVATE_KEY` / `NOTIFICATIONS__VAPID_PUBLIC_KEY`
+/// (base64url, no padding — the raw-bytes format VAPID generators emit) and
+/// optional `NOTIFICATIONS__VAPID_SUBJECT` (a mailto: contact some push
+/// services require).
+struct VapidConfig {
+    private_b64: String,
+    public_b64: String,
+    subject: String,
+    client: reqwest::Client,
 }
 
 // ─── Optional auth extractor ─────────────────────────────────────────────────
@@ -268,7 +282,148 @@ async fn internal_notify(
         });
     }
 
+    // WebPush fan-out to the recipient's registered browsers — fire-and-forget;
+    // dead subscriptions (HTTP 404/410 from the push service) are pruned.
+    if let (Some(vapid), Some(pool)) = (&st.vapid, &st.db) {
+        let vapid = vapid.clone();
+        let pool = pool.clone();
+        let notif3 = notif.clone();
+        tokio::spawn(async move {
+            webpush_fanout(&vapid, &pool, &notif3).await;
+        });
+    }
+
     Json(json!({"ok": true}))
+}
+
+/// Send the notification to every WebPush subscription of the recipient.
+async fn webpush_fanout(vapid: &VapidConfig, pool: &DbPool, notif: &Notification) {
+    let subs: Vec<(String, String, String)> = match sqlx::query_as(
+        "SELECT endpoint, p256dh, auth FROM notification_push_subscriptions \
+         WHERE tenant_id = $1 AND user_id = $2",
+    )
+    .bind(notif.tenant_id)
+    .bind(notif.user_id)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(error = %e, "webpush: failed to load subscriptions");
+            return;
+        }
+    };
+    let payload = json!({ "kind": notif.kind, "folder": notif.folder }).to_string();
+    for (endpoint, p256dh, auth_secret) in subs {
+        if webpush_send_one(vapid, &endpoint, &p256dh, &auth_secret, payload.as_bytes()).await
+            == SendOutcome::Gone
+        {
+            if let Err(e) = sqlx::query(
+                "DELETE FROM notification_push_subscriptions \
+                 WHERE tenant_id = $1 AND user_id = $2 AND endpoint = $3",
+            )
+            .bind(notif.tenant_id)
+            .bind(notif.user_id)
+            .bind(&endpoint)
+            .execute(pool)
+            .await
+            {
+                warn!(error = %e, "webpush: failed to prune dead subscription");
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum SendOutcome {
+    Sent,
+    /// Push service says the subscription no longer exists (404/410).
+    Gone,
+    Failed,
+}
+
+/// Build (VAPID ES256 signature + aes128gcm-encrypted payload via the
+/// web-push crate) and POST one message through the shared reqwest client —
+/// the crate's bundled HTTP clients are disabled (default-features = false).
+async fn webpush_send_one(
+    vapid: &VapidConfig,
+    endpoint: &str,
+    p256dh: &str,
+    auth_secret: &str,
+    payload: &[u8],
+) -> SendOutcome {
+    let sub = web_push::SubscriptionInfo::new(endpoint, p256dh, auth_secret);
+    let mut sig_builder =
+        match web_push::VapidSignatureBuilder::from_base64(&vapid.private_b64, &sub) {
+            Ok(b) => b,
+            Err(e) => {
+                warn!(error = %e, "webpush: invalid VAPID private key");
+                return SendOutcome::Failed;
+            }
+        };
+    sig_builder.add_claim("sub", vapid.subject.clone());
+    let signature = match sig_builder.build() {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(error = %e, "webpush: VAPID signature failed");
+            return SendOutcome::Failed;
+        }
+    };
+    let mut mb = web_push::WebPushMessageBuilder::new(&sub);
+    mb.set_vapid_signature(signature);
+    mb.set_ttl(3600);
+    mb.set_payload(web_push::ContentEncoding::Aes128Gcm, payload);
+    let msg = match mb.build() {
+        Ok(m) => m,
+        Err(e) => {
+            warn!(error = %e, "webpush: message build failed");
+            return SendOutcome::Failed;
+        }
+    };
+    // Mirror the crate's request_builder: TTL + crypto headers + raw body.
+    let mut req = vapid
+        .client
+        .post(msg.endpoint.to_string())
+        .header("TTL", msg.ttl.to_string());
+    if let Some(p) = msg.payload {
+        req = req
+            .header("Content-Encoding", p.content_encoding.to_str())
+            .header("Content-Type", "application/octet-stream");
+        for (k, v) in p.crypto_headers {
+            req = req.header(k, v);
+        }
+        req = req.body(p.content);
+    }
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() => SendOutcome::Sent,
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            warn!(status, "webpush: push service rejected message");
+            if status == 404 || status == 410 {
+                SendOutcome::Gone
+            } else {
+                SendOutcome::Failed
+            }
+        }
+        Err(e) => {
+            warn!(error = %e, "webpush: send failed");
+            SendOutcome::Failed
+        }
+    }
+}
+
+/// GET /api/v1/notifications/push/vapid-public-key — the public key browsers
+/// need for `pushManager.subscribe` (404 when webpush isn't configured).
+async fn vapid_public_key(
+    State(st): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    match &st.vapid {
+        Some(v) => Ok(Json(json!({ "key": v.public_b64 }))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "not_configured", "message": "webpush is not configured"})),
+        )),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -3990,12 +4145,32 @@ async fn main() -> anyhow::Result<()> {
         .filter(|v| !v.is_empty())
         .map(|url| (Arc::<str>::from(url.as_str()), reqwest::Client::new()));
     let db = maybe_build_db().await;
+    let vapid = match (
+        env::var("NOTIFICATIONS__VAPID_PRIVATE_KEY")
+            .ok()
+            .filter(|v| !v.is_empty()),
+        env::var("NOTIFICATIONS__VAPID_PUBLIC_KEY")
+            .ok()
+            .filter(|v| !v.is_empty()),
+    ) {
+        (Some(private_b64), Some(public_b64)) => Some(Arc::new(VapidConfig {
+            private_b64,
+            public_b64,
+            subject: env::var("NOTIFICATIONS__VAPID_SUBJECT")
+                .ok()
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| "mailto:postmaster@expresso.local".into()),
+            client: reqwest::Client::new(),
+        })),
+        _ => None,
+    };
     let state = AppState {
         tx,
         validator,
         redis_pub,
         webhook,
         db,
+        vapid,
     };
 
     let app = Router::new()
@@ -4004,6 +4179,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/internal/notify", post(internal_notify))
         .route("/notifications/stream", get(notifications_stream))
         .route("/api/v1/notifications", get(list_notifications))
+        .route(
+            "/api/v1/notifications/push/vapid-public-key",
+            get(vapid_public_key),
+        )
         .route("/api/v1/notifications/digest", get(digest))
         .route("/api/v1/notifications/:id/read", patch(mark_read))
         .route("/api/v1/notifications/:id/snooze", patch(snooze))

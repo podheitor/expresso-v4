@@ -28,6 +28,10 @@ deadpool-redis = { workspace = true }
 once_cell = { workspace = true }
 sqlx = { workspace = true }
 
+# WebPush message building (VAPID ES256 + aes128gcm payload encryption).
+# No client feature — requests go out through the existing reqwest client.
+web-push = { version = "0.11", default-features = false }
+
 # Internal libs
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
 expresso-observability = { workspace = true }
