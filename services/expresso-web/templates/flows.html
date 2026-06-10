@@ -90,6 +90,24 @@
     </tbody>
   </table>
   {% endif %}
+
+  {% if !webhook_log.is_empty() %}
+  <h2 style="margin-top:2rem">Entregas de webhook recentes</h2>
+  <p class="muted small">Últimas chamadas de webhook disparadas pelas regras de fluxo — útil para depurar automações que falham.</p>
+  <table class="data-table" style="width:100%">
+    <thead><tr><th>Quando</th><th>URL</th><th>Status</th><th>Detalhe</th></tr></thead>
+    <tbody>
+      {% for w in webhook_log %}
+      <tr>
+        <td class="mono small">{{ w.when }}</td>
+        <td class="mono small" style="max-width:22rem;overflow:hidden;text-overflow:ellipsis">{{ w.url }}</td>
+        <td>{% if w.ok %}<span class="badge">{{ w.status }} OK</span>{% else %}<span class="muted small">{{ w.status }} falha</span>{% endif %}</td>
+        <td class="muted small">{{ w.error }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 </div>
 <script>
 // Reorder mail-filter rules: rules apply in priority order (top = highest

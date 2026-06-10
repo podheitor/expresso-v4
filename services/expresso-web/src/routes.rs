@@ -42,7 +42,7 @@ use crate::{
         NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow, SearchFacet,
         SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsSignaturesTpl, SettingsTokensTpl,
         SettingsTpl, ShareRow, SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow,
-        TasksTpl, TenantUsageRow, VersionRow, WorkingHour,
+        TasksTpl, TenantUsageRow, VersionRow, WebhookLogRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -3520,9 +3520,48 @@ async fn flows_page(
             }
         })
         .collect();
+    // Recent webhook deliveries (mail service) — debugging panel for the
+    // webhook flow action.
+    let webhook_log: Vec<WebhookLogRow> = get_json::<Vec<serde_json::Value>>(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/flows/webhook-log?limit=20",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default()
+    .into_iter()
+    .map(|e| WebhookLogRow {
+        url: e
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        status: e
+            .get("status_code")
+            .and_then(serde_json::Value::as_i64)
+            .map_or_else(|| "—".to_string(), |c| c.to_string()),
+        ok: e
+            .get("ok")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        error: e
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        when: e
+            .get("created_at")
+            .and_then(|v| v.as_str())
+            .map(|s| s.replace('T', " ").chars().take(16).collect())
+            .unwrap_or_default(),
+    })
+    .collect();
     Ok(askama_axum::IntoResponse::into_response(FlowsTpl {
         me,
         rules,
+        webhook_log,
     }))
 }
 

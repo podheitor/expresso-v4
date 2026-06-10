@@ -978,6 +978,20 @@ pub struct FlowRuleRow {
 pub struct FlowsTpl {
     pub me: Me,
     pub rules: Vec<FlowRuleRow>,
+    /// Recent webhook-action deliveries (newest first), for debugging.
+    pub webhook_log: Vec<WebhookLogRow>,
+}
+
+/// One webhook delivery attempt from a flow rule's webhook action.
+pub struct WebhookLogRow {
+    pub url: String,
+    /// HTTP status as a string, or "—".
+    pub status: String,
+    pub ok: bool,
+    /// Error detail, or empty.
+    pub error: String,
+    /// "YYYY-MM-DD HH:MM"
+    pub when: String,
 }
 
 /// Edit form for a single-condition, single-action flow rule (the shape the UI
