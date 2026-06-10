@@ -80,9 +80,11 @@ function bulkRestoreTrash() {
     .filter(Boolean);
   if (!selected.length) { alert('Selecione pelo menos um item.'); return; }
   if (!confirm('Restaurar ' + selected.length + ' item(ns)?')) return;
-  Promise.all(selected.map(function(id){
-    return fetch('/drive/' + encodeURIComponent(id) + '/restore', { method: 'POST', credentials: 'include' });
-  })).then(function(){ window.location.reload(); });
+  var body = new URLSearchParams(); body.set('ids', selected.join(','));
+  fetch('/drive/bulk-restore', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r){ if (r.ok) window.location.reload(); else alert('Falha ao restaurar.'); });
 }
 function filterTrash(q) {
   q = (q || '').toLowerCase();

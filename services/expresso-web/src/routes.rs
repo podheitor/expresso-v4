@@ -331,6 +331,8 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/move", post(drive_move_action))
         .route("/drive/bulk-move", post(drive_bulk_move_action))
         .route("/drive/bulk-copy", post(drive_bulk_copy_action))
+        .route("/drive/bulk-trash", post(drive_bulk_trash_action))
+        .route("/drive/bulk-restore", post(drive_bulk_restore_action))
         .route("/drive/tags", get(drive_tags_page))
         .route("/drive/tags/:tag", get(drive_tag_files_page))
         // contacts extras
@@ -6242,6 +6244,72 @@ async fn drive_bulk_move_action(
         &headers,
         Some((&t, &u)),
         &bulk_payload(&f.ids, &f.parent_id),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+#[derive(Deserialize)]
+struct BulkIdsForm {
+    /// Comma-separated file/folder ids.
+    ids: String,
+}
+
+/// Split a CSV id list into a JSON `{ids:[…]}` body for the bulk endpoints.
+fn bulk_ids_payload(ids: &str) -> serde_json::Value {
+    let ids: Vec<&str> = ids
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    serde_json::json!({ "ids": ids })
+}
+
+/// POST /drive/bulk-trash — move the selected items to trash in one request.
+async fn drive_bulk_trash_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<BulkIdsForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let status = post_json(
+        &st,
+        &st.backends.drive,
+        "/api/v1/drive/files/bulk-trash",
+        &headers,
+        Some((&t, &u)),
+        &bulk_ids_payload(&f.ids),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+/// POST /drive/bulk-restore — restore the selected items from trash.
+async fn drive_bulk_restore_action(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<BulkIdsForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let status = post_json(
+        &st,
+        &st.backends.drive,
+        "/api/v1/drive/files/bulk-restore",
+        &headers,
+        Some((&t, &u)),
+        &bulk_ids_payload(&f.ids),
     )
     .await?;
     Ok(StatusCode::from_u16(status)

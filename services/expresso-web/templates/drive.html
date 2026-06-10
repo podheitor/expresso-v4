@@ -333,11 +333,11 @@ function batchTrash() {
   var ids = Array.from(document.querySelectorAll('.drive-file-check:checked')).map(function(cb){ return cb.dataset.id; });
   if (!ids.length) return;
   if (!confirm('Mover ' + ids.length + ' arquivo(s) para a lixeira?')) return;
-  Promise.all(ids.map(function(id) {
-    return fetch('/drive/' + encodeURIComponent(id) + '/trash', {
-      method: 'POST', credentials: 'include',
-    });
-  })).then(function() { window.location.reload(); });
+  var body = new URLSearchParams(); body.set('ids', ids.join(','));
+  fetch('/drive/bulk-trash', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString()
+  }).then(function(r){ if (r.ok) window.location.reload(); else alert('Falha ao mover para a lixeira.'); });
 }
 function _batchSelectedIds() {
   return Array.from(document.querySelectorAll('.drive-file-check:checked')).map(function(cb){ return cb.dataset.id; });
