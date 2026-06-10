@@ -353,6 +353,18 @@
             <p class="muted small" style="margin-top:.5rem">Receba alertas mesmo com a aba em segundo plano.</p>
           </div>
           <div class="subcard stack">
+            <h3>Push neste dispositivo (mesmo com o app fechado)</h3>
+            <p class="muted small" style="margin-bottom:.5rem">
+              Registra este navegador no serviço de push (WebPush): os alertas chegam
+              mesmo sem nenhuma aba do Expresso aberta. Requer permissão de notificação.
+            </p>
+            <div id="webpush-status" class="muted small" style="margin-bottom:.5rem">Verificando…</div>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+              <button type="button" class="btn btn-primary btn-sm" id="webpush-enable" onclick="enableWebPush()">Ativar push</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="webpush-disable" onclick="disableWebPush()">Desativar push</button>
+            </div>
+          </div>
+          <div class="subcard stack">
             <h3>Som de notificação</h3>
             <p class="muted small" style="margin-bottom:.5rem">Som curto reproduzido junto da notificação desktop.</p>
             <label class="checkbox-row" style="margin-bottom:.5rem">
@@ -399,6 +411,79 @@
         </form>
       </div>
       <script>
+      // ── WebPush (background push via service worker) ────────────────────
+      (function() {
+        var st = document.getElementById('webpush-status');
+        var btnOn = document.getElementById('webpush-enable');
+        var btnOff = document.getElementById('webpush-disable');
+        if (!st) return;
+        function supported() {
+          return 'serviceWorker' in navigator && 'PushManager' in window;
+        }
+        function setStatus(msg, on) {
+          st.textContent = msg;
+          if (btnOn) btnOn.style.display = on ? 'none' : '';
+          if (btnOff) btnOff.style.display = on ? '' : 'none';
+        }
+        function refresh() {
+          if (!supported()) {
+            setStatus('Seu navegador não suporta push em segundo plano.', false);
+            if (btnOn) btnOn.disabled = true;
+            if (btnOff) btnOff.style.display = 'none';
+            return;
+          }
+          navigator.serviceWorker.getRegistration('/').then(function(reg) {
+            return reg ? reg.pushManager.getSubscription() : null;
+          }).then(function(sub) {
+            setStatus(sub ? '✓ Push ativo neste dispositivo.' : 'Push não ativado neste dispositivo.', !!sub);
+          }).catch(function() { setStatus('Push não ativado neste dispositivo.', false); });
+        }
+        function b64ToBytes(b64) {
+          var pad = '='.repeat((4 - b64.length % 4) % 4);
+          var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+          var out = new Uint8Array(raw.length);
+          for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+          return out;
+        }
+        window.enableWebPush = function() {
+          if (!supported()) return;
+          Notification.requestPermission().then(function(perm) {
+            if (perm !== 'granted') { setStatus('Permissão de notificação negada.', false); return; }
+            fetch('/notifications/vapid-key', { credentials: 'include' })
+              .then(function(r){ return r.json(); })
+              .then(function(d) {
+                if (!d.key) { setStatus('Push não configurado no servidor (chaves VAPID ausentes).', false); return; }
+                navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function(reg) {
+                  return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(d.key) });
+                }).then(function(sub) {
+                  var j = sub.toJSON();
+                  return fetch('/notifications/push/subscribe', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ endpoint: sub.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth })
+                  });
+                }).then(function(r) {
+                  if (r && r.ok) setStatus('✓ Push ativo neste dispositivo.', true);
+                  else setStatus('Falha ao registrar o push no servidor.', false);
+                }).catch(function(e) { setStatus('Falha ao ativar push: ' + e, false); });
+              });
+          });
+        };
+        window.disableWebPush = function() {
+          navigator.serviceWorker.getRegistration('/').then(function(reg) {
+            return reg ? reg.pushManager.getSubscription() : null;
+          }).then(function(sub) {
+            if (!sub) { setStatus('Push não ativado neste dispositivo.', false); return; }
+            fetch('/notifications/push/unsubscribe', {
+              method: 'POST', credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ endpoint: sub.endpoint })
+            }).then(function() { return sub.unsubscribe(); })
+              .then(function() { setStatus('Push desativado neste dispositivo.', false); });
+          });
+        };
+        refresh();
+      })();
       (function() {
         var btn = document.getElementById('notif-enable-btn');
         var status = document.getElementById('notif-status');

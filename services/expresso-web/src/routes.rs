@@ -444,6 +444,18 @@ pub fn router(state: AppState) -> Router {
             "/settings/flag-presets/:id/edit",
             post(settings_flag_preset_edit),
         )
+        // Service worker — must be served from the root scope (not /static).
+        .route("/sw.js", get(service_worker_js))
+        // WebPush registration (settings → notifications)
+        .route("/notifications/vapid-key", get(notifications_vapid_key))
+        .route(
+            "/notifications/push/subscribe",
+            post(notifications_push_subscribe),
+        )
+        .route(
+            "/notifications/push/unsubscribe",
+            post(notifications_push_unsubscribe),
+        )
         // Notification bell tray (server-backed; static before :id)
         .route("/notifications/list", get(notifications_list_api))
         .route(
@@ -11442,6 +11454,108 @@ async fn impersonation_end(State(st): State<AppState>, headers: HeaderMap) -> We
     append_expired_cookie(&mut out, ACCESS_BACKUP_COOKIE);
     append_expired_cookie(&mut out, IMPERSONATING_COOKIE);
     Ok(out)
+}
+
+// ─── webpush (service worker + subscription) ─────────────────────────────────
+
+/// GET /sw.js — the service worker, served from the root path so its scope
+/// covers the whole app (ServeDir under /static would restrict it).
+async fn service_worker_js() -> Response {
+    (
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        include_str!("../static/sw.js"),
+    )
+        .into_response()
+}
+
+/// GET /notifications/vapid-key — the VAPID public key for
+/// `pushManager.subscribe`. `{key:null}` when webpush isn't configured
+/// (the backend answers 404 then).
+async fn notifications_vapid_key(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let v = match get_json::<serde_json::Value>(
+        &st,
+        &st.backends.notifications,
+        "/api/v1/notifications/push/vapid-public-key",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await
+    {
+        Ok(Some(v)) => v,
+        _ => serde_json::json!({ "key": null }),
+    };
+    Ok(json_response(&v))
+}
+
+#[derive(Deserialize)]
+struct PushSubscribeForm {
+    endpoint: String,
+    p256dh: String,
+    auth: String,
+}
+
+/// POST /notifications/push/subscribe — register this browser's subscription.
+async fn notifications_push_subscribe(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    axum::Json(f): axum::Json<PushSubscribeForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let status = post_json(
+        &st,
+        &st.backends.notifications,
+        "/api/v1/notifications/push",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "endpoint": f.endpoint, "p256dh": f.p256dh, "auth": f.auth }),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
+}
+
+#[derive(Deserialize)]
+struct PushUnsubscribeForm {
+    endpoint: String,
+}
+
+/// POST /notifications/push/unsubscribe — drop this browser's subscription
+/// (proxies DELETE-with-body).
+async fn notifications_push_unsubscribe(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    axum::Json(f): axum::Json<PushUnsubscribeForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let status = delete_json(
+        &st,
+        &st.backends.notifications,
+        "/api/v1/notifications/push",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "endpoint": f.endpoint }),
+    )
+    .await?;
+    Ok(StatusCode::from_u16(status)
+        .unwrap_or(StatusCode::BAD_GATEWAY)
+        .into_response())
 }
 
 // ─── notification bell tray (server-backed) ──────────────────────────────────
