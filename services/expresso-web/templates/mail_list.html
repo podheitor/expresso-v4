@@ -65,11 +65,43 @@
     </details>
 
     <div class="sidebar-footer">
+      <div id="mail-quota-bar" style="display:none;margin-bottom:.4rem">
+        <div style="background:var(--surface-2,#eee);border-radius:.25rem;overflow:hidden;height:.45rem">
+          <div id="mail-quota-fill" style="height:100%;width:0;background:var(--accent,#2563eb)"></div>
+        </div>
+        <span class="muted small" id="mail-quota-text" style="font-size:.7rem"></span>
+      </div>
       <a class="link-sm sidebar-settings-link" href="/mail/search">🔍 Pesquisar</a>
       <a class="link-sm sidebar-settings-link" href="/flows">⚙ Regras</a>
       <a class="link-sm sidebar-settings-link" href="/settings?tab=filters">Filtros</a>
       <a class="link-sm sidebar-settings-link" href="/settings">Configurações</a>
     </div>
+    <script>
+    (function loadMailQuota() {
+      function fmt(n) {
+        if (n < 1024) return n + ' B';
+        if (n < 1048576) return (n/1024).toFixed(0) + ' KB';
+        if (n < 1073741824) return (n/1048576).toFixed(1) + ' MB';
+        return (n/1073741824).toFixed(2) + ' GB';
+      }
+      fetch('/mail/quota', { credentials: 'include' })
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(q) {
+          if (!q || !q.quota_bytes) return;
+          var used = q.used_bytes || 0, limit = q.quota_bytes;
+          var pct = Math.min(100, Math.round(used * 100 / limit));
+          var bar = document.getElementById('mail-quota-bar');
+          var fill = document.getElementById('mail-quota-fill');
+          var txt = document.getElementById('mail-quota-text');
+          if (!bar) return;
+          bar.style.display = '';
+          fill.style.width = pct + '%';
+          if (pct >= 90) fill.style.background = '#ef4444';
+          else if (pct >= 75) fill.style.background = '#f59e0b';
+          txt.textContent = fmt(used) + ' de ' + fmt(limit) + ' (' + pct + '%)';
+        }).catch(function(){});
+    })();
+    </script>
   </aside>
 
   <main class="mail-main">

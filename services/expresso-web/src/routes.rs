@@ -300,6 +300,7 @@ pub fn router(state: AppState) -> Router {
         .route("/mail/:id/delete", post(mail_delete_action))
         .route("/mail/:id/raw", get(mail_message_raw))
         .route("/mail/messages/bulk-delete", post(mail_bulk_delete))
+        .route("/mail/quota", get(mail_quota_api))
         .route("/mail/snoozed", get(mail_snoozed_page))
         .route("/mail/scheduled", get(mail_scheduled_page))
         .route(
@@ -5401,6 +5402,29 @@ async fn mail_bulk_delete(
     Ok(StatusCode::from_u16(status)
         .unwrap_or(StatusCode::BAD_GATEWAY)
         .into_response())
+}
+
+/// GET /mail/quota — the caller's mailbox storage usage as JSON
+/// ({used_bytes, quota_bytes}) for the sidebar storage bar.
+async fn mail_quota_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/quota",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_else(|| serde_json::json!({ "used_bytes": 0, "quota_bytes": null }));
+    Ok(json_response(&v))
 }
 
 /// GET /mail/:id/raw — download a message as a raw RFC 5822 .eml file
