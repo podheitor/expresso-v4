@@ -39,9 +39,9 @@ use crate::{
         MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl,
         MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MfaFactorRow, MonthCell, Note,
         NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook, NotesActivityTpl, NotesSharedTpl,
-        NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow, SearchGroup, SearchHit, SearchTpl,
-        SecurityTpl, SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow, SnoozedRow,
-        TagPairRow, TaskRow, TasksTpl, TenantUsageRow, VersionRow, WorkingHour,
+        NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow, SearchFacet, SearchGroup, SearchHit,
+        SearchTpl, SecurityTpl, SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow,
+        SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow, VersionRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -2765,6 +2765,10 @@ async fn mail_cancel_send_action(
 #[derive(Deserialize)]
 struct UnifiedSearchQuery {
     q: Option<String>,
+    /// Category facet: a group label ("Mail"/"Drive"/…) to show alone, or
+    /// empty/"all" for every group.
+    #[serde(default)]
+    r#type: Option<String>,
 }
 
 /// Per-source hit cap on the unified results page (keeps it scannable).
@@ -2971,22 +2975,52 @@ async fn unified_search_page(
     let query = uq.q.unwrap_or_default();
     let qt = query.trim();
 
+    let active_type = match uq.r#type.as_deref() {
+        Some(t) if !t.is_empty() && !t.eq_ignore_ascii_case("all") => t.to_string(),
+        _ => String::new(),
+    };
     if qt.is_empty() {
         return Ok(askama_axum::IntoResponse::into_response(SearchTpl {
             me,
             query: String::new(),
+            query_enc: String::new(),
             groups: Vec::new(),
             total: 0,
+            facets: Vec::new(),
+            active_type,
         }));
     }
-    let groups = federate_search(&st, &headers, (t.as_str(), u.as_str()), qt).await;
+    let all_groups = federate_search(&st, &headers, (t.as_str(), u.as_str()), qt).await;
+    // Category facets reflect the full (unfiltered) result set so the counts
+    // stay stable while the user narrows by type.
+    let facets: Vec<SearchFacet> = all_groups
+        .iter()
+        .filter(|g| !g.hits.is_empty())
+        .map(|g| SearchFacet {
+            label: g.label.clone(),
+            icon: g.icon.clone(),
+            count: g.hits.len(),
+        })
+        .collect();
+    let groups: Vec<SearchGroup> = if active_type.is_empty() {
+        all_groups
+    } else {
+        all_groups
+            .into_iter()
+            .filter(|g| g.label == active_type)
+            .collect()
+    };
     let total: usize = groups.iter().map(|g| g.hits.len()).sum();
 
+    let query_enc = utf8_percent_encode(&query, NON_ALPHANUMERIC).to_string();
     Ok(askama_axum::IntoResponse::into_response(SearchTpl {
         me,
         query,
+        query_enc,
         groups,
         total,
+        facets,
+        active_type,
     }))
 }
 

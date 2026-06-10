@@ -155,6 +155,14 @@ pub struct SearchGroup {
     pub hits: Vec<SearchHit>,
 }
 
+/// One category facet chip (a source with at least one hit) on the unified
+/// search page.
+pub struct SearchFacet {
+    pub label: String,
+    pub icon: String,
+    pub count: usize,
+}
+
 /// A note as shown in the webmail Notes screen (subset of the notes service's model).
 #[derive(serde::Deserialize)]
 pub struct Note {
@@ -196,8 +204,14 @@ pub struct NotesTpl {
 pub struct SearchTpl {
     pub me: Me,
     pub query: String,
+    /// Percent-encoded query, for building the facet-chip hrefs safely.
+    pub query_enc: String,
     pub groups: Vec<SearchGroup>,
     pub total: usize,
+    /// Category chips (one per source with hits), counted over the full set.
+    pub facets: Vec<SearchFacet>,
+    /// Active category filter (a group label), or empty for all.
+    pub active_type: String,
 }
 
 #[derive(Template)]

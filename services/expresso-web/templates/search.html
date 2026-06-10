@@ -17,7 +17,17 @@
     {% else if total == 0 %}
       <p class="muted">Nenhum resultado para “{{ query }}”.</p>
     {% else %}
-      <p class="muted small">{{ total }} resultado(s) para “{{ query }}”.</p>
+      {% if !facets.is_empty() %}
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.75rem">
+        <a class="btn btn-sm{% if active_type.is_empty() %} btn-primary{% else %} btn-ghost{% endif %}"
+           href="/search?q={{ query_enc }}">Tudo</a>
+        {% for fc in facets %}
+        <a class="btn btn-sm{% if active_type == fc.label %} btn-primary{% else %} btn-ghost{% endif %}"
+           href="/search?q={{ query_enc }}&type={{ fc.label }}">{{ fc.icon }} {{ fc.label }} ({{ fc.count }})</a>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <p class="muted small">{{ total }} resultado(s) para “{{ query }}”{% if !active_type.is_empty() %} em {{ active_type }}{% endif %}.</p>
       {% for g in groups %}
         {% if !g.hits.is_empty() %}
         <section class="subcard stack">
