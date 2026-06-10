@@ -1626,6 +1626,16 @@ pub struct DriveAclTpl {
     pub error: Option<String>,
 }
 
+#[derive(Template)]
+#[template(path = "note_acl.html")]
+pub struct NoteAclTpl {
+    pub me: Me,
+    pub note_id: String,
+    pub note_title: String,
+    pub shares: Vec<AclRow>,
+    pub error: Option<String>,
+}
+
 /// Mail attachment metadata (from backend /attachments list).
 #[derive(Debug, Deserialize, Clone)]
 pub struct Attachment {

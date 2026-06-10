@@ -38,12 +38,12 @@ use crate::{
         HomeEvent, HomeReminder, HomeTpl, LoginTpl, MailAlias, MailComposeTpl, MailListTpl,
         MailScheduledTpl, MailSearchTpl, MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant,
         MeetRoom, MeetRoomTpl, MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem,
-        MfaFactorRow, MonthCell, Note, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
-        NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow,
-        ScheduledRow, SearchFacet, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
-        SettingsSignaturesTpl, SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow,
-        SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow, VersionRow,
-        WebhookLogRow, WorkingHour,
+        MfaFactorRow, MonthCell, Note, NoteAclTpl, NoteTagStat, NoteVersionRow, NoteVersionsTpl,
+        Notebook, NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource,
+        RetentionPolicyRow, ScheduledRow, SearchFacet, SearchGroup, SearchHit, SearchTpl,
+        SecurityTpl, SettingsSignaturesTpl, SettingsTokensTpl, SettingsTpl, ShareRow,
+        SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow,
+        VersionRow, WebhookLogRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -428,6 +428,8 @@ pub fn router(state: AppState) -> Router {
             "/notes/:id/tags",
             get(notes_tags_get_api).post(notes_tags_set_api),
         )
+        .route("/notes/:id/acl", get(note_acl_page).post(note_acl_grant))
+        .route("/notes/:id/acl/:grantee/revoke", post(note_acl_revoke))
         .route("/notes/:id/versions", get(notes_versions_page))
         .route(
             "/notes/:id/versions/:vno/restore",
@@ -10652,6 +10654,117 @@ async fn notes_shared_page(
         me,
         rows,
     }))
+}
+
+// ─── /notes/:id/acl (note sharing) ───────────────────────────────────────────
+
+/// GET /notes/:id/acl — share a note with other tenant users (READ/WRITE/
+/// ADMIN). Mirrors the drive/calendar/contacts share pages.
+async fn note_acl_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let note_title = get_json::<Note>(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .map(|n| n.title)
+    .filter(|s| !s.is_empty())
+    .unwrap_or_else(|| "(sem título)".into());
+    let mut shares: Vec<AclRow> = get_json(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/{enc}/acl"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    for s in &mut shares {
+        s.email = Some(resolve_email_by_id(&st, &s.grantee_id, &headers, &t, &u).await);
+    }
+    Ok(askama_axum::IntoResponse::into_response(NoteAclTpl {
+        me,
+        note_id: id,
+        note_title,
+        shares,
+        error: extract_flash(&uri),
+    }))
+}
+
+/// POST /notes/:id/acl — grant a privilege to a user by email.
+async fn note_acl_grant(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<ShareForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let email = f.email.trim().to_ascii_lowercase();
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let privilege = match f.privilege.as_str() {
+        "WRITE" | "ADMIN" => f.privilege.as_str(),
+        _ => "READ",
+    };
+    let grantee_id =
+        match resolve_user_id(&st, &st.backends.notes, &email, &headers, &t, &u).await? {
+            Some(gid) => gid,
+            None => {
+                return Ok(Redirect::to(&format!(
+                    "/notes/{enc}/acl?flash=Usu%C3%A1rio+n%C3%A3o+encontrado"
+                ))
+                .into_response());
+            }
+        };
+    let _ = post_json(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/{enc}/acl"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "grantee_id": grantee_id, "privilege": privilege }),
+    )
+    .await?;
+    Ok(Redirect::to(&format!("/notes/{enc}/acl")).into_response())
+}
+
+/// POST /notes/:id/acl/:grantee/revoke — remove a user's grant.
+async fn note_acl_revoke(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, grantee)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let genc = utf8_percent_encode(&grantee, NON_ALPHANUMERIC).to_string();
+    let _ = delete_at(
+        &st,
+        &st.backends.notes,
+        &format!("/api/v1/notes/{enc}/acl/{genc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to(&format!("/notes/{enc}/acl")).into_response())
 }
 
 /// GET /notes/:id/versions — past content revisions of a note (newest first).

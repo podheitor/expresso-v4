@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Compartilhar {{ note_title }} · Expresso{% endblock %}
+{% block nav %}{% let current = "notes" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Compartilhar nota · {{ note_title }}</h1>
+      <p class="muted" style="font-size:.875rem">Conceda acesso a outros usuários do tenant (concede acesso de leitura/edição).</p>
+    </div>
+    <a class="btn btn-ghost" href="/notes">◀ Voltar</a>
+  </div>
+
+  {% match error %}{% when Some with (e) %}<div class="alert alert-warn">{{ e }}</div>{% when None %}{% endmatch %}
+
+  <div class="card" style="margin-bottom:1.5rem">
+    <h2 style="margin-bottom:1rem">Conceder acesso</h2>
+    <form method="post" action="/notes/{{ note_id }}/acl" class="row" style="align-items:flex-end;gap:.75rem;flex-wrap:wrap">
+      <label style="flex:1;min-width:200px">E-mail do usuário
+        <input type="email" name="email" required placeholder="colega@empresa.com">
+      </label>
+      <label>Privilégio
+        <select name="privilege">
+          <option value="READ">READ — ver</option>
+          <option value="WRITE">WRITE — editar</option>
+          <option value="ADMIN">ADMIN — gerenciar acesso</option>
+        </select>
+      </label>
+      <button type="submit" class="btn btn-primary" style="align-self:flex-end">Compartilhar</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-bottom:.5rem">Acessos concedidos</h2>
+    {% if shares.is_empty() %}
+      <p class="muted">Ninguém tem acesso compartilhado a este item.</p>
+    {% else %}
+    <table class="data-table" style="width:100%">
+      <thead><tr><th>Usuário</th><th>Privilégio</th><th></th></tr></thead>
+      <tbody>
+        {% for s in shares %}
+        <tr>
+          <td>{% match s.email %}{% when Some with (e) %}{{ e }}{% when None %}{{ s.grantee_id }}{% endmatch %}</td>
+          <td class="mono small">{{ s.privilege }}</td>
+          <td style="text-align:right">
+            <form method="post" action="/notes/{{ note_id }}/acl/{{ s.grantee_id }}/revoke" style="display:inline"
+                  onsubmit="return confirm('Revogar o acesso deste usuário?')">
+              <button class="btn btn-ghost btn-sm" type="submit">Revogar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
