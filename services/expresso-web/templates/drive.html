@@ -139,6 +139,7 @@
             {% if f.is_previewable() %}<button class="btn btn-ghost btn-sm" onclick="openDrivePreview('{{ f.id }}','{{ f.name }}')" title="Visualizar">👁 Ver</button>{% endif %}
             <a class="btn btn-ghost btn-sm" href="/api/v1/drive/files/{{ f.id }}" title="Download">↓</a>
             <button class="btn btn-ghost btn-sm" onclick="openShareModal('{{ f.id }}','{{ f.name }}')" title="Compartilhar">Compartilhar</button>
+            <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/acl" title="Compartilhar com usuários do tenant">👥</a>
             <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/versions" title="Versões">Versões</a>
             <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/comments" title="Comentários">💬</a>
             {% if f.is_editable() %}<a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/edit" title="Editar online">Editar</a>{% endif %}

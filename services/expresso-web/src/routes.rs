@@ -30,7 +30,7 @@ use crate::{
         ContactDiffTpl, ContactEmailRow, ContactFormTpl, ContactGroup, ContactGroupDetailTpl,
         ContactGroupsTpl, ContactVersionRow, ContactVersionsTpl, ContactsTpl, CounterRow,
         DayColumn, DelegationRaw, DelegationView, DelegationsTpl, DlqEntry, DlqKindCount,
-        DriveActivityTpl, DriveCommentRow, DriveCommentsTpl, DriveContentHit,
+        DriveAclTpl, DriveActivityTpl, DriveCommentRow, DriveCommentsTpl, DriveContentHit,
         DriveContentSearchTpl, DriveEditTpl, DriveFile, DriveFileTag, DrivePreviewTpl, DriveQuota,
         DriveShareTpl, DriveStarredTpl, DriveTagFilesTpl, DriveTagStat, DriveTagsTpl, DriveTpl,
         DriveTrashTpl, DriveVersionsTpl, Event, EventFormTpl, FlagPreset, FlowEditTpl, FlowRuleRow,
@@ -95,6 +95,8 @@ pub fn router(state: AppState) -> Router {
             get(drive_share_page).post(drive_share_create),
         )
         .route("/drive/:id/share/:sid/revoke", post(drive_share_revoke))
+        .route("/drive/:id/acl", get(drive_acl_page).post(drive_acl_grant))
+        .route("/drive/:id/acl/:grantee/revoke", post(drive_acl_revoke))
         .route(
             "/drive/:id/comments",
             get(drive_comments_page).post(drive_comment_create),
@@ -5719,6 +5721,125 @@ async fn drive_share_revoke(
     )
     .await?;
     Ok(Redirect::to(&format!("/drive/{id}/share")).into_response())
+}
+
+// ─── /drive/:id/acl (internal user sharing) ──────────────────────────────────
+
+/// Resolve a file's display name (best-effort; falls back to the id).
+async fn drive_file_name(st: &AppState, id: &str, headers: &HeaderMap, t: &str, u: &str) -> String {
+    let enc = utf8_percent_encode(id, NON_ALPHANUMERIC).to_string();
+    get_json::<DriveFile>(
+        st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{enc}/metadata"),
+        headers,
+        Some((t, u)),
+    )
+    .await
+    .ok()
+    .flatten()
+    .map_or_else(|| id.to_string(), |f| f.name)
+}
+
+/// GET /drive/:id/acl — internal sharing: grant READ/WRITE/ADMIN on a file or
+/// folder to other tenant users (distinct from public token links). Grantee
+/// ids are resolved to emails for display, mirroring the calendar share page.
+async fn drive_acl_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let file_name = drive_file_name(&st, &id, &headers, &t, &u).await;
+    let mut shares: Vec<AclRow> = get_json(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{enc}/acl"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    for s in &mut shares {
+        s.email = Some(resolve_email_by_id(&st, &s.grantee_id, &headers, &t, &u).await);
+    }
+    let error = extract_flash(&uri);
+    Ok(askama_axum::IntoResponse::into_response(DriveAclTpl {
+        me,
+        file_id: id,
+        file_name,
+        shares,
+        error,
+    }))
+}
+
+/// POST /drive/:id/acl — grant a privilege to a user by email.
+async fn drive_acl_grant(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+    Form(f): Form<ShareForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let email = f.email.trim().to_ascii_lowercase();
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let privilege = match f.privilege.as_str() {
+        "WRITE" | "ADMIN" => f.privilege.as_str(),
+        _ => "READ",
+    };
+    let grantee_id =
+        match resolve_user_id(&st, &st.backends.drive, &email, &headers, &t, &u).await? {
+            Some(gid) => gid,
+            None => {
+                return Ok(Redirect::to(&format!(
+                    "/drive/{enc}/acl?flash=Usu%C3%A1rio+n%C3%A3o+encontrado"
+                ))
+                .into_response());
+            }
+        };
+    let _ = post_json(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{enc}/acl"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "grantee_id": grantee_id, "privilege": privilege }),
+    )
+    .await?;
+    Ok(Redirect::to(&format!("/drive/{enc}/acl")).into_response())
+}
+
+/// POST /drive/:id/acl/:grantee/revoke — remove a user's grant.
+async fn drive_acl_revoke(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path((id, grantee)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let genc = utf8_percent_encode(&grantee, NON_ALPHANUMERIC).to_string();
+    let _ = delete_at(
+        &st,
+        &st.backends.drive,
+        &format!("/api/v1/drive/files/{enc}/acl/{genc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to(&format!("/drive/{enc}/acl")).into_response())
 }
 
 // ─── /drive/:id/versions ─────────────────────────────────────────────────────

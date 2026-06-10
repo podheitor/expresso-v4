@@ -1574,6 +1574,17 @@ pub struct AddrbookShareTpl {
     pub error: Option<String>,
 }
 
+#[derive(Template)]
+#[template(path = "drive_acl.html")]
+pub struct DriveAclTpl {
+    pub me: Me,
+    /// File/folder id and display name being shared.
+    pub file_id: String,
+    pub file_name: String,
+    pub shares: Vec<AclRow>,
+    pub error: Option<String>,
+}
+
 /// Mail attachment metadata (from backend /attachments list).
 #[derive(Debug, Deserialize, Clone)]
 pub struct Attachment {
