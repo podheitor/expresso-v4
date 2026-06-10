@@ -699,6 +699,11 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
                             } else {
                                 None
                             };
+                            let my_partstat = e
+                                .ical_raw
+                                .as_deref()
+                                .map(|ical| attendee_partstat(ical, &me.email))
+                                .unwrap_or_default();
                             HomeEvent {
                                 id: e.id,
                                 calendar_id: e.calendar_id,
@@ -706,6 +711,7 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
                                 starts,
                                 is_meet,
                                 meet_room_id,
+                                my_partstat,
                             }
                         })
                         .take(5)
@@ -1796,6 +1802,44 @@ struct FreeBusyQuery {
 /// Extract "HH:MM" from an RFC3339 instant (chars 11..16), best-effort.
 fn hhmm_of_rfc3339(s: &str) -> &str {
     s.get(11..16).unwrap_or(s)
+}
+
+/// Find `email`'s RSVP status in an event's iCalendar by reading the matching
+/// `ATTENDEE…PARTSTAT=…:mailto:<email>` line. Returns the partstat
+/// (uppercase), "NEEDS-ACTION" for an attendee line without an explicit
+/// PARTSTAT, or "" when `email` isn't listed as an attendee. Case-insensitive
+/// on the email; ignores ROOM/RESOURCE attendees.
+fn attendee_partstat(ical: &str, email: &str) -> String {
+    let want = email.trim().to_ascii_lowercase();
+    if want.is_empty() {
+        return String::new();
+    }
+    for line in ical.lines() {
+        let l = line.trim();
+        let upper = l.to_ascii_uppercase();
+        if !upper.starts_with("ATTENDEE") {
+            continue;
+        }
+        if upper.contains("CUTYPE=ROOM") || upper.contains("CUTYPE=RESOURCE") {
+            continue;
+        }
+        // The address is the trailing mailto: value.
+        let addr = l
+            .rsplit_once("mailto:")
+            .map(|(_, a)| a.trim().to_ascii_lowercase());
+        if addr.as_deref() != Some(want.as_str()) {
+            continue;
+        }
+        // Read PARTSTAT=… from the params (before the final ':').
+        let params = upper.split(':').next().unwrap_or("");
+        for p in params.split(';') {
+            if let Some(v) = p.strip_prefix("PARTSTAT=") {
+                return v.to_string();
+            }
+        }
+        return "NEEDS-ACTION".to_string();
+    }
+    String::new()
 }
 
 #[derive(Deserialize)]
@@ -7813,6 +7857,9 @@ async fn event_delete_action(
 #[derive(Deserialize)]
 struct RsvpForm {
     partstat: String,
+    /// Where to redirect after responding (e.g. "/" from the home agenda).
+    #[serde(default)]
+    back: Option<String>,
 }
 
 async fn event_rsvp_action(
@@ -7828,7 +7875,8 @@ async fn event_rsvp_action(
     let (t, u) = ctx_of(&me);
     let enc_c = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC).to_string();
     let enc_e = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
-    let body = serde_json::json!({"partstat": f.partstat});
+    // The backend applies the RSVP for `email` (required) — that's the caller.
+    let body = serde_json::json!({"email": me.email, "partstat": f.partstat});
     let _ = post_json(
         &st,
         &st.backends.calendar,
@@ -7838,7 +7886,12 @@ async fn event_rsvp_action(
         &body,
     )
     .await;
-    Ok(Redirect::to(&format!("/calendar/{cal_id}/events/{id}/edit")).into_response())
+    // Return where the user came from (home agenda or the event form).
+    let back = f
+        .back
+        .filter(|b| b.starts_with('/'))
+        .unwrap_or_else(|| format!("/calendar/{cal_id}/events/{id}/edit"));
+    Ok(Redirect::to(&back).into_response())
 }
 
 /// Unique-enough UID for iCal VEVENTs — unix nanos as 32-hex.
@@ -13251,6 +13304,23 @@ mod tests {
         );
         assert_eq!(duplicate_key(&mk(Some("  "), None)), None);
         assert_eq!(duplicate_key(&mk(None, None)), None);
+    }
+
+    #[test]
+    fn attendee_partstat_reads_caller_status() {
+        let ical = "BEGIN:VEVENT\r\n\
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:Ana@Ex.com\r\n\
+            ATTENDEE;CUTYPE=ROOM;PARTSTAT=ACCEPTED:mailto:room@ex.com\r\n\
+            ATTENDEE:mailto:bob@ex.com\r\n\
+            END:VEVENT\r\n";
+        assert_eq!(attendee_partstat(ical, "ana@ex.com"), "ACCEPTED");
+        // Attendee line with no explicit PARTSTAT → NEEDS-ACTION.
+        assert_eq!(attendee_partstat(ical, "bob@ex.com"), "NEEDS-ACTION");
+        // Room/resource attendees are ignored.
+        assert_eq!(attendee_partstat(ical, "room@ex.com"), "");
+        // Not an attendee at all.
+        assert_eq!(attendee_partstat(ical, "carol@ex.com"), "");
+        assert_eq!(attendee_partstat(ical, ""), "");
     }
 
     #[test]

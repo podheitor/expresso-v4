@@ -111,6 +111,26 @@
                   <span class="home-badge home-badge-meet" style="margin-left:auto">Meet</span>
               {% endmatch %}
             {% endif %}
+            {% if ev.can_rsvp() %}
+            <span style="margin-left:auto;display:inline-flex;gap:.2rem;align-items:center">
+              <span class="muted small" title="Sua resposta">{{ ev.rsvp_label() }}</span>
+              <form method="post" action="/calendar/{{ ev.calendar_id }}/events/{{ ev.id }}/rsvp" style="display:inline">
+                <input type="hidden" name="partstat" value="ACCEPTED">
+                <input type="hidden" name="back" value="/">
+                <button type="submit" class="btn btn-ghost btn-sm" style="padding:.1rem .3rem" title="Confirmar">✓</button>
+              </form>
+              <form method="post" action="/calendar/{{ ev.calendar_id }}/events/{{ ev.id }}/rsvp" style="display:inline">
+                <input type="hidden" name="partstat" value="TENTATIVE">
+                <input type="hidden" name="back" value="/">
+                <button type="submit" class="btn btn-ghost btn-sm" style="padding:.1rem .3rem" title="Talvez">?</button>
+              </form>
+              <form method="post" action="/calendar/{{ ev.calendar_id }}/events/{{ ev.id }}/rsvp" style="display:inline">
+                <input type="hidden" name="partstat" value="DECLINED">
+                <input type="hidden" name="back" value="/">
+                <button type="submit" class="btn btn-ghost btn-sm" style="padding:.1rem .3rem" title="Recusar">✗</button>
+              </form>
+            </span>
+            {% endif %}
           </li>
           {% endfor %}
         </ul>

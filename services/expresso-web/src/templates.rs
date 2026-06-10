@@ -1333,6 +1333,29 @@ pub struct HomeEvent {
     pub starts: String, // HH:MM or "Hoje HH:MM"
     pub is_meet: bool,
     pub meet_room_id: Option<String>,
+    /// The caller's RSVP status: "ACCEPTED"/"DECLINED"/"TENTATIVE"/
+    /// "NEEDS-ACTION", or "" when the caller isn't an attendee (their own
+    /// event) — drives the quick-RSVP buttons on the home agenda.
+    pub my_partstat: String,
+}
+
+impl HomeEvent {
+    /// PT label for the current RSVP status, or "" when not an attendee.
+    pub fn rsvp_label(&self) -> &'static str {
+        match self.my_partstat.as_str() {
+            "ACCEPTED" => "✓ Confirmado",
+            "DECLINED" => "✗ Recusado",
+            "TENTATIVE" => "? Talvez",
+            "NEEDS-ACTION" => "Aguardando resposta",
+            _ => "",
+        }
+    }
+
+    /// Whether to show the quick-RSVP buttons (the caller is an invited
+    /// attendee who can still change their answer).
+    pub fn can_rsvp(&self) -> bool {
+        !self.my_partstat.is_empty()
+    }
 }
 
 #[derive(Debug, Clone)]
