@@ -81,7 +81,8 @@
             {% endfor %}
           </select>
         </label>
-        <textarea class="input" name="body" rows="18" placeholder="Escreva sua nota…">{{ s.body }}</textarea>
+        <textarea class="input" name="body" id="note-body" rows="18" placeholder="Escreva sua nota… (use - [ ] para itens de checklist)" oninput="renderChecklist()">{{ s.body }}</textarea>
+        <div id="note-checklist" style="margin-top:.4rem"></div>
       </form>
       <div class="stack" style="max-width:720px;margin-top:.5rem">
         <label class="small muted">Tags (separadas por vírgula)
@@ -116,6 +117,40 @@
   </main>
 </section>
 <script>
+// ── Checklist: render interactive boxes for "- [ ]" / "- [x]" body lines ──
+// OneNote-style inline checklists. Toggling a box rewrites that line in the
+// textarea (the user then Saves the note as usual).
+function renderChecklist() {
+  var ta = document.getElementById('note-body');
+  var host = document.getElementById('note-checklist');
+  if (!ta || !host) return;
+  var lines = ta.value.split('\n');
+  var items = [];
+  lines.forEach(function(line, i) {
+    var m = /^(\s*)-\s\[( |x|X)\]\s?(.*)$/.exec(line);
+    if (m) items.push({ idx: i, done: m[2].toLowerCase() === 'x', text: m[3] });
+  });
+  if (!items.length) { host.innerHTML = ''; return; }
+  var done = items.filter(function(it){ return it.done; }).length;
+  var rows = items.map(function(it) {
+    var t = it.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return '<label style="display:flex;gap:.4rem;align-items:center;padding:.15rem 0">' +
+      '<input type="checkbox" ' + (it.done ? 'checked' : '') + ' onchange="toggleChecklistItem(' + it.idx + ', this.checked)">' +
+      '<span style="' + (it.done ? 'text-decoration:line-through;opacity:.6' : '') + '">' + t + '</span></label>';
+  }).join('');
+  host.innerHTML = '<div class="muted small" style="margin-bottom:.2rem">✔ ' + done + '/' + items.length + ' concluídos</div>' + rows;
+}
+function toggleChecklistItem(lineIdx, checked) {
+  var ta = document.getElementById('note-body');
+  if (!ta) return;
+  var lines = ta.value.split('\n');
+  if (lineIdx < 0 || lineIdx >= lines.length) return;
+  lines[lineIdx] = lines[lineIdx].replace(/^(\s*-\s\[)( |x|X)(\])/, '$1' + (checked ? 'x' : ' ') + '$3');
+  ta.value = lines.join('\n');
+  renderChecklist();
+}
+renderChecklist();
+
 // ── Per-note tags (server-backed via /notes/:id/tags) ──
 (function loadNoteTags() {
   var inp = document.getElementById('note-tags-input');
