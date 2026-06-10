@@ -211,6 +211,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/contacts/:book_id/export.vcf", get(contacts_export_vcf))
         .route("/contacts/:book_id/import", post(contacts_import_vcf))
+        .route("/contacts/import-csv", post(contacts_import_csv))
         // contact groups (distribution lists) — server-backed
         .route(
             "/contacts/groups",
@@ -7412,6 +7413,46 @@ async fn contacts_import_vcf(
     )
     .await?;
     Ok(Redirect::to(&format!("/contacts?book_id={enc}")).into_response())
+}
+
+/// POST /contacts/import-csv — forward the browser's multipart (book_id +
+/// file) to the contacts CSV importer, which parses server-side (proper
+/// quoting, validation, 4 MiB cap) — replaces the old fragile client-side
+/// comma-split→vCard conversion. Returns the backend JSON ({imported: N}).
+async fn contacts_import_csv(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    body: Bytes,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let ct = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("multipart/form-data")
+        .to_string();
+    let (status, resp) = crate::upstream::post_body_json(
+        &st,
+        &st.backends.contacts,
+        "/api/v1/contacts/import",
+        &headers,
+        Some((&t, &u)),
+        body,
+        &ct,
+    )
+    .await?;
+    if (200..300).contains(&status) {
+        Ok(json_response(
+            &resp.unwrap_or_else(|| serde_json::json!({ "imported": 0 })),
+        ))
+    } else {
+        Ok(StatusCode::from_u16(status)
+            .unwrap_or(StatusCode::BAD_GATEWAY)
+            .into_response())
+    }
 }
 
 // ─── contact groups (distribution lists) ─────────────────────────────────────

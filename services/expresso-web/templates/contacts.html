@@ -260,44 +260,27 @@ function exportContactsCsv() {
 
 // ── CSV import ────────────────────────────────────────────────────────────────
 function importCsv(input, bookId) {
+  // Server-side import: the contacts service parses the CSV (proper quoting,
+  // header handling, validation, 4 MiB cap) — replaces the old client-side
+  // comma-split→vCard conversion that broke on quoted commas.
   var file = input.files && input.files[0];
   if (!file) return;
-  var reader = new FileReader();
-  reader.onload = function(ev) {
-    var text = ev.target.result || '';
-    var lines = text.split(/\r?\n/).filter(function(l){ return l.trim(); });
-    if (!lines.length) { alert('Arquivo CSV vazio.'); return; }
-    // Detect header: if first row contains "name" or "email" treat as header
-    var firstLow = lines[0].toLowerCase();
-    var hasHeader = firstLow.includes('name') || firstLow.includes('email') || firstLow.includes('nome');
-    var dataLines = hasHeader ? lines.slice(1) : lines;
-    // Parse each row: name,email,phone (flexible — extra cols ignored)
-    var contacts = dataLines.map(function(line) {
-      var cols = line.split(',').map(function(c){ return c.trim().replace(/^"|"$/g,''); });
-      return { name: cols[0] || '', email: cols[1] || '', phone: cols[2] || '' };
-    }).filter(function(c){ return c.name || c.email; });
-    if (!contacts.length) { alert('Nenhum contato válido encontrado no CSV.'); return; }
-    // Convert to minimal vCard and post
-    var vcf = contacts.map(function(c) {
-      var parts = c.name.split(' ');
-      var last = parts.length > 1 ? parts.pop() : '';
-      var first = parts.join(' ');
-      return 'BEGIN:VCARD\r\nVERSION:3.0\r\nN:' + last + ';' + first + ';;;\r\nFN:' + c.name +
-        '\r\n' + (c.email ? 'EMAIL:' + c.email + '\r\n' : '') +
-        (c.phone ? 'TEL:' + c.phone + '\r\n' : '') + 'END:VCARD';
-    }).join('\r\n');
-    if (!confirm('Importar ' + contacts.length + ' contato(s) do CSV?')) return;
-    fetch('/contacts/' + encodeURIComponent(bookId) + '/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/vcard' },
-      credentials: 'include',
-      body: vcf,
-    }).then(function(r) {
-      if (r.ok || r.redirected) window.location.reload();
-      else alert('Erro ao importar CSV (' + r.status + ').');
-    }).catch(function(){ alert('Erro de rede.'); });
-  };
-  reader.readAsText(file);
+  if (file.size > 4 * 1024 * 1024) { alert('CSV muito grande (máx. 4 MiB).'); input.value = ''; return; }
+  if (!confirm('Importar os contatos de "' + file.name + '"?')) { input.value = ''; return; }
+  var fd = new FormData();
+  fd.append('book_id', bookId);
+  fd.append('file', file);
+  fetch('/contacts/import-csv', { method: 'POST', credentials: 'include', body: fd })
+    .then(function(r) {
+      if (!r.ok) { alert('Erro ao importar CSV (HTTP ' + r.status + ').'); return null; }
+      return r.json();
+    })
+    .then(function(d) {
+      if (!d) return;
+      alert('Importado(s) ' + (d.imported || 0) + ' contato(s).');
+      window.location.reload();
+    })
+    .catch(function(){ alert('Erro de rede.'); });
   input.value = '';
 }
 
