@@ -489,33 +489,34 @@ document.addEventListener('click', function(e) {
   }
 });
 
-// ── Mail templates ──────────────────────────────────────────────────────────
-var TPL_KEY = 'expresso_mail_templates';
-function loadTemplates() {
-  try { return JSON.parse(localStorage.getItem(TPL_KEY) || '[]'); } catch(e) { return []; }
-}
-function saveTemplates(arr) { try { localStorage.setItem(TPL_KEY, JSON.stringify(arr)); } catch(e){} }
+// ── Mail templates (server-backed — managed at /settings/templates) ──────────
+var _composeTemplates = [];
 function refreshTemplateSelect() {
   var sel = document.getElementById('compose-template-select');
   if (!sel) return;
-  var arr = loadTemplates();
-  sel.innerHTML = '<option value="">— selecionar —</option>' +
-    arr.map(function(t, i){ return '<option value="' + i + '">' + (t.name || 'Sem nome').replace(/</g,'&lt;') + '</option>'; }).join('');
+  fetch('/mail/templates', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(arr) {
+      _composeTemplates = arr || [];
+      sel.innerHTML = '<option value="">— modelo —</option>' +
+        _composeTemplates.map(function(t){
+          return '<option value="' + t.id + '">' + String(t.name || 'Sem nome').replace(/</g,'&lt;') + '</option>';
+        }).join('');
+    }).catch(function(){});
 }
-function applyTemplate(idx) {
-  if (idx === '') return;
-  var arr = loadTemplates();
-  var t = arr[parseInt(idx, 10)];
+function applyTemplate(id) {
+  if (!id) return;
+  var t = _composeTemplates.filter(function(x){ return x.id === id; })[0];
   if (!t) return;
-  if (t.subject !== undefined) {
+  if (t.subject) {
     var s = document.getElementById('compose-subject');
     if (s && (!s.value || confirm('Substituir assunto atual?'))) s.value = t.subject;
   }
   if (t.body !== undefined) {
     var rich = document.getElementById('compose-rich-editor');
     var ta = document.getElementById('compose-body-text');
-    if (rich) rich.innerHTML = t.body;
-    if (ta) ta.value = t.body.replace(/<[^>]+>/g, '');
+    if (rich) rich.textContent = t.body;
+    if (ta) ta.value = t.body;
   }
 }
 function saveCurrentAsTemplate() {
@@ -523,24 +524,18 @@ function saveCurrentAsTemplate() {
   if (!name) return;
   var subject = (document.getElementById('compose-subject') || {}).value || '';
   var rich = document.getElementById('compose-rich-editor');
-  var body = rich ? rich.innerHTML : (document.getElementById('compose-body-text') || {}).value || '';
-  var arr = loadTemplates();
-  arr.push({ name: name, subject: subject, body: body, created: Date.now() });
-  saveTemplates(arr);
-  refreshTemplateSelect();
-  alert('Modelo "' + name + '" salvo.');
+  var body = rich ? rich.textContent : (document.getElementById('compose-body-text') || {}).value || '';
+  var fd = new URLSearchParams();
+  fd.set('name', name); fd.set('subject', subject); fd.set('body', body);
+  fetch('/settings/templates', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd.toString()
+  }).then(function(r){
+    if (r.ok || r.redirected) { alert('Modelo "' + name + '" salvo.'); refreshTemplateSelect(); }
+    else alert('Falha ao salvar o modelo.');
+  }).catch(function(){ alert('Falha ao salvar o modelo.'); });
 }
-function manageTemplates() {
-  var arr = loadTemplates();
-  if (!arr.length) { alert('Nenhum modelo salvo ainda.'); return; }
-  var lines = arr.map(function(t, i){ return (i+1) + '. ' + t.name; }).join('\n');
-  var ans = prompt('Modelos:\n' + lines + '\n\nDigite o número para apagar, ou cancele:');
-  if (!ans) return;
-  var n = parseInt(ans, 10) - 1;
-  if (isNaN(n) || n < 0 || n >= arr.length) return;
-  if (!confirm('Apagar "' + arr[n].name + '"?')) return;
-  arr.splice(n, 1); saveTemplates(arr); refreshTemplateSelect();
-}
+function manageTemplates() { window.location.href = '/settings/templates'; }
 refreshTemplateSelect();
 
 // ── Scheduled send ─────────────────────────────────────────────────────────

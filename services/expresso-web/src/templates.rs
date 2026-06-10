@@ -2248,6 +2248,22 @@ pub struct SettingsSignaturesTpl {
     pub flash: Option<String>,
 }
 
+/// One message template (canned response) in the manager.
+pub struct MessageTemplateRow {
+    pub id: String,
+    pub name: String,
+    pub subject: String,
+    pub body: String,
+}
+
+#[derive(Template)]
+#[template(path = "settings_templates.html")]
+pub struct SettingsTemplatesTpl {
+    pub me: Me,
+    pub rows: Vec<MessageTemplateRow>,
+    pub flash: Option<String>,
+}
+
 /// One personal access token (metadata only — the secret is never listed).
 pub struct ApiTokenRow {
     pub id: String,

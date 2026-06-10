@@ -39,12 +39,13 @@ use crate::{
         GalContact, HistogramBar, HomeBirthday, HomeDriveFile, HomeEvent, HomeReminder, HomeTpl,
         LoginTpl, MailAlias, MailComposeTpl, MailListTpl, MailScheduledTpl, MailSearchTpl,
         MailSnoozedTpl, MailThreadTpl, Me, MeTpl, MeetParticipant, MeetRoom, MeetRoomTpl,
-        MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MfaFactorRow, MonthCell, Note,
-        NoteAclTpl, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook, NotesActivityTpl,
-        NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow, ScheduledRow,
-        SearchFacet, SearchGroup, SearchHit, SearchTpl, SecurityTpl, SettingsSignaturesTpl,
-        SettingsTokensTpl, SettingsTpl, ShareRow, SharedNoteRow, SignatureRow, SnoozedRow,
-        TagPairRow, TaskRow, TasksTpl, TenantUsageRow, VersionRow, WebhookLogRow, WorkingHour,
+        MeetScheduleTpl, MeetTpl, MessageDetail, MessageListItem, MessageTemplateRow, MfaFactorRow,
+        MonthCell, Note, NoteAclTpl, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
+        NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow,
+        ScheduledRow, SearchFacet, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
+        SettingsSignaturesTpl, SettingsTemplatesTpl, SettingsTokensTpl, SettingsTpl, ShareRow,
+        SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow,
+        VersionRow, WebhookLogRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -476,6 +477,16 @@ pub fn router(state: AppState) -> Router {
             "/settings/signatures/:id/default",
             post(settings_signature_set_default),
         )
+        .route(
+            "/settings/templates",
+            get(settings_templates_page).post(settings_template_create),
+        )
+        .route(
+            "/settings/templates/:id/delete",
+            post(settings_template_delete),
+        )
+        // Compose JSON: list the caller's templates for the dropdown.
+        .route("/mail/templates", get(mail_templates_api))
         .route("/settings/aliases", post(settings_alias_create))
         .route("/settings/aliases/:id/toggle", post(settings_alias_toggle))
         .route("/settings/aliases/:id/delete", post(settings_alias_delete))
@@ -12805,6 +12816,147 @@ async fn settings_signature_delete(
     )
     .await?;
     Ok(Redirect::to("/settings/signatures?flash=Assinatura+removida").into_response())
+}
+
+// ─── /settings/templates (message templates / canned responses) ──────────────
+
+fn message_template_rows(raw: Vec<serde_json::Value>) -> Vec<MessageTemplateRow> {
+    raw.into_iter()
+        .map(|s| MessageTemplateRow {
+            id: s
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            name: s
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            subject: s
+                .get("subject")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            body: s
+                .get("body")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        })
+        .collect()
+}
+
+/// GET /settings/templates — manage the caller's message templates.
+async fn settings_templates_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let rows = message_template_rows(
+        get_json::<Vec<serde_json::Value>>(
+            &st,
+            &st.backends.mail,
+            "/api/v1/mail/templates",
+            &headers,
+            Some((&t, &u)),
+        )
+        .await?
+        .unwrap_or_default(),
+    );
+    Ok(askama_axum::IntoResponse::into_response(
+        SettingsTemplatesTpl {
+            me,
+            rows,
+            flash: extract_flash(&uri),
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+struct TemplateForm {
+    name: String,
+    #[serde(default)]
+    subject: String,
+    #[serde(default)]
+    body: String,
+}
+
+/// POST /settings/templates — create a message template.
+async fn settings_template_create(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<TemplateForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let name = f.name.trim();
+    if name.is_empty() {
+        return Ok(Redirect::to("/settings/templates?flash=Informe+um+nome").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let _ = post_json(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/templates",
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({ "name": name, "subject": f.subject, "body": f.body }),
+    )
+    .await?;
+    Ok(Redirect::to("/settings/templates?flash=Modelo+criado").into_response())
+}
+
+/// POST /settings/templates/:id/delete — remove a message template.
+async fn settings_template_delete(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&id, NON_ALPHANUMERIC);
+    let _ = delete_at(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/templates/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/settings/templates?flash=Modelo+removido").into_response())
+}
+
+/// GET /mail/templates — the caller's templates as JSON, for the compose
+/// dropdown (server-backed, replacing the old localStorage store).
+async fn mail_templates_api(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let v = get_json::<serde_json::Value>(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/templates",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_else(|| serde_json::json!([]));
+    Ok(json_response(&v))
 }
 
 #[derive(Deserialize)]

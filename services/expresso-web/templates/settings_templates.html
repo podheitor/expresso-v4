@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Modelos de e-mail · Expresso{% endblock %}
+{% block nav %}{% let current = "settings" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Modelos de e-mail</h1>
+    <a class="btn btn-ghost btn-sm" href="/settings">← Configurações</a>
+  </div>
+  {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+
+  <div class="card stack">
+    <h2>Novo modelo</h2>
+    <p class="muted small">Respostas prontas reutilizáveis. Ao compor, escolha um modelo para preencher assunto e corpo. Ficam salvas na sua conta (em qualquer dispositivo).</p>
+    <form class="compose-form" method="post" action="/settings/templates">
+      <label><span>Nome</span>
+        <input type="text" name="name" required maxlength="100" placeholder="ex: Confirmação de reunião">
+      </label>
+      <label><span>Assunto (opcional)</span>
+        <input type="text" name="subject" maxlength="998" placeholder="Re: nossa conversa">
+      </label>
+      <label><span>Corpo</span>
+        <textarea name="body" rows="6" placeholder="Olá,&#10;&#10;Obrigado pelo contato…"></textarea>
+      </label>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Criar modelo</button></div>
+    </form>
+  </div>
+
+  <div class="card stack">
+    <h2>Meus modelos</h2>
+    {% if rows.is_empty() %}
+      <p class="muted">Nenhum modelo criado.</p>
+    {% else %}
+    <table class="data-table" style="width:100%">
+      <thead><tr><th>Nome</th><th>Assunto</th><th></th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.name }}</td>
+          <td class="muted small">{% if r.subject.is_empty() %}<span class="muted">—</span>{% else %}{{ r.subject }}{% endif %}</td>
+          <td style="text-align:right">
+            <form method="post" action="/settings/templates/{{ r.id }}/delete" style="display:inline"
+                  onsubmit="return confirm('Remover o modelo &quot;{{ r.name }}&quot;?')">
+              <button class="btn btn-ghost btn-sm" type="submit">Remover</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
