@@ -87,7 +87,7 @@ pub async fn process(
         }
 
         // Sieve evaluation — fetch user script, evaluate, determine target folder/action.
-        let target_folder: String = match apply_sieve(&mut tx, user_id, raw).await {
+        let mut target_folder: String = match apply_sieve(&mut tx, user_id, raw).await {
             SieveDecision::Deliver { folder } => folder,
             SieveDecision::Discard => {
                 tracing::info!(rcpt = %rcpt, "sieve: discard");
@@ -100,6 +100,18 @@ pub async fn process(
                 anyhow::bail!("sieve reject: {}", reason);
             }
         };
+
+        // Blocked-senders override: divert to Spam when the From is blocked,
+        // unless Sieve already discarded/rejected it.
+        if let Some(from) = parsed.from_addr.as_deref() {
+            if crate::api::blocked_senders::is_blocked(&mut tx, tenant_id, user_id, from)
+                .await
+                .unwrap_or(false)
+            {
+                tracing::info!(rcpt = %rcpt, from = %from, "blocked sender → Spam");
+                target_folder = "Spam".to_string();
+            }
+        }
 
         let (mailbox_id, uid) =
             lock_or_create_mailbox(&mut tx, tenant_id, user_id, &target_folder).await?;

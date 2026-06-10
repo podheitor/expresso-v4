@@ -44,9 +44,9 @@ use crate::{
         MonthCell, Note, NoteAclTpl, NoteTagStat, NoteVersionRow, NoteVersionsTpl, Notebook,
         NotesActivityTpl, NotesSharedTpl, NotesTagsTpl, NotesTpl, Resource, RetentionPolicyRow,
         ScheduledRow, SearchFacet, SearchGroup, SearchHit, SearchTpl, SecurityTpl,
-        SettingsSignaturesTpl, SettingsTemplatesTpl, SettingsTokensTpl, SettingsTpl, ShareRow,
-        SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow, TasksTpl, TenantUsageRow,
-        VersionRow, WebhookLogRow, WorkingHour,
+        SettingsBlockedSendersTpl, SettingsSignaturesTpl, SettingsTemplatesTpl, SettingsTokensTpl,
+        SettingsTpl, ShareRow, SharedNoteRow, SignatureRow, SnoozedRow, TagPairRow, TaskRow,
+        TasksTpl, TenantUsageRow, VersionRow, WebhookLogRow, WorkingHour,
     },
     upstream::{
         delete_at, delete_json, get_bytes, get_json, patch_json, post_body, post_body_json,
@@ -318,6 +318,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/mail/messages/:id/labels/:label",
             put(mail_label_add).delete(mail_label_remove),
+        )
+        .route(
+            "/settings/blocked-senders",
+            get(settings_blocked_page).post(settings_blocked_add),
+        )
+        .route(
+            "/settings/blocked-senders/:address/delete",
+            post(settings_blocked_remove),
         )
         .route("/mail/snoozed", get(mail_snoozed_page))
         .route("/mail/scheduled", get(mail_scheduled_page))
@@ -5651,6 +5659,93 @@ async fn mail_label_remove(
     Ok(StatusCode::from_u16(status)
         .unwrap_or(StatusCode::BAD_GATEWAY)
         .into_response())
+}
+
+/// GET /settings/blocked-senders — manage the caller's blocked-sender list.
+async fn settings_blocked_page(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let addresses = get_json::<Vec<String>>(
+        &st,
+        &st.backends.mail,
+        "/api/v1/mail/blocked-senders",
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?
+    .unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(
+        SettingsBlockedSendersTpl {
+            me,
+            addresses,
+            flash: extract_flash(&uri),
+        },
+    ))
+}
+
+#[derive(Deserialize)]
+struct BlockedSenderForm {
+    address: String,
+}
+
+/// POST /settings/blocked-senders — block an address.
+async fn settings_blocked_add(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Form(f): Form<BlockedSenderForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let addr = f.address.trim().to_ascii_lowercase();
+    if !addr.contains('@') {
+        return Ok(
+            Redirect::to("/settings/blocked-senders?flash=Informe+um+e-mail+v%C3%A1lido")
+                .into_response(),
+        );
+    }
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&addr, NON_ALPHANUMERIC);
+    let _ = put_json(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/blocked-senders/{enc}"),
+        &headers,
+        Some((&t, &u)),
+        &serde_json::json!({}),
+    )
+    .await?;
+    Ok(Redirect::to("/settings/blocked-senders?flash=Remetente+bloqueado").into_response())
+}
+
+/// POST /settings/blocked-senders/:address/delete — unblock an address.
+async fn settings_blocked_remove(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(address): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&address, NON_ALPHANUMERIC);
+    let _ = delete_at(
+        &st,
+        &st.backends.mail,
+        &format!("/api/v1/mail/blocked-senders/{enc}"),
+        &headers,
+        Some((&t, &u)),
+    )
+    .await?;
+    Ok(Redirect::to("/settings/blocked-senders?flash=Remetente+desbloqueado").into_response())
 }
 
 /// GET /mail/:id/raw — download a message as a raw RFC 5822 .eml file

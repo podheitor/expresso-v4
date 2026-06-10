@@ -2,6 +2,7 @@
 
 pub mod aliases;
 pub mod attachments;
+pub mod blocked_senders;
 pub mod compose;
 pub mod context;
 pub mod delegation;
@@ -86,5 +87,6 @@ fn api_routes(_state: AppState) -> Router<AppState> {
         .merge(signatures::routes())
         .merge(message_templates::routes())
         .merge(labels::routes())
+        .merge(blocked_senders::routes())
         .merge(threads::routes())
 }

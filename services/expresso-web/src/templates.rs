@@ -2296,6 +2296,15 @@ pub struct SettingsTemplatesTpl {
     pub flash: Option<String>,
 }
 
+#[derive(Template)]
+#[template(path = "settings_blocked_senders.html")]
+pub struct SettingsBlockedSendersTpl {
+    pub me: Me,
+    /// Blocked email addresses, sorted.
+    pub addresses: Vec<String>,
+    pub flash: Option<String>,
+}
+
 /// One personal access token (metadata only — the secret is never listed).
 pub struct ApiTokenRow {
     pub id: String,

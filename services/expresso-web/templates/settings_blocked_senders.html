@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Remetentes bloqueados · Expresso{% endblock %}
+{% block nav %}{% let current = "settings" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Remetentes bloqueados</h1>
+    <a class="btn btn-ghost btn-sm" href="/settings">← Configurações</a>
+  </div>
+  {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+
+  <div class="card stack">
+    <p class="muted small">Mensagens recebidas destes endereços vão direto para o Spam.</p>
+    <form method="post" action="/settings/blocked-senders" style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap">
+      <label style="flex:1;min-width:240px"><span>E-mail</span>
+        <input type="email" name="address" required placeholder="spammer@exemplo.com">
+      </label>
+      <button class="btn btn-primary" type="submit">Bloquear</button>
+    </form>
+  </div>
+
+  <div class="card stack">
+    <h2>Bloqueados</h2>
+    {% if addresses.is_empty() %}
+      <p class="muted">Nenhum remetente bloqueado.</p>
+    {% else %}
+    <table class="data-table" style="width:100%">
+      <tbody>
+        {% for a in addresses %}
+        <tr>
+          <td>{{ a }}</td>
+          <td style="text-align:right">
+            <form method="post" action="/settings/blocked-senders/{{ a }}/delete" style="display:inline">
+              <button class="btn btn-ghost btn-sm" type="submit">Desbloquear</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
