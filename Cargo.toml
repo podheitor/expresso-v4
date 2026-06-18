@@ -48,7 +48,7 @@ tower-http   = { version = "0.6", features = ["trace", "cors", "compression-gzip
 hyper        = { version = "1", features = ["full"] }
 
 # Database
-sqlx         = { version = "0.8", features = ["runtime-tokio-native-tls", "postgres", "uuid", "time", "chrono", "json"] }
+sqlx         = { version = "0.9", features = ["runtime-tokio-native-tls", "postgres", "uuid", "time", "chrono", "json"] }
 
 # Redis
 deadpool-redis = { version = "0.16", features = ["rt_tokio_1"] }
