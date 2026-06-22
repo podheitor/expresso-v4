@@ -41,7 +41,7 @@ jobs:
           --health-retries 10
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -113,7 +113,7 @@ jobs:
     name: Shell — shellcheck scripts/
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ludeeus/action-shellcheck@master
         with:
           severity: warning
@@ -123,7 +123,7 @@ jobs:
     name: Rust — cargo doc
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       # See note in the `rust` job: .cargo/config.toml requires mold.
       - uses: rui314/setup-mold@v1
