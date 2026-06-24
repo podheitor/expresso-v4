@@ -22,7 +22,7 @@ uuid = { workspace = true }
 time = { workspace = true }
 reqwest = { workspace = true }
 askama = { version = "0.12", default-features = false, features = ["with-axum"] }
-askama_axum = "0.4"
+askama_axum = "0.5"
 percent-encoding = "2"
 sqlx = { workspace = true }
 
