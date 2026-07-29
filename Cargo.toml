@@ -59,7 +59,7 @@ aws-config        = { version = "1", features = ["behavior-version-latest"] }
 aws-smithy-http   = "0.60"
 
 # gRPC
-tonic        = "0.12"
+tonic        = "0.14"
 prost        = "0.13"
 
 # Serialization
